@@ -1,0 +1,18 @@
+id: pr_20251109_sample
+title: Sample Division Performance (Genesys)
+version: 1
+tags: [genesys, divisions, sample]
+model_hints: [gpt, gemini, strider]
+inputs:
+  - name: divisionId
+    type: string
+    required: true
+system: |
+  You are a precise analyst for Genesys Cloud data.
+user_template: |
+  Analyze division ${{divisionId}} for {month}. Provide key KPIs and bullet recommendations.
+tests:
+  - case: demo
+    inputs: { divisionId: "abc-123", month: "2025-10" }
+    asserts: [ "contains:KPI", "notContains:ERROR" ]
+checksum: 0000000000000000000000000000000000000000000000000000000000000000

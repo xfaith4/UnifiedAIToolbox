@@ -1,0 +1,37 @@
+name: Lint-Test-Build
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  pwsh:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        pwsh: [ "5.1", "7.4" ]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup PowerShell ${{ matrix.pwsh }}
+        uses: PowerShell/PowerShell@v1
+        with:
+          version: ${{ matrix.pwsh }}
+      - name: Install tooling
+        shell: pwsh
+        run: |
+          Set-PSRepository PSGallery -InstallationPolicy Trusted
+          Install-Module Pester -Scope CurrentUser -Force -MinimumVersion 5.5.0
+          Install-Module PSScriptAnalyzer -Scope CurrentUser -Force
+          Install-Module powershell-yaml -Scope CurrentUser -Force
+      - name: Lint
+        shell: pwsh
+        run: |
+          Invoke-ScriptAnalyzer -Path modules -Recurse -Severity Warning -EnableExit
+      - name: Tests
+        shell: pwsh
+        run: |
+          Invoke-Pester -Path tests -CI -Output Detailed
+      - name: Build index
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/Build-Index.ps1

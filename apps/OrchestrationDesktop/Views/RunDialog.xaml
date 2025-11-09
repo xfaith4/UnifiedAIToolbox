@@ -1,0 +1,13 @@
+<Window x:Class="OrchestrationDesktop.Views.RunDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Run Orchestration" Height="400" Width="600"
+        WindowStartupLocation="CenterOwner">
+  <Grid>
+    <StackPanel Margin="16">
+      <TextBlock Text="Run Orchestration" FontSize="18" FontWeight="Bold"/>
+      <TextBlock Text="(Placeholder UI — wire actual viewmodels and module calls)"/>
+      <Button Content="Close" Margin="0,16,0,0" Click="OnClose"/>
+    </StackPanel>
+  </Grid>
+</Window>
