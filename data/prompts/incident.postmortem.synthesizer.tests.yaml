@@ -1,0 +1,19 @@
+cases:
+- name: Has timeline
+  input:
+    incident_id: INC-2025-1031
+    when: '2025-10-31'
+    impact_summary: 5% calls failed for 22m
+    timeline:
+    - t: '2025-10-31T17:22:00Z'
+      e: Alert fired
+    - t: '2025-10-31T17:44:00Z'
+      e: Mitigated
+    root_cause: Bad deploy
+    actions:
+    - owner: SRE
+      task: Guardrails
+      eta: '2025-11-15'
+  asserts:
+  - contains: Overview
+  - contains: Corrective Actions

@@ -1,0 +1,45 @@
+id: engineering.sql.query.generator
+version: 1.0.0
+owners:
+- data-platform@humana.com
+risk_tier: med
+models:
+  recommended:
+  - gpt-5-thinking
+  max_tokens: 2000
+  temperature: 0.1
+variables:
+  dialect:
+    type: string
+    required: true
+    validators:
+    - enum:
+      - postgres
+      - mssql
+      - mysql
+      - sqlite
+  schema:
+    type: string
+    required: true
+  request:
+    type: string
+    required: true
+blocks:
+  system: You write safe, read-only SQL for ${dialect}. Never modify data.
+  instructions: 'Given schema:
+
+    ${schema}
+
+    Write ONE SELECT-only query for: ${request}. Return JSON with keys: sql, notes,
+    caveats.'
+  constraints: '- No DML/DDL
+
+    - Limit 500 rows
+
+    - Use parameter placeholders where applicable'
+  style: '- Output compact JSON'
+telemetry:
+  tags:
+  - sql
+  - generator
+  pii: none

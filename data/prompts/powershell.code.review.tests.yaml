@@ -1,0 +1,7 @@
+cases:
+- name: Flags gotcha
+  input:
+    script_name: Do-Thing.ps1
+    script_content: '$EnginePath: something'
+  asserts:
+  - contains: colon-after-variable

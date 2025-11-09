@@ -1,0 +1,53 @@
+id: examples.analytics.divisions.performance.summary
+version: 0.1.0
+locale: en-US
+owners:
+- analytics-team@example.com
+risk_tier: low
+models:
+  recommended:
+  - gpt-4.1
+  max_tokens: 1800
+  temperature: 0.2
+variables:
+  division:
+    type: string
+    required: true
+    validators:
+    - regex: ^[A-Za-z0-9 _-]{2,64}$
+  month:
+    type: string
+    required: true
+    validators:
+    - regex: ^20[0-9]{2}-(0[1-9]|1[0-2])$
+  include_mos_detail:
+    type: boolean
+    default: false
+blocks:
+  system: You create concise executive KPI summaries for contact center leaders.
+  instructions: |
+    Summarize the latest KPI results for ${division} covering ${month}.
+    Include call volume, service level, average MOS, and notable shifts.
+    If ${include_mos_detail} is True, add a short paragraph that explains the primary drivers behind MOS changes.
+  constraints: |
+    - Do not invent metrics.
+    - Keep the body under 200 words.
+  style: |
+    - Use section headings followed by compact bullet lists.
+    - Favor plain language and avoid jargon.
+  examples:
+  - input:
+      division: Medicare
+      month: 2025-10
+      include_mos_detail: true
+    output: |
+      ## Medicare KPIs - Oct 2025
+      - Call volume: 182,944 (+4% vs prior month)
+      - Service level: 88 percent of calls answered within target window
+      - Customer sentiment: MOS 3.8 with biggest gains from training refresh
+      - Actions: Continue coaching cadence; launch callback pilot in Q4
+telemetry:
+  tags:
+  - example
+  - quickstart
+  pii: none

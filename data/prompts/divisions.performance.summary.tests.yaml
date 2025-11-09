@@ -1,0 +1,17 @@
+cases:
+- name: Oct Medicare with MOS
+  input:
+    division: Medicare
+    month: 2025-10
+    include_mos_detail: true
+  asserts:
+  - contains: Oct 2025
+  - contains_regex: "MOS.*\u2264 ?3\\.5"
+  - max_words: 220
+- name: No MOS
+  input:
+    division: Medicaid
+    month: 2025-10
+    include_mos_detail: false
+  asserts:
+  - not_contains: MOS
