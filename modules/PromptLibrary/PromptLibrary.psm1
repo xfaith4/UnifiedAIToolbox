@@ -43,7 +43,7 @@ function Invoke-Orchestration {
   if (-not $agent)  { throw "Agent $($AgentId) not found." }
   $renderedUser = $prompt.user_template
   foreach ($k in $Inputs.Keys) {
-    $renderedUser = $renderedUser -replace "\${{\s*$([regex]::Escape($k))\s*}}", [string]$Inputs[$k]
+    $renderedUser = $renderedUser -replace "\${`{\s*$([regex]::Escape($k))\s*}}", [string]$Inputs[$k]
   }
   $systemMsg = ($agent.role + "`n---`n" + $prompt.system)
   $resp = [ordered]@{ model=$Model; text="MODEL_CALL_PLACEHOLDER"; usage=@{prompt_tokens=0;completion_tokens=0;total_tokens=0} }
