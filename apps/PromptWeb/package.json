@@ -1,9 +1,16 @@
 {
   "name": "promptweb",
   "private": true,
-  "version": "0.0.2",
+  "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "build": "echo \"Placeholder build. Replace with React/Vite.\""
+    "build": "node ./scripts/build.mjs",
+    "preview": "node ./scripts/dev-server.mjs"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "yaml": "^2.4.5"
   }
 }

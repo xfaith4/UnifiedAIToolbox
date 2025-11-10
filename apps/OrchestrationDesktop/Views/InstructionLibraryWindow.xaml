@@ -1,0 +1,84 @@
+<Window x:Class="OrchestrationDesktop.Views.InstructionLibraryWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Prompt Library"
+        Height="600"
+        Width="880"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResize">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="300"/>
+            <ColumnDefinition Width="16"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <StackPanel Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3" Orientation="Horizontal" VerticalAlignment="Center">
+            <TextBox Width="260" Margin="0,0,12,0"
+                     Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"/>
+            <ComboBox Width="160"
+                      ItemsSource="{Binding Categories}"
+                      SelectedItem="{Binding SelectedCategory}"
+                      IsSynchronizedWithCurrentItem="True"/>
+        </StackPanel>
+
+        <Border Grid.Row="1" Grid.Column="0" Background="#f6f8fb" BorderBrush="#d9e0ee" BorderThickness="1" CornerRadius="8">
+            <ListBox ItemsSource="{Binding TemplatesView}"
+                     SelectedItem="{Binding SelectedTemplate}"
+                     DisplayMemberPath="DisplayName"
+                     Margin="4"
+                     HorizontalContentAlignment="Stretch">
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Margin="4" Orientation="Vertical">
+                            <TextBlock Text="{Binding DisplayName}"
+                                       FontWeight="SemiBold"
+                                       Foreground="#113663"/>
+                            <TextBlock Text="{Binding Description}"
+                                       FontSize="12"
+                                       TextWrapping="Wrap"
+                                       Foreground="#4a5970"
+                                       Margin="0,2,0,0"/>
+                        </StackPanel>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </Border>
+
+        <Border Grid.Row="1" Grid.Column="2" Padding="16" BorderBrush="#d9e0ee" BorderThickness="1" CornerRadius="8">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <TextBlock Text="{Binding SelectedTemplate.DisplayName}"
+                               FontSize="20"
+                               FontWeight="Bold"
+                               Foreground="#10304c"/>
+                    <TextBlock Text="{Binding SelectedTemplate.Category}"
+                               Margin="0,4,0,12"
+                               Foreground="#577399"
+                               FontStyle="Italic"/>
+                    <TextBlock Text="{Binding SelectedTemplate.Content}"
+                               TextWrapping="Wrap"
+                               FontFamily="Consolas"
+                               Foreground="#1f2f3f"/>
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+
+        <StackPanel Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button x:Name="UseTemplateButton"
+                    Content="Use Template"
+                    Width="110"
+                    Margin="0,12,8,0"
+                    Click="OnUseTemplate"/>
+            <Button Content="Cancel"
+                    Width="90"
+                    Margin="0,12,0,0"
+                    Click="OnCancel"/>
+        </StackPanel>
+    </Grid>
+</Window>

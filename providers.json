@@ -1,0 +1,11 @@
+{
+  "OpenAI": {
+    "apiKey": "PUT-YOUR-KEY-HERE"
+  },
+  "Gemini": {
+    "apiKey": "PUT-YOUR-KEY-HERE"
+  },
+  "Strider": {
+    "token": "PUT-YOUR-TOKEN-HERE"
+  }
+}

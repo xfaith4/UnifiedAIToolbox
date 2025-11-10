@@ -1,0 +1,135 @@
+<Window x:Class="OrchestrationDesktop.Views.HelpWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="AI Orchestration Desktop – Help"
+        Height="520"
+        Width="720"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResize">
+    <Grid Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
+        <Border Margin="16"
+                Padding="24"
+                Background="White"
+                CornerRadius="12"
+                BorderBrush="#e0e6f0"
+                BorderThickness="1">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <TextBlock Text="AI Orchestration Desktop"
+                               FontSize="22"
+                               FontWeight="Bold"
+                               Foreground="#113663"/>
+                    <TextBlock Text="Professional automation hub for the AI-Orchestration toolkit."
+                               FontSize="14"
+                               Margin="0,4,0,16"
+                               Foreground="#33506f"/>
+
+                    <TextBlock Text="Purpose"
+                               FontSize="18"
+                               FontWeight="SemiBold"
+                               Margin="0,12,0,8"/>
+                    <TextBlock TextWrapping="Wrap"
+                               Foreground="#1f2f3f"
+                               Margin="0,0,0,12">
+                        AI Orchestration Desktop provides an operator-friendly front-end for orchestrating repository-wide automation. It centralizes milestone planning, validation, execution, and Codex swarm reviews so delivery teams can coordinate iterative AI workflows without leaving the desktop environment.
+                    </TextBlock>
+
+                    <TextBlock Text="Key Capabilities"
+                               FontSize="18"
+                               FontWeight="SemiBold"
+                               Margin="0,12,0,8"/>
+                    <StackPanel Margin="8,0,0,12">
+                        <DockPanel Margin="0,4,0,4">
+                            <Ellipse Width="8" Height="8" Fill="#3478f6" Margin="0,6,8,0"/>
+                            <TextBlock TextWrapping="Wrap" Foreground="#1f2f3f" Width="630"
+                                       Text="Repository path discovery with one-click browsing and persisted preferences for goals, models, and Codex orchestration parameters."/>
+                        </DockPanel>
+                        <DockPanel Margin="0,4,0,4">
+                            <Ellipse Width="8" Height="8" Fill="#3478f6" Margin="0,6,8,0"/>
+                            <TextBlock TextWrapping="Wrap" Foreground="#1f2f3f" Width="630"
+                                       Text="Environment validation to verify required CLIs (Codex, Git) and confirm milestone goal assets are available before execution."/>
+                        </DockPanel>
+                        <DockPanel Margin="0,4,0,4">
+                            <Ellipse Width="8" Height="8" Fill="#3478f6" Margin="0,6,8,0"/>
+                            <TextBlock TextWrapping="Wrap" Foreground="#1f2f3f" Width="630"
+                                       Text="Unified orchestration pipeline that resolves goal context, runs milestone evaluation with configurable model prompts, and launches Codex swarms with custom instructions."/>
+                        </DockPanel>
+                        <DockPanel Margin="0,4,0,4">
+                            <Ellipse Width="8" Height="8" Fill="#3478f6" Margin="0,6,8,0"/>
+                            <TextBlock TextWrapping="Wrap" Foreground="#1f2f3f" Width="630"
+                                       Text="Parallel Codex swarm management including scope segmentation, prompt injection, and artifact synthesis with automated branch creation."/>
+                        </DockPanel>
+                        <DockPanel Margin="0,4,0,4">
+                            <Ellipse Width="8" Height="8" Fill="#3478f6" Margin="0,6,8,0"/>
+                            <TextBlock TextWrapping="Wrap" Foreground="#1f2f3f" Width="630"
+                                       Text="Real-time console log visualization and persistent status updates that track iterations, commissioner outcomes, and orchestration progress."/>
+                        </DockPanel>
+                        <DockPanel Margin="0,4,0,4">
+                            <Ellipse Width="8" Height="8" Fill="#3478f6" Margin="0,6,8,0"/>
+                            <TextBlock TextWrapping="Wrap" Foreground="#1f2f3f" Width="630"
+                                       Text="Integrated settings persistence so execution defaults, instruction prompts, and directories are restored between sessions."/>
+                        </DockPanel>
+                        <DockPanel Margin="0,4,0,4">
+                            <Ellipse Width="8" Height="8" Fill="#3478f6" Margin="0,6,8,0"/>
+                            <TextBlock TextWrapping="Wrap" Foreground="#1f2f3f" Width="630"
+                                       Text="Prompt library explorer for inserting curated instruction templates from the Ideal Prompt Library with a single click."/>
+                        </DockPanel>
+                    </StackPanel>
+
+                    <TextBlock Text="Working With Prompts"
+                               FontSize="18"
+                               FontWeight="SemiBold"
+                               Margin="0,12,0,8"/>
+                    <TextBlock TextWrapping="Wrap"
+                               Foreground="#1f2f3f"
+                               Margin="0,0,0,12">
+                        Use the instruction fields in the Milestone Orchestration and Codex Swarm sections of the main window to tailor system-level guidance. Instructions are automatically passed to every agent prompt, enabling teams to enforce house style rules, safety guidelines, or delivery expectations without editing source scripts.
+                    </TextBlock>
+
+                    <TextBlock Text="Operational Tips"
+                               FontSize="18"
+                               FontWeight="SemiBold"
+                               Margin="0,12,0,8"/>
+                    <StackPanel Margin="8,0,0,12">
+                        <DockPanel Margin="0,4,0,4">
+                            <Ellipse Width="8" Height="8" Fill="#2fb97a" Margin="0,6,8,0"/>
+                            <TextBlock TextWrapping="Wrap" Foreground="#1f2f3f" Width="630"
+                                       Text="Run validation after changing repositories or goal files to ensure dependencies are detected before orchestration begins."/>
+                        </DockPanel>
+                        <DockPanel Margin="0,4,0,4">
+                            <Ellipse Width="8" Height="8" Fill="#2fb97a" Margin="0,6,8,0"/>
+                            <TextBlock TextWrapping="Wrap" Foreground="#1f2f3f" Width="630"
+                                       Text="Use the Skip Context Resolution or Skip Codex toggles when triaging issues that only affect specific pipeline stages."/>
+                        </DockPanel>
+                        <DockPanel Margin="0,4,0,4">
+                            <Ellipse Width="8" Height="8" Fill="#2fb97a" Margin="0,6,8,0"/>
+                            <TextBlock TextWrapping="Wrap" Foreground="#1f2f3f" Width="630"
+                                       Text="Monitor the log panel for commissioner score updates and follow-up actions; commissioner refinements automatically recurse with your configured instructions."/>
+                        </DockPanel>
+                        <DockPanel Margin="0,4,0,4">
+                            <Ellipse Width="8" Height="8" Fill="#2fb97a" Margin="0,6,8,0"/>
+                            <TextBlock TextWrapping="Wrap" Foreground="#1f2f3f" Width="630"
+                                       Text="Codex runs produce findings, merged patches, and a dedicated git branch under codex/swarm/&lt;timestamp&gt; for downstream review."/>
+                        </DockPanel>
+                        <DockPanel Margin="0,4,0,4">
+                            <Ellipse Width="8" Height="8" Fill="#2fb97a" Margin="0,6,8,0"/>
+                            <TextBlock TextWrapping="Wrap" Foreground="#1f2f3f" Width="630"
+                                       Text="Use Tools → Agent Definitions to curate or add personas for Researcher, Engineer, and other orchestration agents."/>
+                        </DockPanel>
+                    </StackPanel>
+
+                    <TextBlock Text="Support"
+                               FontSize="18"
+                               FontWeight="SemiBold"
+                               Margin="0,12,0,8"/>
+                    <TextBlock TextWrapping="Wrap"
+                               Foreground="#1f2f3f">
+                        <Run Text="For workflow troubleshooting, review the output log in the main window and check the "/>
+                        <Run Text="orchestration-desktop-error.log" FontStyle="Italic"/>
+                        <Run Text=" file located in your application data directory. Share these artifacts with the automation team when requesting assistance."/>
+                    </TextBlock>
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+    </Grid>
+</Window>

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Prompt Library Explorer</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Prompt Library Explorer</h1>
+      <p>Quickly preview orchestration prompts bundled with UnifiedAIToolbox.</p>
+    </header>
+    <main>
+      <section class="controls">
+        <input id="search" type="search" placeholder="Search prompts…" />
+        <select id="category"></select>
+      </section>
+      <section id="results" class="grid" aria-live="polite"></section>
+    </main>
+    <template id="prompt-card">
+      <article class="prompt-card">
+        <h2></h2>
+        <p class="prompt-card__meta"></p>
+        <p class="prompt-card__description"></p>
+        <pre class="prompt-card__preview"></pre>
+      </article>
+    </template>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>
