@@ -1,18 +1,18 @@
 name: Lint-Test-Build
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
 jobs:
   pwsh:
     runs-on: windows-latest
     strategy:
       matrix:
-        pwsh: [ "5.1", "7.4" ]
+        pwsh: ["5.1", "7.4"]
     steps:
       - uses: actions/checkout@v4
       - name: Setup PowerShell ${{ matrix.pwsh }}
-        uses: PowerShell/PowerShell@v1
+        uses: PowerShell/PowerShell@v7.5.3
         with:
           version: ${{ matrix.pwsh }}
       - name: Install tooling
