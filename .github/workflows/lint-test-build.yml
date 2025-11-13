@@ -11,26 +11,49 @@ jobs:
         pwsh: ["5.1", "7.4"]
     steps:
       - uses: actions/checkout@v4
-      - name: Setup PowerShell ${{ matrix.pwsh }}
-        uses: PowerShell/PowerShell@v7.5.3
-        with:
-          version: ${{ matrix.pwsh }}
-      - name: Install tooling
+      - name: Install tooling (PowerShell 5.1)
+        if: matrix.pwsh == '5.1'
+        shell: powershell
+        run: |
+          Set-PSRepository PSGallery -InstallationPolicy Trusted
+          Install-Module Pester -Scope CurrentUser -Force -MinimumVersion 5.5.0
+          Install-Module PSScriptAnalyzer -Scope CurrentUser -Force
+          Install-Module powershell-yaml -Scope CurrentUser -Force
+      - name: Install tooling (PowerShell 7.4)
+        if: matrix.pwsh == '7.4'
         shell: pwsh
         run: |
           Set-PSRepository PSGallery -InstallationPolicy Trusted
           Install-Module Pester -Scope CurrentUser -Force -MinimumVersion 5.5.0
           Install-Module PSScriptAnalyzer -Scope CurrentUser -Force
           Install-Module powershell-yaml -Scope CurrentUser -Force
-      - name: Lint
+      - name: Lint (PowerShell 5.1)
+        if: matrix.pwsh == '5.1'
+        shell: powershell
+        run: |
+          Invoke-ScriptAnalyzer -Path modules -Recurse -Severity Warning -EnableExit
+      - name: Lint (PowerShell 7.4)
+        if: matrix.pwsh == '7.4'
         shell: pwsh
         run: |
           Invoke-ScriptAnalyzer -Path modules -Recurse -Severity Warning -EnableExit
-      - name: Tests
+      - name: Tests (PowerShell 5.1)
+        if: matrix.pwsh == '5.1'
+        shell: powershell
+        run: |
+          Invoke-Pester -Path tests -CI -Output Detailed
+      - name: Tests (PowerShell 7.4)
+        if: matrix.pwsh == '7.4'
         shell: pwsh
         run: |
           Invoke-Pester -Path tests -CI -Output Detailed
-      - name: Build index
+      - name: Build index (PowerShell 5.1)
+        if: matrix.pwsh == '5.1'
+        shell: powershell
+        run: |
+          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/Build-Index.ps1
+      - name: Build index (PowerShell 7.4)
+        if: matrix.pwsh == '7.4'
         shell: pwsh
         run: |
           pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/Build-Index.ps1

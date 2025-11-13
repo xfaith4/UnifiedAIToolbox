@@ -12,24 +12,26 @@
             <Button Content="Cancel" Width="80" IsCancel="True"/>
         </StackPanel>
 
-        <StackPanel>
-            <TextBlock Text="Find a prompt" FontWeight="SemiBold"/>
-            <TextBox x:Name="SearchBox" Margin="0,6,0,12" TextChanged="OnFilterChanged"/>
-            <ListBox x:Name="PromptList"
-                     DisplayMemberPath="DisplayName"
-                     SelectionMode="Single"
-                     MinHeight="320"
-                     MouseDoubleClick="OnPromptDoubleClick">
-                <ListBox.ItemTemplate>
-                    <DataTemplate>
-                        <StackPanel Margin="4">
-                            <TextBlock Text="{Binding DisplayName}" FontWeight="Bold"/>
-                            <TextBlock Text="{Binding Id}" FontSize="12" Foreground="#4b5b78"/>
-                            <TextBlock Text="{Binding Description}" TextWrapping="Wrap" FontSize="12" Foreground="#31394d"/>
-                        </StackPanel>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
-            </ListBox>
-        </StackPanel>
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <TextBlock Text="Find a prompt" FontWeight="SemiBold"/>
+                <TextBox x:Name="SearchBox" Margin="0,6,0,12" TextChanged="OnFilterChanged"/>
+                <ListBox x:Name="PromptList"
+                         SelectionMode="Single"
+                         MinHeight="320"
+                         MouseDoubleClick="OnPromptDoubleClick"
+                         ScrollViewer.VerticalScrollBarVisibility="Auto">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Margin="4">
+                                <TextBlock Text="{Binding DisplayName}" FontWeight="Bold"/>
+                                <TextBlock Text="{Binding Id}" FontSize="12" Foreground="#4b5b78"/>
+                                <TextBlock Text="{Binding Description}" TextWrapping="Wrap" FontSize="12" Foreground="#31394d"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </StackPanel>
+        </ScrollViewer>
     </DockPanel>
 </Window>

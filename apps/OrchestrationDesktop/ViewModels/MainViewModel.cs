@@ -12,7 +12,6 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows.Forms;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -47,6 +46,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private bool _useWslForCodex;
     private int _maxParallel = 3;
     private string _workDir = ".codex_out";
+    private string _directGoalText = string.Empty;
     private bool _isRunning;
     private bool _isProgressIndeterminate;
     private double _progressValue;
@@ -54,6 +54,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly StringBuilder _markdownLog = new();
     private string _logMarkdown = string.Empty;
     private FlowDocument _logDocument = MarkdownRenderer.Render(string.Empty);
+    private string? _latestResultPath;
+    private bool _latestResultIsFolder;
 
     private static readonly Regex TokensPattern = new(@"Tokens used:\s*(\d+)", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
@@ -84,10 +86,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
         else
         {
-        _goalFile = defaults.GoalFile;
-    }
+            _goalFile = defaults.GoalFile;
+        }
 
-    _model = defaults.Model;
+        _directGoalText = defaults.DirectGoalText ?? string.Empty;
+        _model = defaults.Model;
     _modelInstruction = defaults.ModelInstruction ?? string.Empty;
     _selectedPromptId = defaults.PromptId ?? string.Empty;
     _customPromptText = defaults.CustomPromptText ?? string.Empty;
@@ -110,6 +113,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         RunUnifiedCommand = new RelayCommand(async () => await RunUnifiedAsync(), () => !IsRunning);
         RunCodexCommand = new RelayCommand(async () => await RunCodexAsync(), () => !IsRunning);
         CancelCommand = new RelayCommand(CancelRun, () => IsRunning);
+        OpenResultsCommand = new RelayCommand(OpenLatestResults, () => HasResultShortcut);
     }
 
     public ObservableCollection<LogEntry> Logs { get; } = new();
@@ -236,6 +240,21 @@ public sealed class MainViewModel : INotifyPropertyChanged
         set => SetProperty(ref _workDir, value);
     }
 
+    public string DirectGoalText
+    {
+        get => _directGoalText;
+        set
+        {
+            if (SetProperty(ref _directGoalText, value))
+            {
+                OnPropertyChanged(nameof(IsGoalFileInputEnabled));
+                SaveSettings();
+            }
+        }
+    }
+
+    public bool IsGoalFileInputEnabled => string.IsNullOrWhiteSpace(DirectGoalText);
+
     public bool IsRunning
     {
         get => _isRunning;
@@ -259,7 +278,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public double ProgressValue
     {
         get => _progressValue;
-        private set => SetProperty(ref _progressValue, value);
+        set => SetProperty(ref _progressValue, value);
     }
 
     public string StatusMessage
@@ -270,6 +289,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public bool CanRunUnified => !IsRunning;
     public bool CanRunCodex => !IsRunning;
+    public bool HasResultShortcut => !string.IsNullOrWhiteSpace(_latestResultPath);
 
     public ICommand BrowseRepoCommand { get; }
     public ICommand BrowseGoalCommand { get; }
@@ -278,6 +298,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public RelayCommand RunUnifiedCommand { get; }
     public RelayCommand RunCodexCommand { get; }
     public RelayCommand CancelCommand { get; }
+    public RelayCommand OpenResultsCommand { get; }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -322,6 +343,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
             await PublishCostSummaryAsync(options, runStartedUtc);
             StatusMessage = "Unified orchestration complete.";
             AddLog(LogLevel.Success, StatusMessage);
+            var artifact = TryGetLatestArtifact(options.RepoRoot);
+            UpdateResultShortcut(artifact, isFolder: false);
+            OfferPostRunActions(artifact, null);
         });
     }
 
@@ -337,6 +361,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
             await PublishCostSummaryAsync(options, runStartedUtc);
             StatusMessage = "Codex swarm complete.";
             AddLog(LogLevel.Success, StatusMessage);
+            UpdateResultShortcut(options.WorkDir, isFolder: true);
+            OfferPostRunActions(null, options.WorkDir);
         });
     }
 
@@ -348,6 +374,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         IsRunning = true;
         IsProgressIndeterminate = true;
         ProgressValue = 0;
+        UpdateResultShortcut(null, false);
         _runCts = new CancellationTokenSource();
 
         try
@@ -375,7 +402,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    private async Task PublishSwarmInsightsAsync(OrchestrationOptions options)
+    private async Task PublishSwarmInsightsAsync(OrchestrationDesktop.Services.OrchestrationOptions options)
     {
         try
         {
@@ -411,7 +438,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    private async Task PublishCostSummaryAsync(OrchestrationOptions options, DateTime runStartedUtc)
+    private async Task PublishCostSummaryAsync(OrchestrationDesktop.Services.OrchestrationOptions options, DateTime runStartedUtc)
     {
         if (options is null)
         {
@@ -471,7 +498,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    private static SwarmInsights? GatherSwarmInsights(OrchestrationOptions options)
+    private static SwarmInsights? GatherSwarmInsights(OrchestrationDesktop.Services.OrchestrationOptions options)
     {
         if (options is null)
         {
@@ -573,7 +600,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             agentSnippets);
     }
 
-    private static CostSummary? BuildCostSummary(OrchestrationOptions options, DateTime runStartedUtc)
+    private static CostSummary? BuildCostSummary(OrchestrationDesktop.Services.OrchestrationOptions options, DateTime runStartedUtc)
     {
         if (options is null)
         {
@@ -718,10 +745,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private static class MarkdownRenderer
     {
         private static readonly Thickness ParagraphSpacing = new(0, 0, 0, 8);
-        private static readonly FontFamily BodyFont = new("Consolas");
-        private static readonly FontFamily CodeFont = new("Consolas");
-        private static readonly SolidColorBrush CodeBackground = new(Color.FromRgb(230, 234, 240));
-        private static readonly SolidColorBrush SeparatorBrush = new(Color.FromRgb(200, 206, 220));
+        private static readonly System.Windows.Media.FontFamily BodyFont = new("Consolas");
+        private static readonly System.Windows.Media.FontFamily CodeFont = new("Consolas");
+        private static readonly SolidColorBrush CodeBackground = new(System.Windows.Media.Color.FromRgb(230, 234, 240));
+        private static readonly SolidColorBrush SeparatorBrush = new(System.Windows.Media.Color.FromRgb(200, 206, 220));
 
         public static FlowDocument Render(string markdown)
         {
@@ -830,7 +857,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
             paragraph.Inlines.Add(new Run("• ")
             {
-                Foreground = Brushes.Gray
+                Foreground = System.Windows.Media.Brushes.Gray
             });
 
             AppendInlines(paragraph, text);
@@ -923,7 +950,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                         {
                             FontFamily = CodeFont,
                             Background = CodeBackground,
-                            Foreground = Brushes.DarkSlateGray
+                            Foreground = System.Windows.Media.Brushes.DarkSlateGray
                         };
                         index = end + 1;
                         continue;
@@ -1050,6 +1077,97 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
+    private void OpenLatestResults()
+    {
+        if (string.IsNullOrWhiteSpace(_latestResultPath))
+        {
+            return;
+        }
+
+        try
+        {
+            if (_latestResultIsFolder)
+            {
+                if (Directory.Exists(_latestResultPath))
+                {
+                    Process.Start(new ProcessStartInfo
+                    {
+                        FileName = _latestResultPath,
+                        UseShellExecute = true
+                    });
+                }
+            }
+            else if (File.Exists(_latestResultPath))
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = _latestResultPath,
+                    UseShellExecute = true
+                });
+            }
+            else
+            {
+                AddLog(LogLevel.Warning, $"Result path not found: {_latestResultPath}");
+            }
+        }
+        catch (Exception ex)
+        {
+            AddLog(LogLevel.Error, $"Failed to open results: {ex.Message}");
+        }
+    }
+
+    private void UpdateResultShortcut(string? path, bool isFolder)
+    {
+        _latestResultPath = path;
+        _latestResultIsFolder = isFolder;
+        OnPropertyChanged(nameof(HasResultShortcut));
+        OpenResultsCommand?.RaiseCanExecuteChanged();
+    }
+
+    private string? TryGetLatestArtifact(string repoRoot)
+    {
+        try
+        {
+            var artifacts = Path.Combine(repoRoot, "data", "artifacts");
+            if (!Directory.Exists(artifacts))
+            {
+                return null;
+            }
+
+            var files = Directory.GetFiles(artifacts, "*.json", SearchOption.TopDirectoryOnly);
+            return files
+                .Select(path => new FileInfo(path))
+                .OrderByDescending(f => f.LastWriteTimeUtc)
+                .FirstOrDefault()
+                ?.FullName;
+        }
+        catch (Exception ex)
+        {
+            AddLog(LogLevel.Warning, $"Unable to locate latest artifact: {ex.Message}");
+            return null;
+        }
+    }
+
+    private void OfferPostRunActions(string? artifactPath, string? folderPath)
+    {
+        if (string.IsNullOrEmpty(artifactPath) && string.IsNullOrEmpty(folderPath))
+        {
+            return;
+        }
+
+        var sb = new StringBuilder("Would you like to open the milestone dashboard");
+        sb.Append(artifactPath is not null || folderPath is not null ? " and the latest results?" : "?");
+
+        var result = System.Windows.MessageBox.Show(sb.ToString(), "Run complete", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (result != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        OpenDashboard();
+        OpenLatestResults();
+    }
+
     private void BrowseGoal()
     {
         var dialog = new Microsoft.Win32.OpenFileDialog
@@ -1066,7 +1184,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    private OrchestrationOptions BuildOptions()
+    private OrchestrationDesktop.Services.OrchestrationOptions BuildOptions()
     {
         var repoPath = RepoRoot;
         if (!Path.IsPathRooted(repoPath))
@@ -1074,10 +1192,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
             repoPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, repoPath));
         }
 
-        var goal = GoalFile;
-        if (!Path.IsPathRooted(goal))
+        string goalFile = string.IsNullOrWhiteSpace(DirectGoalText) ? GoalFile : string.Empty;
+        if (!string.IsNullOrEmpty(goalFile) && !Path.IsPathRooted(goalFile))
         {
-            goal = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, goal));
+            goalFile = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, goalFile));
         }
 
         var workDir = WorkDir;
@@ -1086,9 +1204,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
             workDir = Path.Combine(repoPath, workDir);
         }
 
-        return new OrchestrationOptions(
+        return new OrchestrationDesktop.Services.OrchestrationOptions(
             repoPath,
-            goal,
+            goalFile,
             Model,
             ModelInstruction,
             string.IsNullOrWhiteSpace(SelectedPromptId) ? null : SelectedPromptId,
@@ -1112,6 +1230,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             RepoRoot = RepoRoot,
             GoalFile = GoalFile,
+            DirectGoalText = DirectGoalText,
             Model = Model,
             ModelInstruction = ModelInstruction,
             PromptId = string.IsNullOrWhiteSpace(SelectedPromptId) ? null : SelectedPromptId,
@@ -1158,6 +1277,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         RunUnifiedCommand.RaiseCanExecuteChanged();
         RunCodexCommand.RaiseCanExecuteChanged();
         CancelCommand.RaiseCanExecuteChanged();
+        OpenResultsCommand.RaiseCanExecuteChanged();
     }
 
     private bool SetProperty<T>(ref T storage, T value, [CallerMemberName] string? propertyName = null)
@@ -1216,3 +1336,4 @@ public sealed class MainViewModel : INotifyPropertyChanged
         LogDocument = MarkdownRenderer.Render(markdown);
     }
 }
+

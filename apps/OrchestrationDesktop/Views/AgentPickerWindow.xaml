@@ -15,7 +15,6 @@
         <StackPanel>
             <TextBox x:Name="SearchBox" Margin="0,0,0,12" TextChanged="OnFilterChanged"/>
             <ListBox x:Name="AgentList"
-                     DisplayMemberPath="Name"
                      MinHeight="220"
                      MouseDoubleClick="OnAgentDoubleClick">
                 <ListBox.ItemTemplate>

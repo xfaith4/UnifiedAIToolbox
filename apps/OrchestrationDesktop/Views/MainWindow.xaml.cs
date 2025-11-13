@@ -38,7 +38,7 @@ public partial class MainWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         base.OnClosed(e);
-        _powerShellService.Dispose();
+        _powerShellService?.Dispose();
     }
 
     private void OnOpenHelp(object sender, RoutedEventArgs e)

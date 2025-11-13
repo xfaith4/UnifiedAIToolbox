@@ -72,7 +72,12 @@ public sealed class PowerShellService : IDisposable
                 allGood = false;
             }
 
-            if (!File.Exists(options.GoalFile))
+            if (string.IsNullOrEmpty(options.GoalFile) && string.IsNullOrEmpty(options.DirectGoalText))
+            {
+                log(LogLevel.Warning, "No goal specified. Please enter a goal or select a goal file.");
+                allGood = false;
+            }
+            else if (!string.IsNullOrEmpty(options.GoalFile) && !File.Exists(options.GoalFile))
             {
                 log(LogLevel.Warning, $"Goal file not found: {options.GoalFile}");
                 allGood = false;
@@ -199,12 +204,11 @@ catch {
         RegisterStreamHandlers(ps, log);
 
         var command = new Command(scriptPath, isScript: true);
-        ps.Commands.AddCommand(command);
-
         foreach (var kvp in parameters.Where(kvp => kvp.Value is not null))
         {
-            ps.AddParameter(kvp.Key, kvp.Value);
+            command.Parameters.Add(new CommandParameter(kvp.Key, kvp.Value));
         }
+        ps.Commands.AddCommand(command);
 
         using var registration = cancellationToken.Register(() =>
         {

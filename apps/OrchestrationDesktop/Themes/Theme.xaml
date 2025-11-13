@@ -95,9 +95,9 @@
 
   <!-- TextBoxes -->
   <Style TargetType="TextBox">
-    <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
-    <Setter Property="Background" Value="{StaticResource SurfaceBrush}"/>
-    <Setter Property="BorderBrush" Value="{StaticResource BorderBrush1}"/>
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+    <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"/>
+    <Setter Property="BorderBrush" Value="#d0d7e2"/>
     <Setter Property="BorderThickness" Value="1"/>
     <Setter Property="Padding" Value="8"/>
     <Setter Property="FontFamily" Value="{StaticResource UIFont}"/>

@@ -51,12 +51,14 @@
 
         <Grid Margin="16">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="360"/>
-                <ColumnDefinition Width="16"/>
+                <ColumnDefinition Width="380" MinWidth="300"/>
+                <ColumnDefinition Width="8"/>
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
-            <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto">
+            <ScrollViewer Grid.Column="0"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
                 <StackPanel Margin="0,0,0,16">
                     <GroupBox Header="Repository" Margin="0,0,0,12">
                         <StackPanel Margin="8">
@@ -65,10 +67,18 @@
                                 <TextBox Text="{Binding RepoRoot}" MinWidth="220"/>
                                 <Button Content="Browse" Margin="8,0,0,0" Padding="6,2" Command="{Binding BrowseRepoCommand}"/>
                             </DockPanel>
-                            <TextBlock Text="Goal File"/>
+                            
+                            <TextBlock Text="Or enter goal directly:" Margin="0,8,0,4"/>
+                            <TextBox Text="{Binding DirectGoalText, UpdateSourceTrigger=PropertyChanged}" 
+                                   MinHeight="80" 
+                                   TextWrapping="Wrap" 
+                                   AcceptsReturn="True"
+                                   VerticalScrollBarVisibility="Auto"/>
+                            
+                            <TextBlock Text="Or select goal file:" Margin="0,8,0,4"/>
                             <DockPanel Margin="0,4,0,0">
-                                <TextBox Text="{Binding GoalFile}" MinWidth="220"/>
-                                <Button Content="Pick" Margin="8,0,0,0" Padding="6,2" Command="{Binding BrowseGoalCommand}"/>
+                                <TextBox Text="{Binding GoalFile}" MinWidth="220" IsEnabled="{Binding IsGoalFileInputEnabled}"/>
+                                <Button Content="Pick" Margin="8,0,0,0" Padding="6,2" Command="{Binding BrowseGoalCommand}" IsEnabled="{Binding IsGoalFileInputEnabled}"/>
                             </DockPanel>
                         </StackPanel>
                     </GroupBox>
@@ -154,6 +164,14 @@
                 </StackPanel>
             </ScrollViewer>
 
+            <GridSplitter Grid.Column="1"
+                          Width="8"
+                          HorizontalAlignment="Stretch"
+                          VerticalAlignment="Stretch"
+                          ResizeBehavior="PreviousAndNext"
+                          Background="#d0d7e2"
+                          ShowsPreview="True"/>
+
             <Grid Grid.Column="2">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
@@ -161,7 +179,21 @@
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
 
-                <TextBlock Text="{Binding StatusMessage}" FontSize="16" FontWeight="Bold"/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="{Binding StatusMessage}" FontSize="16" FontWeight="Bold" VerticalAlignment="Center"/>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="16,0,0,0">
+                        <Button Content="Open Dashboard"
+                                Margin="0,0,8,0"
+                                Command="{Binding OpenDashboardCommand}"/>
+                        <Button Content="View Results"
+                                Command="{Binding OpenResultsCommand}"
+                                IsEnabled="{Binding HasResultShortcut}"/>
+                    </StackPanel>
+                </Grid>
 
                 <ProgressBar Grid.Row="1"
                              Margin="0,12,0,12"

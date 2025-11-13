@@ -2,6 +2,7 @@ using System;
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Forms; // For MessageBox
 using OrchestrationDesktop.Services;
 using OrchestrationDesktop.Models;
 using OrchestrationDesktop.ViewModels;
@@ -10,7 +11,8 @@ namespace OrchestrationDesktop.Views;
 
 public partial class InstructionLibraryWindow : Window
 {
-    private readonly InstructionLibraryViewModel _viewModel;
+    private readonly InstructionLibraryViewModel? _viewModel;
+    private bool _isInitialized = false;
 
     public InstructionLibraryWindow(PromptLibraryService libraryService)
     {
@@ -19,30 +21,74 @@ public partial class InstructionLibraryWindow : Window
             throw new ArgumentNullException(nameof(libraryService));
         }
 
+        // Initialize components first
         InitializeComponent();
-        _viewModel = new InstructionLibraryViewModel(libraryService);
-        DataContext = _viewModel;
-        _viewModel.PropertyChanged += OnViewModelPropertyChanged;
-        UpdateButtonState();
+        
+        try 
+        {
+            // Create and set up view model
+            _viewModel = new InstructionLibraryViewModel(libraryService);
+            DataContext = _viewModel;
+            _viewModel.PropertyChanged += OnViewModelPropertyChanged;
+            
+            // Initialize the UI state
+            UpdateButtonState();
+            _isInitialized = true;
+        }
+        catch (Exception ex)
+        {
+            System.Windows.MessageBox.Show($"Failed to initialize Instruction Library: {ex.Message}", 
+                          "Initialization Error", 
+                          System.Windows.MessageBoxButton.OK, 
+                          System.Windows.MessageBoxImage.Error);
+            Close();
+        }
     }
 
     protected override void OnClosed(EventArgs e)
     {
-        base.OnClosed(e);
-        _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
+        try
+        {
+            // Clean up event handlers
+            if (_viewModel is not null && _isInitialized)
+            {
+                _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
+            }
+        }
+        catch (Exception ex)
+        {
+            // Log the error if needed
+            System.Diagnostics.Debug.WriteLine($"Error during window close: {ex}");
+        }
+        finally
+        {
+            base.OnClosed(e);
+        }
     }
 
     public PromptTemplate? SelectedTemplate => (DataContext as InstructionLibraryViewModel)?.SelectedTemplate;
 
     private void OnUseTemplate(object sender, RoutedEventArgs e)
     {
-        if (SelectedTemplate is null)
+        try
         {
+            if (SelectedTemplate is null)
             return;
-        }
 
-        DialogResult = true;
-        Close();
+            DialogResult = true;
+        }
+        catch (Exception ex)
+        {
+            System.Windows.MessageBox.Show($"Failed to select template: {ex.Message}", 
+                          "Error", 
+                          System.Windows.MessageBoxButton.OK, 
+                          System.Windows.MessageBoxImage.Error);
+            DialogResult = false;
+        }
+        finally
+        {
+            Close();
+        }
     }
 
     private void OnCancel(object sender, RoutedEventArgs e)

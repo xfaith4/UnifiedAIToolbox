@@ -54,6 +54,7 @@ public sealed class UserSettings
 {
     public string? RepoRoot { get; set; }
     public string? GoalFile { get; set; }
+    public string DirectGoalText { get; set; } = string.Empty;
     public string Model { get; set; } = "gpt-5";
     public string ModelInstruction { get; set; } = string.Empty;
     public string? PromptId { get; set; }

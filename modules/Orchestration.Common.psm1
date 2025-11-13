@@ -41,7 +41,7 @@ function Get-OrchGoalSummary {
     @{
         Path        = (Resolve-Path -LiteralPath $Path).ProviderPath
         Preview     = ($lines | Select-Object -First 5) -join [Environment]::NewLine
-        WordCount   = ($raw -split '\s+' | Where-Object { $_ }) .Count
+        WordCount   = ($raw -split '\s+' | Where-Object { $_ }) | Measure-Object | Select-Object -ExpandProperty Count
         LastUpdated = (Get-Item -LiteralPath $Path).LastWriteTimeUtc.ToString('O')
         Raw         = $raw
     }

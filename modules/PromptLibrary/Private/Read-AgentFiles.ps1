@@ -1,5 +1,5 @@
 #requires -Version 5.1
-function Read-AgentFiles {
+function Get-AgentFile {
     <#
     .SYNOPSIS
       Load agent definitions from JSON or YAML and normalize to a common shape.
@@ -74,7 +74,7 @@ function Read-AgentFiles {
                 }
             }
         } catch {
-            Write-Warning ("⚠️  Skipped invalid agent file {0}: {1}" -f $f.FullName, $_)
+            Write-Warning ("Skipped invalid agent file {0}: {1}" -f $f.FullName, $_)
         }
     }
     ,$out

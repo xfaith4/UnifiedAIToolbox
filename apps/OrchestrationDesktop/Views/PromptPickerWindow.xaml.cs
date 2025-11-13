@@ -46,7 +46,15 @@ public partial class PromptPickerWindow : Window
                 t.Description.Contains(filter, StringComparison.OrdinalIgnoreCase));
         }
 
-        PromptList.ItemsSource = filtered.ToList();
+        var list = filtered.ToList();
+        PromptList.ItemsSource = list;
+
+        if (list.Count == 0)
+        {
+            PromptList.SelectedIndex = -1;
+            return;
+        }
+
         if (!PromptList.Items.Contains(SelectedTemplate))
         {
             PromptList.SelectedIndex = 0;
@@ -66,7 +74,7 @@ public partial class PromptPickerWindow : Window
     {
         if (PromptList.SelectedItem is not PromptTemplate template)
         {
-            MessageBox.Show(this, "Select a prompt from the list.", "Prompt Picker", MessageBoxButton.OK, MessageBoxImage.Information);
+            System.Windows.MessageBox.Show(this, "Select a prompt from the list.", "Prompt Picker", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 

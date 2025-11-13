@@ -1,0 +1,112 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Agentic Orchestrator Manifest V2",
+  "type": "object",
+  "required": [
+    "version",
+    "timestampUtc",
+    "planName",
+    "concurrency",
+    "dag",
+    "sustainability",
+    "costs"
+  ],
+  "properties": {
+    "version": {
+      "const": 2
+    },
+    "timestampUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "planName": {
+      "type": "string"
+    },
+    "concurrency": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "dag": {
+      "type": "object",
+      "required": [
+        "order",
+        "nodes"
+      ],
+      "properties": {
+        "order": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "nodes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "agent",
+              "task",
+              "dependsOn",
+              "params"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "agent": {
+                "type": "string"
+              },
+              "task": {
+                "type": "string"
+              },
+              "dependsOn": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "params": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "sustainability": {
+      "type": "object",
+      "properties": {
+        "kWh": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "gCO2e": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "waterL": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      }
+    },
+    "costs": {
+      "type": "object",
+      "properties": {
+        "estimatedUSD": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}

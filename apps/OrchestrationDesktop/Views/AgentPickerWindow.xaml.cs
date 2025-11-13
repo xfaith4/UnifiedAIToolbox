@@ -67,7 +67,7 @@ public partial class AgentPickerWindow : Window
     {
         if (AgentList.SelectedItem is not AgentDefinition agent)
         {
-            MessageBox.Show(this, "Select an agent from the list.", "Agent Picker", MessageBoxButton.OK, MessageBoxImage.Information);
+            System.Windows.MessageBox.Show(this, "Select an agent from the list.", "Agent Picker", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 

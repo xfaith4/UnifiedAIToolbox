@@ -28,23 +28,47 @@
         </StackPanel>
 
         <Border Grid.Row="1" Grid.Column="0" Background="#f6f8fb" BorderBrush="#d9e0ee" BorderThickness="1" CornerRadius="8">
-            <ListBox ItemsSource="{Binding TemplatesView}"
-                     SelectedItem="{Binding SelectedTemplate}"
-                     DisplayMemberPath="DisplayName"
-                     Margin="4"
-                     HorizontalContentAlignment="Stretch">
+            <ListBox 
+                ItemsSource="{Binding TemplatesView}"
+                SelectedItem="{Binding SelectedTemplate, Mode=TwoWay}"
+                Margin="4"
+                HorizontalContentAlignment="Stretch"
+                ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                <ListBox.Resources>
+                    <Style TargetType="ListBoxItem">
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                        <Setter Property="Padding" Value="0"/>
+                        <Setter Property="Margin" Value="0,0,0,4"/>
+                        <Style.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter Property="Background" Value="#e3e9f5"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#edf1f9"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </ListBox.Resources>
                 <ListBox.ItemTemplate>
                     <DataTemplate>
-                        <StackPanel Margin="4" Orientation="Vertical">
-                            <TextBlock Text="{Binding DisplayName}"
-                                       FontWeight="SemiBold"
-                                       Foreground="#113663"/>
-                            <TextBlock Text="{Binding Description}"
-                                       FontSize="12"
-                                       TextWrapping="Wrap"
-                                       Foreground="#4a5970"
-                                       Margin="0,2,0,0"/>
-                        </StackPanel>
+                        <Border 
+                            Background="Transparent"
+                            Padding="8"
+                            CornerRadius="4">
+                            <StackPanel Orientation="Vertical">
+                                <TextBlock 
+                                    Text="{Binding DisplayName}"
+                                    FontWeight="SemiBold"
+                                    Foreground="#113663"
+                                    TextWrapping="Wrap"/>
+                                <TextBlock 
+                                    Text="{Binding Description}"
+                                    FontSize="12"
+                                    TextWrapping="Wrap"
+                                    Foreground="#4a5970"
+                                    Margin="0,4,0,0"/>
+                            </StackPanel>
+                        </Border>
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>

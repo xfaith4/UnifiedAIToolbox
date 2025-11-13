@@ -12,7 +12,7 @@ function Get-Prompt {
       $obj | Add-Member -NotePropertyName _Path -NotePropertyValue $f.FullName -Force
       $obj | Add-Member -NotePropertyName _Raw  -NotePropertyValue $raw      -Force
       $obj
-    } catch { Write-Warning ("⚠️  Skipped invalid YAML {0}: {1}" -f $f.FullName, $_) }
+    } catch { Write-Warning ("Skipped invalid YAML {0}: {1}" -f $f.FullName, $_) }
   }
   if ($Id)        { $prompts = $prompts | Where-Object { $_.id -eq $Id } }
   if ($Tag)       { $prompts = $prompts | Where-Object { (($_.tags) -join ',') -match ($Tag -join '|') } }
