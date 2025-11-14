@@ -2,7 +2,7 @@
   "prompt_id": "analytics.divisions.performance.summary",
   "version": "2.1.0",
   "source_path": "G:\\Development\\20_Staging\\AI-Toolbox\\UnifiedAIToolbox\\Orchestration\\UnifiedPromptApp\\packages\\prompt-registry\\prompts\\catalog\\analytics\\divisions.performance.summary.prompt.yaml",
-  "requested_at": "2025-11-14T01:21:50.170000+00:00",
+  "requested_at": "2025-11-14T01:23:03.915575+00:00",
   "review_policy": "critical",
   "status": "queued"
 }
