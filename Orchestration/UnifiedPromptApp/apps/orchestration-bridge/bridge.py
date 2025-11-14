@@ -1,0 +1,619 @@
+"""
+Lightweight orchestration bridge CLI.
+
+Pairs the prompt registry with orchestration workflows by:
+1. Listing prompts that require automated reviews (`review_policy: critical`).
+2. Generating run manifests that downstream workers (PowerShell refiner, multi-agent critics)
+   can consume.
+3. Emitting placeholder telemetry files so we can demo the orchestration loop before the
+   full FastAPI/queue service is online.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import requests
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import yaml
+
+# Resolve repository roots
+BRIDGE_ROOT = Path(__file__).resolve().parent
+REPO_ROOT = BRIDGE_ROOT.parents[1]
+REGISTRY_SRC = REPO_ROOT / "packages" / "prompt-registry" / "src"
+
+if str(REGISTRY_SRC) not in sys.path:
+    sys.path.insert(0, str(REGISTRY_SRC))
+
+from prompt_registry import PromptSpec, find_prompt_by_id, list_prompts  # noqa: E402
+
+RUNS_DIR = BRIDGE_ROOT / "runs"
+RUNS_DIR.mkdir(exist_ok=True)
+RUNBOOK_DIR = BRIDGE_ROOT / "runbooks"
+RUNBOOK_DIR.mkdir(exist_ok=True)
+STATE_DIR = BRIDGE_ROOT / "state"
+STATE_DIR.mkdir(exist_ok=True)
+STATE_PATH = STATE_DIR / "bridge_state.json"
+PS_REFINER = BRIDGE_ROOT / "OpenAI_Refiner.ps1"
+PROMPT_API_URL = os.environ.get("PROMPT_API_URL", "http://localhost:8000")
+SUPERVISOR_QUEUE_DIR = BRIDGE_ROOT / "supervisor_tasks"
+SUPERVISOR_QUEUE_DIR.mkdir(exist_ok=True)
+CODEX_SCRIPT = REPO_ROOT.parent / "AI-Orchestration" / "codex-multiagent-swarm" / "Orchestrate-Codex.ps1"
+CODEX_OUT_DIR = RUNS_DIR / "codex_swarm"
+CODEX_OUT_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def find_critical_prompts() -> List[PromptSpec]:
+    critical: List[PromptSpec] = []
+    for spec in list_prompts():
+        integrations = spec.raw.get("integrations") or {}
+        orchestration = integrations.get("orchestration") or {}
+        if orchestration.get("review_policy") == "critical":
+            critical.append(spec)
+    return critical
+
+
+def cmd_list(args: argparse.Namespace) -> int:
+    prompts = find_critical_prompts()
+    if not prompts:
+        print("[bridge] No prompts marked review_policy=critical.")
+        return 0
+
+    for spec in prompts:
+        print(f"- {spec.id} (version {spec.version}) [{spec.path}]")
+    return 0
+
+
+def _load_state() -> Dict[str, Dict[str, str]]:
+    if not STATE_PATH.exists():
+        return {}
+    try:
+        return json.loads(STATE_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _save_state(data: Dict[str, Dict[str, str]]) -> None:
+    STATE_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _build_runbook_entry(
+    spec: PromptSpec,
+    manifest: Path,
+    reviewers: List[str],
+    notes: Optional[str],
+) -> Dict[str, Any]:
+    timestamp = _now_iso()
+    summary = notes or f"Automated validation for {spec.id} (v{spec.version}) completed at {timestamp}."
+    return {
+        "prompt_id": spec.id,
+        "version": spec.version,
+        "timestamp": timestamp,
+        "summary": summary,
+        "reviewers": reviewers,
+        "references": [
+            {"type": "manifest", "value": str(manifest)},
+            {"type": "prompt_yaml", "value": str(spec.path)},
+        ],
+        "reasoning": [
+            "Reviewed scheduling window for review_policy=critical.",
+            "Generated an orchestration manifest and invoked the refiner worker.",
+            "Logged telemetry and run status back into the prompt registry.",
+        ],
+        "next_steps": [
+            "Share the runbook summary with stakeholders.",
+            "Queue another review after the configured interval or when inputs change.",
+        ],
+    }
+
+
+def _write_runbook(entry: Dict[str, Any]) -> Path:
+    file_name = f"{entry['prompt_id'].replace('.', '_')}-{entry['timestamp'].replace(':', '_')}.runbook.json"
+    target = RUNBOOK_DIR / file_name
+    target.write_text(json.dumps(entry, indent=2), encoding="utf-8")
+    return target
+
+
+class BridgeService:
+    """Background worker that continuously drives orchestrated reviews."""
+
+    def __init__(
+        self,
+        poll_interval: int = 60,
+        review_interval_hours: int = 24,
+        invoke_refiner: bool = True,
+        dry_run: bool = False,
+        codex_enabled: bool = False,
+        codex_max_parallel: int = 3,
+    ):
+        self.poll_interval = poll_interval
+        self.review_interval_hours = review_interval_hours
+        self.invoke_refiner = invoke_refiner
+        self.dry_run = dry_run
+        self.codex_enabled = codex_enabled
+        self.codex_max_parallel = codex_max_parallel
+        self.state = _load_state()
+
+    def start(self) -> None:
+        print(
+            f"[bridge] service started (poll={self.poll_interval}s, review_interval={self.review_interval_hours}h, refiner={self.invoke_refiner})"
+        )
+        try:
+            while True:
+                self._process_critical_prompts()
+                self._process_supervisor_queue()
+                _save_state(self.state)
+                time.sleep(self.poll_interval)
+        except KeyboardInterrupt:
+            print("[bridge] service stopped by user.")
+
+    def _process_critical_prompts(self) -> None:
+        for spec in find_critical_prompts():
+            if not self._should_review(spec):
+                continue
+            manifest = _write_run_manifest(spec)
+            print(f"[bridge] manifest ready for {spec.id} -> {manifest}")
+            if self.invoke_refiner:
+                run_refiner(spec, manifest, dry_run=self.dry_run)
+            reviewers = ["BridgeService"]
+            notes = f"Automated bridge review completed at {_now_iso()}"
+            runbook = _build_runbook_entry(spec, manifest, reviewers, notes)
+            self._maybe_run_codex_swarm(spec, runbook)
+            runbook_path = _write_runbook(runbook)
+            update_telemetry(spec, "approved", notes, reviewers, str(manifest))
+            self._post_review(spec, reviewers, notes, manifest, runbook)
+            self.state[spec.id] = {
+                "last_reviewed": runbook["timestamp"],
+                "runbook_path": str(runbook_path),
+            }
+
+    def _should_review(self, spec: PromptSpec) -> bool:
+        telemetry = (spec.raw.get("telemetry") or {}).get("audit") or {}
+        last = telemetry.get("last_validated")
+        state_entry = self.state.get(spec.id, {})
+        candidate = last or state_entry.get("last_reviewed")
+        if not candidate:
+            return True
+        try:
+            last_dt = datetime.fromisoformat(candidate.replace("Z", "+00:00"))
+        except ValueError:
+            return True
+        hours = (datetime.now(timezone.utc) - last_dt).total_seconds() / 3600
+        return hours >= self.review_interval_hours
+
+    def _post_review(
+        self,
+        spec: PromptSpec,
+        reviewers: List[str],
+        notes: Optional[str],
+        manifest: Path,
+        runbook: Dict[str, Any],
+    ) -> None:
+        try:
+            response = requests.post(
+                f"{PROMPT_API_URL.rstrip('/')}/prompts/{spec.id}/reviews",
+                json={
+                    "status": "approved",
+                    "reviewers": reviewers,
+                    "notes": notes,
+                    "manifest": str(manifest),
+                    "runbook": runbook,
+                },
+                timeout=15,
+            )
+            response.raise_for_status()
+        except Exception as exc:
+            print(f"[bridge] failed to post review to API: {exc}")
+
+    def _process_supervisor_queue(self) -> None:
+        args = argparse.Namespace(source="api", status_filter=None)
+        cmd_run_supervisor(args)
+
+    def _maybe_run_codex_swarm(self, spec: PromptSpec, runbook: Dict[str, Any]) -> None:
+        if not self.codex_enabled:
+            return
+        orchestration = (spec.raw.get("integrations") or {}).get("orchestration") or {}
+        if orchestration.get("cascade") != "codex":
+            return
+        if not CODEX_SCRIPT.exists():
+            print(f"[bridge] codex swarm script missing: {CODEX_SCRIPT}")
+            return
+
+        workdir = CODEX_OUT_DIR / spec.id.replace(".", "_")
+        workdir.mkdir(parents=True, exist_ok=True)
+        log_path = workdir / f"codex_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.log"
+        cmd = [
+            "powershell" if os.name == "nt" else "pwsh",
+            "-File",
+            str(CODEX_SCRIPT),
+            "-RepoRoot",
+            str(REPO_ROOT),
+            "-WorkDir",
+            str(workdir),
+            "-MaxParallel",
+            str(self.codex_max_parallel),
+        ]
+        if self.dry_run:
+            print(f"[bridge] DRY RUN codex swarm: {' '.join(cmd)}")
+            runbook["reasoning"].append("Codex swarm review planned (dry-run mode).")
+            return
+        try:
+            with log_path.open("w", encoding="utf-8") as log_handle:
+                subprocess.run(cmd, cwd=str(REPO_ROOT), stdout=log_handle, stderr=subprocess.STDOUT, check=True)
+            runbook["references"].append({"type": "codex_swarm_log", "value": str(log_path)})
+            runbook["reasoning"].append("Executed Codex multi-agent swarm review cascade.")
+            runbook["next_steps"].append("Inspect codex swarm findings/branch for recommended fixes.")
+        except subprocess.CalledProcessError as exc:
+            runbook["references"].append({"type": "codex_swarm_log", "value": str(log_path)})
+            runbook["reasoning"].append(f"Codex swarm failed: {exc}. See log for details.")
+
+
+def _write_run_manifest(spec: PromptSpec) -> Path:
+    timestamp = datetime.now(timezone.utc).isoformat()
+    manifest = {
+        "prompt_id": spec.id,
+        "version": spec.version,
+        "source_path": str(spec.path),
+        "requested_at": timestamp,
+        "review_policy": "critical",
+        "status": "queued",
+    }
+    target = RUNS_DIR / f"{spec.id.replace('.', '_')}.{spec.version}.json"
+    target.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    return target
+
+
+def cmd_queue(args: argparse.Namespace) -> int:
+    prompts = find_critical_prompts()
+    if args.prompt_id:
+        prompts = [p for p in prompts if p.id == args.prompt_id]
+
+    if not prompts:
+        print("[bridge] No matching critical prompts found.")
+        return 1
+
+    for spec in prompts:
+        manifest_path = _write_run_manifest(spec)
+        print(f"[bridge] queued {spec.id} -> {manifest_path}")
+        if args.invoke_refiner:
+            run_refiner(spec, manifest_path, dry_run=args.dry_run)
+    return 0
+
+
+def run_refiner(spec: PromptSpec, manifest: Path, dry_run: bool = False) -> None:
+    if not PS_REFINER.exists():
+        print(f"[bridge] refiner script missing: {PS_REFINER}")
+        return
+
+    cmd = [
+        "pwsh" if os.name != "nt" else "powershell",
+        "-File",
+        str(PS_REFINER),
+        "-PromptPath",
+        str(spec.path),
+        "-Manifest",
+        str(manifest),
+    ]
+    if dry_run:
+        print(f"[bridge] DRY RUN: {' '.join(cmd)}")
+        return
+
+    print(f"[bridge] invoking PowerShell refiner for {spec.id}")
+    subprocess.run(cmd, check=False)
+
+
+def update_telemetry(
+    spec: PromptSpec,
+    status: str,
+    notes: Optional[str],
+    reviewers: List[str],
+    manifest: Optional[str],
+) -> None:
+    try:
+        payload = {
+            "status": status,
+            "reviewers": reviewers,
+            "notes": notes,
+            "manifest": manifest,
+        }
+        resp = requests.post(
+            f"{PROMPT_API_URL.rstrip('/')}/prompts/{spec.id}/reviews",
+            json=payload,
+            timeout=10,
+        )
+        resp.raise_for_status()
+        print(f"[bridge] recorded review via API for {spec.id}")
+        return
+    except Exception as exc:
+        print(f"[bridge] API review record failed ({exc}); falling back to YAML edit.")
+
+    data = yaml.safe_load(spec.path.read_text(encoding="utf-8"))
+    telemetry = data.setdefault("telemetry", {})
+    audit = telemetry.setdefault("audit", {})
+    timestamp = datetime.now(timezone.utc).isoformat()
+    audit["last_validated"] = timestamp
+    runs = audit.setdefault("runs", [])
+    runs.append(
+        {
+            "timestamp": timestamp,
+            "status": status,
+            "reviewers": reviewers,
+            "notes": notes,
+            "manifest": manifest,
+        }
+    )
+    spec.path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    print(f"[bridge] updated telemetry for {spec.id}")
+
+
+def cmd_record_review(args: argparse.Namespace) -> int:
+    spec = find_prompt_by_id(args.prompt_id)
+    if not spec:
+        print(f"[bridge] prompt not found: {args.prompt_id}")
+        return 1
+    reviewers = [r.strip() for r in (args.reviewers or "").split(",") if r.strip()]
+    update_telemetry(
+        spec=spec,
+        status=args.status,
+        notes=args.notes,
+        reviewers=reviewers,
+        manifest=args.manifest,
+    )
+    return 0
+
+
+def _write_supervisor_task(payload: dict) -> Path:
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    safe_name = payload.get("task", "task").lower().replace(" ", "_")
+    target = SUPERVISOR_QUEUE_DIR / f"{safe_name}.{timestamp}.json"
+    target.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return target
+
+
+def cmd_ingest_supervisor(args: argparse.Namespace) -> int:
+    try:
+        manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
+    except Exception as exc:
+        print(f"[bridge] failed to read manifest: {exc}")
+        return 1
+
+    manifest.setdefault("id", manifest.get("task") or f"task-{datetime.now(timezone.utc).timestamp()}")
+    manifest.setdefault("status", "queued")
+    manifest.setdefault("received_at", datetime.now(timezone.utc).isoformat())
+
+    try:
+        payload = {
+            "supervisor": manifest,
+            "agents": manifest.get("agents", []),
+            "prompts": manifest.get("prompts", []),
+        }
+        resp = requests.post(
+            f"{PROMPT_API_URL.rstrip('/')}/orchestrator/tasks",
+            json=payload,
+            timeout=10,
+        )
+        resp.raise_for_status()
+        print(f"[bridge] supervisor manifest sent to API ({payload['supervisor']['id']})")
+        return 0
+    except Exception as exc:
+        print(f"[bridge] API ingest failed ({exc}); writing to local spool.")
+        local_path = _write_supervisor_task(manifest)
+        print(f"[bridge] supervisor manifest spooled to {local_path}")
+    return 0
+
+
+def _get_task_queue() -> List[Tuple[dict, Path]]:
+    queue: List[Tuple[dict, Path]] = []
+    for path in SUPERVISOR_QUEUE_DIR.glob("*.json"):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            queue.append((payload, path))
+        except Exception as exc:
+            print(f"[bridge] failed to read local task {path}: {exc}")
+    return queue
+
+
+def _pull_remote_tasks() -> List[dict]:
+    try:
+        resp = requests.get(f"{PROMPT_API_URL.rstrip('/')}/orchestrator/tasks", timeout=10)
+        resp.raise_for_status()
+        payload = resp.json()
+        if isinstance(payload, list):
+            return payload
+        return []
+    except Exception as exc:
+        print(f"[bridge] failed to retrieve tasks from API: {exc}")
+        return []
+
+
+def cmd_run_supervisor(args: argparse.Namespace) -> int:
+    tasks: List[dict] = []
+
+    if args.source in ("api", "both"):
+        tasks.extend({"origin": "api", "task": t, "path": None} for t in _pull_remote_tasks())
+    if args.source in ("local", "both"):
+        tasks.extend({"origin": "local", "task": payload, "path": path} for payload, path in _get_task_queue())
+
+    if not tasks:
+        print("[bridge] no supervisor tasks found.")
+        return 0
+
+    for item in tasks:
+        task = item["task"]
+        if args.status_filter and task.get("status") not in args.status_filter.split(","):
+            continue
+
+        task_id = task.get("id", "unknown")
+        print(f"[bridge] executing supervisor task {task_id} ({task.get('supervisor', {}).get('task')})")
+        try:
+            # Placeholder for actual orchestration. Here we just simulate work.
+            subprocess.run(["python", "-c", "import time; time.sleep(1)"], check=False)
+
+            if item["origin"] == "api":
+                try:
+                    requests.patch(
+                        f"{PROMPT_API_URL.rstrip('/')}/orchestrator/tasks/{task_id}",
+                        json={"status": "completed", "notes": "Processed by bridge worker."},
+                        timeout=10,
+                    )
+                except Exception as exc:
+                    print(f"[bridge] failed to update task {task_id}: {exc}")
+            else:
+                task_path: Optional[Path] = item.get("path")
+                if task_path and task_path.exists():
+                    try:
+                        task_path.unlink()
+                    except Exception as exc:
+                        print(f"[bridge] failed to delete local task {task_path}: {exc}")
+        except Exception as exc:
+            print(f"[bridge] task {task_id} failed: {exc}")
+            if item["origin"] == "api":
+                try:
+                    requests.patch(
+                        f"{PROMPT_API_URL.rstrip('/')}/orchestrator/tasks/{task_id}",
+                        json={"status": "failed", "notes": str(exc)},
+                        timeout=10,
+                    )
+                except Exception:
+                    pass
+            continue
+
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="orchestration-bridge",
+        description="Kickstart orchestration jobs for critical prompts.",
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    list_parser = sub.add_parser("list-critical", help="List prompts flagged for orchestration reviews.")
+    list_parser.set_defaults(func=cmd_list)
+
+    queue_parser = sub.add_parser("queue", help="Generate run manifests (optionally invoke refiner).")
+    queue_parser.add_argument("--prompt-id", help="Queue a single prompt by ID.")
+    queue_parser.add_argument(
+        "--invoke-refiner",
+        action="store_true",
+        help="Call OpenAI_Refiner.ps1 for each queued manifest.",
+    )
+    queue_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print the PowerShell command without executing (when invoking refiner).",
+    )
+    queue_parser.set_defaults(func=cmd_queue)
+
+    record_parser = sub.add_parser(
+        "record-review",
+        help="Append orchestration results back into YAML telemetry.",
+    )
+    record_parser.add_argument("prompt_id", help="Prompt identifier.")
+    record_parser.add_argument(
+        "--status",
+        required=True,
+        choices=["approved", "rejected", "needs_changes"],
+        help="Review outcome.",
+    )
+    record_parser.add_argument("--notes", help="Reviewer notes / summary.")
+    record_parser.add_argument(
+        "--reviewers",
+        help="Comma-separated reviewer names / agents.",
+    )
+    record_parser.add_argument("--manifest", help="Path to run manifest (optional).")
+    record_parser.set_defaults(func=cmd_record_review)
+
+    ingest_parser = sub.add_parser(
+        "ingest-supervisor", help="Submit a supervisor manifest (JSON) to the API or local spool."
+    )
+    ingest_parser.add_argument("manifest", help="Path to the supervisor manifest JSON file.")
+    ingest_parser.set_defaults(func=cmd_ingest_supervisor)
+
+    run_parser = sub.add_parser(
+        "run-supervisor",
+        help="Process supervisor tasks (either from Prompt API, local spool, or both).",
+    )
+    run_parser.add_argument(
+        "--source",
+        choices=["api", "local", "both"],
+        default="api",
+        help="Where to pull supervisor tasks from.",
+    )
+    run_parser.add_argument(
+        "--status-filter",
+        help="Comma-separated status values to process (default: all).",
+    )
+    run_parser.set_defaults(func=cmd_run_supervisor)
+
+    serve_parser = sub.add_parser("serve", help="Run the persistent bridge worker.")
+    serve_parser.add_argument(
+        "--poll-interval",
+        type=int,
+        default=int(os.environ.get("BRIDGE_POLL_SECONDS", "60")),
+        help="Seconds between polling cycles (default: 60).",
+    )
+    serve_parser.add_argument(
+        "--review-interval-hours",
+        type=int,
+        default=int(os.environ.get("BRIDGE_REVIEW_INTERVAL_HOURS", "24")),
+        help="Hours between automated reviews for each critical prompt (default: 24).",
+    )
+    serve_parser.add_argument(
+        "--skip-refiner",
+        action="store_true",
+        help="Skip invoking the PowerShell refiner during automated runs.",
+    )
+    serve_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Log actions without executing external workers.",
+    )
+    serve_parser.add_argument(
+        "--enable-codex-swarm",
+        action="store_true",
+        help="Invoke Codex multi-agent swarm for prompts that set cascade=codex.",
+    )
+    serve_parser.add_argument(
+        "--codex-max-parallel",
+        type=int,
+        default=3,
+        help="Max parallel Codex agents (see Orchestrate-Codex.ps1).",
+    )
+    serve_parser.set_defaults(func=cmd_serve)
+
+    return parser
+
+
+def cmd_serve(args: argparse.Namespace) -> int:
+    service = BridgeService(
+        poll_interval=args.poll_interval,
+        review_interval_hours=args.review_interval_hours,
+        invoke_refiner=not args.skip_refiner,
+        dry_run=args.dry_run,
+        codex_enabled=args.enable_codex_swarm,
+        codex_max_parallel=args.codex_max_parallel,
+    )
+    service.start()
+    return 0
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

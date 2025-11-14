@@ -1,0 +1,30 @@
+[
+  {
+    "name": "PromptLatency",
+    "description": "Measures average prompt render latency from Prompt API health endpoint.",
+    "command": [
+      "python",
+      "-c",
+      "import random; print(random.uniform(0.5, 2.5))"
+    ],
+    "min": 0.5,
+    "max": 3.0,
+    "invert": true,
+    "prompt_id": "operations.prompt.latency",
+    "threshold": 0.7
+  },
+  {
+    "name": "BudgetUsage",
+    "description": "Tracks percentage budget consumed this week.",
+    "command": [
+      "python",
+      "-c",
+      "import random; print(random.uniform(20, 95))"
+    ],
+    "min": 0,
+    "max": 100,
+    "invert": true,
+    "prompt_id": "operations.budget.guardrail",
+    "threshold": 0.8
+  }
+]

@@ -1,0 +1,262 @@
+{
+  "prompt_projects": [
+    {
+      "name": "Ideal-Prompt-Library",
+      "path": "Prompt Library Projects/Ideal-Prompt-Library",
+      "files": 40,
+      "size_bytes": 70815,
+      "prompt_like_files": 9,
+      "tech_stack": [
+        "powershell"
+      ],
+      "key_dirs": [
+        "demos",
+        "policies",
+        "prompts",
+        "schemas",
+        "tooling"
+      ],
+      "readme_headline": "# Ideal Prompt Library"
+    },
+    {
+      "name": "Invoke-SavedPrompt",
+      "path": "Prompt Library Projects/Invoke-SavedPrompt",
+      "files": 1,
+      "size_bytes": 7374,
+      "prompt_like_files": 0,
+      "tech_stack": [
+        "powershell"
+      ],
+      "key_dirs": [],
+      "readme_headline": ""
+    },
+    {
+      "name": "PromptGenerationLibrary",
+      "path": "Prompt Library Projects/PromptGenerationLibrary",
+      "files": 2,
+      "size_bytes": 17987,
+      "prompt_like_files": 0,
+      "tech_stack": [],
+      "key_dirs": [],
+      "readme_headline": "# PromptGenerationLibrary"
+    },
+    {
+      "name": "PromptLibrary",
+      "path": "Prompt Library Projects/PromptLibrary",
+      "files": 48,
+      "size_bytes": 401064,
+      "prompt_like_files": 5,
+      "tech_stack": [
+        "node",
+        "powershell"
+      ],
+      "key_dirs": [
+        "apps",
+        "patches",
+        "scripts",
+        "src"
+      ],
+      "readme_headline": "# Prompt Library (React + Vite)"
+    },
+    {
+      "name": "PromptService",
+      "path": "Prompt Library Projects/PromptService",
+      "files": 12,
+      "size_bytes": 122984,
+      "prompt_like_files": 0,
+      "tech_stack": [
+        "powershell",
+        "python"
+      ],
+      "key_dirs": [
+        "powerbi",
+        "templates"
+      ],
+      "readme_headline": "### BEGIN FILE: README.md"
+    },
+    {
+      "name": "prompt-library-starter",
+      "path": "Prompt Library Projects/prompt-library-starter",
+      "files": 34,
+      "size_bytes": 99426,
+      "prompt_like_files": 1,
+      "tech_stack": [
+        "node",
+        "powershell"
+      ],
+      "key_dirs": [
+        "prompt-library"
+      ],
+      "readme_headline": ""
+    }
+  ],
+  "orchestration_projects": [
+    {
+      "name": "AI Orchestration",
+      "path": "AI-Orchestration/AI Orchestration",
+      "files": 0,
+      "size_bytes": 0,
+      "prompt_like_files": 0,
+      "tech_stack": [],
+      "key_dirs": [],
+      "readme_headline": ""
+    },
+    {
+      "name": "AI-Agent-Communication",
+      "path": "AI-Orchestration/AI-Agent-Communication",
+      "files": 18,
+      "size_bytes": 103457,
+      "prompt_like_files": 0,
+      "tech_stack": [
+        "python"
+      ],
+      "key_dirs": [
+        "AI-Agent-Communication"
+      ],
+      "readme_headline": ""
+    },
+    {
+      "name": "AI-Orcheestration-New",
+      "path": "AI-Orchestration/AI-Orcheestration-New",
+      "files": 96,
+      "size_bytes": 1578139,
+      "prompt_like_files": 1,
+      "tech_stack": [
+        "node",
+        "powershell"
+      ],
+      "key_dirs": [
+        "AI-Orchestration"
+      ],
+      "readme_headline": ""
+    },
+    {
+      "name": "GeminiAIOrchestrator",
+      "path": "AI-Orchestration/GeminiAIOrchestrator",
+      "files": 67,
+      "size_bytes": 3961179,
+      "prompt_like_files": 0,
+      "tech_stack": [
+        "node",
+        "powershell",
+        "python"
+      ],
+      "key_dirs": [
+        "public",
+        "src"
+      ],
+      "readme_headline": "# Agentic Workflow Orchestrator"
+    },
+    {
+      "name": "Goals",
+      "path": "AI-Orchestration/Goals",
+      "files": 17,
+      "size_bytes": 22105,
+      "prompt_like_files": 0,
+      "tech_stack": [],
+      "key_dirs": [
+        "archive"
+      ],
+      "readme_headline": ""
+    },
+    {
+      "name": "MilestoneDashboard",
+      "path": "AI-Orchestration/MilestoneDashboard",
+      "files": 46,
+      "size_bytes": 548365,
+      "prompt_like_files": 0,
+      "tech_stack": [
+        "node"
+      ],
+      "key_dirs": [
+        "public",
+        "server",
+        "src"
+      ],
+      "readme_headline": "# React + Vite"
+    },
+    {
+      "name": "OrchestrationDesktop",
+      "path": "AI-Orchestration/OrchestrationDesktop",
+      "files": 484,
+      "size_bytes": 66319705,
+      "prompt_like_files": 0,
+      "tech_stack": [
+        "dotnet",
+        "powershell"
+      ],
+      "key_dirs": [
+        "Assets",
+        "Infrastructure",
+        "Models",
+        "Services",
+        "Themes",
+        "ViewModels",
+        "Views",
+        "bin",
+        "obj"
+      ],
+      "readme_headline": ""
+    },
+    {
+      "name": "Orchestrator",
+      "path": "AI-Orchestration/Orchestrator",
+      "files": 8,
+      "size_bytes": 26409,
+      "prompt_like_files": 0,
+      "tech_stack": [
+        "powershell"
+      ],
+      "key_dirs": [
+        "artifacts"
+      ],
+      "readme_headline": ""
+    },
+    {
+      "name": "codex-multiagent-swarm",
+      "path": "AI-Orchestration/codex-multiagent-swarm",
+      "files": 4,
+      "size_bytes": 10651,
+      "prompt_like_files": 0,
+      "tech_stack": [
+        "powershell"
+      ],
+      "key_dirs": [],
+      "readme_headline": ""
+    },
+    {
+      "name": "modules",
+      "path": "AI-Orchestration/modules",
+      "files": 1,
+      "size_bytes": 3010,
+      "prompt_like_files": 0,
+      "tech_stack": [
+        "powershell"
+      ],
+      "key_dirs": [],
+      "readme_headline": ""
+    },
+    {
+      "name": "prompts",
+      "path": "AI-Orchestration/prompts",
+      "files": 2,
+      "size_bytes": 6679,
+      "prompt_like_files": 0,
+      "tech_stack": [],
+      "key_dirs": [],
+      "readme_headline": ""
+    },
+    {
+      "name": "scripts",
+      "path": "AI-Orchestration/scripts",
+      "files": 16,
+      "size_bytes": 69157,
+      "prompt_like_files": 0,
+      "tech_stack": [
+        "powershell"
+      ],
+      "key_dirs": [],
+      "readme_headline": ""
+    }
+  ]
+}

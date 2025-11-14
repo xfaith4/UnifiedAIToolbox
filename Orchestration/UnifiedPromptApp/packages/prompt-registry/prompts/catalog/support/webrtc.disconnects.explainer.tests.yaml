@@ -1,0 +1,23 @@
+cases:
+- name: Has actions
+  input:
+    division: Sales
+    period: Oct 2025
+    top_causes:
+    - "Wi\u2011Fi loss"
+    - Agent tab idle
+    - Browser crash
+    actions_taken:
+    - Alert on idle tabs
+    - FAQ nudge
+  asserts:
+  - contains: What we did
+- name: No actions
+  input:
+    division: Claims
+    period: Oct 2025
+    top_causes:
+    - ISP outages
+    - CPU throttling
+  asserts:
+  - contains: What to watch next

@@ -1,0 +1,376 @@
+{
+  "analytics.divisions.performance.summary": {
+    "id": "analytics.divisions.performance.summary",
+    "title": "Summary",
+    "category": null,
+    "context": null,
+    "prompt": {
+      "system": "You are a precise analytics explainer for contact-center leaders.",
+      "instructions": "Summarize KPIs for ${division} (${month}). Use bullet lists. If ${include_mos_detail}, include MOS≤3.5 breakdown.",
+      "constraints": "- No claims without a number.\n- Keep to 200 words.",
+      "style": "- Plain English, executive tone.\n- Headings then bullets, no tables.",
+      "examples": [
+        {
+          "input": {
+            "division": "Medicare",
+            "month": "2025-10",
+            "include_mos_detail": true
+          },
+          "output": "## Medicare — Oct 2025\n• Total conversations: 182,944 …"
+        }
+      ]
+    },
+    "variables": [
+      {
+        "name": "division",
+        "type": "string",
+        "required": true,
+        "validators": [
+          {
+            "regex": "^[A-Za-z0-9 _-]{2,64}$"
+          }
+        ]
+      },
+      {
+        "name": "month",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "include_mos_detail",
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "tags": [
+      "kpi",
+      "monthly",
+      "genesys"
+    ],
+    "models": {
+      "recommended": [
+        "gpt-5-thinking"
+      ],
+      "max_tokens": 2200,
+      "temperature": 0.2
+    },
+    "outputs": {},
+    "version": "2.1.0"
+  },
+  "comms.meeting.minutes.summarizer": {
+    "id": "comms.meeting.minutes.summarizer",
+    "title": "Summarizer",
+    "category": null,
+    "context": null,
+    "prompt": {
+      "system": "You convert messy notes into crisp minutes.",
+      "instructions": "Create minutes for '${title}' on ${date}. Sections: Decisions, Action Items (owner/date), Risks, Open Questions. Base only on ${raw_notes}.",
+      "constraints": "- No invented content\n- 200–300 words",
+      "style": "- H2 + bullets; bold owners in Action Items",
+      "examples": []
+    },
+    "variables": [
+      {
+        "name": "title",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "date",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "attendees",
+        "type": "array",
+        "required": true
+      },
+      {
+        "name": "raw_notes",
+        "type": "string",
+        "required": true
+      }
+    ],
+    "tags": [
+      "meetings",
+      "minutes"
+    ],
+    "models": {
+      "recommended": [
+        "gpt-5-thinking"
+      ],
+      "max_tokens": 1800,
+      "temperature": 0.3
+    },
+    "outputs": {},
+    "version": "1.0.0"
+  },
+  "engineering.powershell.code.review": {
+    "id": "engineering.powershell.code.review",
+    "title": "Review",
+    "category": null,
+    "context": null,
+    "prompt": {
+      "system": "You are a strict PowerShell reviewer. Ensure PS 5.1 and 7+ compatibility.",
+      "instructions": "Review ${script_name}. Identify: portability issues, security pitfalls, performance hotspots, and style problems. Suggest concrete fixes with exact code snippets. Assume target versions ${target_versions}.",
+      "constraints": "- Use code blocks for diffs\n- Flag colon-after-variable gotcha",
+      "style": "- Numbered list of findings; each ends with a short fix",
+      "examples": []
+    },
+    "variables": [
+      {
+        "name": "script_name",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "script_content",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "target_versions",
+        "type": "array",
+        "required": false,
+        "default": [
+          "5.1",
+          "7.4"
+        ]
+      }
+    ],
+    "tags": [
+      "powershell",
+      "review"
+    ],
+    "models": {
+      "recommended": [
+        "gpt-5-thinking"
+      ],
+      "max_tokens": 2200,
+      "temperature": 0.2
+    },
+    "outputs": {},
+    "version": "1.1.0"
+  },
+  "engineering.sql.query.generator": {
+    "id": "engineering.sql.query.generator",
+    "title": "Generator",
+    "category": null,
+    "context": null,
+    "prompt": {
+      "system": "You write safe, read-only SQL for ${dialect}. Never modify data.",
+      "instructions": "Given schema:\n${schema}\nWrite ONE SELECT-only query for: ${request}. Return JSON with keys: sql, notes, caveats.",
+      "constraints": "- No DML/DDL\n- Limit 500 rows\n- Use parameter placeholders where applicable",
+      "style": "- Output compact JSON",
+      "examples": []
+    },
+    "variables": [
+      {
+        "name": "dialect",
+        "type": "string",
+        "required": true,
+        "validators": [
+          {
+            "enum": [
+              "postgres",
+              "mssql",
+              "mysql",
+              "sqlite"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "schema",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "request",
+        "type": "string",
+        "required": true
+      }
+    ],
+    "tags": [
+      "sql",
+      "generator"
+    ],
+    "models": {
+      "recommended": [
+        "gpt-5-thinking"
+      ],
+      "max_tokens": 2000,
+      "temperature": 0.1
+    },
+    "outputs": {},
+    "version": "1.0.0"
+  },
+  "operations.incident.postmortem.synthesizer": {
+    "id": "operations.incident.postmortem.synthesizer",
+    "title": "Synthesizer",
+    "category": null,
+    "context": null,
+    "prompt": {
+      "system": "You are an SRE postmortem editor. Prefer clarity over blame.",
+      "instructions": "Produce a blameless postmortem for ${incident_id} (${when}). Sections: Overview, Impact, Timeline (bullet list), Root Cause, Corrective Actions (owner+ETA), Lessons Learned.",
+      "constraints": "- No speculation.\n- Use RFC3339 timestamps in Timeline if present.",
+      "style": "- H2 headers, bullets under each\n- Keep under 400 words",
+      "examples": []
+    },
+    "variables": [
+      {
+        "name": "incident_id",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "when",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "impact_summary",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "timeline",
+        "type": "array",
+        "required": true
+      },
+      {
+        "name": "root_cause",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "actions",
+        "type": "array",
+        "required": true
+      }
+    ],
+    "tags": [
+      "postmortem",
+      "sre"
+    ],
+    "models": {
+      "recommended": [
+        "gpt-5-thinking"
+      ],
+      "max_tokens": 2600,
+      "temperature": 0.2
+    },
+    "outputs": {},
+    "version": "1.2.0"
+  },
+  "support.webrtc.disconnects.explainer": {
+    "id": "support.webrtc.disconnects.explainer",
+    "title": "Explainer",
+    "category": null,
+    "context": null,
+    "prompt": {
+      "system": "You explain WebRTC disconnect patterns to non-telephony stakeholders.",
+      "instructions": "Create a brief explainer for ${division} covering ${period}. List top 3–5 causes from ${top_causes}. If actions exist, add 'What we did'. Close with 'What to watch next'.",
+      "constraints": "- Avoid jargon; define terms.\n- Max 170 words.",
+      "style": "- Headings + bullets\n- Short, skimmable lines",
+      "examples": []
+    },
+    "variables": [
+      {
+        "name": "division",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "period",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "top_causes",
+        "type": "array",
+        "required": true
+      },
+      {
+        "name": "actions_taken",
+        "type": "array",
+        "required": false
+      }
+    ],
+    "tags": [
+      "webrtc",
+      "disconnects"
+    ],
+    "models": {
+      "recommended": [
+        "gpt-5-thinking"
+      ],
+      "max_tokens": 1800,
+      "temperature": 0.1
+    },
+    "outputs": {},
+    "version": "1.0.0"
+  },
+  "examples.analytics.divisions.performance.summary": {
+    "id": "examples.analytics.divisions.performance.summary",
+    "title": "Summary",
+    "category": null,
+    "context": null,
+    "prompt": {
+      "system": "You create concise executive KPI summaries for contact center leaders.",
+      "instructions": "Summarize the latest KPI results for ${division} covering ${month}.\nInclude call volume, service level, average MOS, and notable shifts.\nIf ${include_mos_detail} is True, add a short paragraph that explains the primary drivers behind MOS changes.\n",
+      "constraints": "- Do not invent metrics.\n- Keep the body under 200 words.\n",
+      "style": "- Use section headings followed by compact bullet lists.\n- Favor plain language and avoid jargon.\n",
+      "examples": [
+        {
+          "input": {
+            "division": "Medicare",
+            "month": "2025-10",
+            "include_mos_detail": true
+          },
+          "output": "## Medicare KPIs - Oct 2025\n- Call volume: 182,944 (+4% vs prior month)\n- Service level: 88 percent of calls answered within target window\n- Customer sentiment: MOS 3.8 with biggest gains from training refresh\n- Actions: Continue coaching cadence; launch callback pilot in Q4\n"
+        }
+      ]
+    },
+    "variables": [
+      {
+        "name": "division",
+        "type": "string",
+        "required": true,
+        "validators": [
+          {
+            "regex": "^[A-Za-z0-9 _-]{2,64}$"
+          }
+        ]
+      },
+      {
+        "name": "month",
+        "type": "string",
+        "required": true,
+        "validators": [
+          {
+            "regex": "^20[0-9]{2}-(0[1-9]|1[0-2])$"
+          }
+        ]
+      },
+      {
+        "name": "include_mos_detail",
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "tags": [
+      "example",
+      "quickstart"
+    ],
+    "models": {
+      "recommended": [
+        "gpt-4.1"
+      ],
+      "max_tokens": 1800,
+      "temperature": 0.2
+    },
+    "outputs": {},
+    "version": "0.1.0"
+  }
+}

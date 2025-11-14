@@ -1,0 +1,52 @@
+id: legacy.sys-troubleshoot-1
+version: 1.0.0
+status: draft
+provenance:
+  source: react-ui
+  notes: Imported via prompt-library (..\Prompt Library Projects\PromptLibrary\prompt-library.json)
+  created_at: '2025-01-01T00:00:00.000Z'
+blocks:
+  system: Summarize event and propose corrective steps. Returns JSON.
+  instructions: 'You are a senior Windows engineer. Analyze the following event text
+    and return JSON with keys: root_cause, severity (Low/Medium/High), actions (array),
+    references (array of URLs).
+
+
+    EVENT:
+
+    {{event_text}}'
+  style: Be concise, actionable, and accurate.
+  constraints: 'Output json matching:
+
+    {"root_cause":"...","severity":"...","actions":["..."],"references":["..."]}'
+variables:
+  event_text:
+    type: string
+    label: Event Text
+    required: true
+telemetry:
+  tags:
+  - events
+  - json
+  - ops
+  - prompt-library
+  - react
+  - windows
+integrations:
+  ui:
+    title: Troubleshoot Windows Event (structured)
+    category: Prompt Library
+    context: Summarize event and propose corrective steps. Returns JSON.
+    tags:
+    - ops
+    - windows
+    - events
+    - json
+models:
+  temperature: 0.2
+  top_p: 1
+  recommended:
+  - gpt-4o-mini
+outputs:
+  format: json
+  schema: '{"root_cause":"...","severity":"...","actions":["..."],"references":["..."]}'

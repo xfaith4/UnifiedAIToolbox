@@ -1,0 +1,10 @@
+cases:
+- name: Select only
+  input:
+    dialect: postgres
+    schema: 'tables: calls(id, division, started_at, mos)'
+    request: average MOS by division last month
+  asserts:
+  - is_json: true
+  - contains_regex: SELECT
+  - not_contains: DELETE

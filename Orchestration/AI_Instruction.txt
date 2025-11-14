@@ -1,0 +1,444 @@
+BEGIN: Learn-Template (v2)
+Purpose: Self-study. Read to understand, not just patch.
+Inputs:
+<CODE_SNIPPET> – the exact code block
+<CONTEXT> – optional: what the code is for
+Output:
+- Clear, line-by-line walkthrough
+- One short analogy that maps to the code’s structure
+- Key takeaways and one safe improvement
+Rules:
+- Keep technical depth. No oversimplification.
+- If a line is ambiguous, state assumptions explicitly.
+- Do not change or invent code.
+
+Explain the following code step by step:
+
+<CONTEXT> <CODE_SNIPPET>
+
+Deliver:
+
+Line-by-line explanation
+
+Analogy (≤3 sentences)
+
+Key takeaways
+
+One safe improvement with a 1–2 line rationale
+
+END: Learn-Template (v2)
+BEGIN: Debugging-Template (v2)
+Purpose: Diagnose and fix with minimal, correct changes.
+Inputs:
+<CODE_SNIPPET> – failing or buggy code
+<ERRORS> – exact error text(s), if any
+<CONTEXT> – what the code should do
+Output:
+- Root-cause list
+- Minimal diff-style or drop-in fix
+- Test steps to confirm
+Rules:
+- Prefer the smallest viable change.
+- No speculative features. No breaking API/IO shapes.
+- If uncertain, state uncertainty and offer two options.
+
+You are a strict code reviewer. Analyze and repair:
+
+Context:
+<CONTEXT>
+
+Code:
+<CODE_SNIPPET>
+
+Observed errors/logs:
+<ERRORS>
+
+Deliver:
+A) Root causes (bullet list)
+B) Fixed code as a drop-in block between these markers:
+
+BEGIN: <BlockName>-Fixed
+<fixed code> ### END: <BlockName>-Fixed C) Test steps (exact commands or cases) D) Risks and rollbacks (what to revert if needed) ### END: Debugging-Template (v2)
+BEGIN: Refactor-Template (v2)
+Purpose: Improve readability, maintainability, and safety without changing behavior.
+Inputs:
+<CODE_SNIPPET>
+<CONSTRAINTS> – e.g., “no external deps”, “PS7+ only”
+Output:
+- Clean, commented replacement
+- Rationale for each notable change
+Rules:
+- Preserve behavior and IO contracts.
+- Add inline comments only where they aid scanning.
+- Keep names stable unless misleading.
+
+Refactor this script with the constraints below. Preserve behavior exactly.
+
+Constraints:
+<CONSTRAINTS>
+
+Code:
+<CODE_SNIPPET>
+
+Deliver:
+
+Full replacement wrapped:
+
+BEGIN FILE: <FileName or ModuleName>
+<refactored code> ### END FILE: <FileName or ModuleName> 2) Change log: concise bullets mapping old→new 3) Any added guards or error handling, with brief reasons ### END: Refactor-Template (v2)
+BEGIN: Build-Template (v2)
+Purpose: Generate a fresh script or module from requirements.
+Inputs:
+<NAME> – script/module name
+<REQUIREMENTS> – bullets
+<TARGET_RUNTIME> – e.g., PowerShell 7.4, Python 3.11
+<IO_CONTRACTS> – inputs/outputs, paths, exit codes
+Output:
+- Complete, runnable artifact
+- Minimal docs and tests
+Rules:
+- Include parameter validation and error handling.
+- No placeholder stubs; implement core logic.
+- Add clear begin/end markers for future replacements.
+
+Build the following:
+
+Name:
+<NAME>
+
+Target runtime:
+<TARGET_RUNTIME>
+
+Requirements:
+<REQUIREMENTS>
+
+IO contracts:
+<IO_CONTRACTS>
+
+Deliver:
+
+Full artifact wrapped:
+
+BEGIN FILE: <NAME>
+<complete code> ### END FILE: <NAME> 2) Quick-start usage examples 3) Minimal test plan or Pester tests (commented out if needed) ### END: Build-Template (v2)
+BEGIN: Optimize-Template (v2)
+Purpose: Scale performance for large datasets or high I/O.
+Inputs:
+<CODE_SNIPPET>
+<WORKLOAD> – size, shape, constraints
+<SLO> – target time or throughput
+Output:
+- Bottleneck analysis
+- Optimized drop-in replacement
+- Benchmark plan
+Rules:
+- Prefer algorithmic wins first, then batching, then concurrency.
+- Keep behavior identical. Guard data integrity.
+
+Optimize the following for the stated workload and SLO:
+
+Workload:
+<WORKLOAD>
+
+Target SLO:
+<SLO>
+
+Code:
+<CODE_SNIPPET>
+
+Deliver:
+A) Bottlenecks found and how to measure them
+B) Drop-in replacement wrapped:
+
+BEGIN: <BlockName>-Optimized
+<optimized code> ### END: <BlockName>-Optimized C) Benchmark plan with commands, dataset notes, and pass/fail criteria D) Rollback note if regression detected ### END: Optimize-Template (v2)
+BEGIN: Debugging-Template (Example 1, v2)
+Purpose: Minimal fix with explicit tests.
+
+Context:
+PowerShell EXIF date extraction should prefer EXIF DateTimeOriginal, else fall back to file mtime.
+
+Code:
+<CODE_SNIPPET>
+function Get-ImageDate {
+param([string]$Path)
+if (-not (Test-Path $Path)) { Write-Error "Not found"; return }
+$exif = & python .\extract_metadata.py $Path | ConvertFrom-Json
+if ($exif.DateTimeOriginal -eq $null) {
+$file = Get-Item $path # bug: $path vs $Path
+return $file.LastWriteTime.ToString("yyyy-MM-dd")
+}
+return $exif.DateTimeOriginal.Replace(':','-') # bug: replaces colons in time too
+}
+</CODE_SNIPPET>
+
+Deliver:
+A) Root causes
+B) Fixed block:
+
+BEGIN: Get-ImageDate-Fixed
+
+function Get-ImageDate {
+[CmdletBinding()]
+param([Parameter(Mandatory)][string]$Path)
+
+if (-not (Test-Path -LiteralPath $Path)) {
+    throw "Path not found: $Path"
+}
+
+$exif = & python .\extract_metadata.py $Path 2>$null | ConvertFrom-Json
+
+# Try EXIF first with strict parsing
+if ($exif -and $exif.DateTimeOriginal) {
+    $s = [string]$exif.DateTimeOriginal
+    $dt = $null
+    # Common EXIF formats: "yyyy:MM:dd HH:mm:ss" or "yyyy:MM:dd"
+    if ([datetime]::TryParseExact($s, @('yyyy:MM:dd HH:mm:ss','yyyy:MM:dd'),
+        [System.Globalization.CultureInfo]::InvariantCulture,
+        [System.Globalization.DateTimeStyles]::None, [ref]$dt)) {
+        return $dt.ToString('yyyy-MM-dd')
+    }
+}
+
+# Fallback to file mtime
+$file = Get-Item -LiteralPath $Path
+return $file.LastWriteTime.ToString('yyyy-MM-dd')
+
+
+}
+
+END: Get-ImageDate-Fixed
+
+C) Tests:
+
+Nonexistent file → throws “Path not found”
+
+File with EXIF “2020:07:05 12:34:56” → “2020-07-05”
+
+File without EXIF → mtime formatted “yyyy-MM-dd”
+D) Risks: If EXIF format differs, extend the formats array. Rollback by restoring original function.
+
+END: Debugging-Template (Example 1, v2)
+BEGIN: Optimize-Template (Example 2, v2)
+
+Workload:
+~100k rows; Python EXIF extraction is slow; SQLite updates per-row.
+
+SLO:
+Finish within acceptable window by reducing Python calls and DB commits.
+
+Code:
+<CODE_SNIPPET>
+$rows = Invoke-SqliteQuery -Connection $conn -Sql "SELECT Id, Path FROM FileMetadata;"
+foreach ($row in $rows) {
+if (-not (Test-Path -LiteralPath $row.Path)) { continue }
+$exif = & python .\extract_metadata.py $row.Path | ConvertFrom-Json
+$date = if ($exif.DateTimeOriginal) { $exif.DateTimeOriginal } else { (Get-Item $row.Path).LastWriteTime }
+$new = Join-Path "G:\Photos$($date.ToString('yyyy\yyyy-MM\yyyy-MM-dd'))" (Split-Path $row.Path -Leaf)
+if ($new -ne $row.Path) { Move-Item -LiteralPath $row.Path -Destination $new -Force }
+Invoke-SqliteQuery -Connection $conn -Sql "UPDATE FileMetadata SET NewPath='$new' WHERE Id=$($row.Id);"
+}
+</CODE_SNIPPET>
+
+Deliver:
+A) Bottlenecks:
+
+Per-row Python EXIF call
+
+Per-row non-parameterized UPDATE
+
+Chatty commits
+
+No skip for already-moved rows
+
+B) Drop-in replacement:
+
+BEGIN: MoveAndTag-Optimized
+Skip rows already processed; parameterize; batch commits; cache EXIF by (Path, LastWriteTime)
+
+$rows = Invoke-SqliteQuery -Connection $conn -Sql @"
+SELECT Id, COALESCE(NewPath, Path) AS Path
+FROM FileMetadata
+WHERE NewPath IS NULL OR NewPath = ''
+"@
+
+Prepared update
+
+$upd = $conn.CreateCommand()
+$upd.CommandText = "UPDATE FileMetadata SET NewPath=@p WHERE Id=@id;"
+[void]$upd.Parameters.Add('@p',[System.Data.DbType]::String)
+[void]$upd.Parameters.Add('@id',[System.Data.DbType]::Int64)
+
+Simple in-memory EXIF cache by path+mtime
+
+$exifCache = @{}
+
+$tx = $conn.BeginTransaction()
+$upd.Transaction = $tx
+$moved = 0; $i = 0; $n = $rows.Count; $batchSize = 2000
+
+foreach ($row in $rows) {
+$i++
+if (-not (Test-Path -LiteralPath $row.Path)) { continue }
+
+$fi = Get-Item -LiteralPath $row.Path
+$key = "$($row.Path)|$($fi.LastWriteTimeUtc.Ticks)"
+
+if (-not $exifCache.ContainsKey($key)) {
+    $ex = & python .\extract_metadata.py $row.Path 2>$null | ConvertFrom-Json
+    $exifCache[$key] = $ex
+} else {
+    $ex = $exifCache[$key]
+}
+
+$dt = $null
+if ($ex -and $ex.DateTimeOriginal) {
+    [void][datetime]::TryParseExact([string]$ex.DateTimeOriginal, @('yyyy:MM:dd HH:mm:ss','yyyy:MM:dd'),
+        [System.Globalization.CultureInfo]::InvariantCulture,
+        [System.Globalization.DateTimeStyles]::None, [ref]$dt)
+}
+if (-not $dt) { $dt = $fi.LastWriteTime }
+
+$new = Join-Path ("G:\Photos\{0}\{1}\{2}" -f $dt.ToString('yyyy'), $dt.ToString('yyyy-MM'), $dt.ToString('yyyy-MM-dd')) (Split-Path $row.Path -Leaf)
+
+if ($new -ne $row.Path) {
+    Move-Item -LiteralPath $row.Path -Destination $new -Force
+    $upd.Parameters['@p'].Value  = $new
+    $upd.Parameters['@id'].Value = [int64]$row.Id
+    [void]$upd.ExecuteNonQuery()
+    $moved++
+}
+
+if (($i % $batchSize) -eq 0) { $tx.Commit(); $tx.Dispose(); $tx = $conn.BeginTransaction(); $upd.Transaction = $tx }
+
+
+}
+
+$tx.Commit(); $tx.Dispose()
+Write-Host ("[SUMMARY] Moved: {0} of {1}" -f $moved, $n)
+
+END: MoveAndTag-Optimized
+
+C) Benchmark plan:
+
+Time the loop with (Measure-Command { <block> }).TotalSeconds
+
+Compare with and without cache; vary $batchSize (500, 2000, 5000)
+
+Validate no rows with missing files were updated
+
+D) Rollback:
+
+If errors spike, restore original loop and reduce batch size.
+
+END: Optimize-Template (Example 2, v2)
+BEGIN: Build-Template (Example 3, v2)
+
+Name:
+ProfilesManager.ps1
+
+Target runtime:
+PowerShell 7+
+
+Requirements:
+
+Get-ProfileStorePath, Load-Profiles, Save-Profiles with backup
+
+Trace/TraceErr helpers with timestamps
+
+try/catch Import-Module ".\HelpModule.psm1"
+
+Per-function begin/end markers
+
+IO contracts:
+
+Profiles at $PSScriptRoot\.photo-reorg\profiles.json
+
+Save-Profiles overwrites atomically and writes .bak first
+
+Deliver:
+
+BEGIN FILE: ProfilesManager.ps1
+
+#requires -Version 7
+
+Profiles manager with clear replace markers
+BEGIN: Trace-Helpers
+
+function Trace { param([string]$Msg,[ConsoleColor]$Color='Cyan'); $ts=Get-Date -Format 'HH:mm:ss'; Write-Host "[$ts] $Msg" -ForegroundColor $Color }
+function TraceErr { param([string]$Msg); Trace $Msg 'Red' }
+
+END: Trace-Helpers
+BEGIN: Import-HelpModule
+
+try {
+$mp = Join-Path $PSScriptRoot 'HelpModule.psm1'
+if (Test-Path -LiteralPath $mp) {
+Import-Module -Name $mp -Force -ErrorAction Stop
+Trace "[INFO] HelpModule loaded."
+} else {
+Trace "[WARN] HelpModule not found. Continuing."
+}
+} catch { TraceErr "[ERROR] Import-Module failed: $($_.Exception.Message)"; throw }
+
+END: Import-HelpModule
+BEGIN: Get-ProfileStorePath
+
+function Get-ProfileStorePath {
+[CmdletBinding(SupportsShouldProcess)]
+param()
+$root = Join-Path $PSScriptRoot ".photo-reorg"
+if (-not (Test-Path $root)) {
+if ($PSCmdlet.ShouldProcess($root,'Create directory')) {
+New-Item -ItemType Directory -Path $root -Force | Out-Null
+}
+}
+Join-Path $root "profiles.json"
+}
+
+END: Get-ProfileStorePath
+BEGIN: Load-Profiles
+
+function Load-Profiles {
+[CmdletBinding()]
+param()
+$p = Get-ProfileStorePath
+if (Test-Path $p) {
+try { return (Get-Content $p -Raw | ConvertFrom-Json -ErrorAction Stop) }
+catch { TraceErr "[ERROR] profiles.json invalid: $($_.Exception.Message)"; throw }
+}
+# default
+[pscustomobject]@{
+current = "default"
+profiles = @{ default = @{ DbPath=""; PhotoRoot=""; BaseUrl=""; FilesTable="FileMetadata" } }
+}
+}
+
+END: Load-Profiles
+BEGIN: Save-Profiles
+
+function Save-Profiles {
+[CmdletBinding(SupportsShouldProcess)]
+param([Parameter(Mandatory)][object]$Object)
+
+$path = Get-ProfileStorePath
+$bak  = "$path.bak"
+
+try {
+    $json = $Object | ConvertTo-Json -Depth 10 -ErrorAction Stop
+    if ($PSCmdlet.ShouldProcess($path,'Write profiles.json with backup')) {
+        if (Test-Path $path) { Copy-Item -LiteralPath $path -Destination $bak -Force }
+        Set-Content -Path $path -Value $json -Encoding UTF8 -ErrorAction Stop
+        Trace "[INFO] Saved profiles to $path"
+    }
+} catch {
+    TraceErr "[ERROR] Save-Profiles failed: $($_.Exception.Message)"
+    throw
+}
+
+
+}
+
+END: Save-Profiles
+END FILE: ProfilesManager.ps1
+END: Build-Template (Example 3, v2)

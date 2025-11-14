@@ -1,0 +1,28 @@
+{
+  "prompt_id": "analytics.divisions.performance.summary",
+  "version": "2.1.0",
+  "timestamp": "2025-11-14T00:53:21.892206+00:00",
+  "summary": "Automated bridge review completed at 2025-11-14T00:53:21.892186+00:00",
+  "reviewers": [
+    "BridgeService"
+  ],
+  "references": [
+    {
+      "type": "manifest",
+      "value": "G:\\Development\\20_Staging\\AI-Toolbox\\UnifiedAIToolbox\\Orchestration\\UnifiedPromptApp\\apps\\orchestration-bridge\\runs\\analytics_divisions_performance_summary.2.1.0.json"
+    },
+    {
+      "type": "prompt_yaml",
+      "value": "G:\\Development\\20_Staging\\AI-Toolbox\\UnifiedAIToolbox\\Orchestration\\UnifiedPromptApp\\packages\\prompt-registry\\prompts\\catalog\\analytics\\divisions.performance.summary.prompt.yaml"
+    }
+  ],
+  "reasoning": [
+    "Reviewed scheduling window for review_policy=critical.",
+    "Generated an orchestration manifest and invoked the refiner worker.",
+    "Logged telemetry and run status back into the prompt registry."
+  ],
+  "next_steps": [
+    "Share the runbook summary with stakeholders.",
+    "Queue another review after the configured interval or when inputs change."
+  ]
+}
