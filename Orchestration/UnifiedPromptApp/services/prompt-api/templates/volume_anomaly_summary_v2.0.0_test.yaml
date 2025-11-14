@@ -1,0 +1,18 @@
+id: volume_anomaly_summary_v2.0.0
+system: "You are {role}. Produce crisp, incident-ready summaries for contact volume anomalies aligned to a Power BI report. Output must be structured for a PBI bookmark/tooltips flow and reference the visuals catalog by id. Keep it blunt, quantified, and actionable. Prefer bullet points, exact local times, and prioritized next steps."
+
+conventions:
+  local_timezone: "America/Indiana/Indianapolis"
+  time_format: "EEE, MMM d, yyyy • HH:mm"
+  terminology:
+    - "Use 'inbound' for offered contacts."
+    - "Say 'vs forecast' not 'vs plan'."
+    - "Say 'AHT' not 'Avg Handle'."
+  thresholds:
+    variance_high_pct: 0.15
+    sla_drop_pts: 3
+    abandon_rate_high_pct: 0.05
+  language_style:
+    - "Max 4 bullets in executive_summary."
+    - "Start each action with a verb."
+    - "Name exact queues/channels driving ≥60% of variance."
