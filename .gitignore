@@ -3,9 +3,14 @@ Thumbs.db
 node_modules/
 apps/PromptWeb/dist/
 venv/
+.venv/
+.venv-linux/
 *.zip
 data/sqlite/*.db
 data/artifacts/**
 .vscode/
 bin/
 obj/
+__pycache__/
+*.pyc
+*.pyo
