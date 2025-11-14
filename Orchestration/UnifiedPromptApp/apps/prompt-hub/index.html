@@ -1,76 +1,13 @@
-import React, { useState, useEffect } from 'react';
-
-// Define the shape of the user data for type safety
-interface UserData {
-  id: number;
-  name: string;
-  email: string;
-  joinedDate: string; // Assuming ISO date string from API
-}
-
-// Define the component's props
-interface UserProfileProps {
-  userId: number;
-}
-
-// A component to fetch and display user data with modern best practices
-function UserProfile({ userId }: UserProfileProps): React.ReactElement {
-  const [user, setUser] = useState<UserData | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    // Use an async function inside useEffect to leverage await
-    const fetchUserData = async () => {
-      setLoading(true);
-      setError(null); // Reset error state on new fetch
-
-      try {
-        const response = await fetch(`https://api.example.com/users/${userId}`);
-
-        // Handle non-successful HTTP responses (e.g., 404, 500)
-        if (!response.ok) {
-          throw new Error(`HTTP error! Status: ${response.status}`);
-        }
-
-        const data: UserData = await response.json();
-        setUser(data);
-      } catch (err) {
-        // Capture and store the error message for UI feedback
-        if (err instanceof Error) {
-            setError(err.message);
-        } else {
-            setError('An unknown error occurred.');
-        }
-        setUser(null); // Clear any stale user data
-      } finally {
-        // This runs regardless of success or failure
-        setLoading(false);
-      }
-    };
-
-    fetchUserData();
-  }, [userId]); // Dependency array ensures this runs when userId changes
-
-  if (loading) {
-    return <p>Loading profile...</p>;
-  }
-
-  if (error) {
-    return <p>Error loading profile: {error}</p>;
-  }
-
-  if (!user) {
-    return <p>User not found.</p>;
-  }
-
-  return (
-    <div>
-      <h1>{user.name}</h1>
-      <p>Email: {user.email}</p>
-      <p>Member since: {new Date(user.joinedDate).toLocaleDateString()}</p>
-    </div>
-  );
-}
-
-export default UserProfile;
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Toolbox - Unified Prompt Hub</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
