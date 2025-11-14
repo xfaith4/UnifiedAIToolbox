@@ -3,6 +3,10 @@ import React, { useState, useEffect } from 'react';
 import Layout from './components/Layout';
 import HomePage from './pages/HomePage';
 import PromptLibraryPage from './pages/PromptLibraryPage';
+import AgentLibraryPage from './pages/AgentLibraryPage';
+import OrchestratorPage from './pages/OrchestratorPage';
+import DatasetsPage from './pages/DatasetsPage';
+import SensorsPage from './pages/SensorsPage';
 
 // Simple client-side router
 function Router() {
@@ -31,10 +35,18 @@ function Router() {
 
   // Route matching
   let PageComponent;
-  if (currentPath === '/prompts') {
-    PageComponent = PromptLibraryPage;
-  } else if (currentPath === '/') {
+  if (currentPath === '/') {
     PageComponent = HomePage;
+  } else if (currentPath === '/prompts') {
+    PageComponent = PromptLibraryPage;
+  } else if (currentPath === '/agents') {
+    PageComponent = AgentLibraryPage;
+  } else if (currentPath === '/orchestrator') {
+    PageComponent = OrchestratorPage;
+  } else if (currentPath === '/datasets') {
+    PageComponent = DatasetsPage;
+  } else if (currentPath === '/sensors') {
+    PageComponent = SensorsPage;
   } else {
     // Placeholder for other pages
     PageComponent = () => (
