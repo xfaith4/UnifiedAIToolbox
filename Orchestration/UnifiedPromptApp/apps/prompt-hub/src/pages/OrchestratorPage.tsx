@@ -697,6 +697,7 @@ function TaskInbox({
                 className="rounded-lg border border-slate-200 px-2 py-1 text-xs"
                 value={task.status || 'queued'}
                 onChange={(e) => void onUpdate(task.id, e.target.value as OrchestratorTask['status'])}
+                aria-label="Task status"
               >
                 <option value="queued">Queued</option>
                 <option value="running">Running</option>

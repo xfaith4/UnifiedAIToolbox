@@ -77,7 +77,9 @@ export function PromptPicker({
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
+            aria-label="Close prompt picker"
             className="h-8 w-8 rounded-lg hover:bg-slate-100 flex items-center justify-center transition-colors"
           >
             <X size={20} className="text-slate-500" />
@@ -100,6 +102,7 @@ export function PromptPicker({
             <select
               value={filterCategory}
               onChange={(e) => setFilterCategory(e.target.value)}
+              aria-label="Filter by category"
               className="px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
               <option value="">All categories</option>
@@ -111,6 +114,7 @@ export function PromptPicker({
             </select>
             {(query || filterCategory) && (
               <button
+                type="button"
                 onClick={() => {
                   setQuery('')
                   setFilterCategory('')
@@ -143,7 +147,9 @@ export function PromptPicker({
                 return (
                   <button
                     key={prompt.id}
+                    type="button"
                     onClick={() => onSelect(prompt)}
+                    aria-label={`Select prompt: ${prompt.title}`}
                     className={`group relative p-4 rounded-xl border-2 text-left transition-all ${
                       isSelected
                         ? 'border-blue-500 bg-blue-50'
@@ -202,6 +208,7 @@ export function PromptPicker({
         {/* Footer */}
         <div className="p-6 border-t border-slate-200 flex justify-end gap-3">
           <button
+            type="button"
             onClick={onClose}
             className="px-4 py-2 text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
           >

@@ -1,0 +1,266 @@
+{
+  "title": "Code Orchestration Pipeline – Design-to-Publish Agent Suite",
+  "description": "A coordinated set of AI agents that manage the full software lifecycle from requirements and UX design through implementation, testing, review, deployment, and monitoring in a code orchestration tool.",
+  "framework": "react-vite",
+  "data_sources": [],
+  "agents": [
+    {
+      "name": "Requirements & Context Agent",
+      "purpose": "Gather, normalize, and clarify requirements and constraints before any design or coding begins.",
+      "responsibilities": [
+        "Ingest product specs, tickets, and stakeholder notes",
+        "Ask clarification questions and identify missing requirements",
+        "Produce a structured requirements document (functional & non-functional)",
+        "Maintain change log of evolving requirements"
+      ]
+    },
+    {
+      "name": "Architecture & Design Agent",
+      "purpose": "Translate requirements into system architecture and high-level design.",
+      "responsibilities": [
+        "Propose system architecture (services, modules, data flow)",
+        "Select patterns and tech choices consistent with org standards",
+        "Generate high-level diagrams and interface contracts",
+        "Flag architectural risks and tradeoffs"
+      ]
+    },
+    {
+      "name": "UX / UI Design Agent",
+      "purpose": "Design user flows and UI components aligned with product and brand guidelines.",
+      "responsibilities": [
+        "Create user journeys and interaction flows",
+        "Produce wireframes / low-fidelity mockups in structured form (e.g., JSON-based layouts)",
+        "Map components to an existing design system where possible",
+        "Generate accessibility considerations for each screen"
+      ]
+    },
+    {
+      "name": "Specification & Task Breakdown Agent",
+      "purpose": "Convert architecture and UX into implementable specs and granular tasks.",
+      "responsibilities": [
+        "Create detailed implementation specs (APIs, data models, contracts)",
+        "Break work into atomic tasks/epics with dependencies",
+        "Estimate effort and complexity tags per task",
+        "Align tasks with repository structure and services"
+      ]
+    },
+    {
+      "name": "Code Synthesis Agent",
+      "purpose": "Generate new code that adheres to the spec, style guides, and architecture.",
+      "responsibilities": [
+        "Create or modify source files for backend, frontend, and shared libraries",
+        "Respect framework conventions (e.g., React + Vite project structure)",
+        "Use existing utilities, components, and patterns before introducing new ones",
+        "Annotate code with minimal, meaningful comments and docstrings"
+      ]
+    },
+    {
+      "name": "Refactoring & Modernization Agent",
+      "purpose": "Improve existing codebase for readability, maintainability, and performance.",
+      "responsibilities": [
+        "Identify duplications and extract shared utilities",
+        "Modernize legacy patterns to current stack best practices",
+        "Optimize critical code paths where needed",
+        "Ensure refactors preserve behavior via tests"
+      ]
+    },
+    {
+      "name": "Static Analysis & Linting Agent",
+      "purpose": "Enforce code quality, style, and basic correctness using static tools.",
+      "responsibilities": [
+        "Run linters, formatters, and type checkers",
+        "Auto-fix issues where safe; otherwise annotate with clear suggestions",
+        "Maintain and suggest updates to lint/format configs",
+        "Block promotion of code with critical issues"
+      ]
+    },
+    {
+      "name": "Test Authoring Agent",
+      "purpose": "Design and implement automated tests aligned with requirements and risk.",
+      "responsibilities": [
+        "Generate unit, integration, and where relevant, end-to-end tests",
+        "Ensure tests align with acceptance criteria from requirements",
+        "Propose test data, fixtures, and mocking strategies",
+        "Maintain appropriate coverage thresholds by risk area"
+      ]
+    },
+    {
+      "name": "CI/CD Pipeline Agent",
+      "purpose": "Maintain and evolve the automation pipelines from build to deploy.",
+      "responsibilities": [
+        "Create and update pipeline configurations (e.g., GitHub Actions, GitLab CI, Jenkins)",
+        "Optimize build, test, and artifact stages for speed and reliability",
+        "Define gating rules for merge and release (tests, approvals, checks)",
+        "Integrate security scans and quality gates into the pipeline"
+      ]
+    },
+    {
+      "name": "Code Review & Compliance Agent",
+      "purpose": "Perform automated review and enforce standards, policies, and security practices.",
+      "responsibilities": [
+        "Review diffs for style, structure, correctness, and adherence to architecture",
+        "Detect potential security vulnerabilities and data privacy violations",
+        "Check for licensing and open-source policy compliance",
+        "Summarize key risks and required changes for human reviewers"
+      ]
+    },
+    {
+      "name": "Security & Dependency Agent",
+      "purpose": "Continuously guard against vulnerabilities in code and dependencies.",
+      "responsibilities": [
+        "Scan dependencies for known CVEs and suggest safe upgrades",
+        "Analyze code for common security issues (injection, auth, secrets, etc.)",
+        "Propose secure defaults and patterns (e.g., input validation, encryption)",
+        "Integrate with security scanners in CI/CD"
+      ]
+    },
+    {
+      "name": "Documentation & Knowledge Agent",
+      "purpose": "Keep documentation synchronized with the evolving system.",
+      "responsibilities": [
+        "Generate and update technical docs, API references, and ADRs",
+        "Maintain a changelog and release notes",
+        "Extract and summarize design rationales from conversations and PRs",
+        "Keep a searchable knowledge base of decisions and patterns"
+      ]
+    },
+    {
+      "name": "Environment & Configuration Agent",
+      "purpose": "Manage environment configuration across dev, staging, and production.",
+      "responsibilities": [
+        "Define and validate environment variables and config files",
+        "Ensure secrets are handled via appropriate secret-management tools",
+        "Maintain parity and drift detection between environments",
+        "Assist with feature flag setup and lifecycle"
+      ]
+    },
+    {
+      "name": "Deployment & Release Agent",
+      "purpose": "Coordinate releases from staging to production safely and predictably.",
+      "responsibilities": [
+        "Prepare deployment manifests (e.g., Docker, Kubernetes, serverless configs)",
+        "Orchestrate rollouts (blue-green, canary, feature-flag-based)",
+        "Perform pre- and post-deploy checks",
+        "Automate rollback strategies and procedures"
+      ]
+    },
+    {
+      "name": "Observability & Feedback Agent",
+      "purpose": "Close the loop by monitoring production and feeding insights back into development.",
+      "responsibilities": [
+        "Define and update logging, metrics, and tracing standards",
+        "Analyze logs and metrics to detect anomalies and regressions",
+        "Propose improvements based on real usage and error patterns",
+        "Create tickets or tasks automatically for recurring issues"
+      ]
+    },
+    {
+      "name": "Governance & Workflow Orchestration Agent",
+      "purpose": "Coordinate all agents, enforce workflow rules, and provide a single control plane.",
+      "responsibilities": [
+        "Define which agent runs at which stage and with what inputs/outputs",
+        "Track the state of work items across the lifecycle",
+        "Enforce approval rules and escalation paths",
+        "Provide summaries and status dashboards to human stakeholders"
+      ]
+    }
+  ]
+}
+
+Here’s a concise, end‑to‑end agent suite for a code orchestration tool, from design to publish:
+
+1. Requirements & Context Agent
+
+Ingests tickets/docs/stakeholder input.
+
+Structures requirements, highlights missing info and conflicts.
+
+2. Architecture & System Design Agent
+
+Produces system architecture, module boundaries, contracts, and data models.
+
+Records tradeoffs and risks.
+
+3. UX / UI Design Agent
+
+Designs user flows and screen layouts.
+
+Maps to design system components and notes accessibility constraints.
+
+4. Specification & Task Breakdown Agent
+
+Translates requirements + design into detailed technical specs.
+
+Breaks work into tasks/epics with dependencies and estimates.
+
+5. Code Synthesis Agent
+
+Generates and edits code per spec, following style guides and project conventions.
+
+Reuses existing components/utilities when possible.
+
+6. Refactoring & Modernization Agent
+
+Cleans up legacy code and removes duplication.
+
+Introduces improved patterns while preserving behavior.
+
+7. Static Analysis & Linting Agent
+
+Runs linters, formatters, and type-checkers.
+
+Auto-fixes safe issues; flags or blocks serious problems.
+
+8. Test Authoring & Maintenance Agent
+
+Creates unit, integration, and optional e2e tests.
+
+Maintains test suites and coverage in line with risk.
+
+9. Security & Dependency Agent
+
+Scans code and dependencies for vulnerabilities and secret leaks.
+
+Proposes secure patterns and version upgrades.
+
+10. CI/CD Pipeline Agent
+
+Configures and maintains build/test/release pipelines.
+
+Adds quality and security gates; optimizes pipeline performance.
+
+11. Code Review & Compliance Agent
+
+Performs automated review for correctness, style, architecture, and policy.
+
+Summarizes key issues and required changes for human reviewers.
+
+12. Documentation & Knowledge Agent
+
+Generates/updates README, API docs, ADRs, and release notes.
+
+Builds a searchable knowledge base of decisions and patterns.
+
+13. Environment & Configuration Agent
+
+Manages environment configs (dev/stage/prod) and feature flags.
+
+Ensures proper secrets handling and detects config drift.
+
+14. Deployment & Release Agent
+
+Prepares deployment manifests and release plans.
+
+Orchestrates canary/blue‑green deployments and rollbacks.
+
+15. Observability & Feedback Agent
+
+Sets up logging, metrics, and tracing.
+
+Monitors production, detects anomalies, and creates follow‑up tasks.
+
+16. Governance & Orchestration Agent
+
+Coordinates all other agents and their handoffs.
+
+Enforces workflow rules, approvals, and exposes status dashboards.

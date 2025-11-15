@@ -480,7 +480,7 @@ export default function PromptLibraryPage() {
     try {
       const response = await renderPromptViaApi(active.id, varMap)
       const renderedBlocks =
-        response.rendered_blocks ?? response.output ?? response
+        response.rendered_blocks ?? (response as unknown as { output?: unknown }).output ?? response
       setApiRendered(JSON.stringify(renderedBlocks, null, 2))
     } catch (error) {
       const message =
@@ -599,6 +599,7 @@ export default function PromptLibraryPage() {
           value={filterCategory}
           onChange={(e) => setFilterCategory(e.target.value)}
           className="px-3 py-2 rounded bg-neutral-900 border border-neutral-800"
+          aria-label="Filter by category"
         >
           <option value="">All categories</option>
           {allCategories.map((t) => (
@@ -811,6 +812,7 @@ export default function PromptLibraryPage() {
                   className="px-2 py-1 rounded bg-neutral-900 border border-neutral-800"
                   value={provider}
                   onChange={(e) => setProvider(e.target.value as Provider)}
+                  aria-label="Select provider"
                 >
                   <option value="openai">OpenAI</option>
                   <option value="anthropic">Anthropic</option>
@@ -834,6 +836,7 @@ export default function PromptLibraryPage() {
                             [v.name]: e.target.value,
                           })
                         }
+                        aria-label={v.label ?? v.name}
                       />
                     ) : (
                       <input
@@ -845,6 +848,7 @@ export default function PromptLibraryPage() {
                             [v.name]: e.target.value,
                           })
                         }
+                        aria-label={v.label ?? v.name}
                       />
                     )}
                   </div>
@@ -1079,6 +1083,7 @@ function PromptEditor({
           className="bg-neutral-900 border border-neutral-800 rounded px-2 py-1"
           value={p.role ?? 'system'}
           onChange={(e) => update('role', e.target.value as PromptItem['role'])}
+          aria-label="Prompt role"
         >
           <option value="system">role: system</option>
           <option value="user">role: user</option>
@@ -1114,6 +1119,7 @@ function PromptEditor({
         className="w-full bg-neutral-900 border border-neutral-800 rounded px-2 py-1 h-48"
         value={p.template}
         onChange={(e) => update('template', e.target.value)}
+        aria-label="Prompt template"
       />
 
       {/* variables */}
@@ -1145,7 +1151,8 @@ function PromptEditor({
               <select
                 className="bg-neutral-900 border border-neutral-800 rounded px-2 py-1"
                 value={v.type ?? 'string'}
-                onChange={(e) => updateVar(i, 'type', e.target.value)}
+                onChange={(e) => updateVar(i, 'type', e.target.value as PromptVariable['type'])}
+                aria-label={`Variable type for ${v.name}`}
               >
                 <option value="string">string</option>
                 <option value="multiline">multiline</option>
@@ -1258,7 +1265,8 @@ function FewShotEditor({
             <select
               className="bg-neutral-900 border border-neutral-800 rounded px-2 py-1"
               value={fs.role}
-              onChange={(e) => upd(i, 'role', e.target.value)}
+              onChange={(e) => upd(i, 'role', e.target.value as 'system' | 'user' | 'assistant')}
+              aria-label={`Role for example ${i + 1}`}
             >
               <option value="system">system</option>
               <option value="user">user</option>
@@ -1268,6 +1276,8 @@ function FewShotEditor({
               className="col-span-4 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 h-20"
               value={fs.content}
               onChange={(e) => upd(i, 'content', e.target.value)}
+              placeholder="Example content"
+              aria-label={`Content for few-shot example ${i + 1}`}
             />
             <div className="col-span-5 text-right">
               <button

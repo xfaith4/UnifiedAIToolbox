@@ -1,8 +1,30 @@
 import { NavLink } from 'react-router-dom'
-import { BarChart3, Settings, Github, Workflow, BookOpen, Bot, Users, Sparkles } from 'lucide-react'
-import { type ReactNode, useState } from 'react'
+import {
+  BarChart3,
+  Settings,
+  Github,
+  Workflow,
+  BookOpen,
+  Bot,
+  Users,
+  Sparkles,
+  type LucideIcon,
+} from 'lucide-react'
+import { type ReactNode, useState, useCallback } from 'react'
 
-const navSections = [
+interface NavItem {
+  to: string
+  label: string
+  icon: LucideIcon
+}
+
+interface NavSection {
+  title: string
+  isSettings?: boolean
+  items: NavItem[]
+}
+
+const navSections: NavSection[] = [
   {
     title: 'Overview',
     items: [{ to: '/dashboard', label: 'Dashboard', icon: BarChart3 }],
@@ -37,10 +59,10 @@ const activeLinkClass = 'bg-slate-800/90 text-white font-medium shadow-inner'
 export function Layout({ children }: { children: ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
-  const navLinkClassName = ({ isActive }: { isActive: boolean }) =>
-    `${baseLinkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`
+  const navLinkClassName = useCallback(({ isActive }: { isActive: boolean }) =>
+    `${baseLinkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`, []);
 
-  const closeSidebar = () => setSidebarOpen(false)
+  const closeSidebar = useCallback(() => setSidebarOpen(false), [])
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
@@ -66,8 +88,9 @@ export function Layout({ children }: { children: ReactNode }) {
             type="button"
             onClick={() => setSidebarOpen((prev) => !prev)}
             className="rounded-md border border-slate-700 px-3 py-1 text-sm font-medium text-slate-100 shadow-sm bg-slate-800/60"
-            aria-expanded={sidebarOpen}
             aria-controls="sidebar-nav"
+            {...(sidebarOpen && { 'aria-expanded': true })}
+            {...(!sidebarOpen && { 'aria-expanded': false })}
           >
             {sidebarOpen ? 'Close Menu' : 'Menu'}
           </button>
@@ -103,7 +126,7 @@ export function Layout({ children }: { children: ReactNode }) {
             {navSections.map((section) => (
               <div
                 key={section.title}
-                className={section.isSettings ? 'pt-4 border-t border-slate-200' : undefined}
+                className={section.isSettings ? 'pt-4 border-t border-slate-800' : undefined}
               >
                 <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2 px-3">
                   {section.title}

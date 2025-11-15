@@ -1,11 +1,12 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+'use client'
+
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  createAgentTemplate,
   fetchAgentLibrary,
   normalizeAgent,
   persistAgentLibrary,
-} from '../services/agentStore'
-import type { AgentInstruction, AgentStatus } from '../types/agents'
+} from '@/lib/services/agentStore'
+import type { AgentInstruction, AgentStatus } from '@/lib/types/agents'
 
 const statusLabels: Record<AgentStatus, string> = {
   draft: 'Draft',
@@ -24,7 +25,7 @@ function stringToList(value: string) {
     .filter(Boolean)
 }
 
-export default function AgentLibraryPage() {
+export default function AgentsPage() {
   const [agents, setAgents] = useState<AgentInstruction[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [filter, setFilter] = useState('')
@@ -33,14 +34,13 @@ export default function AgentLibraryPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    async function load() {
+    ;(async () => {
       setLoading(true)
       const data = await fetchAgentLibrary()
       setAgents(data)
       setSelectedId(data[0]?.id ?? null)
       setLoading(false)
-    }
-    load()
+    })()
   }, [])
 
   const filteredAgents = useMemo(() => {
@@ -92,7 +92,7 @@ export default function AgentLibraryPage() {
   }
 
   function handleAddAgent() {
-    const newAgent = createAgentTemplate()
+    const newAgent = normalizeAgent({})
     setAgents((prev) => {
       const next = [newAgent, ...prev]
       void persist(next)
@@ -152,22 +152,22 @@ export default function AgentLibraryPage() {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">Agent Instructions</h1>
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-slate-400">
             Curate orchestrator-ready agents with missions, triggers, and playbooks.
           </p>
         </div>
         <div className="flex items-center gap-2">
           {saving && (
-            <span className="text-xs text-slate-500">Saving&hellip;</span>
+            <span className="text-xs text-slate-400">Saving&hellip;</span>
           )}
           <button
-            className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm"
+            className="rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-1.5 text-sm hover:bg-slate-700/80"
             onClick={handleExport}
           >
             Export JSON
           </button>
           <button
-            className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm"
+            className="rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-1.5 text-sm hover:bg-slate-700/80"
             onClick={() => fileInputRef.current?.click()}
           >
             Import JSON
@@ -181,7 +181,7 @@ export default function AgentLibraryPage() {
             aria-label="Import Agent Library JSON"
           />
           <button
-            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500"
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500"
             onClick={handleAddAgent}
           >
             New Agent
@@ -189,19 +189,19 @@ export default function AgentLibraryPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-[320px_1fr] gap-6">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-[320px_1fr]">
         <div className="space-y-3">
           <input
             type="search"
             placeholder="Search name, tags, mission"
-            className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none"
+            className="w-full rounded-xl border border-slate-700 bg-slate-800/60 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
           />
-          <div className="space-y-2 overflow-y-auto rounded-xl border border-slate-200 p-2 max-h-[calc(100vh-220px)]">
-            {loading && <div className="p-4 text-sm text-slate-500">Loading agents…</div>}
+          <div className="space-y-2 overflow-y-auto rounded-xl border border-slate-800 bg-slate-900/50 p-2 max-h-[calc(100vh-220px)]">
+            {loading && <div className="p-4 text-sm text-slate-400">Loading agents…</div>}
             {!loading && filteredAgents.length === 0 && (
-              <div className="p-4 text-sm text-slate-500">No agents match your search.</div>
+              <div className="p-4 text-sm text-slate-400">No agents match your search.</div>
             )}
             {!loading &&
               filteredAgents.map((agent) => (
@@ -209,21 +209,21 @@ export default function AgentLibraryPage() {
                   key={agent.id}
                   className={`w-full rounded-xl border px-3 py-2 text-left transition ${
                     agent.id === selectedId
-                      ? 'border-indigo-400 bg-indigo-50'
-                      : 'border-transparent hover:bg-slate-50'
+                      ? 'border-blue-500 bg-slate-800'
+                      : 'border-transparent hover:bg-slate-800/50'
                   }`}
                   onClick={() => handleSelectAgent(agent.id)}
                 >
                   <div className="flex items-center justify-between">
-                    <div className="font-semibold text-slate-800">{agent.name}</div>
-                    <span className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                    <div className="font-semibold text-slate-100">{agent.name}</div>
+                    <span className="text-xs font-medium uppercase tracking-wide text-slate-400">
                       {statusLabels[agent.status]}
                     </span>
                   </div>
-                  <div className="text-xs text-slate-500">
+                  <div className="text-xs text-slate-400">
                     {agent.tags.slice(0, 3).join(', ') || 'No tags'}
                   </div>
-                  <div className="mt-1 text-xs text-slate-400">
+                  <div className="mt-1 text-xs text-slate-500">
                     Updated {new Date(agent.updatedAt).toLocaleString()}
                   </div>
                 </button>
@@ -231,12 +231,13 @@ export default function AgentLibraryPage() {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 p-4">
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
           {!selectedAgent && (
-            <div className="text-sm text-slate-500">Select an agent to view details.</div>
+            <div className="text-sm text-slate-400">Select an agent to view details.</div>
           )}
           {selectedAgent && (
             <AgentDetailForm
+              key={selectedAgent.id} // Re-mount form on agent change
               agent={selectedAgent}
               onChange={(updater) => upsertAgent(selectedAgent.id, updater)}
               onDelete={() => handleDeleteAgent(selectedAgent.id)}
@@ -269,18 +270,18 @@ function AgentDetailForm({
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <label htmlFor="agent-name" className="text-xs uppercase tracking-wide text-slate-500">
+          <label htmlFor="agent-name" className="text-xs uppercase tracking-wide text-slate-400">
             Agent Name
           </label>
           <input
             id="agent-name"
-            className="w-full rounded-xl border border-slate-200 px-3 py-2 text-lg font-semibold focus:border-indigo-400 focus:outline-none"
+            className="w-full rounded-xl border border-slate-700 bg-slate-800/60 px-3 py-2 text-lg font-semibold focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
             value={agent.name}
             onChange={(e) => update('name', e.target.value)}
           />
         </div>
         <button
-          className="rounded-lg border border-rose-200 px-3 py-1.5 text-sm text-rose-600 hover:bg-rose-50"
+          className="rounded-lg border border-rose-500/50 px-3 py-1.5 text-sm text-rose-400 hover:bg-rose-500/10"
           onClick={onDelete}
         >
           Delete
@@ -289,10 +290,10 @@ function AgentDetailForm({
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label htmlFor="agent-status" className="text-xs font-medium text-slate-500">Status</label>
+          <label htmlFor="agent-status" className="text-xs font-medium text-slate-400">Status</label>
           <select
             id="agent-status"
-            className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+            className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-800/60 px-3 py-2 text-sm"
             value={agent.status}
             onChange={(e) => update('status', e.target.value as AgentStatus)}
           >
@@ -302,10 +303,10 @@ function AgentDetailForm({
           </select>
         </div>
         <div>
-          <label htmlFor="agent-owner" className="text-xs font-medium text-slate-500">Owner</label>
+          <label htmlFor="agent-owner" className="text-xs font-medium text-slate-400">Owner</label>
           <input
             id="agent-owner"
-            className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+            className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-800/60 px-3 py-2 text-sm"
             value={agent.owner ?? ''}
             onChange={(e) => update('owner', e.target.value)}
             placeholder="team@company.com"
@@ -406,10 +407,10 @@ function Field({
   placeholder?: string
 }) {
   return (
-    <label className="block text-sm font-medium text-slate-600">
+    <label className="block text-sm font-medium text-slate-300">
       {label}
       <input
-        className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none"
+        className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-800/60 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
@@ -430,20 +431,15 @@ function TextAreaField({
   hint?: string
 }) {
   return (
-    <label className="block text-sm font-medium text-slate-600">
+    <label className="block text-sm font-medium text-slate-300">
       {label}
       <textarea
-        className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none"
+        className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-800/60 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
         rows={4}
         value={value}
         onChange={(e) => onChange(e.target.value)}
       />
-      {hint && <div className="text-xs text-slate-400">{hint}</div>}
+      {hint && <div className="text-xs text-slate-500">{hint}</div>}
     </label>
   )
 }
-
-
-
-
-
