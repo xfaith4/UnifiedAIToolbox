@@ -1,6 +1,6 @@
 // ### BEGIN FILE: src/pages/PromptLibraryPage.tsx
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import type { PromptItem, PromptVariable, FewShotExample } from '../types/prompts'
+import type { PromptItem, PromptVariable, FewShotExample, PromptVarType } from '../types/prompts'
 import {
   fetchPromptLibrary,
   normalizePrompt,
@@ -962,10 +962,10 @@ function PromptEditor({
     onChange(merged)
   }
 
-  function updateVar<K extends keyof PromptVariable>(
+  function updateVar(
     index: number,
-    key: K,
-    value: PromptVariable[K]
+    key: keyof PromptVariable,
+    value: string | PromptVarType | boolean | undefined
   ) {
     const nextVars = [...(p.variables ?? [])]
     nextVars[index] = { ...nextVars[index], [key]: value }
@@ -1145,7 +1145,7 @@ function PromptEditor({
               <select
                 className="bg-neutral-900 border border-neutral-800 rounded px-2 py-1"
                 value={v.type ?? 'string'}
-                onChange={(e) => updateVar(i, 'type', e.target.value)}
+                onChange={(e) => updateVar(i, 'type', e.target.value as PromptVarType)}
               >
                 <option value="string">string</option>
                 <option value="multiline">multiline</option>
@@ -1230,10 +1230,10 @@ function FewShotEditor({
   value: FewShotExample[]
   onChange: (v: FewShotExample[]) => void
 }) {
-  function upd<K extends keyof FewShotExample>(
+  function upd(
     index: number,
-    key: K,
-    val: FewShotExample[K]
+    key: keyof FewShotExample,
+    val: string | 'system' | 'user' | 'assistant'
   ) {
     const next = [...value]
     next[index] = { ...next[index], [key]: val }
@@ -1258,7 +1258,7 @@ function FewShotEditor({
             <select
               className="bg-neutral-900 border border-neutral-800 rounded px-2 py-1"
               value={fs.role}
-              onChange={(e) => upd(i, 'role', e.target.value)}
+              onChange={(e) => upd(i, 'role', e.target.value as 'system' | 'user' | 'assistant')}
             >
               <option value="system">system</option>
               <option value="user">user</option>

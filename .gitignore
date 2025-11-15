@@ -19,9 +19,14 @@ __pycache__/
 build/
 .codex_out/
 codex_out/
+codex-multiagent-swarm/
 runs/
 *.db
 *.log
+
+# Binary executables
+*.exe
+*.dll
 
 # Environment files (keep .env.example)
 .env

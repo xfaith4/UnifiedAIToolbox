@@ -1,9 +1,6 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import "./globals.css";
 import Link from "next/link";
-
-const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "Unified AI Toolbox",
@@ -17,7 +14,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={inter.className}>
+      <body className="font-sans">
         <header className="bg-gray-800 text-white p-4">
           <nav className="container mx-auto flex justify-between">
             <Link href="/" className="text-xl font-bold">

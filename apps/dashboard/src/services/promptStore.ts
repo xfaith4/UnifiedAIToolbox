@@ -4,6 +4,7 @@ import type {
   PromptExampleBlock,
   PromptItem,
   PromptVariable,
+  PromptVarType,
 } from '../types/prompts'
 
 const DB_KEY = 'promptlib.v1'
@@ -23,7 +24,25 @@ interface PromptVariableDefinition {
   description?: string
 }
 
-interface PromptSource extends Partial<PromptItem> {
+interface PromptSource extends Record<string, unknown> {
+  id?: string
+  title?: string
+  category?: string
+  context?: string
+  description?: string
+  tags?: string[]
+  role?: 'system' | 'user' | 'assistant'
+  style?: string
+  template?: string
+  fewShot?: { role: 'system' | 'user' | 'assistant'; content: string }[]
+  outputFormat?: string
+  stop?: string[]
+  temperature?: number
+  top_p?: number
+  updatedAt?: string
+  createdAt?: string
+  version?: string
+  source?: string
   integrations?: { ui?: { category?: string; context?: string } }
   telemetry?: { tags?: string[] }
   prompt?: {
@@ -35,8 +54,9 @@ interface PromptSource extends Partial<PromptItem> {
   }
   outputs?: { schema?: string; format?: string }
   provenance?: { source?: string }
-  variables?: unknown
+  variables?: PromptVariable[]
   models?: Record<string, unknown>
+  blocks?: PromptBlocks
 }
 
 export function nowIso() {
@@ -89,9 +109,9 @@ function readBlocks(raw: Record<string, unknown>): PromptBlocks | undefined {
         return {
           input: block.input,
           output: coerceString(block.output),
-        }
+        } as PromptExampleBlock
       })
-      .filter((ex): ex is PromptExampleBlock => Boolean(ex))
+      .filter((ex): ex is PromptExampleBlock => ex !== null)
     if (normalized.length > 0) {
       mapped.examples = normalized
     }
@@ -101,11 +121,20 @@ function readBlocks(raw: Record<string, unknown>): PromptBlocks | undefined {
 }
 
 function normalizeVariables(rawVars: unknown): PromptVariable[] {
+  const coerceVarType = (type: unknown): PromptVarType | undefined => {
+    if (!type) return undefined
+    const typeStr = String(type).toLowerCase()
+    if (['string', 'number', 'boolean', 'multiline', 'json'].includes(typeStr)) {
+      return typeStr as PromptVarType
+    }
+    return undefined
+  }
+
   if (Array.isArray(rawVars)) {
     return rawVars.map((variable, index) => ({
       name: variable?.name || `var${index + 1}`,
       label: variable?.label ?? '',
-      type: variable?.type ?? 'string',
+      type: coerceVarType(variable?.type) ?? 'string',
       default: coerceString(variable?.default ?? ''),
       required: variable?.required ?? false,
       description: variable?.description,
@@ -117,7 +146,7 @@ function normalizeVariables(rawVars: unknown): PromptVariable[] {
       ([name, definition]) => ({
         name,
         label: definition?.label ?? name,
-        type: definition?.type ?? 'string',
+        type: coerceVarType(definition?.type) ?? 'string',
         default: coerceString(definition?.default ?? ''),
         required: Boolean(definition?.required),
         description: definition?.description,
@@ -369,7 +398,7 @@ export function parseImportedPrompt(
 export async function renderPromptViaApi(
   promptId: string,
   variables: Record<string, unknown>
-): Promise<{ prompt: unknown; rendered_blocks: Record<string, unknown> }> {
+): Promise<{ prompt: unknown; rendered_blocks: Record<string, unknown>; output?: unknown }> {
   if (!API_BASE) {
     throw new Error('Prompt API base URL is not configured.')
   }
