@@ -27,10 +27,36 @@ Unified orchestration playground that stitches together prompt/agent assets, a W
 
 ## Getting started
 
+### 🚀 Quick Launch (Recommended)
+
+**Visual Launch Portal:**
+Open `launch-portal.html` in your browser for a visual interface with service status and launch commands.
+
+**Windows (PowerShell):**
+```powershell
+.\LaunchUnifiedToolbox.ps1
+```
+
+**Linux/Mac/WSL:**
+```bash
+./launch.sh
+```
+
+**Docker (All Platforms):**
+```bash
+docker compose up -d
+```
+
+📖 **See [LAUNCH_GUIDE.md](LAUNCH_GUIDE.md) for detailed launch instructions, troubleshooting, and configuration options.**
+
+### Prerequisites
+
 1. **Install prerequisites**
-   - .NET 8 SDK + Visual Studio with WPF workload (for `OrchestrationDesktop`).
-   - PowerShell 7.4+ (for modules/tests).
-   - Node.js 18+ (for `PromptWeb` build).
+   - Node.js 18+ (required for web apps)
+   - Python 3.12+ (required for API service)
+   - .NET 8 SDK + Visual Studio with WPF workload (optional, for `OrchestrationDesktop`)
+   - PowerShell 7.4+ (optional, for modules/tests)
+   - Docker & Docker Compose (optional, for containerized deployment)
 
 2. **PowerShell module smoke test**
 
@@ -60,21 +86,16 @@ Unified orchestration playground that stitches together prompt/agent assets, a W
    - Provide or paste an OpenAI API key when prompted (the key is cached only for the session).
    - Use *Tools → Milestone Dashboard* to trigger validation and orchestration runs.
 
-5. **Launch the unified web toolbox**
-   - Use `LaunchUnifiedToolbox.ps1` to start the complete stack:
-     - FastAPI Prompt API (default `http://localhost:8000`)
-     - React/Vite Dashboard (default `http://localhost:5173`)
-     - Optional: Streamlit Workbench (use `-EnableStreamlit` flag)
-   - Or use `LaunchUnifiedDashboard.bat` for a simpler launch.
+5. **Additional launch methods**
+   - **Windows batch:** `LaunchUnifiedDashboard.bat` for a simpler Windows launcher
+   - **Visual portal:** `Launch-Portal.bat` or open `launch-portal.html` directly
+   - **Advanced options:** See `LaunchUnifiedToolbox.ps1 --help` or `launch.sh --help`
 
-6. **PromptWeb** (if available in apps/)
-
-   ```bash
-   cd apps/PromptWeb
-   npm install
-   npm run build     # emits dist/ with prompts.json + static assets
-   npm run preview   # serves dist/ at http://localhost:4173
-   ```
+6. **Access the services**
+   - Dashboard UI: http://localhost:5173
+   - Prompt API: http://localhost:8000
+   - API Documentation: http://localhost:8000/docs
+   - Web Portal: http://localhost:3000 (if using Next.js app)
 
 ## Testing helpers
 

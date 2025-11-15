@@ -22,3 +22,13 @@ codex_out/
 runs/
 *.db
 *.log
+
+# Environment files (keep .env.example)
+.env
+.env.local
+.env.*.local
+
+# Docker volumes and temp files
+docker-compose.override.yml
+*.pid
+*.sock

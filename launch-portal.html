@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Unified AI Toolbox - Launch Portal</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 900px;
+            width: 100%;
+            padding: 40px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .header h1 {
+            color: #333;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 1.1em;
+        }
+
+        .services {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+
+        .service-card {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 24px;
+            transition: transform 0.2s, box-shadow 0.2s;
+            border: 2px solid #e9ecef;
+        }
+
+        .service-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+        }
+
+        .service-card h3 {
+            color: #333;
+            margin-bottom: 8px;
+            font-size: 1.3em;
+        }
+
+        .service-card p {
+            color: #666;
+            margin-bottom: 16px;
+            font-size: 0.95em;
+        }
+
+        .service-card .port {
+            background: #e7f3ff;
+            color: #0066cc;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 0.85em;
+            display: inline-block;
+            margin-bottom: 12px;
+        }
+
+        .service-card .status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .status-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #ccc;
+        }
+
+        .status-indicator.checking {
+            background: #ffc107;
+            animation: pulse 1.5s infinite;
+        }
+
+        .status-indicator.online {
+            background: #28a745;
+        }
+
+        .status-indicator.offline {
+            background: #dc3545;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            transition: background 0.2s;
+            border: none;
+            cursor: pointer;
+            font-size: 0.95em;
+            width: 100%;
+        }
+
+        .btn:hover:not(:disabled) {
+            background: #5568d3;
+        }
+
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .launch-section {
+            background: #f0f8ff;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 30px;
+        }
+
+        .launch-section h2 {
+            color: #333;
+            margin-bottom: 16px;
+        }
+
+        .launch-commands {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 16px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            margin-bottom: 16px;
+            overflow-x: auto;
+        }
+
+        .launch-commands .command {
+            margin-bottom: 8px;
+        }
+
+        .launch-commands .comment {
+            color: #6a9955;
+        }
+
+        .prerequisites {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 16px;
+            border-radius: 4px;
+            margin-top: 20px;
+        }
+
+        .prerequisites h3 {
+            color: #856404;
+            margin-bottom: 8px;
+        }
+
+        .prerequisites ul {
+            list-style-position: inside;
+            color: #856404;
+        }
+
+        .quick-links {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-top: 20px;
+        }
+
+        .quick-links .btn {
+            flex: 1;
+            min-width: 150px;
+        }
+
+        .footer {
+            text-align: center;
+            color: #666;
+            font-size: 0.9em;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e9ecef;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 Unified AI Toolbox</h1>
+            <p>Launch Portal - Start your services with one click</p>
+        </div>
+
+        <div class="launch-section">
+            <h2>🎯 Quick Launch</h2>
+            <p style="margin-bottom: 16px;">Choose your preferred launch method:</p>
+            
+            <div class="launch-commands">
+                <div class="command"><span class="comment"># Windows (PowerShell)</span></div>
+                <div class="command">.\LaunchUnifiedToolbox.ps1</div>
+                <div class="command" style="margin-top: 12px;"><span class="comment"># Linux/Mac/WSL</span></div>
+                <div class="command">./launch.sh</div>
+                <div class="command" style="margin-top: 12px;"><span class="comment"># Docker (all platforms)</span></div>
+                <div class="command">docker compose up -d</div>
+            </div>
+
+            <div class="prerequisites">
+                <h3>⚠️ Prerequisites</h3>
+                <ul>
+                    <li>Node.js 18+ & npm</li>
+                    <li>Python 3.12+</li>
+                    <li>Optional: Docker & Docker Compose</li>
+                    <li>Optional: OpenAI API key (set in .env)</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="services">
+            <div class="service-card">
+                <h3>📊 Dashboard</h3>
+                <p>React/Vite UI for prompt management</p>
+                <div class="port">Port: 5173</div>
+                <div class="status">
+                    <span class="status-indicator" id="dashboard-status"></span>
+                    <span id="dashboard-status-text">Checking...</span>
+                </div>
+                <button class="btn" id="dashboard-btn" onclick="openService('http://localhost:5173')" disabled>
+                    Open Dashboard
+                </button>
+            </div>
+
+            <div class="service-card">
+                <h3>🔌 Prompt API</h3>
+                <p>FastAPI backend service</p>
+                <div class="port">Port: 8000</div>
+                <div class="status">
+                    <span class="status-indicator" id="api-status"></span>
+                    <span id="api-status-text">Checking...</span>
+                </div>
+                <button class="btn" id="api-btn" onclick="openService('http://localhost:8000')" disabled>
+                    Open API
+                </button>
+            </div>
+
+            <div class="service-card">
+                <h3>🌐 Web Portal</h3>
+                <p>Next.js web application</p>
+                <div class="port">Port: 3000</div>
+                <div class="status">
+                    <span class="status-indicator" id="web-status"></span>
+                    <span id="web-status-text">Checking...</span>
+                </div>
+                <button class="btn" id="web-btn" onclick="openService('http://localhost:3000')" disabled>
+                    Open Web Portal
+                </button>
+            </div>
+        </div>
+
+        <div class="quick-links">
+            <a href="README.md" class="btn" style="background: #28a745;">📖 Documentation</a>
+            <a href="https://github.com/xfaith4/UnifiedAIToolbox" class="btn" style="background: #6c757d;">💻 GitHub</a>
+            <button class="btn" onclick="checkAllServices()" style="background: #17a2b8;">🔄 Refresh Status</button>
+        </div>
+
+        <div class="footer">
+            <p>Unified AI Toolbox - Prompt orchestration and management platform</p>
+        </div>
+    </div>
+
+    <script>
+        const services = [
+            { id: 'dashboard', url: 'http://localhost:5173', name: 'Dashboard' },
+            { id: 'api', url: 'http://localhost:8000/health', name: 'Prompt API' },
+            { id: 'web', url: 'http://localhost:3000', name: 'Web Portal' }
+        ];
+
+        function openService(url) {
+            window.open(url, '_blank');
+        }
+
+        async function checkService(service) {
+            const statusIndicator = document.getElementById(`${service.id}-status`);
+            const statusText = document.getElementById(`${service.id}-status-text`);
+            const button = document.getElementById(`${service.id}-btn`);
+
+            statusIndicator.className = 'status-indicator checking';
+            statusText.textContent = 'Checking...';
+
+            try {
+                const response = await fetch(service.url, {
+                    method: 'GET',
+                    mode: 'no-cors',
+                    cache: 'no-cache'
+                });
+                
+                // no-cors mode doesn't give us status, so we assume success if no error
+                statusIndicator.className = 'status-indicator online';
+                statusText.textContent = 'Online';
+                button.disabled = false;
+            } catch (error) {
+                // Try a simpler connectivity check
+                try {
+                    const img = new Image();
+                    img.src = service.url + '?t=' + Date.now();
+                    
+                    await new Promise((resolve, reject) => {
+                        img.onload = resolve;
+                        img.onerror = reject;
+                        setTimeout(reject, 3000);
+                    });
+                    
+                    statusIndicator.className = 'status-indicator online';
+                    statusText.textContent = 'Online';
+                    button.disabled = false;
+                } catch {
+                    statusIndicator.className = 'status-indicator offline';
+                    statusText.textContent = 'Offline';
+                    button.disabled = true;
+                }
+            }
+        }
+
+        async function checkAllServices() {
+            for (const service of services) {
+                checkService(service);
+            }
+        }
+
+        // Initial check
+        checkAllServices();
+
+        // Auto-refresh every 10 seconds
+        setInterval(checkAllServices, 10000);
+    </script>
+</body>
+</html>
