@@ -1,8 +1,0 @@
-{
-  "prompt_id": "volume.anomaly.summary",
-  "version": "1.0.0",
-  "source_path": "G:\\Development\\20_Staging\\AI-Toolbox\\UnifiedAIToolbox\\Orchestration\\UnifiedPromptApp\\packages\\prompt-registry\\prompts\\catalog\\imported\\prompt-service\\volume.anomaly.summary.1.0.0.prompt.yaml",
-  "requested_at": "2025-11-14T00:27:55.666195+00:00",
-  "review_policy": "critical",
-  "status": "queued"
-}

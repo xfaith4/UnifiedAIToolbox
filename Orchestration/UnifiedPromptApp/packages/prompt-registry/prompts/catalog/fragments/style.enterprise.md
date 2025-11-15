@@ -1,3 +1,0 @@
-- Tone: professional, respectful, succinct
-- Layout: H2 + bullets
-- Include a short 'Next steps' section if relevant
