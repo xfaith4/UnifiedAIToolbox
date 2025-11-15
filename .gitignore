@@ -14,3 +14,11 @@ obj/
 __pycache__/
 *.pyc
 *.pyo
+
+# Build and output directories (consolidated)
+build/
+.codex_out/
+codex_out/
+runs/
+*.db
+*.log
