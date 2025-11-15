@@ -34,7 +34,7 @@ export interface PromptOutputs {
   schema?: string
 }
 
-export interface PromptItem {
+export interface PromptItem extends Record<string, unknown> {
   id: string
   title: string
   category?: string
