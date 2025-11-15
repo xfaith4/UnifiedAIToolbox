@@ -845,6 +845,44 @@ def queue_refiner(req: RefinerRunRequest):
         raise
 
 
+@app.post("/prompts/{prompt_id}/refine")
+def refine_single_prompt(prompt_id: str):
+    """Refine a single prompt using AIRefiner"""
+    try:
+        req = RefinerRunRequest(prompt_id=prompt_id, invoke_refiner=True, dry_run=False)
+        result = queue_refiner(req)
+        return {"status": "success", "prompt_id": prompt_id, "result": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/prompts/refine-bulk")
+def refine_bulk_prompts(request: Dict[str, Any]):
+    """Refine multiple prompts using AIRefiner"""
+    prompt_ids = request.get("prompt_ids", [])
+    if not prompt_ids:
+        raise HTTPException(status_code=400, detail="No prompt_ids provided")
+    
+    results = []
+    for prompt_id in prompt_ids:
+        try:
+            req = RefinerRunRequest(prompt_id=prompt_id, invoke_refiner=True, dry_run=False)
+            result = queue_refiner(req)
+            results.append({"prompt_id": prompt_id, "status": "success", "result": result})
+        except Exception as e:
+            results.append({"prompt_id": prompt_id, "status": "error", "error": str(e)})
+    
+    return {"status": "completed", "results": results}
+
+
+@app.get("/prompts/{prompt_id}/reviews")
+def get_prompt_reviews(prompt_id: str):
+    """Get review history for a prompt"""
+    spec = _get_prompt_or_404(prompt_id)
+    reviews = (spec.raw.get("integrations") or {}).get("orchestration", {}).get("reviews", [])
+    return {"prompt_id": spec.id, "reviews": reviews}
+
+
 @app.post("/prompts/{prompt_id}/reviews")
 def record_prompt_review(prompt_id: str, req: ReviewRecordRequest):
     spec = _get_prompt_or_404(prompt_id)
