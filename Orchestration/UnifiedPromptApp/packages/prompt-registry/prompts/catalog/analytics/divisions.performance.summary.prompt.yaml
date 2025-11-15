@@ -1284,6 +1284,342 @@ telemetry:
       - BridgeService
       notes: Automated bridge review completed at 2025-11-14T01:23:04.623435+00:00
       manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:25:11Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:25:09.470576+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:25:13Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:25:09.470576+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:25:14Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:25:12.009941+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:25:16Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:25:12.009941+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:27:18Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:27:16.216461+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:27:20Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:27:16.216461+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:27:21Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:27:19.462616+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:27:23Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:27:19.462616+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:29:25Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:29:22.935313+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:29:27Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:29:22.935313+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:29:29Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:29:27.275463+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:29:31Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:29:27.275463+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:31:31Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:31:29.683496+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:31:34Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:31:29.683496+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:31:37Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:31:35.128431+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:31:39Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:31:35.128431+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:33:38Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:33:36.410152+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:33:40Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:33:36.410152+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:33:44Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:33:42.688442+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:33:47Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:33:42.688442+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:35:45Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:35:43.195715+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:35:47Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:35:43.195715+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:35:52Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:35:50.194111+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:35:54Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:35:50.194111+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:37:52Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:37:50.013561+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:37:54Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:37:50.013561+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:37:59Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:37:57.735713+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:38:02Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:37:57.735713+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:39:58Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:39:56.801487+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:40:01Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:39:56.801487+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:40:07Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:40:05.268479+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:40:09Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:40:05.268479+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:42:05Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:42:03.587355+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:42:08Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:42:03.587355+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:42:14Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:42:12.781087+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:42:17Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:42:12.781087+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:44:13Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:44:10.420166+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:44:15Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:44:10.420166+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:46:19Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:46:17.714669+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:46:22Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:46:17.714669+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:48:26Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:48:24.583114+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:48:29Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:48:24.583114+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:50:33Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:50:31.398147+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:50:35Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:50:31.398147+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:52:40Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:52:38.231527+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:52:42Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:52:38.231527+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:54:47Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:54:45.100805+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:54:49Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:54:45.100805+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:56:54Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:56:51.928099+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:56:56Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:56:51.928099+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:59:00Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:58:58.840994+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T01:59:03Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T01:58:58.840994+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T02:01:07Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T02:01:05.667693+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T02:01:10Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T02:01:05.667693+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T02:03:14Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T02:03:12.652542+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
+    - timestamp: '2025-11-14T02:03:17Z'
+      status: approved
+      reviewers:
+      - BridgeService
+      notes: Automated bridge review completed at 2025-11-14T02:03:12.652542+00:00
+      manifest: G:\Development\20_Staging\AI-Toolbox\UnifiedAIToolbox\Orchestration\UnifiedPromptApp\apps\orchestration-bridge\runs\analytics_divisions_performance_summary.2.1.0.json
 integrations:
   ui:
     category: Analytics

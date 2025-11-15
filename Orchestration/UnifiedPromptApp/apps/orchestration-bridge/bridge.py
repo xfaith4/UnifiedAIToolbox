@@ -136,6 +136,7 @@ class BridgeService:
         dry_run: bool = False,
         codex_enabled: bool = False,
         codex_max_parallel: int = 3,
+        auto_review_enabled: bool = False,
     ):
         self.poll_interval = poll_interval
         self.review_interval_hours = review_interval_hours
@@ -143,6 +144,7 @@ class BridgeService:
         self.dry_run = dry_run
         self.codex_enabled = codex_enabled
         self.codex_max_parallel = codex_max_parallel
+        self.auto_review_enabled = auto_review_enabled
         self.state = _load_state()
 
     def start(self) -> None:
@@ -151,7 +153,8 @@ class BridgeService:
         )
         try:
             while True:
-                self._process_critical_prompts()
+                if self.auto_review_enabled:
+                    self._process_critical_prompts()
                 self._process_supervisor_queue()
                 _save_state(self.state)
                 time.sleep(self.poll_interval)
@@ -586,6 +589,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Invoke Codex multi-agent swarm for prompts that set cascade=codex.",
     )
     serve_parser.add_argument(
+        "--enable-critical-reviews",
+        action="store_true",
+        help="Allow the bridge to auto-run prompts marked review_policy=critical.",
+    )
+    serve_parser.add_argument(
         "--codex-max-parallel",
         type=int,
         default=3,
@@ -604,6 +612,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
         dry_run=args.dry_run,
         codex_enabled=args.enable_codex_swarm,
         codex_max_parallel=args.codex_max_parallel,
+        auto_review_enabled=args.enable_critical_reviews,
     )
     service.start()
     return 0

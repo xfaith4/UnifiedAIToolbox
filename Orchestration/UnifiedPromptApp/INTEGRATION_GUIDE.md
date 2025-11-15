@@ -3,6 +3,34 @@
 ## Overview
 This guide documents the changes made to transition from Streamlit to a React-only architecture with integrated prompt library access across all tools.
 
+## Autonomous Orchestrator Overhaul
+To support high-level objectives instead of single prompt invocations, the orchestrator must evolve into a supervisor-driven workflow engine. The revamped flow introduces:
+
+1. **Objective Intake** – Capture `objective`, `success_criteria`, `constraints`, and `context` (files, links, prompt bundles) in a manifest submitted via Prompt Hub or API (`POST /orchestrator/tasks`). Each manifest gets a `complexity_hint` (simple/standard/complex) derived from token count, agent count, and requested integrations.
+2. **Supervisor Brain** – A dedicated supervisor agent (system prompt + planning tools) reads the manifest, breaks it into phases (Discover, Plan, Execute, Validate, Finalize) and determines which agent(s) to activate per phase. Decisions are recorded back onto the task (`PATCH /orchestrator/tasks/{id}` with `timeline` entries).
+3. **Adaptive Agent Selection** – The supervisor chooses from the agent catalog using metadata (mission, inputs, tools). Complex objectives automatically trigger either (a) sequential specialists or (b) a Codex swarm (`cascade: codex`) when parallel ideation/critique is beneficial. Simpler runs stay single-agent to reduce latency.
+4. **Managed Handoffs** – Each agent invocation produces artifacts stored under `apps/orchestration-bridge/runs/{task_id}/phase.json`. The supervisor waits for required outputs, then forwards distilled summaries + blocking issues to the next agent. Timeouts or failure signals allow reassignment or fallback agents.
+5. **Critic Guardrails** – A critic agent reviews: (a) phase exits, ensuring acceptance criteria were met before proceeding, and (b) the final package returned to the requestor. Critic feedback loops back into the supervisor timeline so rework is traceable.
+
+### Implementation Blueprint
+- **Schemas**: Extend `packages/prompt-registry/schemas/task.manifest.schema.json` (or create) with the new objective fields and timeline/phase artifacts.
+- **API**: Update `/orchestrator/tasks` handlers to store `objective`, `success_criteria`, and `timeline`. Provide a `POST /orchestrator/tasks/{id}/events` helper for agents to append progress without clobbering the manifest.
+- **Bridge Worker** (`apps/orchestration-bridge/bridge.py`):
+  - Add a `cmd_supervise-objective` entry point that reads pending tasks, instantiates the supervisor agent via PromptLibrary, and enforces the phase loop.
+  - Integrate Codex swarm invocation when supervisor sets `phase.strategy = "swarm"`.
+  - Persist per-phase artifacts and critic verdicts alongside run manifests for auditing.
+- **Prompt Hub UI**: Replace the current prompt picker-only workflow with a wizard: Objective → Success Criteria → Constraints → Agent suggestions. Include a preview of which agents/swarm will likely be used (reading data from `/agents` metadata + heuristics).
+- **Critic Agent**: Promote an opinionated critic prompt (`critics.autonomous.supervisor`) that gets the manifest, prior phase outputs, and explicit checklists derived from success criteria.
+
+### Runtime Flow Summary
+1. User submits objective manifest.
+2. Supervisor agent plans phases and selects agents/swarm strategy.
+3. Each phase executes (single agent or swarm). Outputs stored + summarized.
+4. Critic validates the phase before supervisor advances.
+5. After Finalize, critic produces a hardening review; supervisor assembles final report sent through Prompt Hub / API response.
+
+This architecture keeps humans in the loop (visible timeline + artifacts) while letting the orchestrator “run with” complex goals end-to-end.
+
 ## Changes Completed
 
 ### 1. Unified Navigation (apps/prompt-hub/src/components/Layout.tsx)
