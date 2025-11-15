@@ -1,0 +1,72 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  --bg-base: #020617;
+  --bg-surface: #081229;
+  --bg-elevated: #0f1b36;
+  --bg-hover: #162242;
+  --border-muted: rgba(148, 163, 184, 0.35);
+  --text-primary: #f8fafc;
+  --text-muted: #cbd5f5;
+  --text-subtle: #94a3b8;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+}
+
+#root {
+  background-color: var(--bg-base);
+}
+
+.bg-white,
+.bg-slate-50,
+.bg-slate-100 {
+  background-color: var(--bg-surface);
+}
+
+.bg-slate-200,
+.bg-slate-300 {
+  background-color: var(--bg-elevated);
+}
+
+.border-slate-100,
+.border-slate-200,
+.border-slate-300 {
+  border-color: var(--border-muted);
+}
+
+.text-slate-900,
+.text-slate-800,
+.text-slate-700 {
+  color: var(--text-primary);
+}
+
+.text-slate-600,
+.text-slate-500 {
+  color: var(--text-muted);
+}
+
+.text-slate-400,
+.text-slate-300 {
+  color: var(--text-subtle);
+}
+
+.hover\:bg-slate-50:hover,
+.hover\:bg-slate-100:hover {
+  background-color: var(--bg-hover);
+}
+
+.shadow-soft {
+  box-shadow: 0 15px 40px -15px rgba(2, 6, 23, 0.45);
+}

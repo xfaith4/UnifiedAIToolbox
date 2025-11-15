@@ -1,0 +1,69 @@
+[
+  {
+    "name": "Telemetry Watch",
+    "purpose": "Continuously monitor prompt telemetry for drift and escalate anomalies to orchestrator leads.",
+    "mission": "Scan the registry every hour, detect spikes in render failures or reviewer escalations, and prepare a concise brief with recommended mitigations.",
+    "status": "ready",
+    "owner": "orchestration@company.com",
+    "triggers": [
+      "render_success_rate < 97%",
+      "more than 3 critical prompts awaiting review",
+      "new prompt merged without reviewer notes"
+    ],
+    "inputs": [
+      "Prompt registry json snapshot",
+      "Telemetry audit logs",
+      "Reviewer queue metrics"
+    ],
+    "outputs": [
+      "Slack-ready summary",
+      "Structured JSON payload for orchestrator queue"
+    ],
+    "tools": [
+      "Prompt API /metrics endpoint",
+      "Slack webhook: #prompt-telemetry",
+      "Azure Blob: telemetry/raw"
+    ],
+    "playbook": [
+      "Collect registry + telemetry deltas for the last 60 minutes",
+      "Highlight prompts with status=draft but review_policy=critical",
+      "Recommend next actions per prompt and include owners"
+    ],
+    "handoff": "Post Slack brief and open a ticket if escalation criteria met.",
+    "notes": "Runs every hour via orchestrator bridge.",
+    "tags": ["monitoring", "telemetry"]
+  },
+  {
+    "name": "Launch Concierge",
+    "purpose": "Prepare production-ready launch packets for new prompts or agents.",
+    "mission": "Given a set of prompts tagged launch-ready, compile owners, risks, validation state, and orchestration requirements.",
+    "status": "draft",
+    "owner": "productops@company.com",
+    "triggers": [
+      "Prompt status transitions from draft -> active",
+      "Agent instruction flagged as ready"
+    ],
+    "inputs": [
+      "Prompt metadata (owners, risk tier)",
+      "Agent playbook + constraints",
+      "Latest reviewer notes"
+    ],
+    "outputs": [
+      "Launch brief (markdown)",
+      "Checklist JSON for orchestrator runbook"
+    ],
+    "tools": [
+      "Prompt API /prompts + /prompts/{id}",
+      "Bridge record-review endpoint",
+      "SharePoint template library"
+    ],
+    "playbook": [
+      "Validate that telemetry.audit.last_validated is < 7 days old",
+      "Summarize reviewer decisions and outstanding risks",
+      "Produce checklist grouped by owners with due dates"
+    ],
+    "handoff": "Send launch packet to Prompt Council distribution list for approval.",
+    "notes": "Escalate if audit timestamp is missing.",
+    "tags": ["launch", "ops"]
+  }
+]

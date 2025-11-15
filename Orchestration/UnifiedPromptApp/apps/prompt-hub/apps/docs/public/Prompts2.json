@@ -1,0 +1,110 @@
+[
+  {
+    "source": "99.5 WZPL (Cumulus)",
+    "title": "Enter to Win Pentatonix Tickets (Gainbridge Fieldhouse)",
+    "url": "https://www.wzpl.com/win/enter-to-win-pentatonix-tickets/",
+    "deadline_iso": "2025-11-16",
+    "entry_frequency": "one-time",
+    "eligibility": "18+; U.S. residents; local market rules apply",
+    "notes": "Official station contest; pair of tickets for Nov 30 show."
+  },
+  {
+    "source": "Visit Indy (official)",
+    "title": "PASIC – Win Two Tickets (Nov 12–15)",
+    "url": "https://www.visitindy.com/contests/",
+    "deadline_iso": "2025-11-03",
+    "entry_frequency": "one-time",
+    "eligibility": "18+; U.S. residents (per Visit Indy rules)",
+    "notes": "Tourism board giveaway; uses Visit Indy contest rules page."
+  },
+  {
+    "source": "WISH-TV",
+    "title": "Les Misérables Ticket Giveaway (Clowes Hall, Nov 4)",
+    "url": "https://www.wishtv.com/contests/les-miserables-ticket-giveaway/",
+    "deadline_iso": "2025-11-03",
+    "entry_frequency": "one-time",
+    "eligibility": "18+; Indiana/DMA per station rules",
+    "notes": "Active contest page; deadline inferred by event date."
+  },
+  {
+    "source": "WISH-TV",
+    "title": "Home Free Ticket Giveaway (Paramount Theatre, Nov 4)",
+    "url": "https://www.wishtv.com/contests/home-free-ticket-giveaway/",
+    "deadline_iso": "2025-11-03",
+    "entry_frequency": "one-time",
+    "eligibility": "18+; Indiana/DMA per station rules",
+    "notes": "Active contest page; near-term event."
+  },
+  {
+    "source": "WISH-TV",
+    "title": "TUSK: Fleetwood Mac Tribute Ticket Giveaway (Nov 7)",
+    "url": "https://www.wishtv.com/contests/tusk-fleetwood-mac-tribute-ticket-giveaway/",
+    "deadline_iso": "2025-11-06",
+    "entry_frequency": "one-time",
+    "eligibility": "18+; Indiana/DMA per station rules",
+    "notes": "10-ticket block; local venue; short window."
+  },
+  {
+    "source": "Indianapolis Colts (official)",
+    "title": "Colts Fan Forum Weekly Ticket Sweepstakes",
+    "url": "https://www.colts.com/fans/contests/fan-forum-rules",
+    "deadline_iso": "2025-12-31",
+    "entry_frequency": "weekly",
+    "eligibility": "18+; U.S. residents; one entry per week",
+    "notes": "Ongoing weekly drawings; free registration."
+  },
+  {
+    "source": "Do317 (verified local)",
+    "title": "Twilight In Concert – Ticket Giveaway (Old National Centre, Nov 5)",
+    "url": "https://do317.com/indianapolis-ticket-giveaways",
+    "deadline_iso": "2025-11-04",
+    "entry_frequency": "one-time",
+    "eligibility": "18+; U.S. residents (site terms)",
+    "notes": "Entry page aggregates current local ticket giveaways."
+  },
+  {
+    "source": "Visit Indiana (official)",
+    "title": "12 Days of Giveaways (Nov 1–12; multiple concerts incl. Pentatonix)",
+    "url": "https://www.visitindiana.com/blog/post/12-days-of-giveaways-2025/",
+    "deadline_iso": "2025-11-12",
+    "entry_frequency": "daily",
+    "eligibility": "18+; Indiana/U.S. (check daily post rules)",
+    "notes": "Runs Nov 1–12; new prize daily; free entry."
+  },
+  {
+    "source": "Newfields (official)",
+    "title": "First Thursday – Free General Admission (RSVP) – Nov 6 occurrence",
+    "url": "https://discovernewfields.org/en/events-exhibitions/first-thursday",
+    "deadline_iso": "2025-11-06",
+    "entry_frequency": "monthly",
+    "eligibility": "All ages; open to public",
+    "notes": "Reserve free ticket online; complimentary museum day."
+  },
+  {
+    "source": "Eiteljorg Museum (listings)",
+    "title": "First Friday – Free Admission 5–7pm – Nov 7 occurrence",
+    "url": "https://do317.com/events/2025/8/1/eiteljorg-first-friday-free-admission-extended-hours-tickets",
+    "deadline_iso": "2025-11-07",
+    "entry_frequency": "monthly",
+    "eligibility": "All ages; open to public",
+    "notes": "Free 5–7pm window; arrive early."
+  },
+  {
+    "source": "The Stutz (official events)",
+    "title": "First Friday Open Studios – Free – Nov 7 occurrence",
+    "url": "https://www.thestutz.com/events/first-friday-open-studios-5",
+    "deadline_iso": "2025-11-07",
+    "entry_frequency": "monthly",
+    "eligibility": "All ages; open to public",
+    "notes": "Complimentary, some partner listings use RSVP pages; family-friendly."
+  },
+  {
+    "source": "Eventbrite (verified organizer)",
+    "title": "Second Saturday Social – Creative Meetup (Free RSVP, Carmel) – Nov 8",
+    "url": "https://www.eventbrite.com/e/november-second-saturday-social-creative-meetup-tickets-1831097414659",
+    "deadline_iso": "2025-11-08",
+    "entry_frequency": "one-time",
+    "eligibility": "Adults recommended; open to public",
+    "notes": "Complimentary RSVP in Indy metro (Hamilton County)."
+  }
+]
