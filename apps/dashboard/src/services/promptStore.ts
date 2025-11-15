@@ -34,7 +34,7 @@ interface PromptSource extends Record<string, unknown> {
   role?: 'system' | 'user' | 'assistant'
   style?: string
   template?: string
-  fewShot?: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>
+  fewShot?: { role: 'system' | 'user' | 'assistant'; content: string }[]
   outputFormat?: string
   stop?: string[]
   temperature?: number
