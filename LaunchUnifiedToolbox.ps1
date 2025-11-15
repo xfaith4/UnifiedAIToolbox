@@ -45,7 +45,7 @@ if ($FrontendOnly -and $BackendOnly) {
 }
 
 $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$dashboardDir = Join-Path $repoRoot "apps\prompt-hub"
+$dashboardDir = Join-Path $repoRoot "apps\dashboard"
 $apiDir = Join-Path $repoRoot "services\prompt-api"
 $bridgeDir = Join-Path $repoRoot "apps\orchestration-bridge"
 $backendVenvName = if ($IsWindows) { ".venv" } else { ".venv-linux" }

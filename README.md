@@ -4,13 +4,26 @@ Unified orchestration playground that stitches together prompt/agent assets, a W
 
 ## Repo layout
 
-- `apps/OrchestrationDesktop` – WPF front-end that validates repos, runs the orchestration PowerShell scripts, and surfaces logs.
-- `apps/PromptWeb` – static site that builds a searchable catalog (`npm run build` ⇒ `dist/`) from `data/prompts`.
-- `modules/PromptLibrary` – PowerShell module that loads prompts/agents from `data/`, renders templates, and writes artifacts to `data/artifacts`.
-- `scripts/Unified-Orchestration.ps1` – orchestrator invoked by the desktop app and smoketests; shells out to `codex-multiagent-swarm/Orchestrate-Codex.ps1` when Codex runs are enabled.
-- `tests` + `Smoketest.ps1` – quick validation utilities for prompts and orchestration flows.
+### Applications
+- `apps/desktop` – WPF front-end that validates repos, runs orchestration scripts, and surfaces logs
+- `apps/web` – Next.js web application for the unified toolbox
+- `apps/dashboard` – React/Vite dashboard for prompts and orchestration (formerly prompt-hub)
+- `apps/prompt-workbench` – Streamlit UI for prompt development
+- `apps/orchestration-bridge` – Jobs & scripts connecting AI orchestration with the registry
+- `apps/data-exploration` – Data exploration tools
+- `apps/sensor-monitor` – Sensor monitoring application
 
-Truth still lives in `data/` – YAML prompt definitions and agent manifests are the only inputs the tooling needs. SQLite indexing hooks will be added later via `Update-PromptIndex`.
+### Services & Packages
+- `services/prompt-api` – FastAPI service for CRUD, render, and orchestration operations
+- `packages/prompt-registry` – YAML schema, validation, and render helpers
+- `packages/prompt-cli` – CLI tools for local scripting
+- `modules/PromptLibrary` – PowerShell module for loading/rendering prompts and agents
+
+### Core Data & Documentation
+- `data/` – Prompt definitions, agent manifests, and SQLite databases (source of truth)
+- `docs/` – Architecture documentation, consolidation guides, and branding assets
+- `scripts/` – Utility scripts including `Unified-Orchestration.ps1`
+- `tests/` – Test suites and validation utilities including `Smoketest.ps1`
 
 ## Getting started
 
@@ -42,11 +55,19 @@ Truth still lives in `data/` – YAML prompt definitions and agent manifests are
    Set `-SkipCodex` if you only want the prompt artifact generation step.
 
 4. **Launch the desktop shell**
-   - Open `UnifiedAIToolbox.sln` in Visual Studio and run the `OrchestrationDesktop` project.
+   - Open `UnifiedAIToolbox.sln` in Visual Studio and run the `OrchestrationDesktop` project (located in `apps/desktop/`).
+   - Alternatively, use `Launch-Toolbox.bat` after building the solution.
    - Provide or paste an OpenAI API key when prompted (the key is cached only for the session).
    - Use *Tools → Milestone Dashboard* to trigger validation and orchestration runs.
 
-5. **PromptWeb**
+5. **Launch the unified web toolbox**
+   - Use `LaunchUnifiedToolbox.ps1` to start the complete stack:
+     - FastAPI Prompt API (default `http://localhost:8000`)
+     - React/Vite Dashboard (default `http://localhost:5173`)
+     - Optional: Streamlit Workbench (use `-EnableStreamlit` flag)
+   - Or use `LaunchUnifiedDashboard.bat` for a simpler launch.
+
+6. **PromptWeb** (if available in apps/)
 
    ```bash
    cd apps/PromptWeb
