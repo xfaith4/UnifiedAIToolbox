@@ -1,16 +1,17 @@
 # Prompt Library (React + Vite)
 
-An opinionated workspace for capturing, searching, and testing AI prompts. The Prompt Library page now includes explicit JSON import guidance, quick capture for single prompts, deep editing, and provider payload previews.
+An opinionated workspace for capturing, searching, and testing AI prompts. The dashboard now provides a unified interface for all toolbox components including prompts, agents, orchestration, and service monitoring.
 
 ## Highlights
-- Import prompt collections from JSON using either the full editor schema or a simplified format (`title`, `category`, `context`, `prompt`).
-- Quick add card to save a single prompt in seconds, then continue editing with the full schema (variables, stop sequences, few-shot examples, etc.).
-- Search and filter by category, context, prompt text, tags, and metadata.
-- Export the library back to JSON at any time (downloads as `prompt-library.json`).
-- Live render panel that shows resolved templates and provider-ready payloads (OpenAI, Anthropic, Google Gemini, Ollama).
-- When `VITE_API_BASE` points at the Prompt API (default `http://localhost:8000` when launched via `LaunchUnifiedToolbox.ps1`), the render panel can call `POST /prompts/render` to show canonical block output straight from the backend.
-- Agent Instructions library ships alongside prompts so orchestrator-ready agents (missions, triggers, playbooks) can be curated, imported/exported, and handed off to automation workers.
-- Supervisor Orchestrator workspace lets you assemble a task, pick agents/prompts, and download a ready-to-run manifest for the automation bridge.
+- **Dashboard Home** - Service health monitoring showing status of all UnifiedAIToolbox services (Prompt API, Orchestration Bridge, Codex Swarm, Sensor Monitor, Dataset Explorer).
+- **Prompt Library** - Import/export prompt collections, quick capture, deep editing, and provider payload previews (OpenAI, Anthropic, Google Gemini, Ollama).
+- **Agent Library** - Curate orchestrator-ready agents with missions, triggers, playbooks, and handoff definitions.
+- **Orchestrator** - Supervisor workspace to assemble tasks, pick agents/prompts, and download ready-to-run manifests for the automation bridge.
+- **Dataset Explorer** - Upload and analyze datasets (CSV, JSON, Excel) for use in prompts and agents with prompt-driven exploration.
+- **Sensor Monitor** - Track sensor rewards and telemetry data, view runbooks, and monitor operational health metrics.
+- **GitHub Integration** - Browse repositories and manage GitHub workflows.
+- **Genesys Integration** - Monitor Genesys Cloud metrics, divisions, and call quality data.
+- Live render panel that shows resolved templates and provider-ready payloads when `VITE_API_BASE` points at the Prompt API (default `http://localhost:8000`).
 
 ## Getting Started
 ```bash
@@ -21,6 +22,30 @@ npm run launch          # checks from PORT/VITE_PORT/5173 and falls back to a ra
 `npm run launch` searches for an open port (starting with `PORT`, `VITE_PORT`, or `5173`) before starting Vite, preventing "address already in use" errors. Pass additional Vite flags after the script (e.g. `npm run launch -- --open`).
 
 Prefer a fixed port? You can still use `npm run dev`, or set `PORT=3000 npm run launch`.
+
+## Dashboard Pages
+
+### Home Dashboard
+- **Service Health Monitoring** - Real-time status of all UnifiedAIToolbox services (Prompt API, Orchestration Bridge, Codex Swarm, Sensor Monitor, Dataset Explorer).
+- **Quick Actions** - Fast access to common tasks like creating prompts, running AI Refiner, uploading datasets, and executing Codex swarm reviews.
+- The dashboard home provides a single-pane-of-glass view for all toolbox operations.
+
+### Dataset Explorer
+- Upload datasets (CSV, JSON, Excel, text files) for use in prompt-driven analysis.
+- Analyze uploaded datasets with prompts from the library.
+- View dataset metadata including size, upload date, and processing status.
+- Integrates with the Data Exploration Service (`apps/data-exploration`) when available.
+
+### Sensor Monitor
+- Track sensor rewards and telemetry data in real-time.
+- View sensor status cards showing reward scores, trends, and health indicators.
+- Acknowledge sensors and trigger follow-up actions.
+- Access runbooks for detailed sensor analysis.
+- Integrates with the Sensor Monitor Service (`apps/sensor-monitor`) when available.
+
+### Integration Tools
+- **GitHub** - Browse repositories with optional personal access token for private repos.
+- **Genesys** - Monitor Genesys Cloud metrics, divisions, and call quality data (requires proxy configuration).
 
 ## Prompt JSON Format
 

@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { BarChart3, Settings, Github, Workflow, BookOpen, Bot, Users, Sparkles } from 'lucide-react'
+import { BarChart3, Settings, Github, Workflow, BookOpen, Bot, Users, Sparkles, Database, Activity } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 
 const navSections = [
@@ -20,6 +20,13 @@ const navSections = [
       { to: '/orchestrator', label: 'Orchestrator', icon: Users },
       { to: '/genesys', label: 'Genesys', icon: Workflow },
       { to: '/github', label: 'GitHub', icon: Github },
+    ],
+  },
+  {
+    title: 'Data & Monitoring',
+    items: [
+      { to: '/datasets', label: 'Dataset Explorer', icon: Database },
+      { to: '/sensors', label: 'Sensor Monitor', icon: Activity },
     ],
   },
   {
