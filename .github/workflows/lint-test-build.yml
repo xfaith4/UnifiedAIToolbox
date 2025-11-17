@@ -33,6 +33,8 @@ jobs:
       - name: Run PowerShell tests
         shell: pwsh
         run: |
+          # Add modules directory to PSModulePath for tests
+          $env:PSModulePath = "$PWD/modules" + [IO.Path]::PathSeparator + $env:PSModulePath
           Invoke-Pester -Path tests -CI -Output Detailed
       
       - name: Build prompt index
@@ -61,6 +63,8 @@ jobs:
         working-directory: services/prompt-api
         run: |
           python -m pip install --upgrade pip
+          # Install prompt-registry package first
+          pip install ../../packages/prompt-registry
           pip install -e .[dev]
           pip install flake8
       
