@@ -62,7 +62,10 @@ function Update-PromptIndex {
         [string]$PromptId,
         [string]$Title,
         [string]$Version = '1.0.0',
+        [string]$Category = '',
+        [string]$Owner = '',
         [string[]]$Tags = @(),
+        [string]$Description = '',
         [string]$Checksum = $null
     )
 
@@ -75,14 +78,17 @@ function Update-PromptIndex {
     
     $cmd = $script:dbConnection.CreateCommand()
     $cmd.CommandText = @"
-    INSERT OR REPLACE INTO prompts (id, title, version, tags, checksum, updated_utc)
-    VALUES (@id, @title, @version, @tags, @checksum, @updated_utc)
+    INSERT OR REPLACE INTO prompts (id, title, version, category, owner, tags, description, checksum, updated_utc)
+    VALUES (@id, @title, @version, @category, @owner, @tags, @description, @checksum, @updated_utc)
 "@
     
     $cmd.Parameters.AddWithValue("@id", $PromptId) | Out-Null
     $cmd.Parameters.AddWithValue("@title", $Title) | Out-Null
     $cmd.Parameters.AddWithValue("@version", $Version) | Out-Null
+    $cmd.Parameters.AddWithValue("@category", $Category) | Out-Null
+    $cmd.Parameters.AddWithValue("@owner", $Owner) | Out-Null
     $cmd.Parameters.AddWithValue("@tags", $tagsJson) | Out-Null
+    $cmd.Parameters.AddWithValue("@description", $Description) | Out-Null
     $cmd.Parameters.AddWithValue("@checksum", $Checksum) | Out-Null
     $cmd.Parameters.AddWithValue("@updated_utc", $now) | Out-Null
     
@@ -168,8 +174,11 @@ function Search-Prompts {
     [CmdletBinding()]
     param(
         [string]$Query,
+        [string]$Category,
+        [string]$Owner,
         [string[]]$Tags = @(),
-        [int]$Limit = 10
+        [int]$Limit = 10,
+        [int]$Offset = 0
     )
 
     if (-not $script:dbConnection) {
@@ -180,34 +189,77 @@ function Search-Prompts {
     $parameters = @{}
     $paramCount = 0
 
+    # Use FTS5 for full-text search if query is provided
     if ($Query) {
-        $whereClauses += "(title LIKE @query OR id LIKE @query)"
-        $parameters["@query"] = "%$Query%"
-    }
-
-    if ($Tags -and $Tags.Count -gt 0) {
-        $tagConditions = @()
-        foreach ($tag in $Tags) {
-            $paramName = "@tag$paramCount"
-            $tagConditions += "tags LIKE $paramName"
-            $parameters[$paramName] = "%$tag%"
-            $paramCount++
-        }
-        $whereClauses += "(" + ($tagConditions -join " OR ") + ")"
-    }
-
-    $whereClause = if ($whereClauses.Count -gt 0) { "WHERE " + ($whereClauses -join " AND ") } else { "" }
-    
-    $query = @"
-    SELECT id, title, version, tags, updated_utc 
-    FROM prompts 
-    $whereClause
-    ORDER BY updated_utc DESC
-    LIMIT $Limit
+        $sqlQuery = @"
+        SELECT p.id, p.title, p.version, p.category, p.owner, p.tags, p.description, p.updated_utc,
+               rank AS relevance
+        FROM prompts p
+        JOIN prompts_fts fts ON p.rowid = fts.rowid
+        WHERE prompts_fts MATCH @query
 "@
+        $parameters["@query"] = $Query
+        
+        # Add filters
+        if ($Category) {
+            $whereClauses += "p.category = @category"
+            $parameters["@category"] = $Category
+        }
+        if ($Owner) {
+            $whereClauses += "p.owner = @owner"
+            $parameters["@owner"] = $Owner
+        }
+        if ($Tags -and $Tags.Count -gt 0) {
+            $tagConditions = @()
+            foreach ($tag in $Tags) {
+                $paramName = "@tag$paramCount"
+                $tagConditions += "p.tags LIKE $paramName"
+                $parameters[$paramName] = "%$tag%"
+                $paramCount++
+            }
+            $whereClauses += "(" + ($tagConditions -join " OR ") + ")"
+        }
+        
+        if ($whereClauses.Count -gt 0) {
+            $sqlQuery += " AND " + ($whereClauses -join " AND ")
+        }
+        
+        $sqlQuery += " ORDER BY rank LIMIT $Limit OFFSET $Offset"
+    } else {
+        # No query, just filter
+        $sqlQuery = @"
+        SELECT id, title, version, category, owner, tags, description, updated_utc
+        FROM prompts
+"@
+        
+        if ($Category) {
+            $whereClauses += "category = @category"
+            $parameters["@category"] = $Category
+        }
+        if ($Owner) {
+            $whereClauses += "owner = @owner"
+            $parameters["@owner"] = $Owner
+        }
+        if ($Tags -and $Tags.Count -gt 0) {
+            $tagConditions = @()
+            foreach ($tag in $Tags) {
+                $paramName = "@tag$paramCount"
+                $tagConditions += "tags LIKE $paramName"
+                $parameters[$paramName] = "%$tag%"
+                $paramCount++
+            }
+            $whereClauses += "(" + ($tagConditions -join " OR ") + ")"
+        }
+        
+        if ($whereClauses.Count -gt 0) {
+            $sqlQuery += " WHERE " + ($whereClauses -join " AND ")
+        }
+        
+        $sqlQuery += " ORDER BY updated_utc DESC LIMIT $Limit OFFSET $Offset"
+    }
     
     $cmd = $script:dbConnection.CreateCommand()
-    $cmd.CommandText = $query
+    $cmd.CommandText = $sqlQuery
     
     foreach ($key in $parameters.Keys) {
         $cmd.Parameters.AddWithValue($key, $parameters[$key]) | Out-Null
@@ -222,9 +274,17 @@ function Search-Prompts {
                 Id = $reader["id"]
                 Title = $reader["title"]
                 Version = $reader["version"]
-                Tags = $reader["tags"] | ConvertFrom-Json -ErrorAction SilentlyContinue | ForEach-Object { $_ }
+                Category = if ($reader["category"] -is [DBNull]) { "" } else { $reader["category"] }
+                Owner = if ($reader["owner"] -is [DBNull]) { "" } else { $reader["owner"] }
+                Tags = if ($reader["tags"] -is [DBNull]) { @() } else { $reader["tags"] | ConvertFrom-Json -ErrorAction SilentlyContinue | ForEach-Object { $_ } }
+                Description = if ($reader["description"] -is [DBNull]) { "" } else { $reader["description"] }
                 Updated = [DateTime]::Parse($reader["updated_utc"])
             }
+            
+            if ($Query -and $reader.FieldCount -gt 8) {
+                $result | Add-Member -NotePropertyName 'Relevance' -NotePropertyValue $reader["relevance"]
+            }
+            
             $results += $result
         }
         

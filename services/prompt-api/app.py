@@ -157,6 +157,25 @@ class AgentSyncRequest(BaseModel):
     agents: List[Dict[str, Any]] = Field(default_factory=list)
 
 
+class PromptSearchResult(BaseModel):
+    id: str
+    title: str
+    version: str
+    category: Optional[str] = None
+    owner: Optional[str] = None
+    tags: List[str] = Field(default_factory=list)
+    description: Optional[str] = None
+    updated: str
+    relevance: Optional[float] = None
+
+
+class SearchPromptsResponse(BaseModel):
+    results: List[PromptSearchResult]
+    total: int
+    query: Optional[str] = None
+    filters: Dict[str, Any] = Field(default_factory=dict)
+
+
 class OrchestratorTask(BaseModel):
     supervisor: Dict[str, Any]
     agents: List[Dict[str, Any]] = Field(default_factory=list)
@@ -817,6 +836,173 @@ def list_prompt_payloads():
     # Append new prompts that exist only in the synced cache
     merged.extend(overrides.values())
     return merged
+
+
+@app.get("/prompts/search", response_model=SearchPromptsResponse)
+def search_prompts(
+    q: Optional[str] = Query(None, description="Full-text search query"),
+    category: Optional[str] = Query(None, description="Filter by category"),
+    owner: Optional[str] = Query(None, description="Filter by owner"),
+    tags: Optional[str] = Query(None, description="Comma-separated tags to filter"),
+    limit: int = Query(10, ge=1, le=100, description="Number of results to return"),
+    offset: int = Query(0, ge=0, description="Offset for pagination")
+):
+    """
+    Search prompts using SQLite FTS5 full-text search or filtering.
+    
+    Examples:
+    - /prompts/search?q=analytics
+    - /prompts/search?category=engineering
+    - /prompts/search?tags=powershell,code-review
+    - /prompts/search?q=meeting&category=comms&limit=5
+    """
+    # Check if database and FTS index exist
+    prompts_db = ROOT_DIR / "data" / "prompts.db"
+    if not prompts_db.exists():
+        # Return empty results if database doesn't exist yet
+        return SearchPromptsResponse(results=[], total=0, query=q, filters={})
+    
+    try:
+        with sqlite3.connect(prompts_db) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            # Build query
+            where_clauses = []
+            params = {}
+            
+            # Full-text search
+            if q:
+                # Use FTS5 if available
+                try:
+                    fts_query = """
+                        SELECT p.id, p.title, p.version, p.category, p.owner, p.tags, 
+                               p.description, p.updated_utc, rank AS relevance
+                        FROM prompts p
+                        JOIN prompts_fts fts ON p.rowid = fts.rowid
+                        WHERE prompts_fts MATCH :query
+                    """
+                    params[":query"] = q
+                    
+                    # Add filters
+                    if category:
+                        where_clauses.append("p.category = :category")
+                        params[":category"] = category
+                    if owner:
+                        where_clauses.append("p.owner = :owner")
+                        params[":owner"] = owner
+                    if tags:
+                        tag_list = [t.strip() for t in tags.split(",")]
+                        tag_conditions = [f"p.tags LIKE :tag{i}" for i in range(len(tag_list))]
+                        where_clauses.append(f"({' OR '.join(tag_conditions)})")
+                        for i, tag in enumerate(tag_list):
+                            params[f":tag{i}"] = f"%{tag}%"
+                    
+                    if where_clauses:
+                        fts_query += " AND " + " AND ".join(where_clauses)
+                    
+                    fts_query += " ORDER BY rank LIMIT :limit OFFSET :offset"
+                    params[":limit"] = limit
+                    params[":offset"] = offset
+                    
+                    cursor.execute(fts_query, params)
+                except sqlite3.OperationalError:
+                    # FTS not available, fallback to LIKE search
+                    fallback_query = """
+                        SELECT id, title, version, category, owner, tags, description, updated_utc
+                        FROM prompts
+                        WHERE (title LIKE :query OR description LIKE :query OR tags LIKE :query)
+                    """
+                    params[":query"] = f"%{q}%"
+                    
+                    if category:
+                        fallback_query += " AND category = :category"
+                        params[":category"] = category
+                    if owner:
+                        fallback_query += " AND owner = :owner"
+                        params[":owner"] = owner
+                    if tags:
+                        tag_list = [t.strip() for t in tags.split(",")]
+                        tag_conditions = [f"tags LIKE :tag{i}" for i in range(len(tag_list))]
+                        fallback_query += f" AND ({' OR '.join(tag_conditions)})"
+                        for i, tag in enumerate(tag_list):
+                            params[f":tag{i}"] = f"%{tag}%"
+                    
+                    fallback_query += " ORDER BY updated_utc DESC LIMIT :limit OFFSET :offset"
+                    params[":limit"] = limit
+                    params[":offset"] = offset
+                    
+                    cursor.execute(fallback_query, params)
+            else:
+                # No query, just filter
+                filter_query = """
+                    SELECT id, title, version, category, owner, tags, description, updated_utc
+                    FROM prompts
+                """
+                
+                if category:
+                    where_clauses.append("category = :category")
+                    params[":category"] = category
+                if owner:
+                    where_clauses.append("owner = :owner")
+                    params[":owner"] = owner
+                if tags:
+                    tag_list = [t.strip() for t in tags.split(",")]
+                    tag_conditions = [f"tags LIKE :tag{i}" for i in range(len(tag_list))]
+                    where_clauses.append(f"({' OR '.join(tag_conditions)})")
+                    for i, tag in enumerate(tag_list):
+                        params[f":tag{i}"] = f"%{tag}%"
+                
+                if where_clauses:
+                    filter_query += " WHERE " + " AND ".join(where_clauses)
+                
+                filter_query += " ORDER BY updated_utc DESC LIMIT :limit OFFSET :offset"
+                params[":limit"] = limit
+                params[":offset"] = offset
+                
+                cursor.execute(filter_query, params)
+            
+            # Fetch results
+            rows = cursor.fetchall()
+            results = []
+            
+            for row in rows:
+                tags_list = []
+                if row["tags"]:
+                    try:
+                        tags_list = json.loads(row["tags"])
+                    except:
+                        pass
+                
+                result = PromptSearchResult(
+                    id=row["id"],
+                    title=row["title"],
+                    version=row["version"],
+                    category=row["category"] if row["category"] else None,
+                    owner=row["owner"] if row["owner"] else None,
+                    tags=tags_list if isinstance(tags_list, list) else [],
+                    description=row["description"] if row["description"] else None,
+                    updated=row["updated_utc"],
+                    relevance=row["relevance"] if "relevance" in row.keys() else None
+                )
+                results.append(result)
+            
+            # Get total count (for pagination)
+            total = len(results)  # Simplified, could be enhanced with a COUNT query
+            
+            return SearchPromptsResponse(
+                results=results,
+                total=total,
+                query=q,
+                filters={
+                    "category": category,
+                    "owner": owner,
+                    "tags": tags.split(",") if tags else []
+                }
+            )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
+
 
 @app.get("/prompts/{prompt_id}")
 def get_prompt(prompt_id: str):
