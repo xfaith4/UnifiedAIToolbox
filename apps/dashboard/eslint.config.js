@@ -29,7 +29,11 @@ export default [
         __dirname: 'readonly',
         setTimeout: 'readonly',
         clearTimeout: 'readonly',
+        setInterval: 'readonly',
+        clearInterval: 'readonly',
         URLSearchParams: 'readonly',
+        EventSource: 'readonly',
+        HeadersInit: 'readonly',
       },
     },
     plugins: {
