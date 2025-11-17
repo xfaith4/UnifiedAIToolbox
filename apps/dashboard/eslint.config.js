@@ -27,6 +27,9 @@ export default [
         HTMLInputElement: 'readonly',
         global: 'readonly',
         __dirname: 'readonly',
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly',
+        URLSearchParams: 'readonly',
       },
     },
     plugins: {
