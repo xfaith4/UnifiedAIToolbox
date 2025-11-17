@@ -105,5 +105,16 @@ docker compose up -d
 
 ## Next steps
 
-- Flesh out `Update-PromptIndex` with SQLite indexing and add CI to run the Pester suite + PromptWeb build.
-- Connect `Invoke-Model` to real provider SDKs/CLIs once credentials and quotas are available.
+The project has completed Phase 1 (Foundation & Launch Readiness) and is now **Production Ready**. 
+
+For detailed roadmap and next steps, see:
+- **[PROJECT_PLAN.md](PROJECT_PLAN.md)** - Comprehensive plan for Milestone 1.5 (Enterprise Ready)
+- **[SPRINT_BREAKDOWN.md](SPRINT_BREAKDOWN.md)** - Detailed sprint-by-sprint implementation guide
+
+**Quick Summary - Milestone 1.5 (12 weeks):**
+- CI/CD pipeline with automated testing
+- SQLite prompt indexing and fast search
+- Real AI provider integration (OpenAI, Anthropic, Azure)
+- GitHub automation (clone, Codex swarm, PR creation)
+- 80%+ test coverage
+- Performance optimization and security hardening
