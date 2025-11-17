@@ -1535,6 +1535,281 @@ def check_budget_status(
     return BudgetStatusResponse(**budget_status)
 
 
+# ----------------------------
+# GitHub Integration
+# ----------------------------
+
+# Initialize GitHub cloner (lazy initialization)
+_github_cloner = None
+
+def get_github_cloner():
+    """Get or initialize the GitHub cloner."""
+    global _github_cloner
+    if _github_cloner is None:
+        github_token = os.environ.get("GITHUB_TOKEN")
+        _github_cloner = GitHubCloner(token=github_token)
+    return _github_cloner
+
+
+class GitHubCloner:
+    """Placeholder for GitHub cloner - import from orchestration-bridge."""
+    pass
+
+
+# Try to import GitHub cloner from orchestration-bridge
+try:
+    orchestration_bridge_path = ROOT_DIR / "apps" / "orchestration-bridge"
+    if orchestration_bridge_path not in sys.path:
+        sys.path.insert(0, str(orchestration_bridge_path))
+    from github.clone import GitHubCloner, CloneStatus  # type: ignore
+except ImportError:
+    # Fallback if module not available
+    class GitHubCloner:  # type: ignore
+        def __init__(self, token=None, base_clone_dir=None):
+            pass
+        def search_repositories(self, query, max_results=30):
+            return []
+        def get_repository_info(self, owner, repo_name):
+            return {}
+        def clone_repository(self, repo_url, branch=None, depth=None):
+            return "mock_id"
+        def get_progress(self, clone_id):
+            return None
+
+
+class GitHubSearchRequest(BaseModel):
+    """Request model for GitHub repository search."""
+    query: str = Field(..., description="Search query")
+    max_results: int = Field(30, description="Maximum results", ge=1, le=100)
+
+
+class GitHubRepoInfo(BaseModel):
+    """Repository information model."""
+    full_name: str
+    name: str
+    owner: str
+    description: Optional[str]
+    url: str
+    clone_url: str
+    stars: int
+    forks: int
+    language: Optional[str]
+    size_kb: int
+    updated_at: Optional[str]
+    default_branch: str
+    branches: Optional[List[str]] = None
+    topics: Optional[List[str]] = None
+    license: Optional[str] = None
+
+
+class CloneRequest(BaseModel):
+    """Request model for cloning a repository."""
+    repo_url: str = Field(..., description="Repository URL")
+    branch: Optional[str] = Field(None, description="Branch to clone")
+    depth: Optional[int] = Field(None, description="Clone depth (shallow clone)")
+
+
+class CloneProgressResponse(BaseModel):
+    """Response model for clone progress."""
+    clone_id: str
+    repo_url: str
+    status: str
+    progress_percent: float
+    message: str
+    clone_path: Optional[str] = None
+    start_time: str
+    end_time: Optional[str] = None
+    error: Optional[str] = None
+    size_mb: Optional[float] = None
+    file_count: Optional[int] = None
+    branches: Optional[List[str]] = None
+
+
+@app.post("/github/search", response_model=List[GitHubRepoInfo])
+def search_github_repositories(request: GitHubSearchRequest):
+    """
+    Search for repositories on GitHub.
+    
+    Args:
+        request: Search request with query and max results
+        
+    Returns:
+        List of repository information
+    """
+    try:
+        cloner = get_github_cloner()
+        repos = cloner.search_repositories(request.query, request.max_results)
+        return repos
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/github/repo/{owner}/{repo_name}", response_model=GitHubRepoInfo)
+def get_repository_info(owner: str, repo_name: str):
+    """
+    Get detailed information about a specific repository.
+    
+    Args:
+        owner: Repository owner
+        repo_name: Repository name
+        
+    Returns:
+        Repository information
+    """
+    try:
+        cloner = get_github_cloner()
+        info = cloner.get_repository_info(owner, repo_name)
+        return info
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@app.post("/github/clone", response_model=CloneProgressResponse)
+def clone_repository(request: CloneRequest):
+    """
+    Clone a GitHub repository.
+    
+    Args:
+        request: Clone request with repo URL and optional branch/depth
+        
+    Returns:
+        Clone progress response with clone ID
+    """
+    try:
+        cloner = get_github_cloner()
+        clone_id = cloner.clone_repository(
+            repo_url=request.repo_url,
+            branch=request.branch,
+            depth=request.depth
+        )
+        
+        # Get initial progress
+        progress = cloner.get_progress(clone_id)
+        if not progress:
+            raise HTTPException(status_code=500, detail="Failed to start clone")
+        
+        return CloneProgressResponse(
+            clone_id=clone_id,
+            repo_url=progress.repo_url,
+            status=progress.status.value,
+            progress_percent=progress.progress_percent,
+            message=progress.message,
+            clone_path=progress.clone_path,
+            start_time=progress.start_time.isoformat(),
+            end_time=progress.end_time.isoformat() if progress.end_time else None,
+            error=progress.error,
+            size_mb=progress.size_mb,
+            file_count=progress.file_count,
+            branches=progress.branches
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/github/clone/{clone_id}/progress", response_model=CloneProgressResponse)
+def get_clone_progress(clone_id: str):
+    """
+    Get the progress of a clone operation.
+    
+    Args:
+        clone_id: Clone operation ID
+        
+    Returns:
+        Clone progress information
+    """
+    cloner = get_github_cloner()
+    progress = cloner.get_progress(clone_id)
+    
+    if not progress:
+        raise HTTPException(status_code=404, detail="Clone operation not found")
+    
+    return CloneProgressResponse(
+        clone_id=clone_id,
+        repo_url=progress.repo_url,
+        status=progress.status.value,
+        progress_percent=progress.progress_percent,
+        message=progress.message,
+        clone_path=progress.clone_path,
+        start_time=progress.start_time.isoformat(),
+        end_time=progress.end_time.isoformat() if progress.end_time else None,
+        error=progress.error,
+        size_mb=progress.size_mb,
+        file_count=progress.file_count,
+        branches=progress.branches
+    )
+
+
+@app.get("/github/clone/{clone_id}/tree")
+def get_file_tree(clone_id: str, max_depth: int = Query(3, ge=1, le=10)):
+    """
+    Get the file tree of a cloned repository.
+    
+    Args:
+        clone_id: Clone operation ID
+        max_depth: Maximum depth to traverse
+        
+    Returns:
+        File tree as nested JSON
+    """
+    cloner = get_github_cloner()
+    tree = cloner.get_file_tree(clone_id, max_depth)
+    
+    if tree is None:
+        raise HTTPException(status_code=404, detail="Clone not found or not completed")
+    
+    return tree
+
+
+@app.delete("/github/clone/{clone_id}")
+def cleanup_clone(clone_id: str):
+    """
+    Clean up a cloned repository.
+    
+    Args:
+        clone_id: Clone operation ID
+        
+    Returns:
+        Success message
+    """
+    cloner = get_github_cloner()
+    success = cloner.cleanup_clone(clone_id)
+    
+    if not success:
+        raise HTTPException(status_code=404, detail="Clone not found or cleanup failed")
+    
+    return {"message": "Clone cleaned up successfully"}
+
+
+@app.get("/github/clones", response_model=List[CloneProgressResponse])
+def list_clones():
+    """
+    List all tracked clone operations.
+    
+    Returns:
+        List of clone progress information
+    """
+    cloner = get_github_cloner()
+    clones = cloner.list_clones()
+    
+    return [
+        CloneProgressResponse(
+            clone_id=f"{int(progress.start_time.timestamp())}_{hash(progress.repo_url)}",
+            repo_url=progress.repo_url,
+            status=progress.status.value,
+            progress_percent=progress.progress_percent,
+            message=progress.message,
+            clone_path=progress.clone_path,
+            start_time=progress.start_time.isoformat(),
+            end_time=progress.end_time.isoformat() if progress.end_time else None,
+            error=progress.error,
+            size_mb=progress.size_mb,
+            file_count=progress.file_count,
+            branches=progress.branches
+        )
+        for progress in clones
+    ]
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PROMPT_API_PORT", "8000"))
     uvicorn.run("app:app", host="0.0.0.0", port=port, reload=True)

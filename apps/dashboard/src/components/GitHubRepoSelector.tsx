@@ -1,223 +1,204 @@
 /**
- * GitHub Repository Selector Component
- * 
- * Allows users to search for and clone GitHub repositories for Codex analysis.
+ * Component for searching and cloning GitHub repositories
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react'
 import {
   searchRepositories,
   cloneRepository,
+  getCloneProgress,
   getFileTree,
-  listBranches,
-  deleteClone,
-  type RepositorySearchResult,
+  cleanupClone,
+  type GitHubRepoInfo,
+  type CloneProgress,
   type FileTreeNode,
-} from '../services/githubApi';
+} from '../services/githubCloner'
 
 interface GitHubRepoSelectorProps {
-  onRepoCloned?: (cloneId: string, clonePath: string) => void;
-  darkMode?: boolean;
+  onRepoSelected?: (cloneId: string, repoInfo: GitHubRepoInfo) => void
 }
 
-export function GitHubRepoSelector({ onRepoCloned, darkMode = false }: GitHubRepoSelectorProps) {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<RepositorySearchResult[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [selectedRepo, setSelectedRepo] = useState<RepositorySearchResult | null>(null);
-  const [cloning, setCloning] = useState(false);
-  const [clonedRepos, setClonedRepos] = useState<{
-    id: string;
-    path: string;
-    repo: string;
-    branches?: string[];
-    tree?: FileTreeNode;
-  }[]>([]);
-  const [selectedBranch, setSelectedBranch] = useState<string>('');
-  const [error, setError] = useState<string | null>(null);
+export function GitHubRepoSelector({ onRepoSelected }: GitHubRepoSelectorProps) {
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<GitHubRepoInfo[]>([])
+  const [selectedRepo, setSelectedRepo] = useState<GitHubRepoInfo | null>(null)
+  const [cloneProgress, setCloneProgress] = useState<CloneProgress | null>(null)
+  const [fileTree, setFileTree] = useState<FileTreeNode | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  const handleSearch = async () => {
-    if (!searchQuery.trim()) return;
-    
-    setSearching(true);
-    setError(null);
-    
-    try {
-      const results = await searchRepositories(searchQuery, 20);
-      setSearchResults(results);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Search failed');
-    } finally {
-      setSearching(false);
+  // Poll for clone progress
+  useEffect(() => {
+    if (!cloneProgress || cloneProgress.status === 'completed' || cloneProgress.status === 'failed') {
+      return
     }
-  };
 
-  const handleSelectRepo = (repo: RepositorySearchResult) => {
-    setSelectedRepo(repo);
-    setSelectedBranch('');
-  };
+    const interval = setInterval(async () => {
+      try {
+        const progress = await getCloneProgress(cloneProgress.clone_id)
+        setCloneProgress(progress)
 
-  const handleClone = async () => {
-    if (!selectedRepo) return;
-    
-    setCloning(true);
-    setError(null);
-    
+        if (progress.status === 'completed') {
+          // Load file tree when clone completes
+          const tree = await getFileTree(progress.clone_id)
+          setFileTree(tree)
+          if (onRepoSelected && selectedRepo) {
+            onRepoSelected(progress.clone_id, selectedRepo)
+          }
+        }
+      } catch (err) {
+        console.error('Failed to get clone progress:', err)
+      }
+    }, 1000)
+
+    return () => clearInterval(interval)
+  }, [cloneProgress, selectedRepo, onRepoSelected])
+
+  async function handleSearch() {
+    if (!searchQuery.trim()) return
+
+    setLoading(true)
+    setError(null)
     try {
-      const response = await cloneRepository({
-        repo_url: selectedRepo.full_name,
-        branch: selectedBranch || undefined,
-      });
-      
-      // Fetch branches and file tree
-      const [branches, tree] = await Promise.all([
-        listBranches(response.clone_id).catch(() => []),
-        getFileTree(response.clone_id, 2).catch(() => null),
-      ]);
-      
-      const clonedRepo = {
-        id: response.clone_id,
-        path: response.clone_path,
-        repo: selectedRepo.full_name,
-        branches,
-        tree: tree || undefined,
-      };
-      
-      setClonedRepos(prev => [...prev, clonedRepo]);
-      setSelectedRepo(null);
-      
-      if (onRepoCloned) {
-        onRepoCloned(response.clone_id, response.clone_path);
+      const results = await searchRepositories(searchQuery)
+      setSearchResults(results)
+      if (results.length === 0) {
+        setError('No repositories found')
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Clone failed');
+      setError(err instanceof Error ? err.message : 'Search failed')
+      setSearchResults([])
     } finally {
-      setCloning(false);
+      setLoading(false)
     }
-  };
+  }
 
-  const handleDeleteClone = async (cloneId: string) => {
+  async function handleClone(repo: GitHubRepoInfo) {
+    setSelectedRepo(repo)
+    setError(null)
     try {
-      await deleteClone(cloneId);
-      setClonedRepos(prev => prev.filter(repo => repo.id !== cloneId));
+      const progress = await cloneRepository(repo.clone_url)
+      setCloneProgress(progress)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete clone');
+      setError(err instanceof Error ? err.message : 'Clone failed')
     }
-  };
+  }
 
-  const renderFileTree = (node: FileTreeNode, depth = 0) => {
-    const indent = depth * 20;
-    const icon = node.type === 'directory' ? '📁' : '📄';
-    
-    return (
-      <div key={`${node.name}-${depth}`}>
-        <div style={{ paddingLeft: `${indent}px`, padding: '4px' }}>
-          <span>{icon}</span>
-          <span style={{ marginLeft: '8px' }}>{node.name}</span>
-          {node.size && (
-            <span style={{ marginLeft: '8px', opacity: 0.6, fontSize: '0.9em' }}>
-              ({(node.size / 1024).toFixed(1)}KB)
+  async function handleCleanup() {
+    if (!cloneProgress) return
+
+    try {
+      await cleanupClone(cloneProgress.clone_id)
+      setCloneProgress(null)
+      setFileTree(null)
+      setSelectedRepo(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Cleanup failed')
+    }
+  }
+
+  function renderFileTree(node: FileTreeNode, depth: number = 0): React.ReactNode {
+    const indent = depth * 20
+
+    if (node.type === 'truncated') {
+      return (
+        <div style={{ marginLeft: `${indent}px` }} className="text-xs text-slate-400">
+          ...
+        </div>
+      )
+    }
+
+    if (node.type === 'file') {
+      return (
+        <div
+          key={node.name}
+          style={{ marginLeft: `${indent}px` }}
+          className="text-sm py-0.5 flex items-center gap-1"
+        >
+          <span className="text-slate-400">📄</span>
+          <span>{node.name}</span>
+          {node.size !== undefined && (
+            <span className="text-xs text-slate-400">
+              ({(node.size / 1024).toFixed(1)} KB)
             </span>
           )}
         </div>
-        {node.children && node.children.map(child => renderFileTree(child, depth + 1))}
-        {node.truncated && (
-          <div style={{ paddingLeft: `${indent + 20}px`, opacity: 0.5, fontStyle: 'italic' }}>
-            ... (truncated)
-          </div>
-        )}
+      )
+    }
+
+    return (
+      <div key={node.name}>
+        <div
+          style={{ marginLeft: `${indent}px` }}
+          className="text-sm py-0.5 font-medium flex items-center gap-1"
+        >
+          <span className="text-slate-400">📁</span>
+          <span>{node.name}/</span>
+        </div>
+        {node.children?.map((child) => renderFileTree(child, depth + 1))}
       </div>
-    );
-  };
+    )
+  }
 
   return (
-    <div style={{
-      padding: '20px',
-      backgroundColor: darkMode ? '#1e1e1e' : '#ffffff',
-      color: darkMode ? '#e0e0e0' : '#333333',
-      borderRadius: '8px',
-    }}>
-      <h2>GitHub Repository Selector</h2>
-      
-      {/* Search Section */}
-      <div style={{ marginBottom: '20px' }}>
-        <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <h3 className="text-lg font-semibold">Search GitHub Repositories</h3>
+        <div className="flex gap-2">
           <input
             type="text"
+            className="flex-1 rounded-xl border border-slate-300 dark:border-slate-600 px-3 py-2 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+            placeholder="Search repositories (e.g., 'react language:typescript stars:>1000')"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-            placeholder="Search repositories (e.g., 'machine learning python')"
-            style={{
-              flex: 1,
-              padding: '10px',
-              backgroundColor: darkMode ? '#2d2d2d' : '#f5f5f5',
-              color: darkMode ? '#e0e0e0' : '#333333',
-              border: `1px solid ${darkMode ? '#444' : '#ddd'}`,
-              borderRadius: '4px',
-            }}
+            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
           />
           <button
+            className="px-4 py-2 rounded-xl bg-brand-500 text-white hover:opacity-90 disabled:opacity-50"
             onClick={handleSearch}
-            disabled={searching || !searchQuery.trim()}
-            style={{
-              padding: '10px 20px',
-              backgroundColor: searching ? '#666' : '#007bff',
-              color: '#ffffff',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: searching ? 'not-allowed' : 'pointer',
-            }}
+            disabled={loading || !searchQuery.trim()}
           >
-            {searching ? 'Searching...' : 'Search'}
+            {loading ? 'Searching...' : 'Search'}
           </button>
         </div>
       </div>
 
-      {/* Error Display */}
       {error && (
-        <div style={{
-          padding: '10px',
-          marginBottom: '20px',
-          backgroundColor: '#ff000020',
-          border: '1px solid #ff0000',
-          borderRadius: '4px',
-          color: darkMode ? '#ff6b6b' : '#cc0000',
-        }}>
+        <div className="p-3 rounded-xl bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 text-sm">
           {error}
         </div>
       )}
 
-      {/* Search Results */}
-      {searchResults.length > 0 && (
-        <div style={{ marginBottom: '20px' }}>
-          <h3>Search Results</h3>
-          <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+      {searchResults.length > 0 && !cloneProgress && (
+        <div className="rounded-2xl bg-white dark:bg-slate-800 shadow-soft p-4 border border-slate-100 dark:border-slate-700">
+          <h4 className="font-semibold mb-3">Search Results</h4>
+          <div className="space-y-2 max-h-96 overflow-y-auto">
             {searchResults.map((repo) => (
               <div
                 key={repo.full_name}
-                onClick={() => handleSelectRepo(repo)}
-                style={{
-                  padding: '12px',
-                  marginBottom: '8px',
-                  backgroundColor: selectedRepo?.full_name === repo.full_name
-                    ? (darkMode ? '#3a3a3a' : '#e3f2fd')
-                    : (darkMode ? '#2d2d2d' : '#f9f9f9'),
-                  border: `1px solid ${darkMode ? '#444' : '#ddd'}`,
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                }}
+                className="p-3 rounded-xl border border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700/50"
               >
-                <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>
-                  {repo.full_name}
-                </div>
-                <div style={{ fontSize: '0.9em', opacity: 0.8, marginBottom: '4px' }}>
-                  {repo.description || 'No description'}
-                </div>
-                <div style={{ fontSize: '0.85em', opacity: 0.7, display: 'flex', gap: '15px' }}>
-                  <span>⭐ {repo.stars}</span>
-                  <span>💻 {repo.language || 'N/A'}</span>
-                  <span>📦 {(repo.size / 1024).toFixed(1)} MB</span>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-slate-900 dark:text-slate-100">
+                      {repo.full_name}
+                    </div>
+                    <div className="text-sm text-slate-600 dark:text-slate-400 mt-1 line-clamp-2">
+                      {repo.description || 'No description'}
+                    </div>
+                    <div className="flex gap-3 mt-2 text-xs text-slate-500 dark:text-slate-400">
+                      {repo.language && <span>🔷 {repo.language}</span>}
+                      <span>⭐ {repo.stars}</span>
+                      <span>🔱 {repo.forks}</span>
+                      <span>📦 {(repo.size_kb / 1024).toFixed(1)} MB</span>
+                    </div>
+                  </div>
+                  <button
+                    className="px-3 py-1.5 rounded-lg bg-brand-500 text-white text-sm hover:opacity-90"
+                    onClick={() => handleClone(repo)}
+                  >
+                    Clone
+                  </button>
                 </div>
               </div>
             ))}
@@ -225,135 +206,88 @@ export function GitHubRepoSelector({ onRepoCloned, darkMode = false }: GitHubRep
         </div>
       )}
 
-      {/* Clone Section */}
-      {selectedRepo && (
-        <div style={{
-          padding: '15px',
-          marginBottom: '20px',
-          backgroundColor: darkMode ? '#2d2d2d' : '#f5f5f5',
-          border: `1px solid ${darkMode ? '#444' : '#ddd'}`,
-          borderRadius: '4px',
-        }}>
-          <h3>Clone Repository</h3>
-          <p><strong>Repository:</strong> {selectedRepo.full_name}</p>
-          <div style={{ marginBottom: '10px' }}>
-            <label style={{ display: 'block', marginBottom: '5px' }}>
-              Branch (optional, leave empty for default):
-            </label>
-            <input
-              type="text"
-              value={selectedBranch}
-              onChange={(e) => setSelectedBranch(e.target.value)}
-              placeholder="main, master, develop, etc."
-              style={{
-                width: '100%',
-                padding: '8px',
-                backgroundColor: darkMode ? '#1e1e1e' : '#ffffff',
-                color: darkMode ? '#e0e0e0' : '#333333',
-                border: `1px solid ${darkMode ? '#444' : '#ddd'}`,
-                borderRadius: '4px',
-              }}
-            />
+      {cloneProgress && (
+        <div className="rounded-2xl bg-white dark:bg-slate-800 shadow-soft p-4 border border-slate-100 dark:border-slate-700">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="font-semibold">Clone Progress</h4>
+            {cloneProgress.status === 'completed' && (
+              <button
+                className="px-3 py-1.5 rounded-lg bg-red-500 text-white text-sm hover:opacity-90"
+                onClick={handleCleanup}
+              >
+                Cleanup
+              </button>
+            )}
           </div>
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <button
-              onClick={handleClone}
-              disabled={cloning}
-              style={{
-                padding: '10px 20px',
-                backgroundColor: cloning ? '#666' : '#28a745',
-                color: '#ffffff',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: cloning ? 'not-allowed' : 'pointer',
-              }}
-            >
-              {cloning ? 'Cloning...' : 'Clone Repository'}
-            </button>
-            <button
-              onClick={() => setSelectedRepo(null)}
-              style={{
-                padding: '10px 20px',
-                backgroundColor: '#6c757d',
-                color: '#ffffff',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-              }}
-            >
-              Cancel
-            </button>
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-slate-600 dark:text-slate-400">Repository:</span>
+              <span className="font-medium">{selectedRepo?.full_name}</span>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between text-sm mb-1">
+                <span className="text-slate-600 dark:text-slate-400">Status:</span>
+                <span
+                  className={`font-medium ${
+                    cloneProgress.status === 'completed'
+                      ? 'text-green-600 dark:text-green-400'
+                      : cloneProgress.status === 'failed'
+                      ? 'text-red-600 dark:text-red-400'
+                      : 'text-blue-600 dark:text-blue-400'
+                  }`}
+                >
+                  {cloneProgress.status.toUpperCase()}
+                </span>
+              </div>
+              <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2">
+                <div
+                  className={`h-2 rounded-full transition-all ${
+                    cloneProgress.status === 'completed'
+                      ? 'bg-green-500'
+                      : cloneProgress.status === 'failed'
+                      ? 'bg-red-500'
+                      : 'bg-blue-500'
+                  }`}
+                  style={{ width: `${cloneProgress.progress_percent}%` }}
+                />
+              </div>
+              <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                {cloneProgress.message}
+              </div>
+            </div>
+
+            {cloneProgress.error && (
+              <div className="p-2 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 text-sm">
+                {cloneProgress.error}
+              </div>
+            )}
+
+            {cloneProgress.status === 'completed' && (
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <span className="text-slate-600 dark:text-slate-400">Files:</span>{' '}
+                  <span className="font-medium">{cloneProgress.file_count}</span>
+                </div>
+                <div>
+                  <span className="text-slate-600 dark:text-slate-400">Size:</span>{' '}
+                  <span className="font-medium">{cloneProgress.size_mb?.toFixed(2)} MB</span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* Cloned Repositories */}
-      {clonedRepos.length > 0 && (
-        <div>
-          <h3>Cloned Repositories</h3>
-          {clonedRepos.map((repo) => (
-            <div
-              key={repo.id}
-              style={{
-                padding: '15px',
-                marginBottom: '15px',
-                backgroundColor: darkMode ? '#2d2d2d' : '#f9f9f9',
-                border: `1px solid ${darkMode ? '#444' : '#ddd'}`,
-                borderRadius: '4px',
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
-                <div>
-                  <strong>{repo.repo}</strong>
-                  <div style={{ fontSize: '0.9em', opacity: 0.7 }}>
-                    Clone ID: {repo.id}
-                  </div>
-                  <div style={{ fontSize: '0.9em', opacity: 0.7 }}>
-                    Path: {repo.path}
-                  </div>
-                </div>
-                <button
-                  onClick={() => handleDeleteClone(repo.id)}
-                  style={{
-                    padding: '8px 16px',
-                    backgroundColor: '#dc3545',
-                    color: '#ffffff',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Delete
-                </button>
-              </div>
-              
-              {repo.branches && repo.branches.length > 0 && (
-                <div style={{ marginBottom: '10px' }}>
-                  <strong>Branches:</strong> {repo.branches.join(', ')}
-                </div>
-              )}
-              
-              {repo.tree && (
-                <details>
-                  <summary style={{ cursor: 'pointer', marginBottom: '10px' }}>
-                    File Tree
-                  </summary>
-                  <div style={{
-                    maxHeight: '300px',
-                    overflowY: 'auto',
-                    fontSize: '0.9em',
-                    fontFamily: 'monospace',
-                  }}>
-                    {renderFileTree(repo.tree)}
-                  </div>
-                </details>
-              )}
-            </div>
-          ))}
+      {fileTree && cloneProgress?.status === 'completed' && (
+        <div className="rounded-2xl bg-white dark:bg-slate-800 shadow-soft p-4 border border-slate-100 dark:border-slate-700">
+          <h4 className="font-semibold mb-3">File Tree</h4>
+          <div className="max-h-96 overflow-y-auto font-mono text-sm">
+            {renderFileTree(fileTree)}
+          </div>
         </div>
       )}
     </div>
-  );
+  )
 }
-
-export default GitHubRepoSelector;
