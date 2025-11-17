@@ -5,7 +5,7 @@
   Author            = 'UnifiedAIApp'
   CompanyName       = 'Unified'
   PowerShellVersion = '5.1'
-  FunctionsToExport = @('Get-Prompt','Search-Prompt','Export-Prompt','Get-Agent','Invoke-Orchestration','Update-PromptIndex','Invoke-PromptYaml','Invoke-PromptOrchestration')
+  FunctionsToExport = @('Get-Prompt','Search-Prompt','Export-Prompt','Get-Agent','Invoke-Orchestration','Update-PromptIndex','Update-AgentIndex','Search-Prompts','Invoke-PromptYaml','Invoke-PromptOrchestration')
   CmdletsToExport   = @()
   VariablesToExport = @()
   AliasesToExport   = @()

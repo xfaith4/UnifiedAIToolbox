@@ -9,16 +9,15 @@ $script:usePSSQLite = $false
 $script:useSystemDataSQLite = $false
 $script:useSqliteCLI = $false
 
-# Try PSSQLite first (most portable)
+# Try PSSQLite first (most portable) - but only if already installed
 try {
-    if (-not (Get-Module -ListAvailable -Name PSSQLite)) {
-        # Install PSSQLite if not available
-        Write-Verbose "Installing PSSQLite module..."
-        Install-Module -Name PSSQLite -Scope CurrentUser -Force -AllowClobber -SkipPublisherCheck -ErrorAction Stop
+    if (Get-Module -ListAvailable -Name PSSQLite) {
+        Import-Module PSSQLite -ErrorAction Stop
+        $script:usePSSQLite = $true
+        Write-Verbose "Using PSSQLite module for database operations"
+    } else {
+        throw "PSSQLite not available"
     }
-    Import-Module PSSQLite -ErrorAction Stop
-    $script:usePSSQLite = $true
-    Write-Verbose "Using PSSQLite module for database operations"
 } catch {
     Write-Verbose "PSSQLite module not available, trying System.Data.SQLite..."
     
@@ -74,7 +73,8 @@ function Initialize-Database {
     }
 
     # Create tables if they don't exist
-    $schemaPath = Join-Path $PSScriptRoot '..\..\data\sqlite\schema.sql'
+    # From Private/ we need to go up to modules/, then up to repo root, then to data/sqlite
+    $schemaPath = Join-Path $PSScriptRoot '..\..\..\data\sqlite\schema.sql'
     if (Test-Path $schemaPath) {
         $schema = Get-Content -Path $schemaPath -Raw
         
@@ -101,9 +101,13 @@ function Initialize-Database {
                 }
             }
         } elseif ($script:useSqliteCLI) {
-            # Use sqlite3 CLI
+            # Use sqlite3 CLI with input file redirection
             try {
-                & sqlite3 $DatabasePath < $schemaPath 2>&1 | Out-Null
+                # sqlite3 works best with file redirection on Unix systems
+                $result = & /bin/sh -c "sqlite3 '$DatabasePath' < '$schemaPath'" 2>&1
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Warning "Error executing schema with sqlite3 CLI: $result"
+                }
             } catch {
                 Write-Warning "Error executing schema with sqlite3 CLI: $_"
             }

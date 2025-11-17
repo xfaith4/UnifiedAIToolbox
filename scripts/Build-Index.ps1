@@ -49,7 +49,7 @@ if (Test-Path $promptsPath) {
             
             # Read and parse YAML
             $rawContent = Get-Content -LiteralPath $file.FullName -Raw
-            $prompt = $rawContent | ConvertFrom-Yaml
+            $prompt = Invoke-PromptYaml -Yaml $rawContent
             
             if (-not $prompt.id) {
                 Write-Warning "Skipping $($file.Name): Missing 'id' field"
@@ -80,8 +80,10 @@ if (Test-Path $promptsPath) {
                 }
             }
             
-            # Calculate checksum
-            $checksum = Get-ContentHash -Text $rawContent
+            # Calculate checksum (using SHA256)
+            $sha = New-Object System.Security.Cryptography.SHA256Managed
+            $bytes = [Text.Encoding]::UTF8.GetBytes($rawContent.Trim())
+            $checksum = [BitConverter]::ToString($sha.ComputeHash($bytes)).Replace('-', '').ToLower()
             
             # Update index
             Update-PromptIndex `
@@ -125,7 +127,7 @@ if (Test-Path $agentsPath) {
             $ext = [IO.Path]::GetExtension($file.Name).ToLowerInvariant()
             
             $agent = switch ($ext) {
-                { $_ -in '.yaml', '.yml' } { $rawContent | ConvertFrom-Yaml }
+                { $_ -in '.yaml', '.yml' } { Invoke-PromptYaml -Yaml $rawContent }
                 '.json' { $rawContent | ConvertFrom-Json }
                 default { $null }
             }
@@ -149,7 +151,11 @@ if (Test-Path $agentsPath) {
                 $name = if ($a.name) { $a.name } else { $agentId }
                 $role = if ($a.role) { $a.role } else { '' }
                 $capabilities = if ($a.capabilities) { @($a.capabilities) } else { @() }
-                $checksum = Get-ContentHash -Text ($rawContent)
+                
+                # Calculate checksum (using SHA256)
+                $sha = New-Object System.Security.Cryptography.SHA256Managed
+                $bytes = [Text.Encoding]::UTF8.GetBytes($rawContent.Trim())
+                $checksum = [BitConverter]::ToString($sha.ComputeHash($bytes)).Replace('-', '').ToLower()
                 
                 Update-AgentIndex `
                     -AgentId $agentId `
@@ -171,6 +177,21 @@ if (Test-Path $agentsPath) {
     }
 } else {
     Write-Warning "Agents directory not found: $agentsPath"
+}
+
+# Rebuild FTS indexes to ensure they're in sync
+Write-Host "Rebuilding FTS indexes..." -ForegroundColor Yellow
+try {
+    $dbPath = Join-Path $dataRoot 'prompts.db'
+    if (Test-Path $dbPath) {
+        # Rebuild prompts FTS
+        "INSERT INTO prompts_fts(prompts_fts) VALUES('rebuild');" | & sqlite3 $dbPath 2>&1 | Out-Null
+        # Rebuild agents FTS
+        "INSERT INTO agents_fts(agents_fts) VALUES('rebuild');" | & sqlite3 $dbPath 2>&1 | Out-Null
+        Write-Host "  ✓ FTS indexes rebuilt" -ForegroundColor Green
+    }
+} catch {
+    Write-Warning "Failed to rebuild FTS indexes: $_"
 }
 
 # Display summary

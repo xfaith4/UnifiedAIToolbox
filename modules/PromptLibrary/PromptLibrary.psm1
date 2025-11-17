@@ -62,12 +62,16 @@ function ConvertTo-TemplateText {
 # ---------------------------
 . "$PSScriptRoot\Private\ConvertFromYaml.ps1"
 . "$PSScriptRoot\Private\Get-SecretValue.ps1"
-. "$PSScriptRoot\Private\Database.psm1"
+Import-Module "$PSScriptRoot\Private\Database.psm1" -Force -DisableNameChecking
 . "$PSScriptRoot\Public\Get-Search-Export.ps1"
 . "$PSScriptRoot\Public\Invoke-Model.ps1"
 
 # Initialize database on module import
-Initialize-Database -DatabasePath $Script:DatabasePath
+try {
+    Initialize-Database -DatabasePath $Script:DatabasePath
+} catch {
+    Write-Warning "Failed to initialize database: $_"
+}
 
 # ----------------------------------------------------
 # Unified Agent Loader (JSON + YAML, single objects or arrays, and { Agents: [...] } payloads)
@@ -477,7 +481,7 @@ $MyInvocation.MyCommand.ScriptBlock.Module.OnRemove = {
 # ----------------------------------------------------
 # Exports (only from inside the module)
 # ----------------------------------------------------
-Export-ModuleMember -Function Get-PromptFile, Get-PromptList, Get-AgentFile, Invoke-Orchestration, Update-PromptIndexAll, Update-PromptIndex, Invoke-PromptYaml
+Export-ModuleMember -Function Get-PromptFile, Get-PromptList, Get-AgentFile, Invoke-Orchestration, Update-PromptIndexAll, Update-PromptIndex, Update-AgentIndex, Search-Prompts, Invoke-PromptYaml
 # region Utility helpers
 function Test-OrchCli {
     <#
