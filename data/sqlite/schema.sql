@@ -99,3 +99,71 @@ CREATE TABLE IF NOT EXISTS artifacts (
 CREATE INDEX IF NOT EXISTS idx_artifacts_created ON artifacts(created_utc DESC);
 CREATE INDEX IF NOT EXISTS idx_artifacts_prompt ON artifacts(prompt_id);
 CREATE INDEX IF NOT EXISTS idx_artifacts_agent ON artifacts(agent_id);
+
+-- Cost tracking table for AI provider API calls
+CREATE TABLE IF NOT EXISTS api_costs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  provider TEXT NOT NULL,
+  model TEXT NOT NULL,
+  input_tokens INTEGER NOT NULL DEFAULT 0,
+  output_tokens INTEGER NOT NULL DEFAULT 0,
+  total_tokens INTEGER NOT NULL,
+  input_cost REAL NOT NULL DEFAULT 0.0,
+  output_cost REAL NOT NULL DEFAULT 0.0,
+  total_cost REAL NOT NULL,
+  prompt_id TEXT,
+  agent_id TEXT,
+  user_id TEXT,
+  session_id TEXT,
+  created_utc TEXT NOT NULL,
+  metadata TEXT,
+  FOREIGN KEY (prompt_id) REFERENCES prompts(id),
+  FOREIGN KEY (agent_id) REFERENCES agents(id)
+);
+
+-- Indexes for cost tracking queries
+CREATE INDEX IF NOT EXISTS idx_api_costs_created ON api_costs(created_utc DESC);
+CREATE INDEX IF NOT EXISTS idx_api_costs_provider ON api_costs(provider);
+CREATE INDEX IF NOT EXISTS idx_api_costs_model ON api_costs(model);
+CREATE INDEX IF NOT EXISTS idx_api_costs_user ON api_costs(user_id);
+CREATE INDEX IF NOT EXISTS idx_api_costs_session ON api_costs(session_id);
+CREATE INDEX IF NOT EXISTS idx_api_costs_prompt ON api_costs(prompt_id);
+
+-- View for cost summaries by provider
+CREATE VIEW IF NOT EXISTS cost_summary_by_provider AS
+SELECT 
+  provider,
+  COUNT(*) as call_count,
+  SUM(total_tokens) as total_tokens,
+  SUM(total_cost) as total_cost,
+  AVG(total_cost) as avg_cost_per_call,
+  MAX(created_utc) as last_call_utc
+FROM api_costs
+GROUP BY provider;
+
+-- View for cost summaries by model
+CREATE VIEW IF NOT EXISTS cost_summary_by_model AS
+SELECT 
+  provider,
+  model,
+  COUNT(*) as call_count,
+  SUM(input_tokens) as total_input_tokens,
+  SUM(output_tokens) as total_output_tokens,
+  SUM(total_tokens) as total_tokens,
+  SUM(total_cost) as total_cost,
+  AVG(total_cost) as avg_cost_per_call,
+  MAX(created_utc) as last_call_utc
+FROM api_costs
+GROUP BY provider, model;
+
+-- View for daily cost summaries
+CREATE VIEW IF NOT EXISTS cost_summary_by_day AS
+SELECT 
+  DATE(created_utc) as date,
+  provider,
+  COUNT(*) as call_count,
+  SUM(total_tokens) as total_tokens,
+  SUM(total_cost) as total_cost
+FROM api_costs
+GROUP BY DATE(created_utc), provider
+ORDER BY date DESC;

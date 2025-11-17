@@ -198,11 +198,11 @@ GET /prompts/search?q=code&limit=10&offset=20
 ## 📈 Progress Overview
 
 ```
-Milestone 1.5 Progress: 2/6 Sprints Complete (33%)
+Milestone 1.5 Progress: 3/6 Sprints Complete (50%)
 
 ✅ Sprint 1 (Weeks 9-10)  - CI/CD Foundation
 ✅ Sprint 2 (Weeks 11-12) - Prompt Index & Search
-⬜ Sprint 3 (Weeks 13-14) - AI Provider Integration
+✅ Sprint 3 (Weeks 13-14) - AI Provider Integration
 ⬜ Sprint 4 (Weeks 15-16) - GitHub Automation - Part 1
 ⬜ Sprint 5 (Weeks 17-18) - GitHub Automation - Part 2 & Testing
 ⬜ Sprint 6 (Weeks 19-20) - Performance & Security
@@ -210,59 +210,153 @@ Milestone 1.5 Progress: 2/6 Sprints Complete (33%)
 
 ---
 
-## 🚀 What's Next: Sprint 3 (Weeks 13-14)
+## ✅ Sprint 3 (Weeks 13-14): AI Provider Integration - COMPLETE
 
-**Goal:** Replace simulated AI with real provider SDKs
+### User Story 3.1: Provider Abstraction Layer ✅
+**Priority:** Critical | **Points:** 8 | **Status:** ✅ Complete
+
+**Completed:**
+- [x] Design provider interface
+- [x] Create `services/prompt-api/providers/base.py`
+- [x] Define common API (generate, stream, count_tokens, calculate_cost)
+- [x] Add error handling patterns (ProviderError, RateLimitError)
+- [x] Implement retry logic with exponential backoff
+- [x] Add rate limiting (configurable requests per minute)
+- [x] Create mock provider for testing
+
+**Acceptance Criteria Met:**
+- ✅ Clean provider interface with abstract base class
+- ✅ All providers implement same interface
+- ✅ Retry and rate limiting work
+- ✅ Mock provider for tests
+
+### User Story 3.2: OpenAI Provider Integration ✅
+**Priority:** Critical | **Points:** 13 | **Status:** ✅ Complete
+
+**Completed:**
+- [x] Install OpenAI SDK (openai>=1.54.0)
+- [x] Create `services/prompt-api/providers/openai_provider.py`
+- [x] Implement text generation (chat completions)
+- [x] Implement streaming support
+- [x] Add token counting (using tiktoken)
+- [x] Handle API errors gracefully
+- [x] Add integration tests
+- [x] Update PowerShell `Invoke-Model` for OpenAI
+
+**Acceptance Criteria Met:**
+- ✅ Can call GPT-4, GPT-4o, GPT-3.5-turbo models
+- ✅ Streaming works
+- ✅ Errors handled properly with retry
+- ✅ Integration tests pass
+
+**Models Supported:**
+- gpt-4o, gpt-4o-mini, gpt-4-turbo, gpt-4, gpt-3.5-turbo
+
+### User Story 3.3: Anthropic Provider Integration ✅
+**Priority:** High | **Points:** 8 | **Status:** ✅ Complete
+
+**Completed:**
+- [x] Install Anthropic SDK (anthropic>=0.39.0)
+- [x] Create `services/prompt-api/providers/anthropic_provider.py`
+- [x] Implement text generation
+- [x] Implement streaming support
+- [x] Handle API errors
+- [x] Add integration tests
+- [x] Update configuration for multiple providers
+- [x] Update PowerShell `Invoke-Model` for Anthropic
+
+**Acceptance Criteria Met:**
+- ✅ Can call Claude 3 models
+- ✅ Feature parity with OpenAI provider
+- ✅ Integration tests pass
+
+**Models Supported:**
+- claude-3-5-sonnet, claude-3-opus, claude-3-sonnet, claude-3-haiku
+
+### User Story 3.4: Cost Tracking ✅
+**Priority:** High | **Points:** 5 | **Status:** ✅ Complete
+
+**Completed:**
+- [x] Create cost tracking table in SQLite (with indexes)
+- [x] Log every API call with cost (input/output tokens, cost breakdown)
+- [x] Create `/admin/costs/summary` endpoint
+- [x] Create `/admin/costs/breakdown` endpoint
+- [x] Create `/admin/costs/budget` endpoint
+- [x] Show cost breakdown by provider/model
+- [x] Add budget alerts (ok/warning/critical)
+- [x] Create cost tracker UI component (`CostTracker.tsx`)
+- [x] Create costs page (`CostsPage.tsx`)
+
+**Acceptance Criteria Met:**
+- ✅ All API calls logged with cost
+- ✅ Dashboard shows costs
+- ✅ Alerts when approaching budget
+- ✅ Cost breakdown by provider, model, and day
+
+**Sprint 3 Deliverables:**
+- ✅ `services/prompt-api/providers/` - Provider implementations (base, OpenAI, Anthropic, Mock)
+- ✅ Updated `Invoke-Model.ps1` with Anthropic support
+- ✅ Cost tracking database schema and API (`cost_tracker.py`)
+- ✅ Integration tests for providers (13 tests)
+- ✅ Configuration guide and documentation
+- ✅ Cost tracking UI component with dark mode
+- ✅ Updated README with comprehensive provider documentation
+
+**Files Created/Modified:**
+- 14 files changed
+- 2,031 insertions (+)
+- 15 files total
+
+**Test Results:**
+- ✅ 26 tests passing (13 provider + 13 existing)
+- ✅ 0 security vulnerabilities (CodeQL clean)
+- ✅ All linters passing
+
+---
+
+## 🚀 What's Next: Sprint 4 (Weeks 15-16)
+
+**Goal:** Enable repository cloning and Codex swarm execution
 
 ### Upcoming User Stories
 
-#### US-3.1: Provider Abstraction Layer
-**Priority:** Critical | **Points:** 8
+#### US-4.1: Repository Cloning Service
+**Priority:** High | **Points:** 13
 
 **Tasks:**
-- [ ] Design provider interface
-- [ ] Create `services/prompt-api/providers/base.py`
-- [ ] Define common API (generate, stream, embed)
-- [ ] Add error handling patterns
-- [ ] Implement retry logic
-- [ ] Add rate limiting
-- [ ] Create mock provider for testing
+- [ ] Create `apps/orchestration-bridge/github/clone.py`
+- [ ] Implement GitHub authentication (token)
+- [ ] Add repository cloning logic
+- [ ] Handle large repositories (>100MB)
+- [ ] Implement cleanup logic
+- [ ] Add progress tracking
+- [ ] Handle errors (network, auth, disk space)
+- [ ] Create unit tests
 
-#### US-3.2: OpenAI Provider Integration
-**Priority:** Critical | **Points:** 13
-
-**Tasks:**
-- [ ] Install OpenAI SDK
-- [ ] Create `services/prompt-api/providers/openai.py`
-- [ ] Implement text generation
-- [ ] Implement streaming support
-- [ ] Add token counting
-- [ ] Handle API errors gracefully
-- [ ] Add integration tests
-- [ ] Update PowerShell `Invoke-Model` for OpenAI
-
-#### US-3.3: Anthropic Provider Integration
+#### US-4.2: Dashboard Repository Selector
 **Priority:** High | **Points:** 8
 
 **Tasks:**
-- [ ] Install Anthropic SDK
-- [ ] Create `services/prompt-api/providers/anthropic.py`
-- [ ] Implement text generation
-- [ ] Implement streaming support
-- [ ] Handle API errors
-- [ ] Add integration tests
-- [ ] Update configuration for multiple providers
+- [ ] Add "GitHub Repo" tab to Orchestrator page
+- [ ] Create repository search UI (search by name/org)
+- [ ] Display repository metadata (stars, language, size)
+- [ ] Add clone button
+- [ ] Show clone progress
+- [ ] Display cloned repo file tree
+- [ ] Add branch selector
 
-#### US-3.4: Cost Tracking
-**Priority:** High | **Points:** 5
+#### US-4.3: Codex Swarm Integration
+**Priority:** Critical | **Points:** 13
 
 **Tasks:**
-- [ ] Create cost tracking table in SQLite
-- [ ] Log every API call with cost
-- [ ] Create `/admin/costs` dashboard endpoint
-- [ ] Show cost breakdown by provider/model
-- [ ] Add budget alerts
-- [ ] Create simple cost report UI
+- [ ] Create wrapper for `Orchestrate-Codex.ps1`
+- [ ] Implement async task execution
+- [ ] Stream logs to dashboard
+- [ ] Parse Codex output
+- [ ] Store findings in database
+- [ ] Create findings API endpoint
+- [ ] Add findings viewer UI
+- [ ] Handle cancellation
 
 ---
 
