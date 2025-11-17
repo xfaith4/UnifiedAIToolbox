@@ -1,7 +1,13 @@
 # Database.psm1 - SQLite database operations for PromptLibrary
 
-# Import required assemblies
-Add-Type -Path "System.Data.SQLite" -ErrorAction Stop
+# Import required assemblies - System.Data.SQLite must be installed
+# Install with: Install-Package System.Data.SQLite.Core -Scope CurrentUser
+try {
+    Add-Type -AssemblyName "System.Data.SQLite" -ErrorAction Stop
+} catch {
+    Write-Warning "System.Data.SQLite assembly not available. Database features will be limited."
+    Write-Warning "Install with: Install-Package System.Data.SQLite.Core or use NuGet"
+}
 
 $script:dbConnection = $null
 
