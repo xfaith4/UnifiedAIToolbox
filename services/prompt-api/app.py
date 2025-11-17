@@ -803,6 +803,13 @@ def create_app() -> FastAPI:
 
 app = create_app()
 
+# Include GitHub integration router
+try:
+    from github_api import router as github_router
+    app.include_router(github_router)
+except ImportError as e:
+    print(f"Warning: GitHub integration not available: {e}")
+
 @app.get("/health")
 def health():
     return {"ok": True, "time": now_iso()}
