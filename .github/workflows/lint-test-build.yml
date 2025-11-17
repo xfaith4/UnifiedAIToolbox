@@ -44,6 +44,25 @@ jobs:
         shell: pwsh
         run: |
           pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/Build-Index.ps1
+      
+      - name: Verify prompt index
+        shell: bash
+        run: |
+          echo "=== Database Info ==="
+          ls -lh data/prompts.db
+          echo ""
+          echo "=== Table Counts ==="
+          sqlite3 data/prompts.db "SELECT (SELECT COUNT(*) FROM prompts) as prompts, (SELECT COUNT(*) FROM agents) as agents;"
+          echo ""
+          echo "=== FTS Test Search ==="
+          sqlite3 data/prompts.db "SELECT COUNT(*) FROM prompts_fts JOIN prompts p ON prompts_fts.id = p.id WHERE prompts_fts MATCH 'powershell';"
+      
+      - name: Upload prompt database
+        uses: actions/upload-artifact@v4
+        with:
+          name: prompt-index-${{ matrix.os }}-${{ matrix.pwsh }}
+          path: data/prompts.db
+          retention-days: 7
 
   python:
     name: Python (prompt-api)
