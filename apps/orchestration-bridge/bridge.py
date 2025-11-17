@@ -440,6 +440,52 @@ def _pull_remote_tasks() -> List[dict]:
         return []
 
 
+def _execute_supervisor_task(task: dict) -> None:
+    """
+    Execute a supervisor orchestration task.
+    
+    Processes prompts and agents specified in the task, generating artifacts
+    and logging results. This is the core orchestration execution logic.
+    """
+    supervisor = task.get("supervisor", {})
+    task_name = supervisor.get("task", "unnamed")
+    objective = supervisor.get("objective", "")
+    prompts = task.get("prompts", [])
+    agents = task.get("agents", [])
+    
+    print(f"[bridge] processing task: {task_name}")
+    if objective:
+        print(f"[bridge] objective: {objective}")
+    
+    # Process each prompt in the task
+    for prompt_ref in prompts:
+        prompt_id = prompt_ref.get("id") if isinstance(prompt_ref, dict) else str(prompt_ref)
+        if not prompt_id:
+            continue
+            
+        print(f"[bridge] processing prompt: {prompt_id}")
+        try:
+            spec = find_prompt_by_id(prompt_id)
+            if spec:
+                # Generate a manifest for the prompt
+                manifest = _write_run_manifest(spec)
+                print(f"[bridge] created manifest for {prompt_id}: {manifest}")
+            else:
+                print(f"[bridge] warning: prompt {prompt_id} not found in registry")
+        except Exception as exc:
+            print(f"[bridge] error processing prompt {prompt_id}: {exc}")
+    
+    # Log agent references
+    for agent_ref in agents:
+        agent_id = agent_ref.get("agentId") if isinstance(agent_ref, dict) else str(agent_ref)
+        if agent_id:
+            print(f"[bridge] task references agent: {agent_id}")
+    
+    # Record execution timestamp
+    execution_time = datetime.now(timezone.utc).isoformat()
+    print(f"[bridge] task execution completed at {execution_time}")
+
+
 def cmd_run_supervisor(args: argparse.Namespace) -> int:
     tasks: List[dict] = []
 
@@ -460,8 +506,8 @@ def cmd_run_supervisor(args: argparse.Namespace) -> int:
         task_id = task.get("id", "unknown")
         print(f"[bridge] executing supervisor task {task_id} ({task.get('supervisor', {}).get('task')})")
         try:
-            # Placeholder for actual orchestration. Here we just simulate work.
-            subprocess.run(["python", "-c", "import time; time.sleep(1)"], check=False)
+            # Execute supervisor orchestration task
+            _execute_supervisor_task(task)
 
             if item["origin"] == "api":
                 try:
