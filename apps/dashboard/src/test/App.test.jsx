@@ -12,22 +12,12 @@ describe('App Component - Edge Cases', () => {
   });
 
   it('should handle empty data gracefully', async () => {
-    // Mock fetch to return empty data structures
+    // Mock API health check
     global.fetch.mockImplementation((url) => {
-      if (url.includes('CurrentGoal.json')) {
+      if (url.includes('/health')) {
         return Promise.resolve({
           ok: true,
-          json: () => Promise.resolve({
-            goal: '',
-            objective: '',
-            successCriteria: []
-          })
-        });
-      }
-      if (url.includes('Milestone_Log.json')) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve([])
+          json: () => Promise.resolve({ ok: true, time: Date.now() })
         });
       }
       return Promise.reject(new Error('Not found'));
@@ -35,62 +25,48 @@ describe('App Component - Edge Cases', () => {
 
     render(<App />);
 
-    // Wait for data to load
+    // Wait for component to render
     await waitFor(() => {
-      expect(screen.queryByText(/Loading Dashboard/i)).not.toBeInTheDocument();
+      const toolboxElements = screen.getAllByText(/AI Toolbox/i);
+      expect(toolboxElements.length).toBeGreaterThan(0);
     });
 
-    // Check that the page renders without crashing with empty data
-    expect(screen.getByText(/AI-Orchestration Milestone Dashboard/i)).toBeInTheDocument();
-    expect(screen.getByText(/Current Goal/i)).toBeInTheDocument();
+    // Check that the page renders without crashing
+    expect(screen.getByText(/Unified Prompt Hub/i)).toBeInTheDocument();
   });
 
-  it('should handle malformed data without crashing', async () => {
-    // Mock fetch to return data with missing required fields
-    global.fetch.mockImplementation((url) => {
-      if (url.includes('CurrentGoal.json')) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({
-            // Missing 'goal' and 'objective'
-            successCriteria: null // null instead of array
-          })
-        });
-      }
-      if (url.includes('Milestone_Log.json')) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve([
-            // Missing required fields
-            { timestamp: '2024-01-01' },
-            { message: 'Test message' },
-            {} // completely empty object
-          ])
-        });
-      }
-      return Promise.reject(new Error('Not found'));
+  it('should handle API errors without crashing', async () => {
+    // Mock fetch to return errors
+    global.fetch.mockImplementation(() => {
+      return Promise.reject(new Error('API error'));
     });
 
     render(<App />);
 
-    // Wait for data to load
+    // Wait for component to render
     await waitFor(() => {
-      expect(screen.queryByText(/Loading Dashboard/i)).not.toBeInTheDocument();
+      const toolboxElements = screen.getAllByText(/AI Toolbox/i);
+      expect(toolboxElements.length).toBeGreaterThan(0);
     });
 
-    // Check that the page still renders despite malformed data
-    expect(screen.getByText(/AI-Orchestration Milestone Dashboard/i)).toBeInTheDocument();
+    // Check that the page still renders despite API errors
+    expect(screen.getByText(/Unified Prompt Hub/i)).toBeInTheDocument();
   });
 
-  it('should show loading state when data is not available', () => {
-    // Don't mock fetch - component should handle initial loading state
+  it('should render main navigation and layout', () => {
+    // Mock successful API response
     global.fetch.mockImplementation(() => 
-      new Promise(() => {}) // Never resolves
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ ok: true, time: Date.now() })
+      })
     );
 
     render(<App />);
 
-    // Should show loading message
-    expect(screen.getByText(/Loading Dashboard/i)).toBeInTheDocument();
+    // Should show main layout elements (text appears in multiple places)
+    const toolboxElements = screen.getAllByText(/AI Toolbox/i);
+    expect(toolboxElements.length).toBeGreaterThan(0);
+    expect(screen.getByText(/Unified Prompt Hub/i)).toBeInTheDocument();
   });
 });

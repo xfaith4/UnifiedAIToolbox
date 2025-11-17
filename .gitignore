@@ -37,3 +37,13 @@ runs/
 docker-compose.override.yml
 *.pid
 *.sock
+
+# Python build artifacts
+*.egg-info/
+dist/
+*.egg
+
+# Test results
+testResults.xml
+coverage/
+.coverage
