@@ -1,9 +1,0 @@
-README.md
-app.py
-pyproject.toml
-prompt_api.egg-info/PKG-INFO
-prompt_api.egg-info/SOURCES.txt
-prompt_api.egg-info/dependency_links.txt
-prompt_api.egg-info/requires.txt
-prompt_api.egg-info/top_level.txt
-tests/test_prompts.py
