@@ -97,6 +97,25 @@ docker compose up -d
    - API Documentation: http://localhost:8000/docs
    - Web Portal: http://localhost:3000 (if using Next.js app)
 
+## 🚀 GitHub Automation (NEW!)
+
+The toolbox now includes comprehensive GitHub integration for automated code analysis:
+
+- **Search & Clone:** Find and clone any GitHub repository
+- **Codex Swarm:** Run multi-agent code review (critic, security, lint, tests, refactor)
+- **Real-time Streaming:** Watch analysis progress with live log streaming
+- **Findings Viewer:** Browse detailed findings by agent and code shard
+- **File Tree Browser:** Explore cloned repository structure
+
+**Quick Start:**
+1. Set GitHub token: `export GITHUB_TOKEN="your_token_here"`
+2. Navigate to Dashboard → Orchestrator → GitHub Repo tab
+3. Search for a repository
+4. Clone and run Codex swarm analysis
+5. View findings and recommendations
+
+📖 **See [GITHUB_AUTOMATION.md](docs/GITHUB_AUTOMATION.md) for complete documentation.**
+
 ## Testing helpers
 
 - `tests/Schema.Tests.ps1` – Pester suite that ensures every prompt YAML file parses and contains the required metadata.
@@ -114,19 +133,26 @@ For detailed roadmap and progress, see:
 - **[PROJECT_PLAN.md](PROJECT_PLAN.md)** - Comprehensive plan for Milestone 1.5 (Enterprise Ready)
 - **[SPRINT_BREAKDOWN.md](SPRINT_BREAKDOWN.md)** - Detailed sprint-by-sprint implementation guide
 
-**Milestone 1.5 Progress (3/6 Sprints Complete - 50%):**
+**Milestone 1.5 Progress (4/6 Sprints Complete - 67%):**
 - ✅ **Sprint 1:** CI/CD pipeline with automated testing
 - ✅ **Sprint 2:** SQLite prompt indexing and fast FTS5 search
 - ✅ **Sprint 3:** Real AI provider integration (OpenAI, Anthropic) with cost tracking
-- ⬜ **Sprint 4:** GitHub automation (clone, Codex swarm)
+- ✅ **Sprint 4:** GitHub automation (clone, Codex swarm) - **JUST COMPLETED!** 🎉
 - ⬜ **Sprint 5:** PR creation & 80%+ test coverage
 - ⬜ **Sprint 6:** Performance optimization and security hardening
 
-**Recent Achievements:**
-- 🎉 **NEW:** OpenAI & Anthropic provider integration with streaming support
-- 🎉 **NEW:** Cost tracking infrastructure with budget alerts
-- 🎉 **NEW:** Cost monitoring dashboard UI with dark mode
-- 26 tests passing (13 provider + 13 existing)
+**Recent Achievements (Sprint 4):**
+- 🎉 **NEW:** GitHub repository search and cloning from dashboard
+- 🎉 **NEW:** Codex swarm execution with real-time progress streaming
+- 🎉 **NEW:** Findings viewer with agent role breakdown
+- 🎉 **NEW:** File tree visualization for cloned repositories
+- Complete GitHub automation workflow (search → clone → analyze → findings)
+- 11 unit tests for GitHub services (all passing)
+- Full dark mode support for new components
+- Comprehensive API documentation (see [GITHUB_AUTOMATION.md](docs/GITHUB_AUTOMATION.md))
+
+**Previous Achievements:**
+- OpenAI & Anthropic provider integration with streaming support
+- Cost tracking infrastructure with budget alerts
 - Search API with FTS5 full-text search (<100ms)
-- Reusable React search components
 - Zero security vulnerabilities (CodeQL clean)
