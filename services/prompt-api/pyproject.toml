@@ -23,6 +23,9 @@ dev = [
     "httpx>=0.27.0",
 ]
 
+[tool.setuptools]
+py-modules = ["app", "prompt_registry"]
+
 [tool.pytest.ini_options]
 addopts = "-q"
 testpaths = ["tests"]

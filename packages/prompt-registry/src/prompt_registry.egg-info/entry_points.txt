@@ -1,0 +1,4 @@
+[console_scripts]
+generate-prompt-schema = prompt_registry.schema:main
+prompt-registry = prompt_registry.cli:main
+validate-prompts = prompt_registry.validation:run_cli
