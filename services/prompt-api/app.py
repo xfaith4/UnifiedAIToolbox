@@ -1410,6 +1410,124 @@ def generate(req: RequestPayload):
         audit_id = audit_log(req.template_id, model, input_json, None, False, f"error:{e.detail}", None, None)
         raise e
 
+
+# ----------------------------
+# Cost Tracking Endpoints
+# ----------------------------
+from cost_tracker import CostTracker
+
+cost_tracker = CostTracker(DB_PATH)
+
+
+class CostSummaryResponse(BaseModel):
+    """Response model for cost summaries."""
+    total_cost: float
+    period_days: Optional[int] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    provider: Optional[str] = None
+
+
+class CostBreakdownResponse(BaseModel):
+    """Response model for cost breakdowns."""
+    by_provider: List[Dict[str, Any]]
+    by_model: List[Dict[str, Any]]
+    daily: List[Dict[str, Any]]
+
+
+class BudgetStatusResponse(BaseModel):
+    """Response model for budget status."""
+    budget_amount: float
+    period_days: int
+    current_cost: float
+    remaining: float
+    percentage_used: float
+    status: str
+    provider: Optional[str] = None
+
+
+@app.get("/admin/costs/summary", response_model=CostSummaryResponse)
+def get_cost_summary(
+    start_date: Optional[str] = Query(None, description="Start date (ISO format)"),
+    end_date: Optional[str] = Query(None, description="End date (ISO format)"),
+    provider: Optional[str] = Query(None, description="Filter by provider"),
+    user_id: Optional[str] = Query(None, description="Filter by user ID"),
+    admin_token: Optional[str] = Header(None, alias="X-Admin-Token")
+):
+    """Get total cost summary for a time period."""
+    if settings.admin_token and admin_token != settings.admin_token:
+        raise HTTPException(status_code=401, detail="Admin token required")
+    
+    total_cost = cost_tracker.get_total_cost(
+        start_date=start_date,
+        end_date=end_date,
+        provider=provider,
+        user_id=user_id
+    )
+    
+    return CostSummaryResponse(
+        total_cost=total_cost,
+        start_date=start_date,
+        end_date=end_date,
+        provider=provider
+    )
+
+
+@app.get("/admin/costs/breakdown", response_model=CostBreakdownResponse)
+def get_cost_breakdown(
+    start_date: Optional[str] = Query(None, description="Start date (ISO format)"),
+    end_date: Optional[str] = Query(None, description="End date (ISO format)"),
+    provider: Optional[str] = Query(None, description="Filter by provider"),
+    days: int = Query(30, description="Number of days for daily breakdown"),
+    admin_token: Optional[str] = Header(None, alias="X-Admin-Token")
+):
+    """Get detailed cost breakdown by provider, model, and day."""
+    if settings.admin_token and admin_token != settings.admin_token:
+        raise HTTPException(status_code=401, detail="Admin token required")
+    
+    by_provider = cost_tracker.get_cost_by_provider(
+        start_date=start_date,
+        end_date=end_date
+    )
+    
+    by_model = cost_tracker.get_cost_by_model(
+        start_date=start_date,
+        end_date=end_date,
+        provider=provider
+    )
+    
+    daily = cost_tracker.get_daily_costs(
+        days=days,
+        provider=provider
+    )
+    
+    return CostBreakdownResponse(
+        by_provider=by_provider,
+        by_model=by_model,
+        daily=daily
+    )
+
+
+@app.get("/admin/costs/budget", response_model=BudgetStatusResponse)
+def check_budget_status(
+    budget_amount: float = Query(..., description="Budget amount in USD"),
+    period_days: int = Query(30, description="Budget period in days"),
+    provider: Optional[str] = Query(None, description="Filter by provider"),
+    admin_token: Optional[str] = Header(None, alias="X-Admin-Token")
+):
+    """Check if costs are within budget."""
+    if settings.admin_token and admin_token != settings.admin_token:
+        raise HTTPException(status_code=401, detail="Admin token required")
+    
+    budget_status = cost_tracker.check_budget(
+        budget_amount=budget_amount,
+        period_days=period_days,
+        provider=provider
+    )
+    
+    return BudgetStatusResponse(**budget_status)
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PROMPT_API_PORT", "8000"))
     uvicorn.run("app:app", host="0.0.0.0", port=port, reload=True)
