@@ -25,6 +25,11 @@ export default [
         fetch: 'readonly',
         console: 'readonly',
         HTMLInputElement: 'readonly',
+        global: 'readonly',
+        __dirname: 'readonly',
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly',
+        URLSearchParams: 'readonly',
       },
     },
     plugins: {
@@ -47,6 +52,7 @@ export default [
         { allowConstantExport: true },
       ],
       'no-console': ['warn', { allow: ['warn', 'error'] }],
+      '@typescript-eslint/no-empty-function': ['error', { allow: ['methods'] }],
     },
   },
 ]

@@ -415,3 +415,55 @@ export async function renderPromptViaApi(
 
   return response.json()
 }
+
+export interface SearchPromptResult {
+  id: string
+  title: string
+  version: string
+  category?: string
+  owner?: string
+  tags: string[]
+  description?: string
+  updated: string
+  relevance?: number
+}
+
+export interface SearchPromptsResponse {
+  results: SearchPromptResult[]
+  total: number
+  query?: string
+  filters: {
+    category?: string
+    owner?: string
+    tags: string[]
+  }
+}
+
+export async function searchPromptsViaApi(
+  query?: string,
+  category?: string,
+  owner?: string,
+  tags?: string[],
+  limit = 10,
+  offset = 0
+): Promise<SearchPromptsResponse> {
+  if (!API_BASE) {
+    throw new Error('Prompt API base URL is not configured.')
+  }
+
+  const params = new URLSearchParams()
+  if (query) params.set('q', query)
+  if (category) params.set('category', category)
+  if (owner) params.set('owner', owner)
+  if (tags && tags.length > 0) params.set('tags', tags.join(','))
+  params.set('limit', limit.toString())
+  params.set('offset', offset.toString())
+
+  const response = await fetch(`${API_BASE}/prompts/search?${params.toString()}`)
+
+  if (!response.ok) {
+    throw new Error(`Search failed with status ${response.status}`)
+  }
+
+  return response.json()
+}

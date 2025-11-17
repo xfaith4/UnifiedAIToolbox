@@ -365,6 +365,8 @@ function Search-Prompts {
     [CmdletBinding()]
     param(
         [string]$Query,
+        [string]$Category,
+        [string]$Owner,
         [string[]]$Tags = @(),
         [string]$Category,
         [string]$RiskTier,
