@@ -1,10 +1,11 @@
 ### BEGIN FILE: app.py
-import os, json, hashlib, sqlite3, datetime, textwrap, pathlib, sys, subprocess, re, uuid
+import os, json, hashlib, sqlite3, datetime, textwrap, pathlib, sys, subprocess, re, uuid, time
 from dataclasses import dataclass
 from contextlib import asynccontextmanager
-from typing import List, Optional, Dict, Any, Tuple
+from typing import List, Optional, Dict, Any, Tuple, Callable
+from functools import wraps
 
-from fastapi import FastAPI, HTTPException, Path, Query, Header # pyright: ignore[reportMissingImports]
+from fastapi import FastAPI, HTTPException, Path, Query, Header, Depends, status # pyright: ignore[reportMissingImports]
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel, Field, field_validator # pyright: ignore[reportMissingImports]
@@ -12,6 +13,39 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 import uvicorn # pyright: ignore[reportMissingImports]
 import yaml # pyright: ignore[reportMissingModuleSource]
 import requests # pyright: ignore[reportMissingModuleSource]
+
+# ----------------------------
+# Simple In-Memory Cache
+# ----------------------------
+_cache: Dict[str, Tuple[Any, float]] = {}
+CACHE_TTL = 60  # seconds
+
+def simple_cache(ttl: int = CACHE_TTL):
+    """Simple in-memory cache decorator for read-only endpoints."""
+    def decorator(func: Callable):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            # Create cache key from function name and arguments
+            cache_key = f"{func.__name__}:{str(args)}:{str(sorted(kwargs.items()))}"
+            
+            # Check if cached value exists and is still valid
+            if cache_key in _cache:
+                cached_value, cached_time = _cache[cache_key]
+                if time.time() - cached_time < ttl:
+                    return cached_value
+            
+            # Call function and cache result
+            result = func(*args, **kwargs)
+            _cache[cache_key] = (result, time.time())
+            
+            # Simple cache size management - keep last 100 entries
+            if len(_cache) > 100:
+                oldest_key = min(_cache.items(), key=lambda x: x[1][1])[0]
+                del _cache[oldest_key]
+            
+            return result
+        return wrapper
+    return decorator
 
 # ----------------------------
 # Configuration
@@ -759,7 +793,9 @@ def _raise_openai_error(resp: requests.Response) -> None:
 
 # Security Headers Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 from starlette.requests import Request
+import time
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -768,13 +804,33 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-        response.headers["Pragma"] = "no-cache"
-        response.headers["Expires"] = "0"
+        
+        # Allow caching for static resources but not for API responses with sensitive data
+        if request.url.path.startswith("/static/") or request.url.path.endswith((".css", ".js", ".png", ".jpg", ".svg")):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        else:
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+        return response
+
+class PerformanceMiddleware(BaseHTTPMiddleware):
+    """Middleware to track request performance metrics."""
+    async def dispatch(self, request: Request, call_next):
+        start_time = time.time()
+        response = await call_next(request)
+        process_time = time.time() - start_time
+        response.headers["X-Process-Time"] = str(round(process_time * 1000, 2))  # milliseconds
         return response
 def create_app() -> FastAPI:
     fastapi_app = FastAPI(title="AI Prompt Workbench", version="1.0.0")
 
+    # Add compression middleware (first for response compression)
+    fastapi_app.add_middleware(GZipMiddleware, minimum_size=1000)
+    
+    # Add performance tracking middleware
+    fastapi_app.add_middleware(PerformanceMiddleware)
+    
     # Add security headers middleware
     fastapi_app.add_middleware(SecurityHeadersMiddleware)
 
@@ -803,12 +859,65 @@ def create_app() -> FastAPI:
 
 app = create_app()
 
+# Initialize authentication system
+try:
+    from auth import (
+        initialize_auth, authenticate_user, create_access_token, create_refresh_token,
+        UserLogin, Token, User, UserCreate, create_user, get_current_user, get_current_active_user,
+        require_admin, require_user, require_readonly, UserRole
+    )
+    initialize_auth()
+    AUTH_ENABLED = True
+except ImportError as e:
+    print(f"Warning: Authentication not available: {e}")
+    AUTH_ENABLED = False
+
 # Include GitHub integration router
 try:
     from github_api import router as github_router
     app.include_router(github_router)
 except ImportError as e:
     print(f"Warning: GitHub integration not available: {e}")
+
+# ----------------------------
+# Authentication Endpoints
+# ----------------------------
+if AUTH_ENABLED:
+    @app.post("/auth/login", response_model=Token)
+    def login(credentials: UserLogin):
+        """Authenticate user and return access and refresh tokens."""
+        user = authenticate_user(credentials.username, credentials.password)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect username or password",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        access_token = create_access_token(data={"sub": user.username, "role": user.role.value})
+        refresh_token = create_refresh_token(data={"sub": user.username, "role": user.role.value})
+        
+        return Token(access_token=access_token, refresh_token=refresh_token)
+
+    @app.post("/auth/register", response_model=User)
+    def register(user_data: UserCreate, current_user: User = Depends(require_admin)):
+        """Register a new user (admin only)."""
+        return create_user(user_data)
+
+    @app.get("/auth/me", response_model=User)
+    def get_me(current_user: User = Depends(get_current_active_user)):
+        """Get current user information."""
+        return current_user
+
+    @app.get("/auth/status")
+    def auth_status():
+        """Check if authentication is enabled."""
+        return {"enabled": True, "message": "Authentication is enabled"}
+else:
+    @app.get("/auth/status")
+    def auth_status():
+        """Check if authentication is disabled."""
+        return {"enabled": False, "message": "Authentication is disabled"}
 
 @app.get("/health")
 def health():

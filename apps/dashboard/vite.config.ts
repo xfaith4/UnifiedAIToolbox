@@ -3,6 +3,7 @@ import process from 'node:process'
 
 import react from '@vitejs/plugin-react-swc'
 import { defineConfig, loadEnv, type PluginOption } from 'vite'
+import { visualizer } from 'rollup-plugin-visualizer'
 
 const DEFAULT_DEV_PORT = 5173
 const DEFAULT_PREVIEW_PORT = 4173
@@ -155,11 +156,25 @@ export default defineConfig(({ mode, command }) => {
       ? (['console', 'debugger'] as ('console' | 'debugger')[])
       : []
 
+  const plugins: PluginOption[] = [
+    react(),
+    ensureFreePort({ host, devPort, previewPort, maxAttempts }),
+  ]
+
+  // Add bundle analyzer in build mode if ANALYZE env var is set
+  if (command === 'build' && env.ANALYZE) {
+    plugins.push(
+      visualizer({
+        filename: 'dist/stats.html',
+        open: false,
+        gzipSize: true,
+        brotliSize: true,
+      }) as PluginOption
+    )
+  }
+
   return {
-    plugins: [
-      react(),
-      ensureFreePort({ host, devPort, previewPort, maxAttempts }),
-    ],
+    plugins,
     server: {
       host,
       strictPort: true,
@@ -170,16 +185,31 @@ export default defineConfig(({ mode, command }) => {
       strictPort: true,
     },
     build: {
-      target: 'es2019',
+      target: 'es2020',
       sourcemap: false,
       minify: 'esbuild',
-      reportCompressedSize: false,
-      chunkSizeWarningLimit: 1024,
+      reportCompressedSize: true,
+      chunkSizeWarningLimit: 500,
       assetsInlineLimit: 4096,
       rollupOptions: {
         output: {
-          manualChunks: {
-            vendor: ['react', 'react-dom', 'react-router-dom'],
+          manualChunks: (id) => {
+            // Split vendor chunks more granularly
+            if (id.includes('node_modules')) {
+              if (id.includes('react') || id.includes('react-dom')) {
+                return 'react-vendor'
+              }
+              if (id.includes('react-router')) {
+                return 'router'
+              }
+              if (id.includes('recharts')) {
+                return 'charts'
+              }
+              if (id.includes('lucide-react')) {
+                return 'icons'
+              }
+              return 'vendor'
+            }
           },
         },
       },
@@ -194,5 +224,8 @@ export default defineConfig(({ mode, command }) => {
       devSourcemap: false,
     },
     envPrefix: 'VITE_',
+    optimizeDeps: {
+      include: ['react', 'react-dom', 'react-router-dom'],
+    },
   }
 })
