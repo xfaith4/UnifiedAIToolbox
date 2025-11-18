@@ -78,6 +78,9 @@ Follow the deployment guide:
 **Essential setup steps:**
 
 ```bash
+# 0. Verify production readiness (NEW!)
+pwsh scripts/Verify-ProductionReadiness.ps1
+
 # 1. Generate JWT secret
 python -c "import secrets; print(secrets.token_urlsafe(32))"
 
@@ -98,6 +101,50 @@ docker compose exec prompt-api python -c "from auth import create_default_admin;
 # Dashboard: https://your-domain.com
 # API: https://your-domain.com/api
 # API Docs: https://your-domain.com/api/docs
+```
+
+#### 3.5 Deployment Verification Tools (NEW!)
+
+We've added comprehensive verification tools to ensure production readiness:
+
+**Pre-Deployment Verification:**
+- **[scripts/Verify-ProductionReadiness.ps1](scripts/Verify-ProductionReadiness.ps1)** - Checks environment, security, dependencies, and configuration
+  - Environment configuration validation
+  - Security settings verification
+  - Database and data checks
+  - Dependency verification
+  - Optional test suite execution
+  - Service health monitoring
+  - Documentation completeness
+
+**Post-Deployment Smoke Tests:**
+- **[scripts/Test-DeploymentSmoke.ps1](scripts/Test-DeploymentSmoke.ps1)** - Validates deployed services
+  - API health and availability
+  - Authentication system
+  - Core endpoints (prompts, search, costs)
+  - GitHub integration
+  - Performance benchmarks
+  - Security headers
+  
+- **[tests/test_deployment_smoke.py](tests/test_deployment_smoke.py)** - Python/pytest version for CI/CD integration
+
+**Deployment Checklist:**
+- **[docs/DEPLOYMENT_CHECKLIST.md](docs/DEPLOYMENT_CHECKLIST.md)** - Step-by-step deployment guide
+  - 5-phase deployment process
+  - Complete verification checklist
+  - Rollback procedures
+  - Monitoring setup
+
+**Usage:**
+```bash
+# Before deployment
+pwsh scripts/Verify-ProductionReadiness.ps1
+
+# After deployment
+pwsh scripts/Test-DeploymentSmoke.ps1
+
+# Or use pytest version
+pytest tests/test_deployment_smoke.py -v
 ```
 
 ---

@@ -171,6 +171,31 @@ The project has successfully completed all 6 sprints of Milestone 1.5, transform
 - ✅ Complete backup and recovery procedures
 - ✅ Production deployment guide available
 
+### 🔍 Production Deployment Verification
+
+**New Tools Available:**
+
+Before deploying to production, use these verification tools:
+
+```bash
+# Verify production readiness (comprehensive checks)
+pwsh scripts/Verify-ProductionReadiness.ps1
+
+# Skip tests for quick verification
+pwsh scripts/Verify-ProductionReadiness.ps1 -SkipTests
+
+# Post-deployment smoke tests (PowerShell)
+pwsh scripts/Test-DeploymentSmoke.ps1
+
+# Post-deployment smoke tests (Python/pytest - can be used in CI)
+pytest tests/test_deployment_smoke.py -v
+```
+
+**Deployment Checklist:**
+- See **[DEPLOYMENT_CHECKLIST.md](docs/DEPLOYMENT_CHECKLIST.md)** for complete deployment process
+- 5-phase checklist covering preparation through go-live validation
+- Includes rollback procedures and monitoring setup
+
 ### 🚀 Next Phase: Scale & Innovate
 
 **Phase 3 Focus Areas:**
