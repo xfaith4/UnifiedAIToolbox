@@ -21,6 +21,7 @@ sys.path.insert(0, str(BRIDGE_DIR))
 try:
     from github_integration.clone_service import GitHubCloneService, RepositoryCloneError
     from github_integration.codex_service import CodexSwarmService, CodexRunStatus
+    from github_integration.pr_service import GitHubPRService, PRCreationError
 except ImportError as e:
     raise ImportError(f"Failed to import GitHub services: {e}")
 
@@ -29,6 +30,7 @@ logger = logging.getLogger(__name__)
 # Initialize services
 github_service = None
 codex_service = None
+pr_service = None
 
 router = APIRouter(prefix="/github", tags=["GitHub Integration"])
 
@@ -408,4 +410,134 @@ async def cancel_codex_run(run_id: str):
             )
     except Exception as e:
         logger.error(f"Failed to cancel run: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# PR Creation Models
+class PRCreateRequest(BaseModel):
+    """Request model for creating a PR from Codex findings."""
+    clone_id: str = Field(..., description="Clone identifier")
+    run_id: str = Field(..., description="Codex run identifier")
+    repo_owner: str = Field(..., description="Repository owner")
+    repo_name: str = Field(..., description="Repository name")
+    base_branch: str = Field(default="main", description="Base branch for PR")
+    branch_name: Optional[str] = Field(default=None, description="Custom branch name")
+    title: Optional[str] = Field(default=None, description="PR title")
+    body: Optional[str] = Field(default=None, description="PR description")
+
+
+class PRResponse(BaseModel):
+    """Response model for PR creation."""
+    pr_number: int
+    pr_url: str
+    title: str
+    state: str
+    branch: str
+    base_branch: str
+    commit_sha: Optional[str] = None
+
+
+class PRStatusResponse(BaseModel):
+    """Response model for PR status."""
+    pr_number: int
+    state: str
+    merged: bool
+    title: str
+    html_url: str
+    created_at: str
+    updated_at: str
+    comments: int
+    commits: int
+    additions: int
+    deletions: int
+
+
+def get_pr_service() -> GitHubPRService:
+    """Get or initialize the PR service."""
+    global pr_service
+    if pr_service is None:
+        pr_service = GitHubPRService()
+    return pr_service
+
+
+@router.post("/pr/create", response_model=PRResponse)
+async def create_pull_request(request: PRCreateRequest):
+    """
+    Create a pull request from Codex findings.
+    
+    This endpoint:
+    1. Gets the cloned repository path
+    2. Retrieves Codex findings from the run
+    3. Creates a new branch
+    4. Commits the changes
+    5. Pushes the branch
+    6. Creates a PR via GitHub API
+    
+    Example:
+        POST /github/pr/create
+        {
+            "clone_id": "abc123",
+            "run_id": "xyz789",
+            "repo_owner": "owner",
+            "repo_name": "repo",
+            "base_branch": "main"
+        }
+    """
+    try:
+        # Get services
+        github_svc = get_github_service()
+        codex_svc = get_codex_service()
+        pr_svc = get_pr_service()
+        
+        # Get clone path
+        clone_info = github_svc.get_clone(request.clone_id)
+        if not clone_info:
+            raise HTTPException(status_code=404, detail="Clone not found")
+        
+        repo_path = Path(clone_info['path'])
+        
+        # Get findings
+        findings = codex_svc.get_findings(request.run_id)
+        if not findings:
+            raise HTTPException(
+                status_code=400,
+                detail="No findings available for this run"
+            )
+        
+        # Create PR
+        pr_info = pr_svc.create_pr_from_run(
+            repo_path=repo_path,
+            repo_owner=request.repo_owner,
+            repo_name=request.repo_name,
+            findings=findings,
+            base_branch=request.base_branch,
+            branch_name=request.branch_name
+        )
+        
+        return PRResponse(**pr_info)
+        
+    except PRCreationError as e:
+        logger.error(f"PR creation failed: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to create PR: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/pr/{repo_owner}/{repo_name}/{pr_number}", response_model=PRStatusResponse)
+async def get_pr_status(repo_owner: str, repo_name: str, pr_number: int):
+    """
+    Get the status of a pull request.
+    
+    Example: /github/pr/octocat/Hello-World/42
+    """
+    try:
+        pr_svc = get_pr_service()
+        status = pr_svc.get_pr_status(repo_owner, repo_name, pr_number)
+        return PRStatusResponse(**status)
+    except PRCreationError as e:
+        logger.error(f"Failed to get PR status: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to get PR status: {e}")
         raise HTTPException(status_code=500, detail=str(e))
