@@ -791,19 +791,37 @@ def _raise_openai_error(resp: requests.Response) -> None:
 # FastAPI app
 # ----------------------------
 
-# Security Headers Middleware
+# Security and Performance Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.requests import Request
 import time
 
+# Import security utilities
+try:
+    from security import (
+        RateLimitMiddleware, AuditLoggingMiddleware, 
+        get_security_headers, initialize_security
+    )
+    SECURITY_ENABLED = True
+except ImportError:
+    print("Warning: Security module not available")
+    SECURITY_ENABLED = False
+
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["X-XSS-Protection"] = "1; mode=block"
-        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        
+        # Apply security headers
+        if SECURITY_ENABLED:
+            headers = get_security_headers()
+            for key, value in headers.items():
+                response.headers[key] = value
+        else:
+            response.headers["X-Content-Type-Options"] = "nosniff"
+            response.headers["X-Frame-Options"] = "DENY"
+            response.headers["X-XSS-Protection"] = "1; mode=block"
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         
         # Allow caching for static resources but not for API responses with sensitive data
         if request.url.path.startswith("/static/") or request.url.path.endswith((".css", ".js", ".png", ".jpg", ".svg")):
@@ -825,8 +843,17 @@ class PerformanceMiddleware(BaseHTTPMiddleware):
 def create_app() -> FastAPI:
     fastapi_app = FastAPI(title="AI Prompt Workbench", version="1.0.0")
 
+    # Initialize security features
+    if SECURITY_ENABLED:
+        initialize_security()
+
     # Add compression middleware (first for response compression)
     fastapi_app.add_middleware(GZipMiddleware, minimum_size=1000)
+    
+    # Add security middleware (rate limiting and audit logging)
+    if SECURITY_ENABLED:
+        fastapi_app.add_middleware(AuditLoggingMiddleware)
+        fastapi_app.add_middleware(RateLimitMiddleware)
     
     # Add performance tracking middleware
     fastapi_app.add_middleware(PerformanceMiddleware)
