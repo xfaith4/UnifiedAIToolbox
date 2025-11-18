@@ -23,7 +23,7 @@ Congratulations! All 6 sprints of Milestone 1.5 have been successfully completed
 
 ### Immediate Actions (This Week)
 
-#### 1. Review Completion Documentation
+#### 1. Review Completion Documentation ✅
 
 Read these key documents to understand what was delivered:
 
@@ -33,7 +33,38 @@ Read these key documents to understand what was delivered:
   - Technical architecture overview
   - Success factors and lessons learned
 
-#### 2. Prepare for Production Deployment
+#### 2. Complete Pre-Deployment Checklist 🚀
+
+**NEW: Comprehensive deployment readiness materials created!**
+
+- **[DEPLOYMENT_READINESS.md](DEPLOYMENT_READINESS.md)** ✨ **NEW**
+  - Complete pre-deployment checklist (10 sections, 100+ items)
+  - Go/No-Go decision criteria
+  - Deployment timeline (4-week plan)
+  - Rollback procedures
+  - Success criteria and metrics
+
+**Action:** Review and complete the deployment readiness checklist
+
+#### 3. Run Pre-Deployment Verification 🔍
+
+**NEW: Automated verification script created!**
+
+```bash
+# Run the pre-deployment check on your production server
+./scripts/pre-deployment-check.sh
+
+# This verifies:
+# - System requirements (CPU, RAM, disk)
+# - Required software installed
+# - Network configuration
+# - Environment variables set
+# - Database setup
+# - Security configuration
+# - External service connectivity
+```
+
+#### 4. Prepare for Production Deployment 📦
 
 Follow the deployment guide:
 
@@ -44,9 +75,7 @@ Follow the deployment guide:
   - Monitoring and backup setup
   - Troubleshooting guide
 
-#### 3. Configure Your Environment
-
-Essential setup steps:
+**Essential setup steps:**
 
 ```bash
 # 0. Verify production readiness (NEW!)
@@ -65,14 +94,13 @@ docker compose up -d
 # 4. Create admin user
 docker compose exec prompt-api python -c "from auth import create_default_admin; create_default_admin()"
 
-# 5. Verify deployment (NEW!)
-pwsh scripts/Test-DeploymentSmoke.ps1
-# OR: pytest tests/test_deployment_smoke.py -v
+# 5. Run post-deployment smoke tests
+./scripts/post-deployment-smoketest.sh https://your-domain.com
 
 # 6. Access the application
-# Dashboard: http://localhost:5173
-# API: http://localhost:8000
-# API Docs: http://localhost:8000/docs
+# Dashboard: https://your-domain.com
+# API: https://your-domain.com/api
+# API Docs: https://your-domain.com/api/docs
 ```
 
 #### 3.5 Deployment Verification Tools (NEW!)
@@ -376,8 +404,11 @@ Track these for growth:
 
 **For DevOps**:
 - [docs/PRODUCTION_DEPLOYMENT.md](docs/PRODUCTION_DEPLOYMENT.md) - Deployment guide
+- **[DEPLOYMENT_READINESS.md](DEPLOYMENT_READINESS.md)** ✨ **NEW** - Pre-deployment checklist
 - [docker-compose.yml](docker-compose.yml) - Container orchestration
 - [.env.example](.env.example) - Environment variables
+- **[scripts/pre-deployment-check.sh](scripts/pre-deployment-check.sh)** ✨ **NEW** - Automated verification
+- **[scripts/post-deployment-smoketest.sh](scripts/post-deployment-smoketest.sh)** ✨ **NEW** - Post-deployment tests
 
 **For Planning**:
 - [PROJECT_PLAN.md](PROJECT_PLAN.md) - Milestone 1.5 plan
