@@ -241,6 +241,7 @@ if [ "$BACKEND_ONLY" != true ]; then
     echo -e "${GREEN}Starting Dashboard on port $FRONTEND_PORT...${NC}"
     export VITE_PORT=$FRONTEND_PORT
     export VITE_API_URL="http://localhost:$API_PORT"
+    export VITE_API_BASE="http://localhost:$API_PORT"
     npm run dev -- --host 0.0.0.0 --port $FRONTEND_PORT &
     DASHBOARD_PID=$!
     
