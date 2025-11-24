@@ -275,18 +275,37 @@ function saveLocal(items: PromptItem[]) {
   localStorage.setItem(DB_KEY, JSON.stringify(items))
 }
 
+function mergePrompts(...groups: PromptItem[][]) {
+  const seen = new Map<string, PromptItem>()
+
+  const keyFor = (p: PromptItem) => p.id ?? p.title?.toLowerCase() ?? uid()
+
+  for (const group of groups) {
+    for (const prompt of group) {
+      const k = keyFor(prompt)
+      if (!seen.has(k)) {
+        seen.set(k, prompt)
+      }
+    }
+  }
+
+  return Array.from(seen.values()).map((p) => normalizePrompt(p))
+}
+
 function ensureSeededLocal(): PromptItem[] {
   const existing = loadLocal()
   if (existing.length === 0 && STARTER_PROMPTS.length > 0) {
-    saveLocal(STARTER_PROMPTS)
-    return STARTER_PROMPTS
+    const seeded = mergePrompts(STARTER_PROMPTS)
+    saveLocal(seeded)
+    return seeded
   }
   return existing
 }
 
 export async function fetchPromptLibrary(): Promise<PromptItem[]> {
+  const local = ensureSeededLocal()
   if (!API_BASE) {
-    return ensureSeededLocal()
+    return mergePrompts(STARTER_PROMPTS, local)
   }
 
   try {
@@ -297,13 +316,16 @@ export async function fetchPromptLibrary(): Promise<PromptItem[]> {
       throw new Error(`API responded with ${response.status}`)
     }
     const payload = await response.json()
-    if (Array.isArray(payload)) {
-      return payload.map((item) => normalizePrompt(item))
-    }
-    return ensureSeededLocal()
+    const apiPrompts = Array.isArray(payload)
+      ? payload.map((item) => normalizePrompt(item))
+      : []
+    const merged = mergePrompts(STARTER_PROMPTS, apiPrompts, local)
+    // Cache merged locally for offline use
+    saveLocal(merged)
+    return merged
   } catch (error) {
     console.warn('Falling back to local prompt store:', error)
-    return ensureSeededLocal()
+    return mergePrompts(STARTER_PROMPTS, local)
   }
 }
 
@@ -322,6 +344,8 @@ export async function persistPromptLibrary(items: PromptItem[]): Promise<void> {
     if (!response.ok) {
       throw new Error(`Failed to sync prompts (${response.status})`)
     }
+    // Keep a local cache in case the API is unavailable later
+    saveLocal(items)
   } catch (error) {
     console.warn('Prompt sync failed; writing to local cache instead.', error)
     saveLocal(items)

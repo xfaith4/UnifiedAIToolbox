@@ -100,6 +100,7 @@ try:
         find_prompt_by_id as registry_find_prompt,
     )  # type: ignore
 except Exception:  # pragma: no cover - optional dependency
+    PromptSpec = Any  # type: ignore
     registry_list_prompts = None  # type: ignore
     registry_find_prompt = None  # type: ignore
 
