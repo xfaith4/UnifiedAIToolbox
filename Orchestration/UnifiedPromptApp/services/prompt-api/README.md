@@ -11,6 +11,8 @@ Unified backend that serves prompts to the Prompt Hub React app, the Streamlit W
 - **Template Runtime** - Existing `/api/templates/*` + `/api/generate` routes execute legacy YAML templates with cache/audit hooks so nothing breaks while consolidation continues.
 - **Registry-first Execution** - `/api/generate` now prefers canonical prompts from `prompt-registry` before falling back to the local YAML templates directory, ensuring every surface reuses the same schema.
 - **Audit & Caching** – SQLite tables (`workbench.db`) capture every execution with token counts, payload hashes, and cache hits.
+- **AI Provider Integration** - Unified abstraction layer for OpenAI, Anthropic (Claude), and other AI providers with retry logic, rate limiting, and cost tracking.
+- **Cost Tracking** - Track API usage and costs per provider/model with budget alerts and detailed breakdowns via `/admin/costs/*` endpoints.
 
 ## Getting Started
 
@@ -38,6 +40,87 @@ Point Prompt Hub at `http://localhost:5050` via `VITE_API_BASE`. Useful endpoint
 - `POST /orchestrator/tasks` - accept supervisor manifests and enqueue them for automation; use `GET /orchestrator/tasks` to inspect the queue and `PATCH /orchestrator/tasks/{id}` to update status/notes as runs progress.
 - `POST /prompts:sync` – persist edited prompts to `data/prompt-library.json` for offline use.
 - `POST /api/generate` – legacy YAML execution with caching + audit logging for downstream BI tooling.
+- `GET /admin/costs/summary` – get total AI API cost summary with optional date/provider filters.
+- `GET /admin/costs/breakdown` – detailed cost breakdown by provider, model, and daily usage.
+- `GET /admin/costs/budget` – check budget status and get alerts when approaching limits.
+
+## AI Provider Configuration
+
+The service supports multiple AI providers with automatic retry, rate limiting, and cost tracking:
+
+### Supported Providers
+
+1. **OpenAI** (GPT-4, GPT-3.5-turbo, etc.)
+   - Set `OPENAI_API_KEY` environment variable
+   - Supports all OpenAI chat completion models
+   - Token counting via tiktoken
+   - Automatic cost calculation based on current pricing
+
+2. **Anthropic** (Claude 3 models)
+   - Set `ANTHROPIC_API_KEY` environment variable
+   - Supports Claude 3 Opus, Sonnet, and Haiku
+   - Streaming support
+   - Automatic cost calculation
+
+3. **Mock Provider** (for testing)
+   - No API key required
+   - Simulates responses without API calls
+   - Zero cost, useful for development
+
+### Usage in Python
+
+```python
+from providers import OpenAIProvider, AnthropicProvider, Message, ModelRole
+
+# Initialize provider
+provider = OpenAIProvider(api_key="your-api-key")
+
+# Create messages
+messages = [
+    Message(role=ModelRole.SYSTEM, content="You are a helpful assistant."),
+    Message(role=ModelRole.USER, content="Hello!")
+]
+
+# Generate response
+response = await provider.generate(
+    messages=messages,
+    model="gpt-4o-mini",
+    max_tokens=1024,
+    temperature=0.2
+)
+
+print(f"Response: {response.text}")
+print(f"Cost: ${response.cost:.4f}")
+print(f"Tokens: {response.tokens_used}")
+```
+
+### Usage in PowerShell
+
+The `Invoke-Model` function in `modules/PromptLibrary` now supports both providers:
+
+```powershell
+# OpenAI
+$result = Invoke-Model -Provider openai -Model gpt-4o-mini `
+    -System "You are a helpful assistant" -User "Hello!" `
+    -MaxTokens 1024 -Temperature 0.2
+
+# Anthropic (Claude)
+$result = Invoke-Model -Provider anthropic -Model claude-3-haiku-20240307 `
+    -System "You are a helpful assistant" -User "Hello!" `
+    -MaxTokens 1024 -Temperature 0.2
+
+Write-Host $result.text
+```
+
+### Cost Tracking
+
+All API calls are automatically logged to the cost tracking database. Access cost reports via:
+
+- `/admin/costs/summary` - Overall cost summary
+- `/admin/costs/breakdown` - Breakdown by provider and model
+- `/admin/costs/budget?budget_amount=100&period_days=30` - Budget monitoring
+
+Cost tracking requires an admin token when `PROMPT_API_ADMIN_TOKEN` is set.
 
 ## Developer Notes
 
@@ -45,3 +128,4 @@ Point Prompt Hub at `http://localhost:5050` via `VITE_API_BASE`. Useful endpoint
 - Run the service tests from this directory with `PYTHONPATH=. pytest`. They cover health checks plus registry-backed prompt lookups.
 - Export the OpenAPI contract via `python scripts/export_openapi.py`; `docs/openapi.json` is versioned so downstream consumers (Prompt Hub, Power BI) can diff schema changes without running the server.
 - Keep both `prompt-registry` and this service installed in editable mode during development so code changes are immediately reflected.
+- The provider abstraction layer includes retry logic with exponential backoff, rate limiting, and comprehensive error handling for production use.

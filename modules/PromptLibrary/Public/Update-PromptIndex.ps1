@@ -29,11 +29,16 @@ foreach ($file in $promptFiles) {
         $prompt | Add-Member -NotePropertyName '_Path' -NotePropertyValue $file.FullName -Force
         $prompt | Add-Member -NotePropertyName '_Raw' -NotePropertyValue (Get-Content -LiteralPath $file.FullName -Raw) -Force
         
-        # Extract tags
+        # Extract metadata
         $tags = @()
         if ($prompt.tags) {
             $tags = @($prompt.tags | ForEach-Object { $_ })
         }
+        
+        $category = if ($prompt.category) { $prompt.category } else { '' }
+        $owner = if ($prompt.owner) { $prompt.owner } else { '' }
+        $description = if ($prompt.description) { $prompt.description } elseif ($prompt.prompt) { $prompt.prompt.Substring(0, [Math]::Min(200, $prompt.prompt.Length)) } else { '' }
+        $version = if ($prompt.version) { $prompt.version } else { '1.0.0' }
         
         # Calculate checksum
         $checksum = Get-ContentHash -Text $prompt._Raw
@@ -41,8 +46,11 @@ foreach ($file in $promptFiles) {
         # Update index
         Update-PromptIndex -PromptId $prompt.id `
                           -Title $prompt.title `
-                          -Version $prompt.version `
+                          -Version $version `
+                          -Category $category `
+                          -Owner $owner `
                           -Tags $tags `
+                          -Description $description `
                           -Checksum $checksum
         
         $indexedCount++

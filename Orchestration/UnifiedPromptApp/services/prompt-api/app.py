@@ -1,10 +1,11 @@
 ### BEGIN FILE: app.py
-import os, json, hashlib, sqlite3, datetime, textwrap, pathlib, sys, subprocess, re, uuid
+import os, json, hashlib, sqlite3, datetime, textwrap, pathlib, sys, subprocess, re, uuid, time
 from dataclasses import dataclass
 from contextlib import asynccontextmanager
-from typing import List, Optional, Dict, Any, Tuple
+from typing import List, Optional, Dict, Any, Tuple, Callable
+from functools import wraps
 
-from fastapi import FastAPI, HTTPException, Path, Query, Header # pyright: ignore[reportMissingImports]
+from fastapi import FastAPI, HTTPException, Path, Query, Header, Depends, status # pyright: ignore[reportMissingImports]
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel, Field, field_validator # pyright: ignore[reportMissingImports]
@@ -12,6 +13,39 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 import uvicorn # pyright: ignore[reportMissingImports]
 import yaml # pyright: ignore[reportMissingModuleSource]
 import requests # pyright: ignore[reportMissingModuleSource]
+
+# ----------------------------
+# Simple In-Memory Cache
+# ----------------------------
+_cache: Dict[str, Tuple[Any, float]] = {}
+CACHE_TTL = 60  # seconds
+
+def simple_cache(ttl: int = CACHE_TTL):
+    """Simple in-memory cache decorator for read-only endpoints."""
+    def decorator(func: Callable):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            # Create cache key from function name and arguments
+            cache_key = f"{func.__name__}:{str(args)}:{str(sorted(kwargs.items()))}"
+            
+            # Check if cached value exists and is still valid
+            if cache_key in _cache:
+                cached_value, cached_time = _cache[cache_key]
+                if time.time() - cached_time < ttl:
+                    return cached_value
+            
+            # Call function and cache result
+            result = func(*args, **kwargs)
+            _cache[cache_key] = (result, time.time())
+            
+            # Simple cache size management - keep last 100 entries
+            if len(_cache) > 100:
+                oldest_key = min(_cache.items(), key=lambda x: x[1][1])[0]
+                del _cache[oldest_key]
+            
+            return result
+        return wrapper
+    return decorator
 
 # ----------------------------
 # Configuration
@@ -155,6 +189,25 @@ class ReviewRecordRequest(BaseModel):
 
 class AgentSyncRequest(BaseModel):
     agents: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class PromptSearchResult(BaseModel):
+    id: str
+    title: str
+    version: str
+    category: Optional[str] = None
+    owner: Optional[str] = None
+    tags: List[str] = Field(default_factory=list)
+    description: Optional[str] = None
+    updated: str
+    relevance: Optional[float] = None
+
+
+class SearchPromptsResponse(BaseModel):
+    results: List[PromptSearchResult]
+    total: int
+    query: Optional[str] = None
+    filters: Dict[str, Any] = Field(default_factory=dict)
 
 
 class OrchestratorTask(BaseModel):
@@ -738,24 +791,73 @@ def _raise_openai_error(resp: requests.Response) -> None:
 # FastAPI app
 # ----------------------------
 
-# Security Headers Middleware
+# Security and Performance Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 from starlette.requests import Request
+import time
+
+# Import security utilities
+try:
+    from security import (
+        RateLimitMiddleware, AuditLoggingMiddleware, 
+        get_security_headers, initialize_security
+    )
+    SECURITY_ENABLED = True
+except ImportError:
+    print("Warning: Security module not available")
+    SECURITY_ENABLED = False
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["X-XSS-Protection"] = "1; mode=block"
-        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-        response.headers["Pragma"] = "no-cache"
-        response.headers["Expires"] = "0"
+        
+        # Apply security headers
+        if SECURITY_ENABLED:
+            headers = get_security_headers()
+            for key, value in headers.items():
+                response.headers[key] = value
+        else:
+            response.headers["X-Content-Type-Options"] = "nosniff"
+            response.headers["X-Frame-Options"] = "DENY"
+            response.headers["X-XSS-Protection"] = "1; mode=block"
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        
+        # Allow caching for static resources but not for API responses with sensitive data
+        if request.url.path.startswith("/static/") or request.url.path.endswith((".css", ".js", ".png", ".jpg", ".svg")):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        else:
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+        return response
+
+class PerformanceMiddleware(BaseHTTPMiddleware):
+    """Middleware to track request performance metrics."""
+    async def dispatch(self, request: Request, call_next):
+        start_time = time.time()
+        response = await call_next(request)
+        process_time = time.time() - start_time
+        response.headers["X-Process-Time"] = str(round(process_time * 1000, 2))  # milliseconds
         return response
 def create_app() -> FastAPI:
     fastapi_app = FastAPI(title="AI Prompt Workbench", version="1.0.0")
 
+    # Initialize security features
+    if SECURITY_ENABLED:
+        initialize_security()
+
+    # Add compression middleware (first for response compression)
+    fastapi_app.add_middleware(GZipMiddleware, minimum_size=1000)
+    
+    # Add security middleware (rate limiting and audit logging)
+    if SECURITY_ENABLED:
+        fastapi_app.add_middleware(AuditLoggingMiddleware)
+        fastapi_app.add_middleware(RateLimitMiddleware)
+    
+    # Add performance tracking middleware
+    fastapi_app.add_middleware(PerformanceMiddleware)
+    
     # Add security headers middleware
     fastapi_app.add_middleware(SecurityHeadersMiddleware)
 
@@ -783,6 +885,66 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+
+# Initialize authentication system
+try:
+    from auth import (
+        initialize_auth, authenticate_user, create_access_token, create_refresh_token,
+        UserLogin, Token, User, UserCreate, create_user, get_current_user, get_current_active_user,
+        require_admin, require_user, require_readonly, UserRole
+    )
+    initialize_auth()
+    AUTH_ENABLED = True
+except ImportError as e:
+    print(f"Warning: Authentication not available: {e}")
+    AUTH_ENABLED = False
+
+# Include GitHub integration router
+try:
+    from github_api import router as github_router
+    app.include_router(github_router)
+except ImportError as e:
+    print(f"Warning: GitHub integration not available: {e}")
+
+# ----------------------------
+# Authentication Endpoints
+# ----------------------------
+if AUTH_ENABLED:
+    @app.post("/auth/login", response_model=Token)
+    def login(credentials: UserLogin):
+        """Authenticate user and return access and refresh tokens."""
+        user = authenticate_user(credentials.username, credentials.password)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect username or password",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        access_token = create_access_token(data={"sub": user.username, "role": user.role.value})
+        refresh_token = create_refresh_token(data={"sub": user.username, "role": user.role.value})
+        
+        return Token(access_token=access_token, refresh_token=refresh_token)
+
+    @app.post("/auth/register", response_model=User)
+    def register(user_data: UserCreate, current_user: User = Depends(require_admin)):
+        """Register a new user (admin only)."""
+        return create_user(user_data)
+
+    @app.get("/auth/me", response_model=User)
+    def get_me(current_user: User = Depends(get_current_active_user)):
+        """Get current user information."""
+        return current_user
+
+    @app.get("/auth/status")
+    def auth_status():
+        """Check if authentication is enabled."""
+        return {"enabled": True, "message": "Authentication is enabled"}
+else:
+    @app.get("/auth/status")
+    def auth_status():
+        """Check if authentication is disabled."""
+        return {"enabled": False, "message": "Authentication is disabled"}
 
 @app.get("/health")
 def health():
@@ -817,6 +979,173 @@ def list_prompt_payloads():
     # Append new prompts that exist only in the synced cache
     merged.extend(overrides.values())
     return merged
+
+
+@app.get("/prompts/search", response_model=SearchPromptsResponse)
+def search_prompts(
+    q: Optional[str] = Query(None, description="Full-text search query"),
+    category: Optional[str] = Query(None, description="Filter by category"),
+    owner: Optional[str] = Query(None, description="Filter by owner"),
+    tags: Optional[str] = Query(None, description="Comma-separated tags to filter"),
+    limit: int = Query(10, ge=1, le=100, description="Number of results to return"),
+    offset: int = Query(0, ge=0, description="Offset for pagination")
+):
+    """
+    Search prompts using SQLite FTS5 full-text search or filtering.
+    
+    Examples:
+    - /prompts/search?q=analytics
+    - /prompts/search?category=engineering
+    - /prompts/search?tags=powershell,code-review
+    - /prompts/search?q=meeting&category=comms&limit=5
+    """
+    # Check if database and FTS index exist
+    prompts_db = ROOT_DIR / "data" / "prompts.db"
+    if not prompts_db.exists():
+        # Return empty results if database doesn't exist yet
+        return SearchPromptsResponse(results=[], total=0, query=q, filters={})
+    
+    try:
+        with sqlite3.connect(prompts_db) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            # Build query
+            where_clauses = []
+            params = {}
+            
+            # Full-text search
+            if q:
+                # Use FTS5 if available
+                try:
+                    fts_query = """
+                        SELECT p.id, p.title, p.version, p.category, p.owner, p.tags, 
+                               p.description, p.updated_utc, rank AS relevance
+                        FROM prompts p
+                        JOIN prompts_fts fts ON p.rowid = fts.rowid
+                        WHERE prompts_fts MATCH :query
+                    """
+                    params[":query"] = q
+                    
+                    # Add filters
+                    if category:
+                        where_clauses.append("p.category = :category")
+                        params[":category"] = category
+                    if owner:
+                        where_clauses.append("p.owner = :owner")
+                        params[":owner"] = owner
+                    if tags:
+                        tag_list = [t.strip() for t in tags.split(",")]
+                        tag_conditions = [f"p.tags LIKE :tag{i}" for i in range(len(tag_list))]
+                        where_clauses.append(f"({' OR '.join(tag_conditions)})")
+                        for i, tag in enumerate(tag_list):
+                            params[f":tag{i}"] = f"%{tag}%"
+                    
+                    if where_clauses:
+                        fts_query += " AND " + " AND ".join(where_clauses)
+                    
+                    fts_query += " ORDER BY rank LIMIT :limit OFFSET :offset"
+                    params[":limit"] = limit
+                    params[":offset"] = offset
+                    
+                    cursor.execute(fts_query, params)
+                except sqlite3.OperationalError:
+                    # FTS not available, fallback to LIKE search
+                    fallback_query = """
+                        SELECT id, title, version, category, owner, tags, description, updated_utc
+                        FROM prompts
+                        WHERE (title LIKE :query OR description LIKE :query OR tags LIKE :query)
+                    """
+                    params[":query"] = f"%{q}%"
+                    
+                    if category:
+                        fallback_query += " AND category = :category"
+                        params[":category"] = category
+                    if owner:
+                        fallback_query += " AND owner = :owner"
+                        params[":owner"] = owner
+                    if tags:
+                        tag_list = [t.strip() for t in tags.split(",")]
+                        tag_conditions = [f"tags LIKE :tag{i}" for i in range(len(tag_list))]
+                        fallback_query += f" AND ({' OR '.join(tag_conditions)})"
+                        for i, tag in enumerate(tag_list):
+                            params[f":tag{i}"] = f"%{tag}%"
+                    
+                    fallback_query += " ORDER BY updated_utc DESC LIMIT :limit OFFSET :offset"
+                    params[":limit"] = limit
+                    params[":offset"] = offset
+                    
+                    cursor.execute(fallback_query, params)
+            else:
+                # No query, just filter
+                filter_query = """
+                    SELECT id, title, version, category, owner, tags, description, updated_utc
+                    FROM prompts
+                """
+                
+                if category:
+                    where_clauses.append("category = :category")
+                    params[":category"] = category
+                if owner:
+                    where_clauses.append("owner = :owner")
+                    params[":owner"] = owner
+                if tags:
+                    tag_list = [t.strip() for t in tags.split(",")]
+                    tag_conditions = [f"tags LIKE :tag{i}" for i in range(len(tag_list))]
+                    where_clauses.append(f"({' OR '.join(tag_conditions)})")
+                    for i, tag in enumerate(tag_list):
+                        params[f":tag{i}"] = f"%{tag}%"
+                
+                if where_clauses:
+                    filter_query += " WHERE " + " AND ".join(where_clauses)
+                
+                filter_query += " ORDER BY updated_utc DESC LIMIT :limit OFFSET :offset"
+                params[":limit"] = limit
+                params[":offset"] = offset
+                
+                cursor.execute(filter_query, params)
+            
+            # Fetch results
+            rows = cursor.fetchall()
+            results = []
+            
+            for row in rows:
+                tags_list = []
+                if row["tags"]:
+                    try:
+                        tags_list = json.loads(row["tags"])
+                    except:
+                        pass
+                
+                result = PromptSearchResult(
+                    id=row["id"],
+                    title=row["title"],
+                    version=row["version"],
+                    category=row["category"] if row["category"] else None,
+                    owner=row["owner"] if row["owner"] else None,
+                    tags=tags_list if isinstance(tags_list, list) else [],
+                    description=row["description"] if row["description"] else None,
+                    updated=row["updated_utc"],
+                    relevance=row["relevance"] if "relevance" in row.keys() else None
+                )
+                results.append(result)
+            
+            # Get total count (for pagination)
+            total = len(results)  # Simplified, could be enhanced with a COUNT query
+            
+            return SearchPromptsResponse(
+                results=results,
+                total=total,
+                query=q,
+                filters={
+                    "category": category,
+                    "owner": owner,
+                    "tags": tags.split(",") if tags else []
+                }
+            )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
+
 
 @app.get("/prompts/{prompt_id}")
 def get_prompt(prompt_id: str):
@@ -1223,6 +1552,399 @@ def generate(req: RequestPayload):
     except HTTPException as e:
         audit_id = audit_log(req.template_id, model, input_json, None, False, f"error:{e.detail}", None, None)
         raise e
+
+
+# ----------------------------
+# Cost Tracking Endpoints
+# ----------------------------
+from cost_tracker import CostTracker
+
+cost_tracker = CostTracker(DB_PATH)
+
+
+class CostSummaryResponse(BaseModel):
+    """Response model for cost summaries."""
+    total_cost: float
+    period_days: Optional[int] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    provider: Optional[str] = None
+
+
+class CostBreakdownResponse(BaseModel):
+    """Response model for cost breakdowns."""
+    by_provider: List[Dict[str, Any]]
+    by_model: List[Dict[str, Any]]
+    daily: List[Dict[str, Any]]
+
+
+class BudgetStatusResponse(BaseModel):
+    """Response model for budget status."""
+    budget_amount: float
+    period_days: int
+    current_cost: float
+    remaining: float
+    percentage_used: float
+    status: str
+    provider: Optional[str] = None
+
+
+@app.get("/admin/costs/summary", response_model=CostSummaryResponse)
+def get_cost_summary(
+    start_date: Optional[str] = Query(None, description="Start date (ISO format)"),
+    end_date: Optional[str] = Query(None, description="End date (ISO format)"),
+    provider: Optional[str] = Query(None, description="Filter by provider"),
+    user_id: Optional[str] = Query(None, description="Filter by user ID"),
+    admin_token: Optional[str] = Header(None, alias="X-Admin-Token")
+):
+    """Get total cost summary for a time period."""
+    if settings.admin_token and admin_token != settings.admin_token:
+        raise HTTPException(status_code=401, detail="Admin token required")
+    
+    total_cost = cost_tracker.get_total_cost(
+        start_date=start_date,
+        end_date=end_date,
+        provider=provider,
+        user_id=user_id
+    )
+    
+    return CostSummaryResponse(
+        total_cost=total_cost,
+        start_date=start_date,
+        end_date=end_date,
+        provider=provider
+    )
+
+
+@app.get("/admin/costs/breakdown", response_model=CostBreakdownResponse)
+def get_cost_breakdown(
+    start_date: Optional[str] = Query(None, description="Start date (ISO format)"),
+    end_date: Optional[str] = Query(None, description="End date (ISO format)"),
+    provider: Optional[str] = Query(None, description="Filter by provider"),
+    days: int = Query(30, description="Number of days for daily breakdown"),
+    admin_token: Optional[str] = Header(None, alias="X-Admin-Token")
+):
+    """Get detailed cost breakdown by provider, model, and day."""
+    if settings.admin_token and admin_token != settings.admin_token:
+        raise HTTPException(status_code=401, detail="Admin token required")
+    
+    by_provider = cost_tracker.get_cost_by_provider(
+        start_date=start_date,
+        end_date=end_date
+    )
+    
+    by_model = cost_tracker.get_cost_by_model(
+        start_date=start_date,
+        end_date=end_date,
+        provider=provider
+    )
+    
+    daily = cost_tracker.get_daily_costs(
+        days=days,
+        provider=provider
+    )
+    
+    return CostBreakdownResponse(
+        by_provider=by_provider,
+        by_model=by_model,
+        daily=daily
+    )
+
+
+@app.get("/admin/costs/budget", response_model=BudgetStatusResponse)
+def check_budget_status(
+    budget_amount: float = Query(..., description="Budget amount in USD"),
+    period_days: int = Query(30, description="Budget period in days"),
+    provider: Optional[str] = Query(None, description="Filter by provider"),
+    admin_token: Optional[str] = Header(None, alias="X-Admin-Token")
+):
+    """Check if costs are within budget."""
+    if settings.admin_token and admin_token != settings.admin_token:
+        raise HTTPException(status_code=401, detail="Admin token required")
+    
+    budget_status = cost_tracker.check_budget(
+        budget_amount=budget_amount,
+        period_days=period_days,
+        provider=provider
+    )
+    
+    return BudgetStatusResponse(**budget_status)
+
+
+# ----------------------------
+# GitHub Integration
+# ----------------------------
+
+# Initialize GitHub cloner (lazy initialization)
+_github_cloner = None
+
+def get_github_cloner():
+    """Get or initialize the GitHub cloner."""
+    global _github_cloner
+    if _github_cloner is None:
+        github_token = os.environ.get("GITHUB_TOKEN")
+        _github_cloner = GitHubCloner(token=github_token)
+    return _github_cloner
+
+
+class GitHubCloner:
+    """Placeholder for GitHub cloner - import from orchestration-bridge."""
+    pass
+
+
+# Try to import GitHub cloner from orchestration-bridge
+try:
+    orchestration_bridge_path = ROOT_DIR / "apps" / "orchestration-bridge"
+    if orchestration_bridge_path not in sys.path:
+        sys.path.insert(0, str(orchestration_bridge_path))
+    from github.clone import GitHubCloner, CloneStatus  # type: ignore
+except ImportError:
+    # Fallback if module not available
+    class GitHubCloner:  # type: ignore
+        def __init__(self, token=None, base_clone_dir=None):
+            pass
+        def search_repositories(self, query, max_results=30):
+            return []
+        def get_repository_info(self, owner, repo_name):
+            return {}
+        def clone_repository(self, repo_url, branch=None, depth=None):
+            return "mock_id"
+        def get_progress(self, clone_id):
+            return None
+
+
+class GitHubSearchRequest(BaseModel):
+    """Request model for GitHub repository search."""
+    query: str = Field(..., description="Search query")
+    max_results: int = Field(30, description="Maximum results", ge=1, le=100)
+
+
+class GitHubRepoInfo(BaseModel):
+    """Repository information model."""
+    full_name: str
+    name: str
+    owner: str
+    description: Optional[str]
+    url: str
+    clone_url: str
+    stars: int
+    forks: int
+    language: Optional[str]
+    size_kb: int
+    updated_at: Optional[str]
+    default_branch: str
+    branches: Optional[List[str]] = None
+    topics: Optional[List[str]] = None
+    license: Optional[str] = None
+
+
+class CloneRequest(BaseModel):
+    """Request model for cloning a repository."""
+    repo_url: str = Field(..., description="Repository URL")
+    branch: Optional[str] = Field(None, description="Branch to clone")
+    depth: Optional[int] = Field(None, description="Clone depth (shallow clone)")
+
+
+class CloneProgressResponse(BaseModel):
+    """Response model for clone progress."""
+    clone_id: str
+    repo_url: str
+    status: str
+    progress_percent: float
+    message: str
+    clone_path: Optional[str] = None
+    start_time: str
+    end_time: Optional[str] = None
+    error: Optional[str] = None
+    size_mb: Optional[float] = None
+    file_count: Optional[int] = None
+    branches: Optional[List[str]] = None
+
+
+@app.post("/github/search", response_model=List[GitHubRepoInfo])
+def search_github_repositories(request: GitHubSearchRequest):
+    """
+    Search for repositories on GitHub.
+    
+    Args:
+        request: Search request with query and max results
+        
+    Returns:
+        List of repository information
+    """
+    try:
+        cloner = get_github_cloner()
+        repos = cloner.search_repositories(request.query, request.max_results)
+        return repos
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/github/repo/{owner}/{repo_name}", response_model=GitHubRepoInfo)
+def get_repository_info(owner: str, repo_name: str):
+    """
+    Get detailed information about a specific repository.
+    
+    Args:
+        owner: Repository owner
+        repo_name: Repository name
+        
+    Returns:
+        Repository information
+    """
+    try:
+        cloner = get_github_cloner()
+        info = cloner.get_repository_info(owner, repo_name)
+        return info
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@app.post("/github/clone", response_model=CloneProgressResponse)
+def clone_repository(request: CloneRequest):
+    """
+    Clone a GitHub repository.
+    
+    Args:
+        request: Clone request with repo URL and optional branch/depth
+        
+    Returns:
+        Clone progress response with clone ID
+    """
+    try:
+        cloner = get_github_cloner()
+        clone_id = cloner.clone_repository(
+            repo_url=request.repo_url,
+            branch=request.branch,
+            depth=request.depth
+        )
+        
+        # Get initial progress
+        progress = cloner.get_progress(clone_id)
+        if not progress:
+            raise HTTPException(status_code=500, detail="Failed to start clone")
+        
+        return CloneProgressResponse(
+            clone_id=clone_id,
+            repo_url=progress.repo_url,
+            status=progress.status.value,
+            progress_percent=progress.progress_percent,
+            message=progress.message,
+            clone_path=progress.clone_path,
+            start_time=progress.start_time.isoformat(),
+            end_time=progress.end_time.isoformat() if progress.end_time else None,
+            error=progress.error,
+            size_mb=progress.size_mb,
+            file_count=progress.file_count,
+            branches=progress.branches
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/github/clone/{clone_id}/progress", response_model=CloneProgressResponse)
+def get_clone_progress(clone_id: str):
+    """
+    Get the progress of a clone operation.
+    
+    Args:
+        clone_id: Clone operation ID
+        
+    Returns:
+        Clone progress information
+    """
+    cloner = get_github_cloner()
+    progress = cloner.get_progress(clone_id)
+    
+    if not progress:
+        raise HTTPException(status_code=404, detail="Clone operation not found")
+    
+    return CloneProgressResponse(
+        clone_id=clone_id,
+        repo_url=progress.repo_url,
+        status=progress.status.value,
+        progress_percent=progress.progress_percent,
+        message=progress.message,
+        clone_path=progress.clone_path,
+        start_time=progress.start_time.isoformat(),
+        end_time=progress.end_time.isoformat() if progress.end_time else None,
+        error=progress.error,
+        size_mb=progress.size_mb,
+        file_count=progress.file_count,
+        branches=progress.branches
+    )
+
+
+@app.get("/github/clone/{clone_id}/tree")
+def get_file_tree(clone_id: str, max_depth: int = Query(3, ge=1, le=10)):
+    """
+    Get the file tree of a cloned repository.
+    
+    Args:
+        clone_id: Clone operation ID
+        max_depth: Maximum depth to traverse
+        
+    Returns:
+        File tree as nested JSON
+    """
+    cloner = get_github_cloner()
+    tree = cloner.get_file_tree(clone_id, max_depth)
+    
+    if tree is None:
+        raise HTTPException(status_code=404, detail="Clone not found or not completed")
+    
+    return tree
+
+
+@app.delete("/github/clone/{clone_id}")
+def cleanup_clone(clone_id: str):
+    """
+    Clean up a cloned repository.
+    
+    Args:
+        clone_id: Clone operation ID
+        
+    Returns:
+        Success message
+    """
+    cloner = get_github_cloner()
+    success = cloner.cleanup_clone(clone_id)
+    
+    if not success:
+        raise HTTPException(status_code=404, detail="Clone not found or cleanup failed")
+    
+    return {"message": "Clone cleaned up successfully"}
+
+
+@app.get("/github/clones", response_model=List[CloneProgressResponse])
+def list_clones():
+    """
+    List all tracked clone operations.
+    
+    Returns:
+        List of clone progress information
+    """
+    cloner = get_github_cloner()
+    clones = cloner.list_clones()
+    
+    return [
+        CloneProgressResponse(
+            clone_id=f"{int(progress.start_time.timestamp())}_{hash(progress.repo_url)}",
+            repo_url=progress.repo_url,
+            status=progress.status.value,
+            progress_percent=progress.progress_percent,
+            message=progress.message,
+            clone_path=progress.clone_path,
+            start_time=progress.start_time.isoformat(),
+            end_time=progress.end_time.isoformat() if progress.end_time else None,
+            error=progress.error,
+            size_mb=progress.size_mb,
+            file_count=progress.file_count,
+            branches=progress.branches
+        )
+        for progress in clones
+    ]
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PROMPT_API_PORT", "8000"))
