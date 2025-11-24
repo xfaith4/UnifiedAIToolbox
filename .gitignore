@@ -19,6 +19,31 @@ __pycache__/
 build/
 .codex_out/
 codex_out/
+codex-multiagent-swarm/
 runs/
 *.db
 *.log
+
+# Binary executables
+*.exe
+*.dll
+
+# Environment files (keep .env.example)
+.env
+.env.local
+.env.*.local
+
+# Docker volumes and temp files
+docker-compose.override.yml
+*.pid
+*.sock
+
+# Python build artifacts
+*.egg-info/
+dist/
+*.egg
+
+# Test results
+testResults.xml
+coverage/
+.coverage

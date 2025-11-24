@@ -377,20 +377,7 @@ function Invoke-Orchestration {
     @{ Output = $resp; ArtifactPath = $outPath }
 }
 
-function Update-PromptIndex {
-    <#
-    .SYNOPSIS
-    Stub for SQLite indexer; wire System.Data.SQLite later.
-    #>
-    [CmdletBinding(SupportsShouldProcess)]
-    param([Parameter(Mandatory)][string]$Path)
-    if (-not (Test-Path -LiteralPath $Path)) {
-        throw ("Path not found: {0}" -f $Path)
-    }
-    if ($PSCmdlet.ShouldProcess($Path, "Update prompt index")) {
-        Write-Verbose ("Index update requested for {0}" -f $Path)
-    }
-}
+
 
 function Invoke-PromptYaml {
     [CmdletBinding()]

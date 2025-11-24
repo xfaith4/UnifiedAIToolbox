@@ -1,59 +1,153 @@
-name: Lint-Test-Build
+name: CI - Lint, Test & Build
+
 on:
   push:
     branches: [main]
   pull_request:
+
+permissions:
+  contents: read
+
 jobs:
-  pwsh:
-    runs-on: windows-latest
+  powershell:
+    name: PowerShell (${{ matrix.pwsh }} on ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        pwsh: ["5.1", "7.4"]
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        pwsh: ["7.4"]
     steps:
       - uses: actions/checkout@v4
-      - name: Install tooling (PowerShell 5.1)
-        if: matrix.pwsh == '5.1'
-        shell: powershell
-        run: |
-          Set-PSRepository PSGallery -InstallationPolicy Trusted
-          Install-Module Pester -Scope CurrentUser -Force -MinimumVersion 5.5.0
-          Install-Module PSScriptAnalyzer -Scope CurrentUser -Force
-          Install-Module powershell-yaml -Scope CurrentUser -Force
-      - name: Install tooling (PowerShell 7.4)
-        if: matrix.pwsh == '7.4'
+      
+      - name: Install PowerShell modules
         shell: pwsh
         run: |
           Set-PSRepository PSGallery -InstallationPolicy Trusted
           Install-Module Pester -Scope CurrentUser -Force -MinimumVersion 5.5.0
           Install-Module PSScriptAnalyzer -Scope CurrentUser -Force
           Install-Module powershell-yaml -Scope CurrentUser -Force
-      - name: Lint (PowerShell 5.1)
-        if: matrix.pwsh == '5.1'
-        shell: powershell
-        run: |
-          Invoke-ScriptAnalyzer -Path modules -Recurse -Severity Warning -EnableExit
-      - name: Lint (PowerShell 7.4)
-        if: matrix.pwsh == '7.4'
+      
+      - name: Lint PowerShell
         shell: pwsh
         run: |
           Invoke-ScriptAnalyzer -Path modules -Recurse -Severity Warning -EnableExit
-      - name: Tests (PowerShell 5.1)
-        if: matrix.pwsh == '5.1'
-        shell: powershell
-        run: |
-          Invoke-Pester -Path tests -CI -Output Detailed
-      - name: Tests (PowerShell 7.4)
-        if: matrix.pwsh == '7.4'
+      
+      - name: Run PowerShell tests
         shell: pwsh
         run: |
+          # Add modules directory to PSModulePath for tests
+          $env:PSModulePath = "$PWD/modules" + [IO.Path]::PathSeparator + $env:PSModulePath
           Invoke-Pester -Path tests -CI -Output Detailed
-      - name: Build index (PowerShell 5.1)
-        if: matrix.pwsh == '5.1'
-        shell: powershell
-        run: |
-          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/Build-Index.ps1
-      - name: Build index (PowerShell 7.4)
-        if: matrix.pwsh == '7.4'
+      
+      - name: Build prompt index
         shell: pwsh
         run: |
           pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/Build-Index.ps1
+
+  python:
+    name: Python (prompt-api)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+          cache-dependency-path: services/prompt-api/requirements.txt
+      
+      - name: Install dependencies
+        working-directory: services/prompt-api
+        run: |
+          python -m pip install --upgrade pip
+          # Install prompt-registry package first
+          pip install ../../packages/prompt-registry
+          pip install -e .[dev]
+          pip install flake8
+      
+      - name: Lint with flake8
+        working-directory: services/prompt-api
+        run: |
+          # Stop on syntax errors or undefined names
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          # Treat all other errors as warnings
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+      
+      - name: Run pytest
+        working-directory: services/prompt-api
+        run: |
+          pytest -v
+
+  dashboard:
+    name: Dashboard (React/Vite)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: apps/dashboard/package-lock.json
+      
+      - name: Install dependencies
+        working-directory: apps/dashboard
+        run: npm ci
+      
+      - name: Lint TypeScript/JavaScript
+        working-directory: apps/dashboard
+        run: npm run lint
+      
+      - name: Run tests
+        working-directory: apps/dashboard
+        run: npm test
+      
+      - name: Build dashboard
+        working-directory: apps/dashboard
+        run: npm run build
+      
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-build
+          path: apps/dashboard/dist
+          retention-days: 7
+
+  web:
+    name: Web App (Next.js)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: apps/web/package-lock.json
+      
+      - name: Install dependencies
+        working-directory: apps/web
+        run: npm ci
+      
+      - name: Lint
+        working-directory: apps/web
+        run: npm run lint
+      
+      - name: Build web app
+        working-directory: apps/web
+        run: npm run build
+      
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-build
+          path: apps/web/.next
+          retention-days: 7

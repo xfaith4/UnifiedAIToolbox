@@ -581,6 +581,17 @@ def _write_manifest(spec, review_policy: str) -> pathlib.Path:
     return target
 
 def _invoke_power_shell_refiner(spec, manifest: pathlib.Path, dry_run: bool) -> None:
+    """
+    Invoke the PowerShell refiner script to process a prompt.
+    
+    This intentionally uses PowerShell as a worker process to leverage the existing
+    OpenAI_Refiner.ps1 script that handles goal refinement and AI interaction.
+    The design allows the Python API to orchestrate PowerShell-based AI workflows
+    without reimplementing the refinement logic.
+    
+    For language-agnostic orchestration, consider using the orchestration-bridge
+    service which provides a more flexible task queue system.
+    """
     if dry_run:
         return
     if not PS_REFINER.exists():
