@@ -181,24 +181,26 @@ if [ "$FRONTEND_ONLY" != true ]; then
     fi
     
     cd Orchestration/UnifiedPromptApp/services/prompt-api || cd services/prompt-api
-    
-    # Create virtual environment if it doesn't exist
-    if [ ! -d ".venv-linux" ] && [ ! -d ".venv" ]; then
+
+    # Normalize venv location (single .venv)
+    if [ ! -d ".venv" ]; then
         echo -e "${YELLOW}Creating Python virtual environment...${NC}"
-        python3 -m venv .venv-linux || python -m venv .venv
+        python3 -m venv .venv || python -m venv .venv
     fi
-    
-    # Activate virtual environment and install dependencies
-    if [ -d ".venv-linux" ]; then
-      source .venv-linux/bin/activate
-    elif [ -d ".venv" ]; then
-      source .venv/Scripts/activate || source .venv/bin/activate
+
+    # Resolve Python executable inside venv (Linux/macOS vs Windows)
+    PYTHON_BIN=".venv/bin/python"
+    if [ -x ".venv/Scripts/python.exe" ]; then
+        PYTHON_BIN=".venv/Scripts/python.exe"
     fi
-    
-    if [ "$SKIP_INSTALL" != true ]; then
+
+    if [ "$SKIP_INSTALL" != true ] && [ ! -d ".venv_installed" ]; then
         echo -e "${YELLOW}Installing Python dependencies...${NC}"
-        pip install --upgrade pip
-        pip install -r requirements.txt
+        "$PYTHON_BIN" -m pip install --upgrade pip || true
+        "$PYTHON_BIN" -m pip install -r requirements.txt || true
+        touch .venv_installed
+    else
+        echo -e "${YELLOW}Skipping dependency install (set SKIP_INSTALL=false to force)${NC}"
     fi
     
     # Load local env if present
@@ -211,7 +213,7 @@ if [ "$FRONTEND_ONLY" != true ]; then
     export PROMPT_API_PORT=$API_PORT
     export OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
     export FRONTEND_PORT=$FRONTEND_PORT
-    uvicorn app:app --host 0.0.0.0 --port $API_PORT &
+    "$PYTHON_BIN" -m uvicorn app:app --host 0.0.0.0 --port $API_PORT &
     API_PID=$!
     
     cd "$SCRIPT_DIR"

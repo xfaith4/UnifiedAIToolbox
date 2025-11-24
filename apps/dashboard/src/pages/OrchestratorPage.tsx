@@ -314,8 +314,11 @@ export default function OrchestratorPage() {
             </tr>
           </thead>
           <tbody>
-            {runs.map((run) => (
-              <tr key={`${run.prompt_id}-${run.version}`} className="border-t border-slate-800">
+            {runs.map((run, idx) => (
+              <tr
+                key={run.run_id || `${run.prompt_id}-${run.version || ''}-${idx}`}
+                className="border-t border-slate-800"
+              >
                 <td className="px-4 py-3 text-slate-100">{run.prompt_id}</td>
                 <td className="px-4 py-3 text-slate-300">{run.version || '—'}</td>
                 <td className="px-4 py-3">

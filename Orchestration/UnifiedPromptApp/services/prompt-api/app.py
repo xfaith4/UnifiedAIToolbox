@@ -72,6 +72,9 @@ class ServiceSettings(BaseSettings):
     openai_model: str = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")  # fallback for legacy env var
     openai_api_key: Optional[str] = Field(default_factory=lambda: os.environ.get("OPENAI_API_KEY"))
     openai_api_base: str = os.environ.get("OPENAI_API_BASE", "https://api.openai.com/v1")
+    provider: str = Field(
+        default_factory=lambda: os.environ.get("PROMPT_API_PROVIDER") or os.environ.get("AI_PROVIDER") or "openai"
+    )
     bridge_dir: pathlib.Path = ROOT_DIR / "apps" / "orchestration-bridge"
     admin_token: Optional[str] = Field(default_factory=lambda: os.environ.get("PROMPT_API_ADMIN_TOKEN"))
 
@@ -86,6 +89,7 @@ DATA_DIR = settings.data_dir
 DEFAULT_MODEL = settings.openai_model
 OPENAI_API_KEY = settings.openai_api_key or ""
 OPENAI_API_BASE = settings.openai_api_base.rstrip("/")
+PROVIDER = (settings.provider or "openai").lower()
 PROMPT_SYNC_FILE = DATA_DIR / "prompt-library.json"
 AGENT_SYNC_FILE = DATA_DIR / "agent-library.json"
 
@@ -758,7 +762,7 @@ Return ONLY the JSON. No extra text.
 # ----------------------------
 # OpenAI call
 # ----------------------------
-def call_openai_chat(model: str, messages: List[Dict[str, str]]) -> Dict[str, Any]:
+def call_openai_chat(model: str, messages: List[Dict[str, str]]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     if not OPENAI_API_KEY:
         raise HTTPException(status_code=500, detail="OPENAI_API_KEY not set")
 
@@ -793,6 +797,34 @@ def call_openai_chat(model: str, messages: List[Dict[str, str]]) -> Dict[str, An
             raise HTTPException(status_code=500, detail="Model did not return valid JSON.")
 
     return parsed, usage
+
+
+def call_anthropic_chat(model: str, messages: List[Dict[str, str]]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """
+    Placeholder for Anthropic provider. Extend with real SDK when available.
+    """
+    raise HTTPException(status_code=501, detail="Anthropic provider not yet implemented")
+
+
+def call_azure_openai_chat(model: str, messages: List[Dict[str, str]]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """
+    Placeholder for Azure OpenAI provider. Extend with Azure client configuration.
+    """
+    raise HTTPException(status_code=501, detail="Azure OpenAI provider not yet implemented")
+
+
+def call_provider_chat(model: str, messages: List[Dict[str, str]]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """
+    Simple provider router. Defaults to OpenAI; other providers stubbed for now.
+    """
+    provider = PROVIDER
+    if provider == "openai":
+        return call_openai_chat(model, messages)
+    if provider in ("anthropic", "claude"):
+        return call_anthropic_chat(model, messages)
+    if provider in ("azure", "azure-openai"):
+        return call_azure_openai_chat(model, messages)
+    raise HTTPException(status_code=400, detail=f"Unsupported provider: {provider}")
 
 
 def _raise_openai_error(resp: requests.Response) -> None:
@@ -1005,160 +1037,175 @@ def search_prompts(
     offset: int = Query(0, ge=0, description="Offset for pagination")
 ):
     """
-    Search prompts using SQLite FTS5 full-text search or filtering.
-    
-    Examples:
-    - /prompts/search?q=analytics
-    - /prompts/search?category=engineering
-    - /prompts/search?tags=powershell,code-review
-    - /prompts/search?q=meeting&category=comms&limit=5
+    Search prompts using SQLite FTS5 when available; fallback to in-memory template search.
     """
-    # Check if database and FTS index exist
     prompts_db = ROOT_DIR / "data" / "prompts.db"
-    if not prompts_db.exists():
-        # Return empty results if database doesn't exist yet
-        return SearchPromptsResponse(results=[], total=0, query=q, filters={})
-    
-    try:
-        with sqlite3.connect(prompts_db) as conn:
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-            
-            # Build query
-            where_clauses = []
-            params = {}
-            
-            # Full-text search
-            if q:
-                # Use FTS5 if available
-                try:
-                    fts_query = """
-                        SELECT p.id, p.title, p.version, p.category, p.owner, p.tags, 
-                               p.description, p.updated_utc, rank AS relevance
-                        FROM prompts p
-                        JOIN prompts_fts fts ON p.rowid = fts.rowid
-                        WHERE prompts_fts MATCH :query
-                    """
-                    params[":query"] = q
-                    
-                    # Add filters
-                    if category:
-                        where_clauses.append("p.category = :category")
-                        params[":category"] = category
-                    if owner:
-                        where_clauses.append("p.owner = :owner")
-                        params[":owner"] = owner
-                    if tags:
-                        tag_list = [t.strip() for t in tags.split(",")]
-                        tag_conditions = [f"p.tags LIKE :tag{i}" for i in range(len(tag_list))]
-                        where_clauses.append(f"({' OR '.join(tag_conditions)})")
-                        for i, tag in enumerate(tag_list):
-                            params[f":tag{i}"] = f"%{tag}%"
-                    
-                    if where_clauses:
-                        fts_query += " AND " + " AND ".join(where_clauses)
-                    
-                    fts_query += " ORDER BY rank LIMIT :limit OFFSET :offset"
-                    params[":limit"] = limit
-                    params[":offset"] = offset
-                    
-                    cursor.execute(fts_query, params)
-                except sqlite3.OperationalError:
-                    # FTS not available, fallback to LIKE search
-                    fallback_query = """
+
+    # FTS / DB-backed search
+    if prompts_db.exists():
+        try:
+            with sqlite3.connect(prompts_db) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                
+                where_clauses = []
+                params = {}
+
+                if q:
+                    # Prefer FTS if available
+                    try:
+                        fts_query = """
+                            SELECT p.id, p.title, p.version, p.category, p.owner, p.tags, 
+                                   p.description, p.updated_utc, rank AS relevance
+                            FROM prompts p
+                            JOIN prompts_fts fts ON p.rowid = fts.rowid
+                            WHERE prompts_fts MATCH :query
+                        """
+                        params[":query"] = q
+
+                        if category:
+                            where_clauses.append("p.category = :category")
+                            params[":category"] = category
+                        if owner:
+                            where_clauses.append("p.owner = :owner")
+                            params[":owner"] = owner
+                        if tags:
+                            tag_list = [t.strip() for t in tags.split(",")]
+                            tag_conditions = [f"p.tags LIKE :tag{i}" for i in range(len(tag_list))]
+                            where_clauses.append(f"({' OR '.join(tag_conditions)})")
+                            for i, tag in enumerate(tag_list):
+                                params[f":tag{i}"] = f"%{tag}%"
+
+                        if where_clauses:
+                            fts_query += " AND " + " AND ".join(where_clauses)
+                        fts_query += " ORDER BY rank LIMIT :limit OFFSET :offset"
+                        params[":limit"] = limit
+                        params[":offset"] = offset
+                        cursor.execute(fts_query, params)
+                    except sqlite3.OperationalError:
+                        # FTS missing -> fallback to LIKE
+                        fallback = """
+                            SELECT id, title, version, category, owner, tags, description, updated_utc
+                            FROM prompts
+                            WHERE (title LIKE :query OR description LIKE :query OR tags LIKE :query)
+                        """
+                        params[":query"] = f"%{q}%"
+                        if category:
+                            fallback += " AND category = :category"
+                            params[":category"] = category
+                        if owner:
+                            fallback += " AND owner = :owner"
+                            params[":owner"] = owner
+                        if tags:
+                            tag_list = [t.strip() for t in tags.split(",")]
+                            tag_conditions = [f"tags LIKE :tag{i}" for i in range(len(tag_list))]
+                            fallback += f" AND ({' OR '.join(tag_conditions)})"
+                            for i, tag in enumerate(tag_list):
+                                params[f":tag{i}"] = f"%{tag}%"
+                        fallback += " ORDER BY updated_utc DESC LIMIT :limit OFFSET :offset"
+                        params[":limit"] = limit
+                        params[":offset"] = offset
+                        cursor.execute(fallback, params)
+                else:
+                    filter_query = """
                         SELECT id, title, version, category, owner, tags, description, updated_utc
                         FROM prompts
-                        WHERE (title LIKE :query OR description LIKE :query OR tags LIKE :query)
                     """
-                    params[":query"] = f"%{q}%"
-                    
                     if category:
-                        fallback_query += " AND category = :category"
+                        where_clauses.append("category = :category")
                         params[":category"] = category
                     if owner:
-                        fallback_query += " AND owner = :owner"
+                        where_clauses.append("owner = :owner")
                         params[":owner"] = owner
                     if tags:
                         tag_list = [t.strip() for t in tags.split(",")]
                         tag_conditions = [f"tags LIKE :tag{i}" for i in range(len(tag_list))]
-                        fallback_query += f" AND ({' OR '.join(tag_conditions)})"
+                        where_clauses.append(f"({' OR '.join(tag_conditions)})")
                         for i, tag in enumerate(tag_list):
                             params[f":tag{i}"] = f"%{tag}%"
-                    
-                    fallback_query += " ORDER BY updated_utc DESC LIMIT :limit OFFSET :offset"
+                    if where_clauses:
+                        filter_query += " WHERE " + " AND ".join(where_clauses)
+                    filter_query += " ORDER BY updated_utc DESC LIMIT :limit OFFSET :offset"
                     params[":limit"] = limit
                     params[":offset"] = offset
-                    
-                    cursor.execute(fallback_query, params)
-            else:
-                # No query, just filter
-                filter_query = """
-                    SELECT id, title, version, category, owner, tags, description, updated_utc
-                    FROM prompts
-                """
-                
-                if category:
-                    where_clauses.append("category = :category")
-                    params[":category"] = category
-                if owner:
-                    where_clauses.append("owner = :owner")
-                    params[":owner"] = owner
-                if tags:
-                    tag_list = [t.strip() for t in tags.split(",")]
-                    tag_conditions = [f"tags LIKE :tag{i}" for i in range(len(tag_list))]
-                    where_clauses.append(f"({' OR '.join(tag_conditions)})")
-                    for i, tag in enumerate(tag_list):
-                        params[f":tag{i}"] = f"%{tag}%"
-                
-                if where_clauses:
-                    filter_query += " WHERE " + " AND ".join(where_clauses)
-                
-                filter_query += " ORDER BY updated_utc DESC LIMIT :limit OFFSET :offset"
-                params[":limit"] = limit
-                params[":offset"] = offset
-                
-                cursor.execute(filter_query, params)
-            
-            # Fetch results
-            rows = cursor.fetchall()
-            results = []
-            
-            for row in rows:
-                tags_list = []
-                if row["tags"]:
-                    try:
-                        tags_list = json.loads(row["tags"])
-                    except:
-                        pass
-                
-                result = PromptSearchResult(
-                    id=row["id"],
-                    title=row["title"],
-                    version=row["version"],
-                    category=row["category"] if row["category"] else None,
-                    owner=row["owner"] if row["owner"] else None,
-                    tags=tags_list if isinstance(tags_list, list) else [],
-                    description=row["description"] if row["description"] else None,
-                    updated=row["updated_utc"],
-                    relevance=row["relevance"] if "relevance" in row.keys() else None
+                    cursor.execute(filter_query, params)
+
+                rows = cursor.fetchall()
+                results: List[PromptSearchResult] = []
+                for row in rows:
+                    tags_list: List[str] = []
+                    if row["tags"]:
+                        try:
+                            tags_list = json.loads(row["tags"])
+                        except Exception:
+                            pass
+                    results.append(
+                        PromptSearchResult(
+                            id=row["id"],
+                            title=row["title"],
+                            version=row["version"],
+                            category=row["category"] or None,
+                            owner=row["owner"] or None,
+                            tags=tags_list if isinstance(tags_list, list) else [],
+                            description=row["description"] or None,
+                            updated=row["updated_utc"],
+                            relevance=row["relevance"] if "relevance" in row.keys() else None,
+                        )
+                    )
+                return SearchPromptsResponse(
+                    results=results,
+                    total=len(results),
+                    query=q,
+                    filters={
+                        "category": category,
+                        "owner": owner,
+                        "tags": tags.split(",") if tags else []
+                    }
                 )
-                results.append(result)
-            
-            # Get total count (for pagination)
-            total = len(results)  # Simplified, could be enhanced with a COUNT query
-            
-            return SearchPromptsResponse(
-                results=results,
-                total=total,
-                query=q,
-                filters={
-                    "category": category,
-                    "owner": owner,
-                    "tags": tags.split(",") if tags else []
-                }
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
+
+    # Fallback: search loaded templates in-memory (registry + synced)
+    templates = read_templates()
+    q_lower = (q or "").strip().lower()
+    results = []
+    for tpl_id, payload in templates.items():
+        title = payload.get("title", "") or tpl_id
+        cat_val = payload.get("category", "") or ""
+        desc = payload.get("description", "") or ""
+        ctx = payload.get("context", "") or ""
+        tag_list = payload.get("telemetry", {}).get("tags", []) if isinstance(payload.get("telemetry"), dict) else payload.get("tags", [])
+        haystacks = [tpl_id, title, cat_val, desc, ctx, " ".join(tag_list) if tag_list else ""]
+        if q_lower and not any(q_lower in (h or "").lower() for h in haystacks):
+            continue
+        if category and cat_val != category:
+            continue
+        results.append(
+            PromptSearchResult(
+                id=tpl_id,
+                title=title,
+                version=payload.get("version") or "",
+                category=cat_val or None,
+                owner=None,
+                tags=tag_list if isinstance(tag_list, list) else [],
+                description=desc or None,
+                updated=payload.get("updatedAt") or payload.get("createdAt") or now_iso(),
+                relevance=None,
             )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
+        )
+    # naive relevance: sort by updated desc
+    results = sorted(results, key=lambda r: r.updated or "", reverse=True)
+    paged = results[offset: offset + limit]
+    return SearchPromptsResponse(
+        results=paged,
+        total=len(results),
+        query=q,
+        filters={
+            "category": category,
+            "owner": owner,
+            "tags": tags.split(",") if tags else []
+        }
+    )
 
 
 @app.get("/prompts/{prompt_id}")
@@ -1463,36 +1510,6 @@ def get_template(template_id: str = Path(..., description="Template id (matches 
     return t[template_id]
 
 
-@app.get("/prompts/search")
-def search_prompts(q: Optional[str] = Query(None, description="Search text (id,title,category,context,tags)")):
-    """
-    Simple prompt search over loaded templates.
-    """
-    templates = read_templates()
-    results = []
-    q_lower = (q or "").strip().lower()
-    for tpl_id, payload in templates.items():
-        title = payload.get("title", "") or tpl_id
-        category = payload.get("category", "") or ""
-        context = payload.get("context", "") or ""
-        description = payload.get("description", "") or ""
-        tags = payload.get("telemetry", {}).get("tags", []) if isinstance(payload.get("telemetry"), dict) else payload.get("tags", [])
-        haystacks = [tpl_id, title, category, context, description, " ".join(tags) if tags else ""]
-        if q_lower and not any(q_lower in (h or "").lower() for h in haystacks):
-            continue
-        results.append({
-            "id": tpl_id,
-            "title": title,
-            "category": category,
-            "context": context,
-            "description": description,
-            "tags": tags,
-            "updatedAt": payload.get("updatedAt"),
-            "createdAt": payload.get("createdAt"),
-            "version": payload.get("version"),
-        })
-    return {"count": len(results), "results": results}
-
 @app.post("/api/generate/dry-run")
 def generate_dry_run(req: RequestPayload):
     """
@@ -1576,10 +1593,10 @@ def generate(req: RequestPayload):
             audit_id=audit_id
         )
 
-    # Build messages & call OpenAI
+    # Build messages & call provider
     messages = build_messages(tpl, req)
     try:
-        output, usage = call_openai_chat(model, messages)
+        output, usage = call_provider_chat(model, messages)
         # Cache + audit
         cache_put(cache_key, req.template_id, model, input_json, output)
         audit_id = audit_log(
