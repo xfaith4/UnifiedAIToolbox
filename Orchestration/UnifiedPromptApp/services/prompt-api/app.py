@@ -1,5 +1,7 @@
 ### BEGIN FILE: app.py
 import os, json, hashlib, sqlite3, datetime, textwrap, pathlib, sys, subprocess, re, uuid, time, threading, shutil
+from typing import cast
+import openai
 from dataclasses import dataclass
 from contextlib import asynccontextmanager
 from typing import List, Optional, Dict, Any, Tuple, Callable
@@ -67,7 +69,7 @@ class ServiceSettings(BaseSettings):
     db_path: pathlib.Path = BASE_DIR / "workbench.db"
     template_dir: pathlib.Path = BASE_DIR / "templates"
     data_dir: pathlib.Path = BASE_DIR / "data"
-    openai_model: str = os.environ.get("OPENAI_MODEL", "gpt-5")  # fallback for legacy env var
+    openai_model: str = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")  # fallback for legacy env var
     openai_api_key: Optional[str] = Field(default_factory=lambda: os.environ.get("OPENAI_API_KEY"))
     openai_api_base: str = os.environ.get("OPENAI_API_BASE", "https://api.openai.com/v1")
     bridge_dir: pathlib.Path = ROOT_DIR / "apps" / "orchestration-bridge"
@@ -760,28 +762,29 @@ def call_openai_chat(model: str, messages: List[Dict[str, str]]) -> Dict[str, An
     if not OPENAI_API_KEY:
         raise HTTPException(status_code=500, detail="OPENAI_API_KEY not set")
 
-    url = f"{OPENAI_API_BASE}/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {OPENAI_API_KEY}",
-        "Content-Type": "application/json",
-    }
-    body = {
-        "model": model,
-        "messages": messages,
-        "temperature": 0.2
-    }
-    resp = requests.post(url, headers=headers, json=body, timeout=60)
-    if resp.status_code != 200:
-        _raise_openai_error(resp)
+    client = openai.OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_API_BASE)
+    try:
+        resp = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=0.2,
+        )
+    except Exception as exc:
+        error_id = uuid.uuid4().hex[:8]
+        print(f"[prompt-api] OpenAI error {error_id}: {exc}")
+        raise HTTPException(status_code=502, detail=f"OpenAI error (id: {error_id})")
 
-    data = resp.json()
-    content = data["choices"][0]["message"]["content"]
-    usage = data.get("usage", {})
-    # Expecting pure JSON
+    choice = resp.choices[0].message
+    content = cast(str, choice.content or "")
+    usage = {
+        "prompt_tokens": resp.usage.prompt_tokens if resp.usage else None,
+        "completion_tokens": resp.usage.completion_tokens if resp.usage else None,
+        "total_tokens": resp.usage.total_tokens if resp.usage else None,
+    }
+
     try:
         parsed = json.loads(content)
     except json.JSONDecodeError:
-        # Fallback: try to extract JSON blob
         start = content.find("{")
         end = content.rfind("}")
         if start >= 0 and end > start:
@@ -1924,6 +1927,24 @@ def get_orchestration_run(run_id: str):
         return data
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to read run: {exc}")
+
+
+@app.get("/orchestrate/run/{run_id}/log")
+def get_orchestration_log(run_id: str, max_bytes: int = Query(8000, ge=1, le=20000)):
+    log_path = BRIDGE_RUN_DIR / f"{run_id}.log"
+    if not log_path.exists():
+        raise HTTPException(status_code=404, detail="Log not found")
+    try:
+        data = log_path.read_bytes()
+        if len(data) > max_bytes:
+            data = data[-max_bytes:]
+        return {
+            "run_id": run_id,
+            "bytes": len(data),
+            "log": data.decode("utf-8", errors="ignore"),
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to read log: {exc}")
     depth: Optional[int] = Field(None, description="Clone depth (shallow clone)")
 
 

@@ -4,6 +4,7 @@
     "useDefineForClassFields": true,
     "lib": ["DOM", "DOM.Iterable", "ESNext"],
     "module": "ESNext",
+    "strict": true,
     "skipLibCheck": true,
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
@@ -12,6 +13,7 @@
     "noEmit": true,
     "jsx": "react-jsx",
     "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
     "types": ["vite/client"]
   },
   "include": ["src"],

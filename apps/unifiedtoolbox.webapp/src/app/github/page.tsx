@@ -84,7 +84,7 @@ export default function GitHubPage() {
             </li>
           ))}
           {!loading && repos.length === 0 && (
-            <div className="text-sm text-slate-500">No repositories to display.</div>
+            <li className="text-sm text-slate-500">No repositories to display.</li>
           )}
         </ul>
       </div>

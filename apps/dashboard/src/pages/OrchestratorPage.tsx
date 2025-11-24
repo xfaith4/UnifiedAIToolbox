@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { addRun, listRuns, type OrchestrationRun } from '../services/orchestratorStore'
 import { fetchPromptLibrary, PROMPT_API_BASE, type PromptItem } from '../services/promptStore'
 import { loadDatasets, type DatasetEntry } from '../services/datasetStore'
-import { createRunApi, fetchRunApi, fetchRunsApi } from '../services/orchestratorApi'
+import { createRunApi, fetchRunApi, fetchRunsApi, fetchRunLogApi } from '../services/orchestratorApi'
 
 export default function OrchestratorPage() {
   const [runs, setRuns] = useState<OrchestrationRun[]>([])
@@ -13,6 +13,7 @@ export default function OrchestratorPage() {
   const [logError, setLogError] = useState<string>('')
   const [logLoading, setLogLoading] = useState(false)
   const [logEvents, setLogEvents] = useState<OrchestrationRun['events']>([])
+  const [logPollId, setLogPollId] = useState<number | null>(null)
   const [form, setForm] = useState<OrchestrationRun>({
     prompt_id: '',
     version: '',
@@ -77,6 +78,7 @@ export default function OrchestratorPage() {
     const entry: OrchestrationRun = {
       run_id: form.run_mode === 'codex-swarm' ? `codex-${Date.now()}` : `local-${Date.now()}`,
       ...form,
+      status: 'queued', // always system-managed
       requested_at: new Date().toISOString(),
     }
 
@@ -115,24 +117,34 @@ export default function OrchestratorPage() {
         version: '',
         review_policy: 'standard',
         status: 'queued',
-      dataset_id: '',
-      dataset_name: '',
-      goal: '',
-    })
+        dataset_id: '',
+        dataset_name: '',
+        goal: '',
+      })
     }
     void launch()
   }
 
-  const handleLogs = async (run: OrchestrationRun) => {
-    setLogRun(run)
-    setLogLoading(true)
+  const fetchLogBundle = async (run: OrchestrationRun, silent = false) => {
+    if (!run) return
+    if (!silent) setLogLoading(true)
     setLogError('')
     try {
       if (run.run_id && PROMPT_API_BASE) {
         const latest = await fetchRunApi(run.run_id)
         setLogRun(latest)
-        setLogText(JSON.stringify(latest, null, 2))
         setLogEvents(latest.events ?? [])
+
+        let manifestText = JSON.stringify(latest, null, 2)
+        try {
+          const logResp = await fetchRunLogApi(run.run_id)
+          if (logResp?.log) {
+            manifestText = `${manifestText}\n\n--- LOG ---\n${logResp.log}`
+          }
+        } catch {
+          // log fetch can fail independently; keep manifest text
+        }
+        setLogText(manifestText)
       } else {
         setLogText(JSON.stringify(run, null, 2))
         setLogEvents(run.events ?? [])
@@ -142,9 +154,28 @@ export default function OrchestratorPage() {
       setLogText(JSON.stringify(run, null, 2))
       setLogEvents(run.events ?? [])
     } finally {
-      setLogLoading(false)
+      if (!silent) setLogLoading(false)
     }
   }
+
+  const handleLogs = async (run: OrchestrationRun) => {
+    setLogRun(run)
+    setLogText('')
+    setLogEvents([])
+    await fetchLogBundle(run)
+  }
+
+  useEffect(() => {
+    if (!logRun || !PROMPT_API_BASE) return
+    const id = window.setInterval(() => {
+      void fetchLogBundle(logRun, true)
+    }, 4000)
+    setLogPollId(id)
+    return () => {
+      window.clearInterval(id)
+      setLogPollId(null)
+    }
+  }, [logRun?.run_id, PROMPT_API_BASE])
 
   return (
     <>
@@ -212,16 +243,12 @@ export default function OrchestratorPage() {
         </div>
         <div className="space-y-1">
           <label className="text-sm text-slate-300">Status</label>
-          <select
-            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"
-            value={form.status}
-            onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
-          >
-            <option value="queued">queued</option>
-            <option value="running">running</option>
-            <option value="completed">completed</option>
-            <option value="failed">failed</option>
-          </select>
+          <div className="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100">
+            <span className="rounded-full bg-slate-900 px-2 py-1 text-xs text-slate-200">
+              {form.status || 'queued'}
+            </span>
+            <span className="text-[11px] text-slate-400">System managed</span>
+          </div>
         </div>
         <div className="space-y-1">
           <label className="text-sm text-slate-300">Engine</label>
@@ -330,12 +357,36 @@ export default function OrchestratorPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4">
         <div className="w-full max-w-6xl rounded-xl border border-slate-800 bg-slate-900 shadow-xl">
           <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
-            <div className="text-sm font-semibold text-slate-100">
-              Run logs: {logRun.prompt_id} ({logRun.run_mode || 'default'})
+            <div className="text-sm font-semibold text-slate-100 flex flex-col gap-1">
+              <span>
+                Run logs: {logRun.prompt_id} ({logRun.run_mode || 'default'})
+              </span>
+              <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-300">
+                <span className="rounded-full bg-slate-800 px-2 py-1 text-slate-100">
+                  {logRun.status || 'unknown'}
+                </span>
+                {logRun.model && (
+                  <span className="rounded-full bg-slate-800 px-2 py-1 text-slate-100">
+                    Model: {logRun.model}
+                  </span>
+                )}
+                {logRun.goal && (
+                  <span className="line-clamp-1 text-slate-400">Goal: {logRun.goal}</span>
+                )}
+              </div>
             </div>
             <div className="flex items-center gap-2">
               {logRun.mode === 'simulated' && (
                 <span className="text-[11px] text-amber-400">Simulated (orchestrator missing)</span>
+              )}
+              {logRun.run_id && PROMPT_API_BASE && (
+                <button
+                  className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-100 hover:bg-slate-800"
+                  onClick={() => fetchLogBundle(logRun)}
+                  disabled={logLoading}
+                >
+                  {logLoading ? 'Refreshing…' : 'Refresh log'}
+                </button>
               )}
               <button
                 className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-100 hover:bg-slate-800"

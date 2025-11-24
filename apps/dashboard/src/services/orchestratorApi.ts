@@ -39,3 +39,11 @@ export async function fetchRunApi(run_id: string): Promise<OrchestrationRun> {
   const payload = await res.json()
   return payload as OrchestrationRun
 }
+
+export async function fetchRunLogApi(run_id: string, maxBytes = 8000): Promise<{ log: string; bytes: number }> {
+  if (!PROMPT_API_BASE) throw new Error('API base not configured')
+  const res = await fetch(`${PROMPT_API_BASE}/orchestrate/run/${encodeURIComponent(run_id)}/log?max_bytes=${maxBytes}`)
+  if (!res.ok) throw new Error(`Failed to fetch log (${res.status})`)
+  const payload = await res.json()
+  return { log: payload.log as string, bytes: payload.bytes as number }
+}
