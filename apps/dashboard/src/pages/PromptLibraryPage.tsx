@@ -10,6 +10,7 @@ import {
   renderPromptViaApi,
   PROMPT_API_BASE,
 } from '../services/promptStore'
+import { loadDatasets, previewDataset, type DatasetEntry } from '../services/datasetStore'
 
 const SIMPLE_IMPORT_SAMPLE = `[
   {
@@ -208,6 +209,11 @@ export default function PromptLibraryPage() {
   const [apiRendered, setApiRendered] = useState<string>('')
   const [apiRenderError, setApiRenderError] = useState<string | null>(null)
   const [apiRenderLoading, setApiRenderLoading] = useState(false)
+  const [datasets, setDatasets] = useState<DatasetEntry[]>([])
+  const [selectedDatasetId, setSelectedDatasetId] = useState<string>('')
+  const [selectedDatasetPreview, setSelectedDatasetPreview] = useState<string>('')
+  const [refineOutput, setRefineOutput] = useState<string>('')
+  const [refineLoading, setRefineLoading] = useState(false)
   const initialized = useRef(false)
   const apiAvailable = Boolean(PROMPT_API_BASE)
 
@@ -219,6 +225,7 @@ export default function PromptLibraryPage() {
       initialized.current = true
       setIsLoading(false)
     })
+    setDatasets(loadDatasets())
     return () => {
       alive = false
     }
@@ -492,6 +499,65 @@ export default function PromptLibraryPage() {
     }
   }
 
+  function handleDatasetSelect(id: string) {
+    setSelectedDatasetId(id)
+    if (!id) {
+      setSelectedDatasetPreview('')
+      return
+    }
+    setSelectedDatasetPreview(previewDataset(id, 20))
+  }
+
+  async function handleRefine() {
+    if (!active) return
+    setRefineLoading(true)
+    const sample = selectedDatasetPreview || compiledTemplate
+    const varHints =
+      (active.variables ?? []).map((v) => `- ${v.name}: ${v.type ?? 'string'}`).join('\n') ||
+      '- (no variables defined)'
+
+    const rewritten = [
+      '### Refined Prompt (suggested)',
+      'You are a precise assistant. Follow the constraints strictly.',
+      '',
+      'INSTRUCTIONS:',
+      active.blocks?.instructions || active.template || '',
+      '',
+      'CONSTRAINTS:',
+      active.blocks?.constraints || '- Keep responses concise and fact-based.',
+      '',
+      'STYLE:',
+      active.blocks?.style || '- Clear, bullet-first, no fluff.',
+      '',
+      'OUTPUT:',
+      'Return JSON with keys that match the requested fields. Avoid extra keys.',
+      '',
+      'VARIABLES:',
+      varHints,
+      '',
+      sample ? 'DATA SAMPLE:\n' + sample : '',
+    ]
+      .filter(Boolean)
+      .join('\n')
+
+    setTimeout(() => {
+      setRefineOutput(rewritten)
+      setRefineLoading(false)
+    }, 120)
+  }
+
+  function applyRefinement() {
+    if (!active || !refineOutput.trim()) return
+    const updated = normalizePrompt({
+      ...active,
+      template: refineOutput,
+      updatedAt: nowIso(),
+    })
+    setItems((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
+    setEditing(updated)
+    setActiveId(updated.id)
+  }
+
   return (
     <div className="p-4 max-w-7xl mx-auto">
       <div className="flex items-center justify-between">
@@ -607,6 +673,50 @@ export default function PromptLibraryPage() {
             </option>
           ))}
         </select>
+      </div>
+
+      {/* Dataset attach */}
+      <div className="mt-4 rounded-xl border border-neutral-800 bg-neutral-950 p-3 space-y-2">
+        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div className="text-sm font-semibold">Attach dataset (optional)</div>
+            <div className="text-xs text-neutral-400">
+              Select a dataset to copy a sample into your prompt or few-shot examples.
+            </div>
+          </div>
+          <select
+            className="px-3 py-2 rounded bg-neutral-900 border border-neutral-800 text-sm text-slate-100"
+            value={selectedDatasetId}
+            onChange={(e) => handleDatasetSelect(e.target.value)}
+          >
+            <option value="">No dataset</option>
+            {datasets.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name} ({d.type})
+              </option>
+            ))}
+          </select>
+        </div>
+        {selectedDatasetPreview && (
+          <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-2">
+            <div className="flex items-center justify-between text-xs text-neutral-400">
+              <span>Preview (first lines/sample)</span>
+              <button
+                className="px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-xs text-slate-100"
+                onClick={() => {
+                  navigator.clipboard.writeText(selectedDatasetPreview).catch(() => {
+                    window.alert('Copy failed; please copy manually.')
+                  })
+                }}
+              >
+                Copy
+              </button>
+            </div>
+            <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap text-xs text-slate-200">
+              {selectedDatasetPreview}
+            </pre>
+          </div>
+        )}
       </div>
 
       {/* List + Editor + Preview */}
@@ -879,6 +989,38 @@ export default function PromptLibraryPage() {
                   <div className="text-[11px] mt-1 opacity-70">
                     Set <code>VITE_API_BASE</code> to enable live renders.
                   </div>
+                )}
+              </div>
+
+              {/* Refinement */}
+              <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="font-semibold text-sm">Refine prompt</div>
+                  <div className="text-xs text-neutral-500">
+                    Uses dataset sample if selected
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    className="px-3 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-xs text-white"
+                    onClick={handleRefine}
+                    disabled={refineLoading}
+                  >
+                    {refineLoading ? 'Refining…' : 'Generate suggestion'}
+                  </button>
+                  {refineOutput && (
+                    <button
+                      className="px-3 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-xs text-slate-100"
+                      onClick={applyRefinement}
+                    >
+                      Apply to template
+                    </button>
+                  )}
+                </div>
+                {refineOutput && (
+                  <pre className="bg-neutral-950 border border-neutral-800 rounded p-2 whitespace-pre-wrap text-xs max-h-48 overflow-auto">
+                    {refineOutput}
+                  </pre>
                 )}
               </div>
 

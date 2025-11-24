@@ -1743,6 +1743,43 @@ class CloneRequest(BaseModel):
     """Request model for cloning a repository."""
     repo_url: str = Field(..., description="Repository URL")
     branch: Optional[str] = Field(None, description="Branch to clone")
+
+
+# ----------------------------
+# Orchestration Run Stub
+# ----------------------------
+class OrchestrationRequest(BaseModel):
+    prompt_id: str
+    version: Optional[str] = None
+    review_policy: Optional[str] = None
+    status: Optional[str] = "queued"
+    dataset_id: Optional[str] = None
+    dataset_name: Optional[str] = None
+    agents: Optional[List[str]] = None
+    notes: Optional[str] = None
+
+
+@app.post("/orchestrate/run")
+def orchestrate_run(req: OrchestrationRequest):
+    """
+    Queue an orchestration run (stub). Writes a manifest to bridge runs dir.
+    """
+    manifest = {
+        "prompt_id": req.prompt_id,
+        "version": req.version or "latest",
+        "review_policy": req.review_policy or "standard",
+        "status": req.status or "queued",
+        "dataset_id": req.dataset_id,
+        "dataset_name": req.dataset_name,
+        "agents": req.agents or [],
+        "notes": req.notes,
+        "requested_at": now_iso(),
+        "source": "api",
+    }
+    run_id = f"{req.prompt_id.replace('.', '_')}.{manifest['requested_at'].replace(':','-')}"
+    path = BRIDGE_RUN_DIR / f"{run_id}.json"
+    path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    return {"run_id": run_id, "manifest": manifest}
     depth: Optional[int] = Field(None, description="Clone depth (shallow clone)")
 
 

@@ -1,0 +1,1606 @@
+[
+  {
+    "id": "agent.webrtc.disconnect",
+    "title": "Agent Webrtc Disconnect",
+    "category": "genesys",
+    "context": "",
+    "description": "Follow the dataset, output, and language contracts defined in this file.",
+    "tags": [
+      "genesys",
+      "ops"
+    ],
+    "role": "system",
+    "template": "Follow the dataset, output, and language contracts defined in this file.",
+    "variables": [
+      {
+        "name": "role",
+        "label": "role",
+        "type": "string",
+        "default": null,
+        "required": false,
+        "description": null
+      },
+      {
+        "name": "input_data",
+        "label": "input_data",
+        "type": "json",
+        "default": null,
+        "required": true,
+        "description": "JSON payload expected by the legacy PromptService template."
+      }
+    ],
+    "fewShot": null,
+    "outputFormat": "json",
+    "temperature": 0.2,
+    "top_p": null,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": "1.0.0",
+    "source": "data/prompts/agent.webrtc.disconnect.1.0.0.prompt.yaml",
+    "blocks": {
+      "system": "You are {role}. Be concise, actionable, and accurate for Genesys Cloud ops. Assume logs may be partial; ask for missing signals only if critical.",
+      "instructions": "Follow the dataset, output, and language contracts defined in this file.",
+      "examples": [
+        {
+          "input": {
+            "raw": "Task: Diagnose WebRTC disconnect spike around 14:00Z; InputData: {\"log_snippet\":\"ICE failures; TURN timeouts\"}"
+          },
+          "output": "{\"executive_summary\": [\"Spike at 14:00Z linked to ICE/TURN failures\", \"Likely regional egress network degradation\", \"Impact contained to ~12% WebRTC sessions\"], \"technical_json\": {\"probable_cause\": \"ISP packet loss impacting STUN/TURN; elevated RTT\", \"recommended_action\": \"Validate TURN reachability; compare MOS pre/post; apply QoS rules; notify NOC\"}, \"chart_recommendations\": [{\"type\": \"line\", \"metric\": \"webrtc_disconnects\", \"granularity\": \"5m\"}, {\"type\": \"heatmap\", \"metric\": \"mos_agent_leg<=3.5\", \"granularity\": \"hour\"}]}"
+        }
+      ]
+    },
+    "outputs": {
+      "format": "json"
+    },
+    "models": {
+      "recommended": [
+        "gpt-4o-mini",
+        "gpt-4o"
+      ],
+      "temperature": 0.2,
+      "top_p": 1.0
+    }
+  },
+  {
+    "id": "agent_webrtc_disconnect_v1.0.0",
+    "title": "Agent_Webrtc_Disconnect_V1 0 0",
+    "category": "",
+    "context": "",
+    "description": "",
+    "tags": [],
+    "role": "system",
+    "template": "",
+    "variables": [],
+    "fewShot": null,
+    "outputFormat": null,
+    "temperature": null,
+    "top_p": null,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": null,
+    "source": "data/prompts/agent_webrtc_disconnect_v1.0.0.yaml",
+    "blocks": null,
+    "outputs": null,
+    "models": null
+  },
+  {
+    "id": "analytics.divisions.performance.summary",
+    "title": "Analytics Divisions Performance Summary",
+    "category": "kpi",
+    "context": "",
+    "description": "Summarize KPIs for ${division} (${month}). Use bullet lists. If ${include_mos_detail}, include MOS\u22643.5 breakdown.",
+    "tags": [
+      "kpi",
+      "monthly",
+      "genesys"
+    ],
+    "role": "system",
+    "template": "Summarize KPIs for ${division} (${month}). Use bullet lists. If ${include_mos_detail}, include MOS\u22643.5 breakdown.",
+    "variables": [
+      {
+        "name": "division",
+        "label": "division",
+        "type": "string",
+        "default": null,
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "month",
+        "label": "month",
+        "type": "string",
+        "default": null,
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "include_mos_detail",
+        "label": "include_mos_detail",
+        "type": "boolean",
+        "default": false,
+        "required": false,
+        "description": null
+      }
+    ],
+    "fewShot": null,
+    "outputFormat": null,
+    "temperature": 0.2,
+    "top_p": null,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": "2.1.0",
+    "source": "data/prompts/analytics.divisions.performance.summary.prompt.yaml",
+    "blocks": {
+      "system": "You are a precise analytics explainer for contact-center leaders.",
+      "instructions": "Summarize KPIs for ${division} (${month}). Use bullet lists. If ${include_mos_detail}, include MOS\u22643.5 breakdown.",
+      "constraints": "- No claims without a number.\n- Keep to 200 words.",
+      "style": "- Plain English, executive tone.\n- Headings then bullets, no tables.",
+      "examples": [
+        {
+          "input": {
+            "division": "Medicare",
+            "month": "2025-10",
+            "include_mos_detail": true
+          },
+          "output": "## Medicare \u2014 Oct 2025\n\u2022 Total conversations: 182,944 \u2026"
+        }
+      ]
+    },
+    "outputs": null,
+    "models": {
+      "recommended": [
+        "gpt-5-thinking"
+      ],
+      "max_tokens": 2200,
+      "temperature": 0.2
+    }
+  },
+  {
+    "id": "comms.meeting.minutes.summarizer",
+    "title": "Comms Meeting Minutes Summarizer",
+    "category": "meetings",
+    "context": "",
+    "description": "Create minutes for '${title}' on ${date}. Sections: Decisions, Action Items (owner/date), Risks, Open Questions. Base only on ${raw_notes}.",
+    "tags": [
+      "meetings",
+      "minutes"
+    ],
+    "role": "system",
+    "template": "Create minutes for '${title}' on ${date}. Sections: Decisions, Action Items (owner/date), Risks, Open Questions. Base only on ${raw_notes}.",
+    "variables": [
+      {
+        "name": "title",
+        "label": "title",
+        "type": "string",
+        "default": null,
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "date",
+        "label": "date",
+        "type": "string",
+        "default": null,
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "attendees",
+        "label": "attendees",
+        "type": "array",
+        "default": null,
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "raw_notes",
+        "label": "raw_notes",
+        "type": "string",
+        "default": null,
+        "required": true,
+        "description": null
+      }
+    ],
+    "fewShot": null,
+    "outputFormat": null,
+    "temperature": 0.3,
+    "top_p": null,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": "1.0.0",
+    "source": "data/prompts/comms.meeting.minutes.summarizer.prompt.yaml",
+    "blocks": {
+      "system": "You convert messy notes into crisp minutes.",
+      "instructions": "Create minutes for '${title}' on ${date}. Sections: Decisions, Action Items (owner/date), Risks, Open Questions. Base only on ${raw_notes}.",
+      "constraints": "- No invented content\n- 200\u2013300 words",
+      "style": "- H2 + bullets; bold owners in Action Items"
+    },
+    "outputs": null,
+    "models": {
+      "recommended": [
+        "gpt-5-thinking"
+      ],
+      "max_tokens": 1800,
+      "temperature": 0.3
+    }
+  },
+  {
+    "id": "divisions.performance.summary.meta",
+    "title": "Divisions Performance Summary Meta",
+    "category": "",
+    "context": "",
+    "description": "",
+    "tags": [],
+    "role": "system",
+    "template": "",
+    "variables": [],
+    "fewShot": null,
+    "outputFormat": null,
+    "temperature": null,
+    "top_p": null,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": null,
+    "source": "data/prompts/divisions.performance.summary.meta.yaml",
+    "blocks": null,
+    "outputs": null,
+    "models": null
+  },
+  {
+    "id": "examples.analytics.divisions.performance.summary",
+    "title": "Examples Analytics Divisions Performance Summary",
+    "category": "example",
+    "context": "",
+    "description": "Summarize the latest KPI results for ${division} covering ${month}.\nInclude call volume, service level, average MOS, and notable shifts.\nIf ${include_mos_detail} is True, add a short paragraph that explains the primary drivers behind MOS changes.\n",
+    "tags": [
+      "example",
+      "quickstart"
+    ],
+    "role": "system",
+    "template": "Summarize the latest KPI results for ${division} covering ${month}.\nInclude call volume, service level, average MOS, and notable shifts.\nIf ${include_mos_detail} is True, add a short paragraph that explains the primary drivers behind MOS changes.\n",
+    "variables": [
+      {
+        "name": "division",
+        "label": "division",
+        "type": "string",
+        "default": null,
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "month",
+        "label": "month",
+        "type": "string",
+        "default": null,
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "include_mos_detail",
+        "label": "include_mos_detail",
+        "type": "boolean",
+        "default": false,
+        "required": false,
+        "description": null
+      }
+    ],
+    "fewShot": null,
+    "outputFormat": null,
+    "temperature": 0.2,
+    "top_p": null,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": "0.1.0",
+    "source": "data/prompts/divisions.performance.summary.prompt.yaml",
+    "blocks": {
+      "system": "You create concise executive KPI summaries for contact center leaders.",
+      "instructions": "Summarize the latest KPI results for ${division} covering ${month}.\nInclude call volume, service level, average MOS, and notable shifts.\nIf ${include_mos_detail} is True, add a short paragraph that explains the primary drivers behind MOS changes.\n",
+      "constraints": "- Do not invent metrics.\n- Keep the body under 200 words.\n",
+      "style": "- Use section headings followed by compact bullet lists.\n- Favor plain language and avoid jargon.\n",
+      "examples": [
+        {
+          "input": {
+            "division": "Medicare",
+            "month": "2025-10",
+            "include_mos_detail": true
+          },
+          "output": "## Medicare KPIs - Oct 2025\n- Call volume: 182,944 (+4% vs prior month)\n- Service level: 88 percent of calls answered within target window\n- Customer sentiment: MOS 3.8 with biggest gains from training refresh\n- Actions: Continue coaching cadence; launch callback pilot in Q4\n"
+        }
+      ]
+    },
+    "outputs": null,
+    "models": {
+      "recommended": [
+        "gpt-4.1"
+      ],
+      "max_tokens": 1800,
+      "temperature": 0.2
+    }
+  },
+  {
+    "id": "divisions.performance.summary.tests",
+    "title": "Divisions Performance Summary Tests",
+    "category": "",
+    "context": "",
+    "description": "",
+    "tags": [],
+    "role": "system",
+    "template": "",
+    "variables": [],
+    "fewShot": null,
+    "outputFormat": null,
+    "temperature": null,
+    "top_p": null,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": null,
+    "source": "data/prompts/divisions.performance.summary.tests.yaml",
+    "blocks": null,
+    "outputs": null,
+    "models": null
+  },
+  {
+    "id": "engineering.powershell.code.review",
+    "title": "Engineering Powershell Code Review",
+    "category": "powershell",
+    "context": "",
+    "description": "Review ${script_name}. Identify: portability issues, security pitfalls, performance hotspots, and style problems. Suggest concrete fixes with exact code snippets. Assume target versions ${target_versions}.",
+    "tags": [
+      "powershell",
+      "review"
+    ],
+    "role": "system",
+    "template": "Review ${script_name}. Identify: portability issues, security pitfalls, performance hotspots, and style problems. Suggest concrete fixes with exact code snippets. Assume target versions ${target_versions}.",
+    "variables": [
+      {
+        "name": "script_name",
+        "label": "script_name",
+        "type": "string",
+        "default": null,
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "script_content",
+        "label": "script_content",
+        "type": "string",
+        "default": null,
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "target_versions",
+        "label": "target_versions",
+        "type": "array",
+        "default": [
+          "5.1",
+          "7.4"
+        ],
+        "required": false,
+        "description": null
+      }
+    ],
+    "fewShot": null,
+    "outputFormat": null,
+    "temperature": 0.2,
+    "top_p": null,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": "1.1.0",
+    "source": "data/prompts/engineering.powershell.code.review.prompt.yaml",
+    "blocks": {
+      "system": "You are a strict PowerShell reviewer. Ensure PS 5.1 and 7+ compatibility.",
+      "instructions": "Review ${script_name}. Identify: portability issues, security pitfalls, performance hotspots, and style problems. Suggest concrete fixes with exact code snippets. Assume target versions ${target_versions}.",
+      "constraints": "- Use code blocks for diffs\n- Flag colon-after-variable gotcha",
+      "style": "- Numbered list of findings; each ends with a short fix"
+    },
+    "outputs": null,
+    "models": {
+      "recommended": [
+        "gpt-5-thinking"
+      ],
+      "max_tokens": 2200,
+      "temperature": 0.2
+    }
+  },
+  {
+    "id": "engineering.sql.query.generator",
+    "title": "Engineering Sql Query Generator",
+    "category": "sql",
+    "context": "",
+    "description": "Given schema:\n${schema}\nWrite ONE SELECT-only query for: ${request}. Return JSON with keys: sql, notes, caveats.",
+    "tags": [
+      "sql",
+      "generator"
+    ],
+    "role": "system",
+    "template": "Given schema:\n${schema}\nWrite ONE SELECT-only query for: ${request}. Return JSON with keys: sql, notes, caveats.",
+    "variables": [
+      {
+        "name": "dialect",
+        "label": "dialect",
+        "type": "string",
+        "default": null,
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "schema",
+        "label": "schema",
+        "type": "string",
+        "default": null,
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "request",
+        "label": "request",
+        "type": "string",
+        "default": null,
+        "required": true,
+        "description": null
+      }
+    ],
+    "fewShot": null,
+    "outputFormat": null,
+    "temperature": 0.1,
+    "top_p": null,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": "1.0.0",
+    "source": "data/prompts/engineering.sql.query.generator.prompt.yaml",
+    "blocks": {
+      "system": "You write safe, read-only SQL for ${dialect}. Never modify data.",
+      "instructions": "Given schema:\n${schema}\nWrite ONE SELECT-only query for: ${request}. Return JSON with keys: sql, notes, caveats.",
+      "constraints": "- No DML/DDL\n- Limit 500 rows\n- Use parameter placeholders where applicable",
+      "style": "- Output compact JSON"
+    },
+    "outputs": null,
+    "models": {
+      "recommended": [
+        "gpt-5-thinking"
+      ],
+      "max_tokens": 2000,
+      "temperature": 0.1
+    }
+  },
+  {
+    "id": "examples.analytics.divisions.performance.summary",
+    "title": "Examples Analytics Divisions Performance Summary",
+    "category": "example",
+    "context": "",
+    "description": "Summarize the latest KPI results for ${division} covering ${month}.\nInclude call volume, service level, average MOS, and notable shifts.\nIf ${include_mos_detail} is True, add a short paragraph that explains the primary drivers behind MOS changes.\n",
+    "tags": [
+      "example",
+      "quickstart"
+    ],
+    "role": "system",
+    "template": "Summarize the latest KPI results for ${division} covering ${month}.\nInclude call volume, service level, average MOS, and notable shifts.\nIf ${include_mos_detail} is True, add a short paragraph that explains the primary drivers behind MOS changes.\n",
+    "variables": [
+      {
+        "name": "division",
+        "label": "division",
+        "type": "string",
+        "default": null,
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "month",
+        "label": "month",
+        "type": "string",
+        "default": null,
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "include_mos_detail",
+        "label": "include_mos_detail",
+        "type": "boolean",
+        "default": false,
+        "required": false,
+        "description": null
+      }
+    ],
+    "fewShot": null,
+    "outputFormat": null,
+    "temperature": 0.2,
+    "top_p": null,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": "0.1.0",
+    "source": "data/prompts/examples.analytics.divisions.performance.summary.prompt.yaml",
+    "blocks": {
+      "system": "You create concise executive KPI summaries for contact center leaders.",
+      "instructions": "Summarize the latest KPI results for ${division} covering ${month}.\nInclude call volume, service level, average MOS, and notable shifts.\nIf ${include_mos_detail} is True, add a short paragraph that explains the primary drivers behind MOS changes.\n",
+      "constraints": "- Do not invent metrics.\n- Keep the body under 200 words.\n",
+      "style": "- Use section headings followed by compact bullet lists.\n- Favor plain language and avoid jargon.\n",
+      "examples": [
+        {
+          "input": {
+            "division": "Medicare",
+            "month": "2025-10",
+            "include_mos_detail": true
+          },
+          "output": "## Medicare KPIs - Oct 2025\n- Call volume: 182,944 (+4% vs prior month)\n- Service level: 88 percent of calls answered within target window\n- Customer sentiment: MOS 3.8 with biggest gains from training refresh\n- Actions: Continue coaching cadence; launch callback pilot in Q4\n"
+        }
+      ]
+    },
+    "outputs": null,
+    "models": {
+      "recommended": [
+        "gpt-4.1"
+      ],
+      "max_tokens": 1800,
+      "temperature": 0.2
+    }
+  },
+  {
+    "id": "incident.postmortem.synthesizer.meta",
+    "title": "Incident Postmortem Synthesizer Meta",
+    "category": "",
+    "context": "",
+    "description": "",
+    "tags": [],
+    "role": "system",
+    "template": "",
+    "variables": [],
+    "fewShot": null,
+    "outputFormat": null,
+    "temperature": null,
+    "top_p": null,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": null,
+    "source": "data/prompts/incident.postmortem.synthesizer.meta.yaml",
+    "blocks": null,
+    "outputs": null,
+    "models": null
+  },
+  {
+    "id": "operations.incident.postmortem.synthesizer",
+    "title": "Operations Incident Postmortem Synthesizer",
+    "category": "postmortem",
+    "context": "",
+    "description": "Produce a blameless postmortem for ${incident_id} (${when}). Sections: Overview, Impact, Timeline (bullet list), Root Cause, Corrective Actions (owner+ETA), Lessons Learned.",
+    "tags": [
+      "postmortem",
+      "sre"
+    ],
+    "role": "system",
+    "template": "Produce a blameless postmortem for ${incident_id} (${when}). Sections: Overview, Impact, Timeline (bullet list), Root Cause, Corrective Actions (owner+ETA), Lessons Learned.",
+    "variables": [
+      {
+        "name": "incident_id",
+        "label": "incident_id",
+        "type": "string",
+        "default": null,
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "when",
+        "label": "when",
+        "type": "string",
+        "default": null,
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "impact_summary",
+        "label": "impact_summary",
+        "type": "string",
+        "default": null,
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "timeline",
+        "label": "timeline",
+        "type": "array",
+        "default": null,
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "root_cause",
+        "label": "root_cause",
+        "type": "string",
+        "default": null,
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "actions",
+        "label": "actions",
+        "type": "array",
+        "default": null,
+        "required": true,
+        "description": null
+      }
+    ],
+    "fewShot": null,
+    "outputFormat": null,
+    "temperature": 0.2,
+    "top_p": null,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": "1.2.0",
+    "source": "data/prompts/incident.postmortem.synthesizer.prompt.yaml",
+    "blocks": {
+      "system": "You are an SRE postmortem editor. Prefer clarity over blame.",
+      "instructions": "Produce a blameless postmortem for ${incident_id} (${when}). Sections: Overview, Impact, Timeline (bullet list), Root Cause, Corrective Actions (owner+ETA), Lessons Learned.",
+      "constraints": "- No speculation.\n- Use RFC3339 timestamps in Timeline if present.",
+      "style": "- H2 headers, bullets under each\n- Keep under 400 words"
+    },
+    "outputs": null,
+    "models": {
+      "recommended": [
+        "gpt-5-thinking"
+      ],
+      "max_tokens": 2600,
+      "temperature": 0.2
+    }
+  },
+  {
+    "id": "incident.postmortem.synthesizer.tests",
+    "title": "Incident Postmortem Synthesizer Tests",
+    "category": "",
+    "context": "",
+    "description": "",
+    "tags": [],
+    "role": "system",
+    "template": "",
+    "variables": [],
+    "fewShot": null,
+    "outputFormat": null,
+    "temperature": null,
+    "top_p": null,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": null,
+    "source": "data/prompts/incident.postmortem.synthesizer.tests.yaml",
+    "blocks": null,
+    "outputs": null,
+    "models": null
+  },
+  {
+    "id": "legacy.genesys-kpi-brief-1",
+    "title": "Legacy Genesys-Kpi-Brief-1",
+    "category": "analytics",
+    "context": "",
+    "description": "Context: {{context}}\nData Highlights: {{highlights}}\nExplain the likely causes and recommended actions in <=5 bullets.",
+    "tags": [
+      "analytics",
+      "brief",
+      "genesys",
+      "prompt-library",
+      "react"
+    ],
+    "role": "system",
+    "template": "Context: {{context}}\nData Highlights: {{highlights}}\nExplain the likely causes and recommended actions in <=5 bullets.",
+    "variables": [
+      {
+        "name": "context",
+        "label": "context",
+        "type": "string",
+        "default": null,
+        "required": false,
+        "description": null
+      },
+      {
+        "name": "highlights",
+        "label": "highlights",
+        "type": "string",
+        "default": null,
+        "required": false,
+        "description": null
+      }
+    ],
+    "fewShot": null,
+    "outputFormat": null,
+    "temperature": 0.3,
+    "top_p": null,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": "1.0.0",
+    "source": "data/prompts/legacy.genesys-kpi-brief-1.1.0.0.prompt.yaml",
+    "blocks": {
+      "system": "Explain KPI movement to non-technical leads with crisp bullets.",
+      "instructions": "Context: {{context}}\nData Highlights: {{highlights}}\nExplain the likely causes and recommended actions in <=5 bullets.",
+      "style": "Plain English, exec-friendly, 5 bullets max."
+    },
+    "outputs": null,
+    "models": {
+      "temperature": 0.3,
+      "top_p": 1,
+      "recommended": [
+        "gpt-4o-mini"
+      ]
+    }
+  },
+  {
+    "id": "legacy.sys-troubleshoot-1",
+    "title": "Legacy Sys-Troubleshoot-1",
+    "category": "events",
+    "context": "",
+    "description": "You are a senior Windows engineer. Analyze the following event text and return JSON with keys: root_cause, severity (Low/Medium/High), actions (array), references (array of URLs).\n\nEVENT:\n{{event_text}}",
+    "tags": [
+      "events",
+      "json",
+      "ops",
+      "prompt-library",
+      "react",
+      "windows"
+    ],
+    "role": "system",
+    "template": "You are a senior Windows engineer. Analyze the following event text and return JSON with keys: root_cause, severity (Low/Medium/High), actions (array), references (array of URLs).\n\nEVENT:\n{{event_text}}",
+    "variables": [
+      {
+        "name": "event_text",
+        "label": "Event Text",
+        "type": "string",
+        "default": null,
+        "required": true,
+        "description": null
+      }
+    ],
+    "fewShot": null,
+    "outputFormat": "json",
+    "temperature": 0.2,
+    "top_p": null,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": "1.0.0",
+    "source": "data/prompts/legacy.sys-troubleshoot-1.1.0.0.prompt.yaml",
+    "blocks": {
+      "system": "Summarize event and propose corrective steps. Returns JSON.",
+      "instructions": "You are a senior Windows engineer. Analyze the following event text and return JSON with keys: root_cause, severity (Low/Medium/High), actions (array), references (array of URLs).\n\nEVENT:\n{{event_text}}",
+      "style": "Be concise, actionable, and accurate.",
+      "constraints": "Output json matching:\n{\"root_cause\":\"...\",\"severity\":\"...\",\"actions\":[\"...\"],\"references\":[\"...\"]}"
+    },
+    "outputs": {
+      "format": "json",
+      "schema": "{\"root_cause\":\"...\",\"severity\":\"...\",\"actions\":[\"...\"],\"references\":[\"...\"]}"
+    },
+    "models": {
+      "temperature": 0.2,
+      "top_p": 1,
+      "recommended": [
+        "gpt-4o-mini"
+      ]
+    }
+  },
+  {
+    "id": "meeting.minutes.summarizer.meta",
+    "title": "Meeting Minutes Summarizer Meta",
+    "category": "",
+    "context": "",
+    "description": "",
+    "tags": [],
+    "role": "system",
+    "template": "",
+    "variables": [],
+    "fewShot": null,
+    "outputFormat": null,
+    "temperature": null,
+    "top_p": null,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": null,
+    "source": "data/prompts/meeting.minutes.summarizer.meta.yaml",
+    "blocks": null,
+    "outputs": null,
+    "models": null
+  },
+  {
+    "id": "comms.meeting.minutes.summarizer",
+    "title": "Comms Meeting Minutes Summarizer",
+    "category": "meetings",
+    "context": "",
+    "description": "Create minutes for '${title}' on ${date}. Sections: Decisions, Action Items (owner/date), Risks, Open Questions. Base only on ${raw_notes}.",
+    "tags": [
+      "meetings",
+      "minutes"
+    ],
+    "role": "system",
+    "template": "Create minutes for '${title}' on ${date}. Sections: Decisions, Action Items (owner/date), Risks, Open Questions. Base only on ${raw_notes}.",
+    "variables": [
+      {
+        "name": "title",
+        "label": "title",
+        "type": "string",
+        "default": null,
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "date",
+        "label": "date",
+        "type": "string",
+        "default": null,
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "attendees",
+        "label": "attendees",
+        "type": "array",
+        "default": null,
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "raw_notes",
+        "label": "raw_notes",
+        "type": "string",
+        "default": null,
+        "required": true,
+        "description": null
+      }
+    ],
+    "fewShot": null,
+    "outputFormat": null,
+    "temperature": 0.3,
+    "top_p": null,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": "1.0.0",
+    "source": "data/prompts/meeting.minutes.summarizer.prompt.yaml",
+    "blocks": {
+      "system": "You convert messy notes into crisp minutes.",
+      "instructions": "Create minutes for '${title}' on ${date}. Sections: Decisions, Action Items (owner/date), Risks, Open Questions. Base only on ${raw_notes}.",
+      "constraints": "- No invented content\n- 200\u2013300 words",
+      "style": "- H2 + bullets; bold owners in Action Items"
+    },
+    "outputs": null,
+    "models": {
+      "recommended": [
+        "gpt-5-thinking"
+      ],
+      "max_tokens": 1800,
+      "temperature": 0.3
+    }
+  },
+  {
+    "id": "meeting.minutes.summarizer.tests",
+    "title": "Meeting Minutes Summarizer Tests",
+    "category": "",
+    "context": "",
+    "description": "",
+    "tags": [],
+    "role": "system",
+    "template": "",
+    "variables": [],
+    "fewShot": null,
+    "outputFormat": null,
+    "temperature": null,
+    "top_p": null,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": null,
+    "source": "data/prompts/meeting.minutes.summarizer.tests.yaml",
+    "blocks": null,
+    "outputs": null,
+    "models": null
+  },
+  {
+    "id": "operations.incident.postmortem.synthesizer",
+    "title": "Operations Incident Postmortem Synthesizer",
+    "category": "postmortem",
+    "context": "",
+    "description": "Produce a blameless postmortem for ${incident_id} (${when}). Sections: Overview, Impact, Timeline (bullet list), Root Cause, Corrective Actions (owner+ETA), Lessons Learned.",
+    "tags": [
+      "postmortem",
+      "sre"
+    ],
+    "role": "system",
+    "template": "Produce a blameless postmortem for ${incident_id} (${when}). Sections: Overview, Impact, Timeline (bullet list), Root Cause, Corrective Actions (owner+ETA), Lessons Learned.",
+    "variables": [
+      {
+        "name": "incident_id",
+        "label": "incident_id",
+        "type": "string",
+        "default": null,
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "when",
+        "label": "when",
+        "type": "string",
+        "default": null,
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "impact_summary",
+        "label": "impact_summary",
+        "type": "string",
+        "default": null,
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "timeline",
+        "label": "timeline",
+        "type": "array",
+        "default": null,
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "root_cause",
+        "label": "root_cause",
+        "type": "string",
+        "default": null,
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "actions",
+        "label": "actions",
+        "type": "array",
+        "default": null,
+        "required": true,
+        "description": null
+      }
+    ],
+    "fewShot": null,
+    "outputFormat": null,
+    "temperature": 0.2,
+    "top_p": null,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": "1.2.0",
+    "source": "data/prompts/operations.incident.postmortem.synthesizer.prompt.yaml",
+    "blocks": {
+      "system": "You are an SRE postmortem editor. Prefer clarity over blame.",
+      "instructions": "Produce a blameless postmortem for ${incident_id} (${when}). Sections: Overview, Impact, Timeline (bullet list), Root Cause, Corrective Actions (owner+ETA), Lessons Learned.",
+      "constraints": "- No speculation.\n- Use RFC3339 timestamps in Timeline if present.",
+      "style": "- H2 headers, bullets under each\n- Keep under 400 words"
+    },
+    "outputs": null,
+    "models": {
+      "recommended": [
+        "gpt-5-thinking"
+      ],
+      "max_tokens": 2600,
+      "temperature": 0.2
+    }
+  },
+  {
+    "id": "powershell.code.review.meta",
+    "title": "Powershell Code Review Meta",
+    "category": "",
+    "context": "",
+    "description": "",
+    "tags": [],
+    "role": "system",
+    "template": "",
+    "variables": [],
+    "fewShot": null,
+    "outputFormat": null,
+    "temperature": null,
+    "top_p": null,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": null,
+    "source": "data/prompts/powershell.code.review.meta.yaml",
+    "blocks": null,
+    "outputs": null,
+    "models": null
+  },
+  {
+    "id": "engineering.powershell.code.review",
+    "title": "Engineering Powershell Code Review",
+    "category": "powershell",
+    "context": "",
+    "description": "Review ${script_name}. Identify: portability issues, security pitfalls, performance hotspots, and style problems. Suggest concrete fixes with exact code snippets. Assume target versions ${target_versions}.",
+    "tags": [
+      "powershell",
+      "review"
+    ],
+    "role": "system",
+    "template": "Review ${script_name}. Identify: portability issues, security pitfalls, performance hotspots, and style problems. Suggest concrete fixes with exact code snippets. Assume target versions ${target_versions}.",
+    "variables": [
+      {
+        "name": "script_name",
+        "label": "script_name",
+        "type": "string",
+        "default": null,
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "script_content",
+        "label": "script_content",
+        "type": "string",
+        "default": null,
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "target_versions",
+        "label": "target_versions",
+        "type": "array",
+        "default": [
+          "5.1",
+          "7.4"
+        ],
+        "required": false,
+        "description": null
+      }
+    ],
+    "fewShot": null,
+    "outputFormat": null,
+    "temperature": 0.2,
+    "top_p": null,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": "1.1.0",
+    "source": "data/prompts/powershell.code.review.prompt.yaml",
+    "blocks": {
+      "system": "You are a strict PowerShell reviewer. Ensure PS 5.1 and 7+ compatibility.",
+      "instructions": "Review ${script_name}. Identify: portability issues, security pitfalls, performance hotspots, and style problems. Suggest concrete fixes with exact code snippets. Assume target versions ${target_versions}.",
+      "constraints": "- Use code blocks for diffs\n- Flag colon-after-variable gotcha",
+      "style": "- Numbered list of findings; each ends with a short fix"
+    },
+    "outputs": null,
+    "models": {
+      "recommended": [
+        "gpt-5-thinking"
+      ],
+      "max_tokens": 2200,
+      "temperature": 0.2
+    }
+  },
+  {
+    "id": "powershell.code.review.tests",
+    "title": "Powershell Code Review Tests",
+    "category": "",
+    "context": "",
+    "description": "",
+    "tags": [],
+    "role": "system",
+    "template": "",
+    "variables": [],
+    "fewShot": null,
+    "outputFormat": null,
+    "temperature": null,
+    "top_p": null,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": null,
+    "source": "data/prompts/powershell.code.review.tests.yaml",
+    "blocks": null,
+    "outputs": null,
+    "models": null
+  },
+  {
+    "id": "pr_20251109_sample",
+    "title": "Sample Division Performance (Genesys)",
+    "category": "",
+    "context": "",
+    "description": "",
+    "tags": [],
+    "role": "system",
+    "template": "",
+    "variables": [],
+    "fewShot": null,
+    "outputFormat": null,
+    "temperature": null,
+    "top_p": null,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": 1,
+    "source": "data/prompts/sample-division.yaml",
+    "blocks": null,
+    "outputs": null,
+    "models": null
+  },
+  {
+    "id": "sql.query.generator.meta",
+    "title": "Sql Query Generator Meta",
+    "category": "",
+    "context": "",
+    "description": "",
+    "tags": [],
+    "role": "system",
+    "template": "",
+    "variables": [],
+    "fewShot": null,
+    "outputFormat": null,
+    "temperature": null,
+    "top_p": null,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": null,
+    "source": "data/prompts/sql.query.generator.meta.yaml",
+    "blocks": null,
+    "outputs": null,
+    "models": null
+  },
+  {
+    "id": "engineering.sql.query.generator",
+    "title": "Engineering Sql Query Generator",
+    "category": "sql",
+    "context": "",
+    "description": "Given schema:\n${schema}\nWrite ONE SELECT-only query for: ${request}. Return JSON with keys: sql, notes, caveats.",
+    "tags": [
+      "sql",
+      "generator"
+    ],
+    "role": "system",
+    "template": "Given schema:\n${schema}\nWrite ONE SELECT-only query for: ${request}. Return JSON with keys: sql, notes, caveats.",
+    "variables": [
+      {
+        "name": "dialect",
+        "label": "dialect",
+        "type": "string",
+        "default": null,
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "schema",
+        "label": "schema",
+        "type": "string",
+        "default": null,
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "request",
+        "label": "request",
+        "type": "string",
+        "default": null,
+        "required": true,
+        "description": null
+      }
+    ],
+    "fewShot": null,
+    "outputFormat": null,
+    "temperature": 0.1,
+    "top_p": null,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": "1.0.0",
+    "source": "data/prompts/sql.query.generator.prompt.yaml",
+    "blocks": {
+      "system": "You write safe, read-only SQL for ${dialect}. Never modify data.",
+      "instructions": "Given schema:\n${schema}\nWrite ONE SELECT-only query for: ${request}. Return JSON with keys: sql, notes, caveats.",
+      "constraints": "- No DML/DDL\n- Limit 500 rows\n- Use parameter placeholders where applicable",
+      "style": "- Output compact JSON"
+    },
+    "outputs": null,
+    "models": {
+      "recommended": [
+        "gpt-5-thinking"
+      ],
+      "max_tokens": 2000,
+      "temperature": 0.1
+    }
+  },
+  {
+    "id": "sql.query.generator.tests",
+    "title": "Sql Query Generator Tests",
+    "category": "",
+    "context": "",
+    "description": "",
+    "tags": [],
+    "role": "system",
+    "template": "",
+    "variables": [],
+    "fewShot": null,
+    "outputFormat": null,
+    "temperature": null,
+    "top_p": null,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": null,
+    "source": "data/prompts/sql.query.generator.tests.yaml",
+    "blocks": null,
+    "outputs": null,
+    "models": null
+  },
+  {
+    "id": "support.webrtc.disconnects.explainer",
+    "title": "Support Webrtc Disconnects Explainer",
+    "category": "webrtc",
+    "context": "",
+    "description": "Create a brief explainer for ${division} covering ${period}. List top 3\u20135 causes from ${top_causes}. If actions exist, add 'What we did'. Close with 'What to watch next'.",
+    "tags": [
+      "webrtc",
+      "disconnects"
+    ],
+    "role": "system",
+    "template": "Create a brief explainer for ${division} covering ${period}. List top 3\u20135 causes from ${top_causes}. If actions exist, add 'What we did'. Close with 'What to watch next'.",
+    "variables": [
+      {
+        "name": "division",
+        "label": "division",
+        "type": "string",
+        "default": null,
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "period",
+        "label": "period",
+        "type": "string",
+        "default": null,
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "top_causes",
+        "label": "top_causes",
+        "type": "array",
+        "default": null,
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "actions_taken",
+        "label": "actions_taken",
+        "type": "array",
+        "default": null,
+        "required": false,
+        "description": null
+      }
+    ],
+    "fewShot": null,
+    "outputFormat": null,
+    "temperature": 0.1,
+    "top_p": null,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": "1.0.0",
+    "source": "data/prompts/support.webrtc.disconnects.explainer.prompt.yaml",
+    "blocks": {
+      "system": "You explain WebRTC disconnect patterns to non-telephony stakeholders.",
+      "instructions": "Create a brief explainer for ${division} covering ${period}. List top 3\u20135 causes from ${top_causes}. If actions exist, add 'What we did'. Close with 'What to watch next'.",
+      "constraints": "- Avoid jargon; define terms.\n- Max 170 words.",
+      "style": "- Headings + bullets\n- Short, skimmable lines"
+    },
+    "outputs": null,
+    "models": {
+      "recommended": [
+        "gpt-5-thinking"
+      ],
+      "max_tokens": 1800,
+      "temperature": 0.1
+    }
+  },
+  {
+    "id": "volume.anomaly.summary",
+    "title": "Volume Anomaly Summary",
+    "category": "genesys",
+    "context": "",
+    "description": "Follow the dataset, output, and language contracts defined in this file.",
+    "tags": [
+      "genesys",
+      "ops"
+    ],
+    "role": "system",
+    "template": "Follow the dataset, output, and language contracts defined in this file.",
+    "variables": [
+      {
+        "name": "role",
+        "label": "role",
+        "type": "string",
+        "default": null,
+        "required": false,
+        "description": null
+      },
+      {
+        "name": "input_data",
+        "label": "input_data",
+        "type": "json",
+        "default": null,
+        "required": true,
+        "description": "JSON payload expected by the legacy PromptService template."
+      }
+    ],
+    "fewShot": null,
+    "outputFormat": "json",
+    "temperature": 0.2,
+    "top_p": null,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": "1.0.0",
+    "source": "data/prompts/volume.anomaly.summary.1.0.0.prompt.yaml",
+    "blocks": {
+      "system": "You are {role}. Produce crisp incident-ready summaries for contact volume anomalies. Prefer bullet points and concrete next steps.",
+      "instructions": "Follow the dataset, output, and language contracts defined in this file.",
+      "examples": [
+        {
+          "input": {
+            "raw": "Task: Summarize inbound spike vs forecast; InputData: {\"timestamp\":\"2025-08-18T12:00:00Z\"}"
+          },
+          "output": "{\"executive_summary\": [\"Inbound volume +28% vs forecast (10:00\\u201312:00 local)\", \"AHT flat; SLA dipped 5 pts; staffing shortfall main driver\"], \"technical_json\": {\"probable_cause\": \"Marketing push not reflected in forecast + partial IVR outage\", \"recommended_action\": \"Engage WFM for surge staffing; update forecast; validate IVR path latency\"}, \"chart_recommendations\": [{\"type\": \"line\", \"metric\": \"inbound_offered_vs_forecast\", \"granularity\": \"15m\"}, {\"type\": \"bar\", \"metric\": \"abandon_rate_by_queue\", \"granularity\": \"hour\"}]}"
+        }
+      ]
+    },
+    "outputs": {
+      "format": "json"
+    },
+    "models": {
+      "recommended": [
+        "gpt-4o-mini",
+        "gpt-4o"
+      ],
+      "temperature": 0.2,
+      "top_p": 1.0
+    }
+  },
+  {
+    "id": "volume.anomaly.summary",
+    "title": "Volume Anomaly Summary",
+    "category": "genesys",
+    "context": "",
+    "description": "conventions:\nlocal_timezone: \"America/Indiana/Indianapolis\" # Always convert UTC to this TZ in text\ntime_format: \"EEE, MMM d, yyyy \u2022 HH:mm\" # Use for window labels (e.g., Mon, Aug 18, 2025 \u2022 10:00)\nterminology:\n- \"Use 'inbound' for offered contacts.\"\n- \"Say 'vs forecast' not 'vs plan'.\"\n- \"Say 'AHT' not 'Avg Handle'.\"\nthresholds:\nvariance_high_pct: 0.15 # \u226515% deviation vs forecast = high anomaly\nsla_drop_pts: 3 # \u22653 percentage-points drop = notable\nabandon_rate_high_pct: 0.05 # \u22655% abandon = notable\nlanguage_style:\n- \"Max 4 bullets in executive_summary.\"\n- \"Start each action with a verb.\"\n- \"Name exact queues/channels driving \u226560% of variance.\"\n\ndataset_contract:\n\nStar schema recommended: 'Interactions' fact, 'Date', 'Queue', 'Channel', 'WFM' dims.\n\nfact_table: \"Interactions\"\nrequired_columns:\n- Interactions.interval_start_utc : datetime\n- Interactions.queue_name : string\n- Interactions.channel : string # \"voice\",\"email\",\"chat\",\"msg\"\n- Interactions.offered : int\n- Interactions.answered : int\n- Interactions.abandons : int\n- Interactions.handle_time_sec : int # sum of handle secs\n- Interactions.asa_sec : int # sum of ASA secs (or average * answered)\n- Interactions.sla_within_target : int # numerator\n- Interactions.sla_total : int # denominator\n- Interactions.forecast_offered : int\noptional_columns:\n- Interactions.ivr_transfers : int\n- Interactions.ivr_errors : int\n- Interactions.transfer_rate : decimal\n- Interactions.vq_wait_sec : int\n- WFM.required_fte : decimal\n- WFM.scheduled_fte : decimal\n- Marketing.campaign_flag : bool\nrequired_dimensions:\n- Date[Date], Date[IsCurrentInterval]\n- Queue[Queue Name]\n- Channel[Channel]\nrelationship_notes:\n- \"Date[Date] \u2192 Interactions[interval_start_utc] (by date, use continuous axis for 15-min grain)\"\n- \"Queue, Channel as separate conformed dims\"\n- \"WFM at interval grain, left join on queue + interval\"\n\noutput_contract:\n\nThis is what the model must emit (JSON). Designed to be pushed into PBI (tooltip page/bookmark actions).\n\nkeys:\n- executive_summary : array[string] # 2\u20134 bullets, quantified\n- kpis : object # Key deltas for card visuals\n- drivers : array[object] # {dimension, member, variance_pct, contribution_pct}\n- recommended_actions : array[string] # Prioritized, concrete\n- technical_json : object # Machine-readable meta for automations\n- visuals_to_focus : array[string] # Visual IDs from visuals_catalog to spotlight\n- anomaly_window : object # {local_start, local_end, utc_start, utc_end, granularity}\n- dax_used : array[string] # Measure names referenced (ensures semantic alignment)\n\nmeasures_dax:\n\nPaste into your model (names must match). Weighted calcs avoid misleading averages.\n\nname: Offered\ndax: \"Offered = SUM(Interactions[offered])\"\n\nname: Forecast Offered\ndax: \"Forecast Offered = SUM(Interactions[forecast_offered])\"\n\nname: Variance\ndax: \"Variance = [Offered] - [Forecast Offered]\"\n\nname: Variance %\ndax: \"Variance % = DIVIDE([Variance], [Forecast Offered])\"\n\nname: Answered\ndax: \"Answered = SUM(Interactions[answered])\"\n\nname: Abandons\ndax: \"Abandons = SUM(Interactions[abandons])\"\n\nname: Abandon Rate %\ndax: \"Abandon Rate % = DIVIDE([Abandons], [Offered])\"\n\nname: AHT (sec)\ndax: \"AHT (sec) = DIVIDE(SUM(Interactions[handle_time_sec]), [Answered])\"\n\nname: ASA (sec)\ndax: \"ASA (sec) = DIVIDE(SUM(Interactions[asa_sec]), [Answered])\"\n\nname: SLA %\ndax: \"SLA % = DIVIDE(SUM(Interactions[sla_within_target]), SUM(Interactions[sla_total]))\"\n\nname: Staffing Gap (FTE)\ndax: \"Staffing Gap (FTE) = SUM(WFM[required_fte]) - SUM(WFM[scheduled_fte])\"\n\nname: Variance Contribution %\ndax: |\nVariance Contribution % =\nVAR TotalVar = CALCULATE([Variance], ALLSELECTED(Queue[Queue Name], Channel[Channel]))\nRETURN DIVIDE([Variance], TotalVar)\n\nname: 7d Baseline Offered\ndax: |\n7d Baseline Offered =\nCALCULATE([Offered], DATESINPERIOD(Date[Date], MAX(Date[Date]) - 7, DAY, 7))\n\nname: Spike Flag\ndax: |\nSpike Flag =\nVAR v = [Variance %]\nRETURN IF(NOT ISBLANK(v) && v >= 0.15, 1, 0)\n\nvisuals_catalog:\n\nid: v_kpi_cards\npurpose: \"Snap judgment on severity\"\nvisuals:\ntype: \"multi_kpi\"\nfields: [\"Variance %\",\"SLA %\",\"Abandon Rate %\",\"AHT (sec)\",\"Staffing Gap (FTE)\"]\nnotes:\n- \"Use callout values, trend sparkline last 24h\"\n- \"Conditionally color: red < target, green \u2265 target\"\n\nid: v_line_offered_vs_forecast\npurpose: \"Primary anomaly detection over time\"\nvisuals:\ntype: \"line_dual\"\nfields:\nseries: [\"Offered\",\"Forecast Offered\"]\naxis: \"DateTime (15m)\"\nanalytics:\nanomaly_detection: {enabled: true, sensitivity: 70}\nexpected_range: {show: true}\nnotes:\n- \"Highlight anomaly window with bookmark\"\n\nid: v_bar_queue_contrib\npurpose: \"Who\u2019s driving deviation\"\nvisuals:\ntype: \"clustered_bar\"\nfields: [\"Queue[Queue Name]\",\"Variance\",\"Variance Contribution %\"]\nsort: \"Variance desc\"\nnotes:\n- \"Label top contributors until \u226580% cumulative\"\n\nid: v_small_multiples_channel\npurpose: \"Channel mix shift\"\nvisuals:\ntype: \"small_multiples_line\"\nfields:\ngroup_by: \"Channel[Channel]\"\nseries: [\"Offered\"]\nbaseline: [\"Forecast Offered\"]\n\nid: v_waterfall_drivers\npurpose: \"Impact breakdown\"\nvisuals:\ntype: \"waterfall\"\nfields:\ncategories: [\"Queues/Channels/IVR errors (as available)\"]\nmeasure: \"Variance\"\n\nid: v_decomposition_tree_variance\npurpose: \"Explain variance interactively\"\nvisuals:\ntype: \"decomposition_tree\"\nfields:\nanalyze: \"Variance\"\nexplain_by: [\"Queue\",\"Channel\",\"Interval\",\"Campaign\",\"Region\"]\n\nid: v_tooltip_anomaly\npurpose: \"Rich tooltip for anomaly points\"\nvisuals:\ntype: \"tooltip_page\"\nfields: [\"Variance %\",\"SLA %\",\"Abandon Rate %\",\"AHT (sec)\",\"Top Queue\",\"Top Channel\"]\n\nid: v_slicer_time\npurpose: \"Windowing\"\nvisuals:\ntype: \"slicer\"\nfields: [\"DateTime 15m\"]\npresets: [\"Now (last 2h)\",\"Last 24h\",\"Incident Window\"]\n\npage_layouts:\n\npage: \"Incident Overview\"\ngrid:\n\nrow: 1\ncols:\n\n{w: 6, id: v_kpi_cards}\n\n{w: 6, id: v_slicer_time}\n\nrow: 2\ncols:\n\n{w: 12, id: v_line_offered_vs_forecast}\n\nrow: 3\ncols:\n\n{w: 6, id: v_bar_queue_contrib}\n\n{w: 6, id: v_small_multiples_channel}\n\npage: \"Explain Variance\"\ngrid:\n\nrow: 1\ncols:\n\n{w: 7, id: v_decomposition_tree_variance}\n\n{w: 5, id: v_waterfall_drivers}\ndrillthrough_from: [\"Incident Overview\"]\n\ntheme_json_snippet: |\n{\n\"name\": \"Incident Blue\",\n\"textClasses\": {\"title\":\"20pt\",\"header\":\"12pt\",\"callout\":\"24pt\"},\n\"visualStyles\": {\n\"*\": {\"labels\": [{\"color\": {\"solid\": {\"color\": \"#2B2B2B\"}}}]}\n},\n\"background\": \"#FFFFFF\",\n\"foreground\": \"#2B2B2B\",\n\"dataColors\": [\"#0F62FE\", \"#A2191F\", \"#24A148\", \"#8A3FFC\", \"#FF832B\", \"#6F6F6F\"],\n\"accent\": \"#0F62FE\",\n\"tableAccent\": \"#0F62FE\"\n}\n\ndesign_rules:\n\n\"Use a 12-column grid, 24px gutters, consistent card padding.\"\n\n\"Titles are verbs: 'Investigate Queue Drivers', not 'Queue Bar Chart'.\"\n\n\"Tooltips carry dense metrics; main page stays clean.\"\n\n\"Bookmark presets: Now, Last 24h, Incident Window.\"\n\n\"Accessibility: \u22654.5:1 contrast; avoid color-only encoding.\"\n\nfew_shot:\n\ninput: \"Task: Summarize inbound spike vs forecast; InputData: {\"timestamp\":\"2025-08-18T12:00:00Z\",\"window_minutes\":120}\"\noutput: |\n{\n\"executive_summary\": [\n\"Inbound +28% vs forecast from 10:00\u201312:00 local (Mon, Aug 18, 2025)\",\n\"SLA \u22125.2 pts; Abandon +2.1 pts; AHT stable\",\n\"Variance concentrated in 'Member Services L3' (42%) and Voice channel (71%)\"\n],\n\"kpis\": {\n\"variance_pct\": 0.28,\n\"sla_pct\": 0.781,\n\"abandon_rate_pct\": 0.061,\n\"aht_sec\": 382,\n\"staffing_gap_fte\": 11.4\n},\n\"drivers\": [\n{\"dimension\":\"Queue\",\"member\":\"Member Services L3\",\"variance_pct\":0.41,\"contribution_pct\":0.42},\n{\"dimension\":\"Channel\",\"member\":\"voice\",\"variance_pct\":0.31,\"contribution_pct\":0.71}\n],\n\"recommended_actions\": [\n\"Engage WFM for surge staffing (+12 FTE next 2 hours) and activate voluntary OT.\",\n\"Coordinate with Marketing to reflect campaign traffic in near-term forecast.\",\n\"Validate IVR latency on eligibility path; reroute to stable menu if p95 > 2.0s.\"\n],\n\"technical_json\": {\n\"probable_cause\": \"Unmodeled marketing push + mild IVR latency\",\n\"signals\": [\"Variance % >= 0.15\",\"SLA drop >= 3pts\",\"Voice share up 9pts\"],\n\"queues_impacted\": [\"Member Services L3\",\"Claims Support\"],\n\"channels_impacted\": [\"voice\"]\n},\n\"visuals_to_focus\": [\"v_line_offered_vs_forecast\", \"v_bar_queue_contrib\", \"v_tooltip_anomaly\"],\n\"anomaly_window\": {\n\"local_start\": \"2025-08-18T10:00:00-04:00\",\n\"local_end\": \"2025-08-18T12:00:00-04:00\",\n\"utc_start\": \"2025-08-18T14:00:00Z\",\n\"utc_end\": \"2025-08-18T16:00:00Z\",\n\"granularity\": \"15m\"\n},\n\"dax_used\": [\"Variance %\",\"SLA %\",\"Abandon Rate %\",\"AHT (sec)\",\"Staffing Gap (FTE)\",\"Variance Contribution %\"]\n}\n\ninput: \"Task: Summarize inbound drop with channel shift; InputData: {\"timestamp\":\"2025-08-22T20:30:00Z\",\"window_minutes\":90}\"\noutput: |\n{\n\"executive_summary\": [\n\"Inbound \u221219% vs forecast 16:30\u201318:00 local; email volume +12% YoY baseline\",\n\"SLA +2.8 pts (light load); chat queues near idle\",\n\"Channel shift from voice \u2192 email (~9pt mix change) suggests task deferral\"\n],\n\"kpis\": {\n\"variance_pct\": -0.19,\n\"sla_pct\": 0.922,\n\"abandon_rate_pct\": 0.012,\n\"aht_sec\": 365,\n\"staffing_gap_fte\": -6.0\n},\n\"drivers\": [\n{\"dimension\":\"Channel\",\"member\":\"email\",\"variance_pct\":0.12,\"contribution_pct\":0.63},\n{\"dimension\":\"Queue\",\"member\":\"Benefits Inquiry\",\"variance_pct\":-0.09,\"contribution_pct\":0.27}\n],\n\"recommended_actions\": [\n\"Adjust short-term forecast mix: reduce voice offer, increase email capacity for next AM.\",\n\"Promote chat deflection for simple FAQs; set auto-reply with expected SLAs for email.\",\n\"Scale down OT for tonight; reallocate 4\u20136 FTE to back-office.\"\n],\n\"technical_json\": {\n\"probable_cause\": \"Behavioral deferral (after-work shift) + weekend pattern onset\",\n\"signals\": [\"Voice offered \u221222% vs forecast\",\"Email +12% vs 7d baseline\"],\n\"channels_impacted\": [\"voice\",\"email\"]\n},\n\"visuals_to_focus\": [\"v_small_multiples_channel\",\"v_line_offered_vs_forecast\"],\n\"anomaly_window\": {\n\"local_start\": \"2025-08-22T16:30:00-04:00\",\n\"local_end\": \"2025-08-22T18:00:00-04:00\",\n\"utc_start\": \"2025-08-22T20:30:00Z\",\n\"utc_end\": \"2025-08-22T22:00:00Z\",\n\"granularity\": \"15m\"\n},\n\"dax_used\": [\"Variance %\",\"SLA %\",\"Abandon Rate %\",\"AHT (sec)\",\"Variance Contribution %\"]\n}\n\nnotes_for_engineers:\n\n\"Use a Date table with time intelligence; keep 15-minute grain for the main line visual.\"\n\n\"Enable anomaly detection (Analytics pane) on the time-series visual; show expected range.\"\n\n\"Create a tooltip page (v_tooltip_anomaly) bound to the line chart for dense metadata.\"\n\n\"Bookmarks: Now (last 2h), Last 24h, Incident Window (bound to anomaly_window).\"\n\n\"Conditional formatting thresholds pulled from conventions.thresholds.\"\n\n\"Keep model small: import at 15-min grain; DirectQuery only if absolutely required.\"",
+    "tags": [
+      "genesys",
+      "ops"
+    ],
+    "role": "system",
+    "template": "conventions:\nlocal_timezone: \"America/Indiana/Indianapolis\" # Always convert UTC to this TZ in text\ntime_format: \"EEE, MMM d, yyyy \u2022 HH:mm\" # Use for window labels (e.g., Mon, Aug 18, 2025 \u2022 10:00)\nterminology:\n- \"Use 'inbound' for offered contacts.\"\n- \"Say 'vs forecast' not 'vs plan'.\"\n- \"Say 'AHT' not 'Avg Handle'.\"\nthresholds:\nvariance_high_pct: 0.15 # \u226515% deviation vs forecast = high anomaly\nsla_drop_pts: 3 # \u22653 percentage-points drop = notable\nabandon_rate_high_pct: 0.05 # \u22655% abandon = notable\nlanguage_style:\n- \"Max 4 bullets in executive_summary.\"\n- \"Start each action with a verb.\"\n- \"Name exact queues/channels driving \u226560% of variance.\"\n\ndataset_contract:\n\nStar schema recommended: 'Interactions' fact, 'Date', 'Queue', 'Channel', 'WFM' dims.\n\nfact_table: \"Interactions\"\nrequired_columns:\n- Interactions.interval_start_utc : datetime\n- Interactions.queue_name : string\n- Interactions.channel : string # \"voice\",\"email\",\"chat\",\"msg\"\n- Interactions.offered : int\n- Interactions.answered : int\n- Interactions.abandons : int\n- Interactions.handle_time_sec : int # sum of handle secs\n- Interactions.asa_sec : int # sum of ASA secs (or average * answered)\n- Interactions.sla_within_target : int # numerator\n- Interactions.sla_total : int # denominator\n- Interactions.forecast_offered : int\noptional_columns:\n- Interactions.ivr_transfers : int\n- Interactions.ivr_errors : int\n- Interactions.transfer_rate : decimal\n- Interactions.vq_wait_sec : int\n- WFM.required_fte : decimal\n- WFM.scheduled_fte : decimal\n- Marketing.campaign_flag : bool\nrequired_dimensions:\n- Date[Date], Date[IsCurrentInterval]\n- Queue[Queue Name]\n- Channel[Channel]\nrelationship_notes:\n- \"Date[Date] \u2192 Interactions[interval_start_utc] (by date, use continuous axis for 15-min grain)\"\n- \"Queue, Channel as separate conformed dims\"\n- \"WFM at interval grain, left join on queue + interval\"\n\noutput_contract:\n\nThis is what the model must emit (JSON). Designed to be pushed into PBI (tooltip page/bookmark actions).\n\nkeys:\n- executive_summary : array[string] # 2\u20134 bullets, quantified\n- kpis : object # Key deltas for card visuals\n- drivers : array[object] # {dimension, member, variance_pct, contribution_pct}\n- recommended_actions : array[string] # Prioritized, concrete\n- technical_json : object # Machine-readable meta for automations\n- visuals_to_focus : array[string] # Visual IDs from visuals_catalog to spotlight\n- anomaly_window : object # {local_start, local_end, utc_start, utc_end, granularity}\n- dax_used : array[string] # Measure names referenced (ensures semantic alignment)\n\nmeasures_dax:\n\nPaste into your model (names must match). Weighted calcs avoid misleading averages.\n\nname: Offered\ndax: \"Offered = SUM(Interactions[offered])\"\n\nname: Forecast Offered\ndax: \"Forecast Offered = SUM(Interactions[forecast_offered])\"\n\nname: Variance\ndax: \"Variance = [Offered] - [Forecast Offered]\"\n\nname: Variance %\ndax: \"Variance % = DIVIDE([Variance], [Forecast Offered])\"\n\nname: Answered\ndax: \"Answered = SUM(Interactions[answered])\"\n\nname: Abandons\ndax: \"Abandons = SUM(Interactions[abandons])\"\n\nname: Abandon Rate %\ndax: \"Abandon Rate % = DIVIDE([Abandons], [Offered])\"\n\nname: AHT (sec)\ndax: \"AHT (sec) = DIVIDE(SUM(Interactions[handle_time_sec]), [Answered])\"\n\nname: ASA (sec)\ndax: \"ASA (sec) = DIVIDE(SUM(Interactions[asa_sec]), [Answered])\"\n\nname: SLA %\ndax: \"SLA % = DIVIDE(SUM(Interactions[sla_within_target]), SUM(Interactions[sla_total]))\"\n\nname: Staffing Gap (FTE)\ndax: \"Staffing Gap (FTE) = SUM(WFM[required_fte]) - SUM(WFM[scheduled_fte])\"\n\nname: Variance Contribution %\ndax: |\nVariance Contribution % =\nVAR TotalVar = CALCULATE([Variance], ALLSELECTED(Queue[Queue Name], Channel[Channel]))\nRETURN DIVIDE([Variance], TotalVar)\n\nname: 7d Baseline Offered\ndax: |\n7d Baseline Offered =\nCALCULATE([Offered], DATESINPERIOD(Date[Date], MAX(Date[Date]) - 7, DAY, 7))\n\nname: Spike Flag\ndax: |\nSpike Flag =\nVAR v = [Variance %]\nRETURN IF(NOT ISBLANK(v) && v >= 0.15, 1, 0)\n\nvisuals_catalog:\n\nid: v_kpi_cards\npurpose: \"Snap judgment on severity\"\nvisuals:\ntype: \"multi_kpi\"\nfields: [\"Variance %\",\"SLA %\",\"Abandon Rate %\",\"AHT (sec)\",\"Staffing Gap (FTE)\"]\nnotes:\n- \"Use callout values, trend sparkline last 24h\"\n- \"Conditionally color: red < target, green \u2265 target\"\n\nid: v_line_offered_vs_forecast\npurpose: \"Primary anomaly detection over time\"\nvisuals:\ntype: \"line_dual\"\nfields:\nseries: [\"Offered\",\"Forecast Offered\"]\naxis: \"DateTime (15m)\"\nanalytics:\nanomaly_detection: {enabled: true, sensitivity: 70}\nexpected_range: {show: true}\nnotes:\n- \"Highlight anomaly window with bookmark\"\n\nid: v_bar_queue_contrib\npurpose: \"Who\u2019s driving deviation\"\nvisuals:\ntype: \"clustered_bar\"\nfields: [\"Queue[Queue Name]\",\"Variance\",\"Variance Contribution %\"]\nsort: \"Variance desc\"\nnotes:\n- \"Label top contributors until \u226580% cumulative\"\n\nid: v_small_multiples_channel\npurpose: \"Channel mix shift\"\nvisuals:\ntype: \"small_multiples_line\"\nfields:\ngroup_by: \"Channel[Channel]\"\nseries: [\"Offered\"]\nbaseline: [\"Forecast Offered\"]\n\nid: v_waterfall_drivers\npurpose: \"Impact breakdown\"\nvisuals:\ntype: \"waterfall\"\nfields:\ncategories: [\"Queues/Channels/IVR errors (as available)\"]\nmeasure: \"Variance\"\n\nid: v_decomposition_tree_variance\npurpose: \"Explain variance interactively\"\nvisuals:\ntype: \"decomposition_tree\"\nfields:\nanalyze: \"Variance\"\nexplain_by: [\"Queue\",\"Channel\",\"Interval\",\"Campaign\",\"Region\"]\n\nid: v_tooltip_anomaly\npurpose: \"Rich tooltip for anomaly points\"\nvisuals:\ntype: \"tooltip_page\"\nfields: [\"Variance %\",\"SLA %\",\"Abandon Rate %\",\"AHT (sec)\",\"Top Queue\",\"Top Channel\"]\n\nid: v_slicer_time\npurpose: \"Windowing\"\nvisuals:\ntype: \"slicer\"\nfields: [\"DateTime 15m\"]\npresets: [\"Now (last 2h)\",\"Last 24h\",\"Incident Window\"]\n\npage_layouts:\n\npage: \"Incident Overview\"\ngrid:\n\nrow: 1\ncols:\n\n{w: 6, id: v_kpi_cards}\n\n{w: 6, id: v_slicer_time}\n\nrow: 2\ncols:\n\n{w: 12, id: v_line_offered_vs_forecast}\n\nrow: 3\ncols:\n\n{w: 6, id: v_bar_queue_contrib}\n\n{w: 6, id: v_small_multiples_channel}\n\npage: \"Explain Variance\"\ngrid:\n\nrow: 1\ncols:\n\n{w: 7, id: v_decomposition_tree_variance}\n\n{w: 5, id: v_waterfall_drivers}\ndrillthrough_from: [\"Incident Overview\"]\n\ntheme_json_snippet: |\n{\n\"name\": \"Incident Blue\",\n\"textClasses\": {\"title\":\"20pt\",\"header\":\"12pt\",\"callout\":\"24pt\"},\n\"visualStyles\": {\n\"*\": {\"labels\": [{\"color\": {\"solid\": {\"color\": \"#2B2B2B\"}}}]}\n},\n\"background\": \"#FFFFFF\",\n\"foreground\": \"#2B2B2B\",\n\"dataColors\": [\"#0F62FE\", \"#A2191F\", \"#24A148\", \"#8A3FFC\", \"#FF832B\", \"#6F6F6F\"],\n\"accent\": \"#0F62FE\",\n\"tableAccent\": \"#0F62FE\"\n}\n\ndesign_rules:\n\n\"Use a 12-column grid, 24px gutters, consistent card padding.\"\n\n\"Titles are verbs: 'Investigate Queue Drivers', not 'Queue Bar Chart'.\"\n\n\"Tooltips carry dense metrics; main page stays clean.\"\n\n\"Bookmark presets: Now, Last 24h, Incident Window.\"\n\n\"Accessibility: \u22654.5:1 contrast; avoid color-only encoding.\"\n\nfew_shot:\n\ninput: \"Task: Summarize inbound spike vs forecast; InputData: {\"timestamp\":\"2025-08-18T12:00:00Z\",\"window_minutes\":120}\"\noutput: |\n{\n\"executive_summary\": [\n\"Inbound +28% vs forecast from 10:00\u201312:00 local (Mon, Aug 18, 2025)\",\n\"SLA \u22125.2 pts; Abandon +2.1 pts; AHT stable\",\n\"Variance concentrated in 'Member Services L3' (42%) and Voice channel (71%)\"\n],\n\"kpis\": {\n\"variance_pct\": 0.28,\n\"sla_pct\": 0.781,\n\"abandon_rate_pct\": 0.061,\n\"aht_sec\": 382,\n\"staffing_gap_fte\": 11.4\n},\n\"drivers\": [\n{\"dimension\":\"Queue\",\"member\":\"Member Services L3\",\"variance_pct\":0.41,\"contribution_pct\":0.42},\n{\"dimension\":\"Channel\",\"member\":\"voice\",\"variance_pct\":0.31,\"contribution_pct\":0.71}\n],\n\"recommended_actions\": [\n\"Engage WFM for surge staffing (+12 FTE next 2 hours) and activate voluntary OT.\",\n\"Coordinate with Marketing to reflect campaign traffic in near-term forecast.\",\n\"Validate IVR latency on eligibility path; reroute to stable menu if p95 > 2.0s.\"\n],\n\"technical_json\": {\n\"probable_cause\": \"Unmodeled marketing push + mild IVR latency\",\n\"signals\": [\"Variance % >= 0.15\",\"SLA drop >= 3pts\",\"Voice share up 9pts\"],\n\"queues_impacted\": [\"Member Services L3\",\"Claims Support\"],\n\"channels_impacted\": [\"voice\"]\n},\n\"visuals_to_focus\": [\"v_line_offered_vs_forecast\", \"v_bar_queue_contrib\", \"v_tooltip_anomaly\"],\n\"anomaly_window\": {\n\"local_start\": \"2025-08-18T10:00:00-04:00\",\n\"local_end\": \"2025-08-18T12:00:00-04:00\",\n\"utc_start\": \"2025-08-18T14:00:00Z\",\n\"utc_end\": \"2025-08-18T16:00:00Z\",\n\"granularity\": \"15m\"\n},\n\"dax_used\": [\"Variance %\",\"SLA %\",\"Abandon Rate %\",\"AHT (sec)\",\"Staffing Gap (FTE)\",\"Variance Contribution %\"]\n}\n\ninput: \"Task: Summarize inbound drop with channel shift; InputData: {\"timestamp\":\"2025-08-22T20:30:00Z\",\"window_minutes\":90}\"\noutput: |\n{\n\"executive_summary\": [\n\"Inbound \u221219% vs forecast 16:30\u201318:00 local; email volume +12% YoY baseline\",\n\"SLA +2.8 pts (light load); chat queues near idle\",\n\"Channel shift from voice \u2192 email (~9pt mix change) suggests task deferral\"\n],\n\"kpis\": {\n\"variance_pct\": -0.19,\n\"sla_pct\": 0.922,\n\"abandon_rate_pct\": 0.012,\n\"aht_sec\": 365,\n\"staffing_gap_fte\": -6.0\n},\n\"drivers\": [\n{\"dimension\":\"Channel\",\"member\":\"email\",\"variance_pct\":0.12,\"contribution_pct\":0.63},\n{\"dimension\":\"Queue\",\"member\":\"Benefits Inquiry\",\"variance_pct\":-0.09,\"contribution_pct\":0.27}\n],\n\"recommended_actions\": [\n\"Adjust short-term forecast mix: reduce voice offer, increase email capacity for next AM.\",\n\"Promote chat deflection for simple FAQs; set auto-reply with expected SLAs for email.\",\n\"Scale down OT for tonight; reallocate 4\u20136 FTE to back-office.\"\n],\n\"technical_json\": {\n\"probable_cause\": \"Behavioral deferral (after-work shift) + weekend pattern onset\",\n\"signals\": [\"Voice offered \u221222% vs forecast\",\"Email +12% vs 7d baseline\"],\n\"channels_impacted\": [\"voice\",\"email\"]\n},\n\"visuals_to_focus\": [\"v_small_multiples_channel\",\"v_line_offered_vs_forecast\"],\n\"anomaly_window\": {\n\"local_start\": \"2025-08-22T16:30:00-04:00\",\n\"local_end\": \"2025-08-22T18:00:00-04:00\",\n\"utc_start\": \"2025-08-22T20:30:00Z\",\n\"utc_end\": \"2025-08-22T22:00:00Z\",\n\"granularity\": \"15m\"\n},\n\"dax_used\": [\"Variance %\",\"SLA %\",\"Abandon Rate %\",\"AHT (sec)\",\"Variance Contribution %\"]\n}\n\nnotes_for_engineers:\n\n\"Use a Date table with time intelligence; keep 15-minute grain for the main line visual.\"\n\n\"Enable anomaly detection (Analytics pane) on the time-series visual; show expected range.\"\n\n\"Create a tooltip page (v_tooltip_anomaly) bound to the line chart for dense metadata.\"\n\n\"Bookmarks: Now (last 2h), Last 24h, Incident Window (bound to anomaly_window).\"\n\n\"Conditional formatting thresholds pulled from conventions.thresholds.\"\n\n\"Keep model small: import at 15-min grain; DirectQuery only if absolutely required.\"",
+    "variables": [
+      {
+        "name": "role",
+        "label": "role",
+        "type": "string",
+        "default": null,
+        "required": false,
+        "description": null
+      },
+      {
+        "name": "input_data",
+        "label": "input_data",
+        "type": "json",
+        "default": null,
+        "required": true,
+        "description": "JSON payload expected by the legacy PromptService template."
+      }
+    ],
+    "fewShot": null,
+    "outputFormat": "json",
+    "temperature": 0.2,
+    "top_p": null,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": "2.0.0",
+    "source": "data/prompts/volume.anomaly.summary.2.0.0.prompt.yaml",
+    "blocks": {
+      "system": "You are {role}. Produce crisp, incident-ready summaries for contact volume anomalies aligned to a Power BI report.\nOutput must be structured for a PBI bookmark/tooltips flow and reference the visuals catalog by id.\nKeep it blunt, quantified, and actionable. Prefer bullet points, exact local times, and prioritized next steps.",
+      "instructions": "conventions:\nlocal_timezone: \"America/Indiana/Indianapolis\" # Always convert UTC to this TZ in text\ntime_format: \"EEE, MMM d, yyyy \u2022 HH:mm\" # Use for window labels (e.g., Mon, Aug 18, 2025 \u2022 10:00)\nterminology:\n- \"Use 'inbound' for offered contacts.\"\n- \"Say 'vs forecast' not 'vs plan'.\"\n- \"Say 'AHT' not 'Avg Handle'.\"\nthresholds:\nvariance_high_pct: 0.15 # \u226515% deviation vs forecast = high anomaly\nsla_drop_pts: 3 # \u22653 percentage-points drop = notable\nabandon_rate_high_pct: 0.05 # \u22655% abandon = notable\nlanguage_style:\n- \"Max 4 bullets in executive_summary.\"\n- \"Start each action with a verb.\"\n- \"Name exact queues/channels driving \u226560% of variance.\"\n\ndataset_contract:\n\nStar schema recommended: 'Interactions' fact, 'Date', 'Queue', 'Channel', 'WFM' dims.\n\nfact_table: \"Interactions\"\nrequired_columns:\n- Interactions.interval_start_utc : datetime\n- Interactions.queue_name : string\n- Interactions.channel : string # \"voice\",\"email\",\"chat\",\"msg\"\n- Interactions.offered : int\n- Interactions.answered : int\n- Interactions.abandons : int\n- Interactions.handle_time_sec : int # sum of handle secs\n- Interactions.asa_sec : int # sum of ASA secs (or average * answered)\n- Interactions.sla_within_target : int # numerator\n- Interactions.sla_total : int # denominator\n- Interactions.forecast_offered : int\noptional_columns:\n- Interactions.ivr_transfers : int\n- Interactions.ivr_errors : int\n- Interactions.transfer_rate : decimal\n- Interactions.vq_wait_sec : int\n- WFM.required_fte : decimal\n- WFM.scheduled_fte : decimal\n- Marketing.campaign_flag : bool\nrequired_dimensions:\n- Date[Date], Date[IsCurrentInterval]\n- Queue[Queue Name]\n- Channel[Channel]\nrelationship_notes:\n- \"Date[Date] \u2192 Interactions[interval_start_utc] (by date, use continuous axis for 15-min grain)\"\n- \"Queue, Channel as separate conformed dims\"\n- \"WFM at interval grain, left join on queue + interval\"\n\noutput_contract:\n\nThis is what the model must emit (JSON). Designed to be pushed into PBI (tooltip page/bookmark actions).\n\nkeys:\n- executive_summary : array[string] # 2\u20134 bullets, quantified\n- kpis : object # Key deltas for card visuals\n- drivers : array[object] # {dimension, member, variance_pct, contribution_pct}\n- recommended_actions : array[string] # Prioritized, concrete\n- technical_json : object # Machine-readable meta for automations\n- visuals_to_focus : array[string] # Visual IDs from visuals_catalog to spotlight\n- anomaly_window : object # {local_start, local_end, utc_start, utc_end, granularity}\n- dax_used : array[string] # Measure names referenced (ensures semantic alignment)\n\nmeasures_dax:\n\nPaste into your model (names must match). Weighted calcs avoid misleading averages.\n\nname: Offered\ndax: \"Offered = SUM(Interactions[offered])\"\n\nname: Forecast Offered\ndax: \"Forecast Offered = SUM(Interactions[forecast_offered])\"\n\nname: Variance\ndax: \"Variance = [Offered] - [Forecast Offered]\"\n\nname: Variance %\ndax: \"Variance % = DIVIDE([Variance], [Forecast Offered])\"\n\nname: Answered\ndax: \"Answered = SUM(Interactions[answered])\"\n\nname: Abandons\ndax: \"Abandons = SUM(Interactions[abandons])\"\n\nname: Abandon Rate %\ndax: \"Abandon Rate % = DIVIDE([Abandons], [Offered])\"\n\nname: AHT (sec)\ndax: \"AHT (sec) = DIVIDE(SUM(Interactions[handle_time_sec]), [Answered])\"\n\nname: ASA (sec)\ndax: \"ASA (sec) = DIVIDE(SUM(Interactions[asa_sec]), [Answered])\"\n\nname: SLA %\ndax: \"SLA % = DIVIDE(SUM(Interactions[sla_within_target]), SUM(Interactions[sla_total]))\"\n\nname: Staffing Gap (FTE)\ndax: \"Staffing Gap (FTE) = SUM(WFM[required_fte]) - SUM(WFM[scheduled_fte])\"\n\nname: Variance Contribution %\ndax: |\nVariance Contribution % =\nVAR TotalVar = CALCULATE([Variance], ALLSELECTED(Queue[Queue Name], Channel[Channel]))\nRETURN DIVIDE([Variance], TotalVar)\n\nname: 7d Baseline Offered\ndax: |\n7d Baseline Offered =\nCALCULATE([Offered], DATESINPERIOD(Date[Date], MAX(Date[Date]) - 7, DAY, 7))\n\nname: Spike Flag\ndax: |\nSpike Flag =\nVAR v = [Variance %]\nRETURN IF(NOT ISBLANK(v) && v >= 0.15, 1, 0)\n\nvisuals_catalog:\n\nid: v_kpi_cards\npurpose: \"Snap judgment on severity\"\nvisuals:\ntype: \"multi_kpi\"\nfields: [\"Variance %\",\"SLA %\",\"Abandon Rate %\",\"AHT (sec)\",\"Staffing Gap (FTE)\"]\nnotes:\n- \"Use callout values, trend sparkline last 24h\"\n- \"Conditionally color: red < target, green \u2265 target\"\n\nid: v_line_offered_vs_forecast\npurpose: \"Primary anomaly detection over time\"\nvisuals:\ntype: \"line_dual\"\nfields:\nseries: [\"Offered\",\"Forecast Offered\"]\naxis: \"DateTime (15m)\"\nanalytics:\nanomaly_detection: {enabled: true, sensitivity: 70}\nexpected_range: {show: true}\nnotes:\n- \"Highlight anomaly window with bookmark\"\n\nid: v_bar_queue_contrib\npurpose: \"Who\u2019s driving deviation\"\nvisuals:\ntype: \"clustered_bar\"\nfields: [\"Queue[Queue Name]\",\"Variance\",\"Variance Contribution %\"]\nsort: \"Variance desc\"\nnotes:\n- \"Label top contributors until \u226580% cumulative\"\n\nid: v_small_multiples_channel\npurpose: \"Channel mix shift\"\nvisuals:\ntype: \"small_multiples_line\"\nfields:\ngroup_by: \"Channel[Channel]\"\nseries: [\"Offered\"]\nbaseline: [\"Forecast Offered\"]\n\nid: v_waterfall_drivers\npurpose: \"Impact breakdown\"\nvisuals:\ntype: \"waterfall\"\nfields:\ncategories: [\"Queues/Channels/IVR errors (as available)\"]\nmeasure: \"Variance\"\n\nid: v_decomposition_tree_variance\npurpose: \"Explain variance interactively\"\nvisuals:\ntype: \"decomposition_tree\"\nfields:\nanalyze: \"Variance\"\nexplain_by: [\"Queue\",\"Channel\",\"Interval\",\"Campaign\",\"Region\"]\n\nid: v_tooltip_anomaly\npurpose: \"Rich tooltip for anomaly points\"\nvisuals:\ntype: \"tooltip_page\"\nfields: [\"Variance %\",\"SLA %\",\"Abandon Rate %\",\"AHT (sec)\",\"Top Queue\",\"Top Channel\"]\n\nid: v_slicer_time\npurpose: \"Windowing\"\nvisuals:\ntype: \"slicer\"\nfields: [\"DateTime 15m\"]\npresets: [\"Now (last 2h)\",\"Last 24h\",\"Incident Window\"]\n\npage_layouts:\n\npage: \"Incident Overview\"\ngrid:\n\nrow: 1\ncols:\n\n{w: 6, id: v_kpi_cards}\n\n{w: 6, id: v_slicer_time}\n\nrow: 2\ncols:\n\n{w: 12, id: v_line_offered_vs_forecast}\n\nrow: 3\ncols:\n\n{w: 6, id: v_bar_queue_contrib}\n\n{w: 6, id: v_small_multiples_channel}\n\npage: \"Explain Variance\"\ngrid:\n\nrow: 1\ncols:\n\n{w: 7, id: v_decomposition_tree_variance}\n\n{w: 5, id: v_waterfall_drivers}\ndrillthrough_from: [\"Incident Overview\"]\n\ntheme_json_snippet: |\n{\n\"name\": \"Incident Blue\",\n\"textClasses\": {\"title\":\"20pt\",\"header\":\"12pt\",\"callout\":\"24pt\"},\n\"visualStyles\": {\n\"*\": {\"labels\": [{\"color\": {\"solid\": {\"color\": \"#2B2B2B\"}}}]}\n},\n\"background\": \"#FFFFFF\",\n\"foreground\": \"#2B2B2B\",\n\"dataColors\": [\"#0F62FE\", \"#A2191F\", \"#24A148\", \"#8A3FFC\", \"#FF832B\", \"#6F6F6F\"],\n\"accent\": \"#0F62FE\",\n\"tableAccent\": \"#0F62FE\"\n}\n\ndesign_rules:\n\n\"Use a 12-column grid, 24px gutters, consistent card padding.\"\n\n\"Titles are verbs: 'Investigate Queue Drivers', not 'Queue Bar Chart'.\"\n\n\"Tooltips carry dense metrics; main page stays clean.\"\n\n\"Bookmark presets: Now, Last 24h, Incident Window.\"\n\n\"Accessibility: \u22654.5:1 contrast; avoid color-only encoding.\"\n\nfew_shot:\n\ninput: \"Task: Summarize inbound spike vs forecast; InputData: {\"timestamp\":\"2025-08-18T12:00:00Z\",\"window_minutes\":120}\"\noutput: |\n{\n\"executive_summary\": [\n\"Inbound +28% vs forecast from 10:00\u201312:00 local (Mon, Aug 18, 2025)\",\n\"SLA \u22125.2 pts; Abandon +2.1 pts; AHT stable\",\n\"Variance concentrated in 'Member Services L3' (42%) and Voice channel (71%)\"\n],\n\"kpis\": {\n\"variance_pct\": 0.28,\n\"sla_pct\": 0.781,\n\"abandon_rate_pct\": 0.061,\n\"aht_sec\": 382,\n\"staffing_gap_fte\": 11.4\n},\n\"drivers\": [\n{\"dimension\":\"Queue\",\"member\":\"Member Services L3\",\"variance_pct\":0.41,\"contribution_pct\":0.42},\n{\"dimension\":\"Channel\",\"member\":\"voice\",\"variance_pct\":0.31,\"contribution_pct\":0.71}\n],\n\"recommended_actions\": [\n\"Engage WFM for surge staffing (+12 FTE next 2 hours) and activate voluntary OT.\",\n\"Coordinate with Marketing to reflect campaign traffic in near-term forecast.\",\n\"Validate IVR latency on eligibility path; reroute to stable menu if p95 > 2.0s.\"\n],\n\"technical_json\": {\n\"probable_cause\": \"Unmodeled marketing push + mild IVR latency\",\n\"signals\": [\"Variance % >= 0.15\",\"SLA drop >= 3pts\",\"Voice share up 9pts\"],\n\"queues_impacted\": [\"Member Services L3\",\"Claims Support\"],\n\"channels_impacted\": [\"voice\"]\n},\n\"visuals_to_focus\": [\"v_line_offered_vs_forecast\", \"v_bar_queue_contrib\", \"v_tooltip_anomaly\"],\n\"anomaly_window\": {\n\"local_start\": \"2025-08-18T10:00:00-04:00\",\n\"local_end\": \"2025-08-18T12:00:00-04:00\",\n\"utc_start\": \"2025-08-18T14:00:00Z\",\n\"utc_end\": \"2025-08-18T16:00:00Z\",\n\"granularity\": \"15m\"\n},\n\"dax_used\": [\"Variance %\",\"SLA %\",\"Abandon Rate %\",\"AHT (sec)\",\"Staffing Gap (FTE)\",\"Variance Contribution %\"]\n}\n\ninput: \"Task: Summarize inbound drop with channel shift; InputData: {\"timestamp\":\"2025-08-22T20:30:00Z\",\"window_minutes\":90}\"\noutput: |\n{\n\"executive_summary\": [\n\"Inbound \u221219% vs forecast 16:30\u201318:00 local; email volume +12% YoY baseline\",\n\"SLA +2.8 pts (light load); chat queues near idle\",\n\"Channel shift from voice \u2192 email (~9pt mix change) suggests task deferral\"\n],\n\"kpis\": {\n\"variance_pct\": -0.19,\n\"sla_pct\": 0.922,\n\"abandon_rate_pct\": 0.012,\n\"aht_sec\": 365,\n\"staffing_gap_fte\": -6.0\n},\n\"drivers\": [\n{\"dimension\":\"Channel\",\"member\":\"email\",\"variance_pct\":0.12,\"contribution_pct\":0.63},\n{\"dimension\":\"Queue\",\"member\":\"Benefits Inquiry\",\"variance_pct\":-0.09,\"contribution_pct\":0.27}\n],\n\"recommended_actions\": [\n\"Adjust short-term forecast mix: reduce voice offer, increase email capacity for next AM.\",\n\"Promote chat deflection for simple FAQs; set auto-reply with expected SLAs for email.\",\n\"Scale down OT for tonight; reallocate 4\u20136 FTE to back-office.\"\n],\n\"technical_json\": {\n\"probable_cause\": \"Behavioral deferral (after-work shift) + weekend pattern onset\",\n\"signals\": [\"Voice offered \u221222% vs forecast\",\"Email +12% vs 7d baseline\"],\n\"channels_impacted\": [\"voice\",\"email\"]\n},\n\"visuals_to_focus\": [\"v_small_multiples_channel\",\"v_line_offered_vs_forecast\"],\n\"anomaly_window\": {\n\"local_start\": \"2025-08-22T16:30:00-04:00\",\n\"local_end\": \"2025-08-22T18:00:00-04:00\",\n\"utc_start\": \"2025-08-22T20:30:00Z\",\n\"utc_end\": \"2025-08-22T22:00:00Z\",\n\"granularity\": \"15m\"\n},\n\"dax_used\": [\"Variance %\",\"SLA %\",\"Abandon Rate %\",\"AHT (sec)\",\"Variance Contribution %\"]\n}\n\nnotes_for_engineers:\n\n\"Use a Date table with time intelligence; keep 15-minute grain for the main line visual.\"\n\n\"Enable anomaly detection (Analytics pane) on the time-series visual; show expected range.\"\n\n\"Create a tooltip page (v_tooltip_anomaly) bound to the line chart for dense metadata.\"\n\n\"Bookmarks: Now (last 2h), Last 24h, Incident Window (bound to anomaly_window).\"\n\n\"Conditional formatting thresholds pulled from conventions.thresholds.\"\n\n\"Keep model small: import at 15-min grain; DirectQuery only if absolutely required.\""
+    },
+    "outputs": {
+      "format": "json"
+    },
+    "models": {
+      "recommended": [
+        "gpt-4o-mini",
+        "gpt-4o"
+      ],
+      "temperature": 0.2,
+      "top_p": 1.0
+    }
+  },
+  {
+    "id": "volume_anomaly_summary_v1.0.0",
+    "title": "Volume_Anomaly_Summary_V1 0 0",
+    "category": "",
+    "context": "",
+    "description": "",
+    "tags": [],
+    "role": "system",
+    "template": "",
+    "variables": [],
+    "fewShot": null,
+    "outputFormat": null,
+    "temperature": null,
+    "top_p": null,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": null,
+    "source": "data/prompts/volume_anomaly_summary_v1.0.0.yaml",
+    "blocks": null,
+    "outputs": null,
+    "models": null
+  },
+  {
+    "id": "volume_anomaly_summary_v2.0.0",
+    "title": "Volume Anomaly Incident Brief (v2)",
+    "category": "incident",
+    "context": "",
+    "description": "Summarize the anomaly detected for ${division} between ${anomaly_window_start} and\n${anomaly_window_end}. Highlight volume variance vs forecast, SLA impact, abandon\ntrends, MOS or quality deltas, and staffing gaps. If ${include_staffing_detail} is\nfalse, omit staffing commentary. Call out primary drivers (queue, channel, campaign,\nIVR issues) and conclude with prioritized actions.",
+    "tags": [
+      "incident",
+      "anomaly",
+      "contact-center"
+    ],
+    "role": "system",
+    "template": "Summarize the anomaly detected for ${division} between ${anomaly_window_start} and\n${anomaly_window_end}. Highlight volume variance vs forecast, SLA impact, abandon\ntrends, MOS or quality deltas, and staffing gaps. If ${include_staffing_detail} is\nfalse, omit staffing commentary. Call out primary drivers (queue, channel, campaign,\nIVR issues) and conclude with prioritized actions.",
+    "variables": [
+      {
+        "name": "division",
+        "label": "division",
+        "type": "string",
+        "default": null,
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "anomaly_window_start",
+        "label": "anomaly_window_start",
+        "type": "string",
+        "default": null,
+        "required": true,
+        "description": "ISO-8601 UTC timestamp"
+      },
+      {
+        "name": "anomaly_window_end",
+        "label": "anomaly_window_end",
+        "type": "string",
+        "default": null,
+        "required": true,
+        "description": "ISO-8601 UTC timestamp"
+      },
+      {
+        "name": "window_minutes",
+        "label": "window_minutes",
+        "type": "integer",
+        "default": 120,
+        "required": false,
+        "description": null
+      },
+      {
+        "name": "include_staffing_detail",
+        "label": "include_staffing_detail",
+        "type": "boolean",
+        "default": true,
+        "required": false,
+        "description": null
+      }
+    ],
+    "fewShot": null,
+    "outputFormat": null,
+    "temperature": 0.15,
+    "top_p": null,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": "2.0.0",
+    "source": "data/prompts/volume_anomaly_summary_v2.0.0.yaml",
+    "blocks": {
+      "system": "You are {role}. Produce incident-ready summaries for contact volume anomalies aligned\nto a Power BI incident workbook. Use blunt, quantified language, respect the provided\ntelemetry contracts, and always cite the visuals (by id) that informed each conclusion.",
+      "instructions": "Summarize the anomaly detected for ${division} between ${anomaly_window_start} and\n${anomaly_window_end}. Highlight volume variance vs forecast, SLA impact, abandon\ntrends, MOS or quality deltas, and staffing gaps. If ${include_staffing_detail} is\nfalse, omit staffing commentary. Call out primary drivers (queue, channel, campaign,\nIVR issues) and conclude with prioritized actions.",
+      "constraints": "- Do not invent telemetry; if data is missing, call it out explicitly.\n- Executive summary is limited to 4 bullets.\n- Percentages must include the +/- delta vs forecast.\n- Timestamp all windows in local timezone (America/Indiana/Indianapolis).",
+      "style": "- Section order: Executive Summary \u2192 Drivers \u2192 Recommended Actions \u2192 Visuals to Review.\n- Use imperative verbs for actions (e.g., \"Escalate\", \"Throttle\", \"Staff\").\n- Keep prose under 220 words."
+    },
+    "outputs": null,
+    "models": {
+      "recommended": [
+        "gpt-5",
+        "gpt-4o"
+      ],
+      "max_tokens": 2000,
+      "temperature": 0.15
+    }
+  },
+  {
+    "id": "webrtc.disconnects.explainer.meta",
+    "title": "Webrtc Disconnects Explainer Meta",
+    "category": "",
+    "context": "",
+    "description": "",
+    "tags": [],
+    "role": "system",
+    "template": "",
+    "variables": [],
+    "fewShot": null,
+    "outputFormat": null,
+    "temperature": null,
+    "top_p": null,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": null,
+    "source": "data/prompts/webrtc.disconnects.explainer.meta.yaml",
+    "blocks": null,
+    "outputs": null,
+    "models": null
+  },
+  {
+    "id": "support.webrtc.disconnects.explainer",
+    "title": "Support Webrtc Disconnects Explainer",
+    "category": "webrtc",
+    "context": "",
+    "description": "Create a brief explainer for ${division} covering ${period}. List top 3\u20135 causes from ${top_causes}. If actions exist, add 'What we did'. Close with 'What to watch next'.",
+    "tags": [
+      "webrtc",
+      "disconnects"
+    ],
+    "role": "system",
+    "template": "Create a brief explainer for ${division} covering ${period}. List top 3\u20135 causes from ${top_causes}. If actions exist, add 'What we did'. Close with 'What to watch next'.",
+    "variables": [
+      {
+        "name": "division",
+        "label": "division",
+        "type": "string",
+        "default": null,
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "period",
+        "label": "period",
+        "type": "string",
+        "default": null,
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "top_causes",
+        "label": "top_causes",
+        "type": "array",
+        "default": null,
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "actions_taken",
+        "label": "actions_taken",
+        "type": "array",
+        "default": null,
+        "required": false,
+        "description": null
+      }
+    ],
+    "fewShot": null,
+    "outputFormat": null,
+    "temperature": 0.1,
+    "top_p": null,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": "1.0.0",
+    "source": "data/prompts/webrtc.disconnects.explainer.prompt.yaml",
+    "blocks": {
+      "system": "You explain WebRTC disconnect patterns to non-telephony stakeholders.",
+      "instructions": "Create a brief explainer for ${division} covering ${period}. List top 3\u20135 causes from ${top_causes}. If actions exist, add 'What we did'. Close with 'What to watch next'.",
+      "constraints": "- Avoid jargon; define terms.\n- Max 170 words.",
+      "style": "- Headings + bullets\n- Short, skimmable lines"
+    },
+    "outputs": null,
+    "models": {
+      "recommended": [
+        "gpt-5-thinking"
+      ],
+      "max_tokens": 1800,
+      "temperature": 0.1
+    }
+  },
+  {
+    "id": "webrtc.disconnects.explainer.tests",
+    "title": "Webrtc Disconnects Explainer Tests",
+    "category": "",
+    "context": "",
+    "description": "",
+    "tags": [],
+    "role": "system",
+    "template": "",
+    "variables": [],
+    "fewShot": null,
+    "outputFormat": null,
+    "temperature": null,
+    "top_p": null,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": null,
+    "source": "data/prompts/webrtc.disconnects.explainer.tests.yaml",
+    "blocks": null,
+    "outputs": null,
+    "models": null
+  }
+]

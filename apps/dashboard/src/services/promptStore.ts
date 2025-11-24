@@ -1,4 +1,5 @@
 import starterPrompts from '../../prompt-library.starter.json'
+import basePrompts from '../data/prompt-library.json'
 import type {
   PromptBlocks,
   PromptExampleBlock,
@@ -14,6 +15,10 @@ export const PROMPT_API_BASE = API_BASE
 
 const STARTER_PROMPTS: PromptItem[] = Array.isArray(starterPrompts)
   ? (starterPrompts as PromptItem[]).map((item) => normalizePrompt(item))
+  : []
+
+const BASE_PROMPTS: PromptItem[] = Array.isArray(basePrompts)
+  ? (basePrompts as PromptItem[]).map((item) => normalizePrompt(item))
   : []
 
 interface PromptVariableDefinition {
@@ -294,18 +299,15 @@ function mergePrompts(...groups: PromptItem[][]) {
 
 function ensureSeededLocal(): PromptItem[] {
   const existing = loadLocal()
-  if (existing.length === 0 && STARTER_PROMPTS.length > 0) {
-    const seeded = mergePrompts(STARTER_PROMPTS)
-    saveLocal(seeded)
-    return seeded
-  }
-  return existing
+  const merged = mergePrompts(BASE_PROMPTS, STARTER_PROMPTS, existing)
+  saveLocal(merged)
+  return merged
 }
 
 export async function fetchPromptLibrary(): Promise<PromptItem[]> {
   const local = ensureSeededLocal()
   if (!API_BASE) {
-    return mergePrompts(STARTER_PROMPTS, local)
+    return mergePrompts(BASE_PROMPTS, STARTER_PROMPTS, local)
   }
 
   try {
@@ -319,13 +321,13 @@ export async function fetchPromptLibrary(): Promise<PromptItem[]> {
     const apiPrompts = Array.isArray(payload)
       ? payload.map((item) => normalizePrompt(item))
       : []
-    const merged = mergePrompts(STARTER_PROMPTS, apiPrompts, local)
+    const merged = mergePrompts(BASE_PROMPTS, STARTER_PROMPTS, apiPrompts, local)
     // Cache merged locally for offline use
     saveLocal(merged)
     return merged
   } catch (error) {
     console.warn('Falling back to local prompt store:', error)
-    return mergePrompts(STARTER_PROMPTS, local)
+    return mergePrompts(BASE_PROMPTS, STARTER_PROMPTS, local)
   }
 }
 
