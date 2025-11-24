@@ -120,8 +120,8 @@ jobs:
           path: apps/dashboard/dist
           retention-days: 7
 
-  web:
-    name: Web App (Next.js)
+  unified_webapp:
+    name: Unified Web App (Next.js)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -131,23 +131,23 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: apps/web/package-lock.json
+          cache-dependency-path: apps/unifiedtoolbox.webapp/package-lock.json
       
       - name: Install dependencies
-        working-directory: apps/web
+        working-directory: apps/unifiedtoolbox.webapp
         run: npm ci
       
       - name: Lint
-        working-directory: apps/web
+        working-directory: apps/unifiedtoolbox.webapp
         run: npm run lint
       
       - name: Build web app
-        working-directory: apps/web
+        working-directory: apps/unifiedtoolbox.webapp
         run: npm run build
       
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: web-build
-          path: apps/web/.next
+          name: unified-webapp-build
+          path: apps/unifiedtoolbox.webapp/.next
           retention-days: 7

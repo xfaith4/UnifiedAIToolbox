@@ -1,18 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 
 export default function SettingsPage() {
-  const [apiKey, setApiKey] = useState('')
+  const [apiKey, setApiKey] = useState(() =>
+    typeof window === 'undefined' ? '' : localStorage.getItem('ai-toolbox-api-key') ?? ''
+  )
   const [isSaved, setIsSaved] = useState(false)
-
-  // Load the saved API key from localStorage when the component mounts
-  useEffect(() => {
-    const savedKey = localStorage.getItem('ai-toolbox-api-key')
-    if (savedKey) {
-      setApiKey(savedKey)
-    }
-  }, [])
 
   const handleSave = () => {
     localStorage.setItem('ai-toolbox-api-key', apiKey)

@@ -125,15 +125,15 @@ npm install
 npm run dev
 ```
 
-#### Web Portal (Next.js)
+#### Unified Web Portal (Next.js)
 - **Port:** 3000 (default)
 - **Technology:** Next.js 16, React 19
-- **Purpose:** Alternative web interface
+- **Purpose:** Primary unified web interface
 - **URL:** http://localhost:3000
 
 **Manual Start:**
 ```bash
-cd apps/web
+cd apps/unifiedtoolbox.webapp
 npm install
 npm run dev
 ```

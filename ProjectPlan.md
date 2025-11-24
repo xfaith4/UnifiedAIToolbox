@@ -114,11 +114,7 @@ The goal of this phase is to make the product coherent, streamlined, and impress
 
 Consolidate Frontends:
 
-You have two web UIs: apps/dashboard (React/Vite) and apps/web (Next.js). This is confusing.
-
-Decision: Choose one as your "main" application. Given its features, apps/dashboard seems to be the core.
-
-Migrate any unique features from apps/web into apps/dashboard, and then deprecate apps/web. A single, unified frontend is much stronger than two partial ones.
+We now have a single Unified Web UI in `apps/unifiedtoolbox.webapp` (Next.js). Legacy copies (`apps/web`, `project files/dashboard`) are archived under `archive/` to preserve history without splitting effort.
 
 Decouple from PowerShell:
 

@@ -39,9 +39,9 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  web:
+  unified-webapp:
     build:
-      context: ./apps/web
+      context: ./apps/unifiedtoolbox.webapp
       dockerfile: Dockerfile
     ports:
       - "${WEB_PORT:-3000}:3000"
