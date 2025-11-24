@@ -1,7 +1,7 @@
 /**
  * Cost tracking component for displaying AI API usage costs
  */
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 
 interface CostSummary {
   total_cost: number;
@@ -68,12 +68,12 @@ const CostTracker: React.FC<CostTrackerProps> = ({
   const [budgetAmount, setBudgetAmount] = useState(100);
   const [budgetDays, setBudgetDays] = useState(30);
 
-  const fetchCosts = async () => {
+  const fetchCosts = useCallback(async () => {
     setLoading(true);
     setError(null);
     
     try {
-      const headers: HeadersInit = {};
+      const headers: Record<string, string> = {};
       if (adminToken) {
         headers['X-Admin-Token'] = adminToken;
       }
@@ -108,14 +108,14 @@ const CostTracker: React.FC<CostTrackerProps> = ({
     } finally {
       setLoading(false);
     }
-  };
+  }, [adminToken, apiBaseUrl, budgetAmount, budgetDays]);
 
   useEffect(() => {
     fetchCosts();
     // Refresh every 5 minutes
     const interval = setInterval(fetchCosts, 5 * 60 * 1000);
     return () => clearInterval(interval);
-  }, [budgetAmount, budgetDays]);
+  }, [fetchCosts]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {

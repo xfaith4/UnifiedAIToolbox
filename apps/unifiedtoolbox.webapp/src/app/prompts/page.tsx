@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { PromptItem, PromptVariable, FewShotExample } from '@/lib/types/prompts'
+import type { PromptItem } from '@/lib/types/prompts'
 import {
   fetchPromptLibrary,
   normalizePrompt,
@@ -57,11 +57,6 @@ export default function PromptsPage() {
       return textHit && categoryHit
     })
   }, [items, query, filterCategory])
-
-  const active = useMemo(
-    () => items.find((i) => i.id === activeId) ?? null,
-    [items, activeId]
-  )
 
   function newPrompt() {
     const draft = normalizePrompt({
