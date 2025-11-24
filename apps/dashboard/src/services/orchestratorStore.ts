@@ -1,4 +1,5 @@
 export interface OrchestrationRun {
+  run_id?: string
   prompt_id: string
   version?: string
   source_path?: string
@@ -7,6 +8,11 @@ export interface OrchestrationRun {
   review_policy?: string
   dataset_id?: string
   dataset_name?: string
+  goal?: string
+  mode?: 'executed' | 'simulated' | string
+  run_mode?: 'default' | 'codex-swarm' | string
+  repo_root?: string
+  events?: { ts: string; type: string; message: string }[]
 }
 
 /**

@@ -171,6 +171,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 # Start backend services
+# Start backend services
 if [ "$FRONTEND_ONLY" != true ]; then
     echo -e "${CYAN}Setting up backend services...${NC}"
     
@@ -179,16 +180,20 @@ if [ "$FRONTEND_ONLY" != true ]; then
         echo -e "${YELLOW}Warning: Port $API_PORT is already in use${NC}"
     fi
     
-    cd services/prompt-api
+    cd Orchestration/UnifiedPromptApp/services/prompt-api || cd services/prompt-api
     
     # Create virtual environment if it doesn't exist
-    if [ ! -d ".venv-linux" ]; then
+    if [ ! -d ".venv-linux" ] && [ ! -d ".venv" ]; then
         echo -e "${YELLOW}Creating Python virtual environment...${NC}"
-        python3 -m venv .venv-linux
+        python3 -m venv .venv-linux || python -m venv .venv
     fi
     
     # Activate virtual environment and install dependencies
-    source .venv-linux/bin/activate
+    if [ -d ".venv-linux" ]; then
+      source .venv-linux/bin/activate
+    elif [ -d ".venv" ]; then
+      source .venv/Scripts/activate || source .venv/bin/activate
+    fi
     
     if [ "$SKIP_INSTALL" != true ]; then
         echo -e "${YELLOW}Installing Python dependencies...${NC}"
@@ -196,12 +201,17 @@ if [ "$FRONTEND_ONLY" != true ]; then
         pip install -r requirements.txt
     fi
     
+    # Load local env if present
+    if [ -f ".env" ]; then
+      export $(cat .env | grep -v '^#' | xargs)
+    fi
+    
     # Start API server
     echo -e "${GREEN}Starting Prompt API on port $API_PORT...${NC}"
     export PROMPT_API_PORT=$API_PORT
     export OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
     export FRONTEND_PORT=$FRONTEND_PORT
-    python app.py &
+    uvicorn app:app --host 0.0.0.0 --port $API_PORT &
     API_PID=$!
     
     cd "$SCRIPT_DIR"
@@ -228,7 +238,7 @@ if [ "$BACKEND_ONLY" != true ]; then
     
     echo -e "${GREEN}Starting Dashboard on port $FRONTEND_PORT...${NC}"
     export VITE_PORT=$FRONTEND_PORT
-    export VITE_API_BASE="http://localhost:$API_PORT"
+    export VITE_API_URL="http://localhost:$API_PORT"
     npm run dev -- --host 0.0.0.0 --port $FRONTEND_PORT &
     DASHBOARD_PID=$!
     

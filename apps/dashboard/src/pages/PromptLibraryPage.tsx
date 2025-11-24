@@ -206,6 +206,7 @@ export default function PromptLibraryPage() {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [provider, setProvider] = useState<Provider>('openai')
   const [isLoading, setIsLoading] = useState(true)
+  const [remoteResults, setRemoteResults] = useState<PromptItem[] | null>(null)
   const [apiRendered, setApiRendered] = useState<string>('')
   const [apiRenderError, setApiRenderError] = useState<string | null>(null)
   const [apiRenderLoading, setApiRenderLoading] = useState(false)
@@ -214,6 +215,7 @@ export default function PromptLibraryPage() {
   const [selectedDatasetPreview, setSelectedDatasetPreview] = useState<string>('')
   const [refineOutput, setRefineOutput] = useState<string>('')
   const [refineLoading, setRefineLoading] = useState(false)
+  const [refineStatus, setRefineStatus] = useState<string>('')
   const initialized = useRef(false)
   const apiAvailable = Boolean(PROMPT_API_BASE)
 
@@ -270,6 +272,29 @@ export default function PromptLibraryPage() {
       return textHit && categoryHit
     })
   }, [items, query, filterCategory])
+
+  // Optional remote search via API when available
+  useEffect(() => {
+    const q = query.trim()
+    if (!apiAvailable || q.length < 2) {
+      setRemoteResults(null)
+      return
+    }
+    let alive = true
+    fetch(`${PROMPT_API_BASE}/prompts/search?q=${encodeURIComponent(q)}`)
+      .then((r) => r.ok ? r.json() : Promise.reject(r.statusText))
+      .then((res) => {
+        if (!alive) return
+        const results = Array.isArray(res.results) ? res.results : []
+        setRemoteResults(results as PromptItem[])
+      })
+      .catch(() => {
+        if (alive) setRemoteResults(null)
+      })
+    return () => { alive = false }
+  }, [query, apiAvailable])
+
+  const displayList = remoteResults ?? filtered
 
   const active = useMemo(
     () => items.find((i) => i.id === activeId) ?? null,
@@ -556,6 +581,8 @@ export default function PromptLibraryPage() {
     setItems((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
     setEditing(updated)
     setActiveId(updated.id)
+    setRefineStatus('Applied and saved to prompt')
+    setTimeout(() => setRefineStatus(''), 2000)
   }
 
   return (
@@ -720,14 +747,14 @@ export default function PromptLibraryPage() {
       </div>
 
       {/* List + Editor + Preview */}
-      <div className="mt-5 grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="mt-5 grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
         {/* List */}
-        <div className="col-span-1 space-y-2">
+        <div className="col-span-1 space-y-2 min-w-0">
           {isLoading ? (
             <div className="text-sm opacity-70">Loading prompt library…</div>
           ) : (
             <>
-              {filtered.map((p) => (
+              {displayList.map((p) => (
                 <div
                   key={p.id}
                   className={`p-3 border rounded-xl ${activeId === p.id ? 'border-emerald-600' : 'border-neutral-800'}`}
@@ -797,7 +824,7 @@ export default function PromptLibraryPage() {
               ))}
             </>
           )}
-          {!isLoading && filtered.length === 0 && (
+          {!isLoading && displayList.length === 0 && (
             <div className="text-sm opacity-70">
               No prompts yet. Click “New”.
             </div>
@@ -805,7 +832,7 @@ export default function PromptLibraryPage() {
         </div>
 
         {/* Editor */}
-        <div className="col-span-1">
+        <div className="col-span-1 min-w-0">
           {editing ? (
             <PromptEditor
               value={editing}
@@ -912,7 +939,7 @@ export default function PromptLibraryPage() {
         </div>
 
         {/* Render & Payload */}
-        <div className="col-span-1">
+        <div className="col-span-1 min-w-0">
           {active ? (
             <div className="p-3 border rounded-xl border-neutral-800 space-y-3">
               <div className="flex items-center justify-between">
@@ -932,8 +959,8 @@ export default function PromptLibraryPage() {
               {/* Variable inputs */}
               <div className="space-y-2">
                 {(active.variables ?? []).map((v) => (
-                  <div key={v.name} className="text-sm">
-                    <div className="mb-1">{v.label ?? v.name}</div>
+                  <div key={v.name} className="text-sm space-y-1">
+                    <div className="mb-1 truncate">{v.label ?? v.name}</div>
                     {v.type === 'multiline' ? (
                       <textarea
                         className="w-full h-28 bg-neutral-900 border border-neutral-800 rounded px-2 py-1"
@@ -1016,6 +1043,9 @@ export default function PromptLibraryPage() {
                       Apply to template
                     </button>
                   )}
+                {refineStatus && (
+                  <div className="text-[11px] text-emerald-400">{refineStatus}</div>
+                )}
                 </div>
                 {refineOutput && (
                   <pre className="bg-neutral-950 border border-neutral-800 rounded p-2 whitespace-pre-wrap text-xs max-h-48 overflow-auto">

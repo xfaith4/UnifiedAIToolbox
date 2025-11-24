@@ -1,5 +1,5 @@
 ### BEGIN FILE: app.py
-import os, json, hashlib, sqlite3, datetime, textwrap, pathlib, sys, subprocess, re, uuid, time
+import os, json, hashlib, sqlite3, datetime, textwrap, pathlib, sys, subprocess, re, uuid, time, threading, shutil
 from dataclasses import dataclass
 from contextlib import asynccontextmanager
 from typing import List, Optional, Dict, Any, Tuple, Callable
@@ -69,6 +69,7 @@ class ServiceSettings(BaseSettings):
     data_dir: pathlib.Path = BASE_DIR / "data"
     openai_model: str = os.environ.get("OPENAI_MODEL", "gpt-5")  # fallback for legacy env var
     openai_api_key: Optional[str] = Field(default_factory=lambda: os.environ.get("OPENAI_API_KEY"))
+    openai_api_base: str = os.environ.get("OPENAI_API_BASE", "https://api.openai.com/v1")
     bridge_dir: pathlib.Path = ROOT_DIR / "apps" / "orchestration-bridge"
     admin_token: Optional[str] = Field(default_factory=lambda: os.environ.get("PROMPT_API_ADMIN_TOKEN"))
 
@@ -82,6 +83,7 @@ TEMPLATE_DIR = settings.template_dir
 DATA_DIR = settings.data_dir
 DEFAULT_MODEL = settings.openai_model
 OPENAI_API_KEY = settings.openai_api_key or ""
+OPENAI_API_BASE = settings.openai_api_base.rstrip("/")
 PROMPT_SYNC_FILE = DATA_DIR / "prompt-library.json"
 AGENT_SYNC_FILE = DATA_DIR / "agent-library.json"
 
@@ -89,6 +91,14 @@ BRIDGE_DIR = settings.bridge_dir
 BRIDGE_RUN_DIR = BRIDGE_DIR / "runs"
 BRIDGE_RUN_DIR.mkdir(parents=True, exist_ok=True)
 PS_REFINER = BRIDGE_DIR / "OpenAI_Refiner.ps1"
+# Prefer in-repo orchestrator; fallback to external path or env override
+ORCH_PS1 = os.environ.get("ORCHESTRATOR_PS1") or str(
+    (ROOT_DIR / "Orchestration" / "AI-Orchestration" / "scripts" / "MilestoneController.ps1").resolve()
+)
+CODEX_SWARM_PS1 = os.environ.get("CODEX_SWARM_PS1") or str(
+    (ROOT_DIR / "Orchestration" / "AI-Orchestration" / "codex-multiagent-swarm" / "Orchestrate-Codex.ps1").resolve()
+)
+REPO_ROOT_DEFAULT = str((ROOT_DIR.parent).resolve())
 
 REGISTRY_SRC = ROOT_DIR / "packages" / "prompt-registry" / "src"
 if REGISTRY_SRC.exists():
@@ -750,7 +760,7 @@ def call_openai_chat(model: str, messages: List[Dict[str, str]]) -> Dict[str, An
     if not OPENAI_API_KEY:
         raise HTTPException(status_code=500, detail="OPENAI_API_KEY not set")
 
-    url = "https://api.openai.com/v1/chat/completions"
+    url = f"{OPENAI_API_BASE}/chat/completions"
     headers = {
         "Authorization": f"Bearer {OPENAI_API_KEY}",
         "Content-Type": "application/json",
@@ -1449,6 +1459,37 @@ def get_template(template_id: str = Path(..., description="Template id (matches 
         raise HTTPException(status_code=404, detail=f"Template not found: {template_id}")
     return t[template_id]
 
+
+@app.get("/prompts/search")
+def search_prompts(q: Optional[str] = Query(None, description="Search text (id,title,category,context,tags)")):
+    """
+    Simple prompt search over loaded templates.
+    """
+    templates = read_templates()
+    results = []
+    q_lower = (q or "").strip().lower()
+    for tpl_id, payload in templates.items():
+        title = payload.get("title", "") or tpl_id
+        category = payload.get("category", "") or ""
+        context = payload.get("context", "") or ""
+        description = payload.get("description", "") or ""
+        tags = payload.get("telemetry", {}).get("tags", []) if isinstance(payload.get("telemetry"), dict) else payload.get("tags", [])
+        haystacks = [tpl_id, title, category, context, description, " ".join(tags) if tags else ""]
+        if q_lower and not any(q_lower in (h or "").lower() for h in haystacks):
+            continue
+        results.append({
+            "id": tpl_id,
+            "title": title,
+            "category": category,
+            "context": context,
+            "description": description,
+            "tags": tags,
+            "updatedAt": payload.get("updatedAt"),
+            "createdAt": payload.get("createdAt"),
+            "version": payload.get("version"),
+        })
+    return {"count": len(results), "results": results}
+
 @app.post("/api/generate/dry-run")
 def generate_dry_run(req: RequestPayload):
     """
@@ -1757,14 +1798,21 @@ class OrchestrationRequest(BaseModel):
     dataset_name: Optional[str] = None
     agents: Optional[List[str]] = None
     notes: Optional[str] = None
+    goal: Optional[str] = None
+    model: Optional[str] = None
+    run_mode: Optional[str] = "default"  # default | codex-swarm
+    repo_root: Optional[str] = None
 
 
 @app.post("/orchestrate/run")
 def orchestrate_run(req: OrchestrationRequest):
     """
-    Queue an orchestration run (stub). Writes a manifest to bridge runs dir.
+    Queue an orchestration run (lightweight stub). Writes a manifest and kicks off a
+    background task that executes the external orchestrator if configured, otherwise
+    simulates a completion.
     """
     manifest = {
+        "run_id": None,  # will be filled after run_id constructed
         "prompt_id": req.prompt_id,
         "version": req.version or "latest",
         "review_policy": req.review_policy or "standard",
@@ -1775,11 +1823,107 @@ def orchestrate_run(req: OrchestrationRequest):
         "notes": req.notes,
         "requested_at": now_iso(),
         "source": "api",
+        "status": "queued",
+        "goal": req.goal,
+        "model": req.model or DEFAULT_MODEL,
+        "mode": "simulated",
+        "events": [
+            {"ts": now_iso(), "type": "status", "message": "queued"},
+        ],
     }
     run_id = f"{req.prompt_id.replace('.', '_')}.{manifest['requested_at'].replace(':','-')}"
+    manifest["run_id"] = run_id
     path = BRIDGE_RUN_DIR / f"{run_id}.json"
     path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+    def _execute(path: pathlib.Path, manifest: Dict[str, Any]):
+        try:
+          data = json.loads(path.read_text())
+          data["status"] = "running"
+          data["started_at"] = now_iso()
+          data.setdefault("events", []).append({"ts": data["started_at"], "type": "status", "message": "running"})
+          path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+          goal_text = manifest.get("goal") or manifest.get("prompt_id") or ""
+          repo_root = req.repo_root or REPO_ROOT_DEFAULT
+          ps_exe = shutil.which("pwsh") or shutil.which("powershell")
+          log_path = BRIDGE_RUN_DIR / f"{run_id}.log"
+
+          # choose orchestrator script based on run_mode
+          run_mode = (req.run_mode or "default").lower()
+          ps1 = pathlib.Path(CODEX_SWARM_PS1 if run_mode == "codex-swarm" else ORCH_PS1)
+
+          if ps1.exists() and ps_exe:
+              data["mode"] = "executed"
+              data["events"].append({"ts": now_iso(), "type": "info", "message": f"Executing {ps1.name}"})
+              path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+              args = [ps_exe, "-File", str(ps1)]
+              if run_mode == "codex-swarm":
+                  args += ["-RepoRoot", repo_root]
+              else:
+                  goal_file = path.with_suffix(".goal.txt")
+                  goal_file.write_text(str(goal_text), encoding="utf-8")
+                  args += ["-GoalFile", str(goal_file)]
+                  if manifest.get("model"):
+                      args += ["-Model", manifest.get("model")]
+              with open(log_path, "w", encoding="utf-8") as logf:
+                  subprocess.run(args, check=True, stdout=logf, stderr=logf)
+          else:
+              # simulate work if script/exe missing
+              data["mode"] = "simulated"
+              data["events"].append({"ts": now_iso(), "type": "warn", "message": "Simulated run (script or pwsh missing)"})
+              path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+              time.sleep(2)
+
+          data["status"] = "completed"
+          data["completed_at"] = now_iso()
+          data["events"].append({"ts": data["completed_at"], "type": "status", "message": "completed"})
+          path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        except Exception as exc:
+          try:
+            data = json.loads(path.read_text())
+            data["status"] = f"error:{exc}"
+            data["completed_at"] = now_iso()
+            data.setdefault("events", []).append({"ts": data["completed_at"], "type": "error", "message": str(exc)})
+            path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+          except Exception:
+            pass
+
+    threading.Thread(target=_execute, args=(path, manifest), daemon=True).start()
+
     return {"run_id": run_id, "manifest": manifest}
+
+
+@app.get("/orchestrate/runs")
+def list_orchestration_runs():
+    runs = []
+    for f in BRIDGE_RUN_DIR.glob("*.json"):
+        try:
+            data = json.loads(f.read_text())
+            data["run_id"] = data.get("run_id") or f.stem
+            runs.append(data)
+        except Exception:
+            continue
+    runs = sorted(runs, key=lambda r: r.get("requested_at", ""), reverse=True)
+    return {"runs": runs}
+
+
+@app.get("/orchestrate/run/{run_id}")
+def get_orchestration_run(run_id: str):
+    path = BRIDGE_RUN_DIR / f"{run_id}.json"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Run not found")
+    try:
+        data = json.loads(path.read_text())
+        data["run_id"] = data.get("run_id") or run_id
+        log_path = BRIDGE_RUN_DIR / f"{run_id}.log"
+        if log_path.exists():
+            log_text = log_path.read_text(encoding="utf-8")
+            data["log_path"] = str(log_path)
+            data["log_excerpt"] = log_text[-4000:] if len(log_text) > 4000 else log_text
+        return data
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to read run: {exc}")
     depth: Optional[int] = Field(None, description="Clone depth (shallow clone)")
 
 
