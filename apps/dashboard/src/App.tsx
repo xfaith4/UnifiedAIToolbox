@@ -10,6 +10,7 @@ import OrchestratorPage from './pages/OrchestratorPage'
 import DatasetsPage from './pages/DatasetsPage'
 import SensorsPage from './pages/SensorsPage'
 import SettingsPage from './pages/Settings'
+import HelpPage from './pages/HelpPage'
 
 export default function App() {
   return (
@@ -25,6 +26,7 @@ export default function App() {
         <Route path="/agents" element={<AgentLibraryPage />} />
         <Route path="/datasets" element={<DatasetsPage />} />
         <Route path="/sensors" element={<SensorsPage />} />
+        <Route path="/help" element={<HelpPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<div className="p-6">Not found</div>} />
       </Routes>
