@@ -35,6 +35,26 @@ const SIMPLE_IMPORT_SAMPLE = `[
   }
 ]`
 
+const PROMPT_REFINER_INSTRUCTIONS = `To use PromptRefiner:
+
+1. Navigate to: UnifiedAIToolbox/apps/PromptRefiner/
+2. Run: powershell.exe -NoProfile -sta -File .\\OpenAI_Refiner.Wpf.ps1
+
+Or for CLI: .\\OpenAI_Refiner.ps1
+
+See the README.md in that directory for full instructions.`
+
+const TEMPLATE_PLACEHOLDER = `You are a [role/expert in X].
+
+Task: {{task_description}}
+
+Constraints:
+- Keep responses under [N] words
+- Use [tone/style]
+- Focus on [specific aspects]
+
+Output format: [JSON/Markdown/Plain text with specific structure]`
+
 // ---------------- Types & Schema ----------------
 export type Provider = 'openai' | 'anthropic' | 'google' | 'ollama'
 
@@ -594,22 +614,29 @@ export default function PromptLibraryPage() {
 
   return (
     <div className="p-4 max-w-7xl mx-auto">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Prompt Library</h1>
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <h1 className="text-2xl font-bold">Prompt Library</h1>
+          <p className="text-sm text-neutral-400 mt-1">
+            Create, manage, and refine AI prompts with standardized templates and best practices
+          </p>
+        </div>
         <div className="flex items-center gap-2">
           <button
-            className="px-3 py-1 rounded bg-emerald-600 hover:bg-emerald-500"
+            className="px-3 py-1 rounded bg-emerald-600 hover:bg-emerald-500 flex items-center gap-1"
             onClick={newPrompt}
+            title="Create a new prompt from scratch"
           >
-            New
+            <span>✨</span> New
           </button>
           <button
             className="px-3 py-1 rounded bg-neutral-800 hover:bg-neutral-700"
             onClick={exportJson}
+            title="Export all prompts as JSON"
           >
             Export
           </button>
-          <label className="px-3 py-1 rounded bg-neutral-800 hover:bg-neutral-700 cursor-pointer">
+          <label className="px-3 py-1 rounded bg-neutral-800 hover:bg-neutral-700 cursor-pointer" title="Import prompts from JSON file">
             Import
             <input
               type="file"
@@ -624,9 +651,43 @@ export default function PromptLibraryPage() {
         </div>
       </div>
 
+      {/* Best Practices Guide */}
+      <div className="mt-4 p-4 border rounded-xl border-blue-900/50 bg-blue-950/20 space-y-3">
+        <div className="flex items-start gap-3">
+          <span className="text-2xl">💡</span>
+          <div className="flex-1">
+            <div className="font-semibold text-blue-300 mb-2">Prompt Best Practices</div>
+            <div className="text-sm text-neutral-300 space-y-2">
+              <p><strong>Standardized Format:</strong> A good prompt includes clear instructions, constraints, desired output format, and examples.</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
+                <div className="p-2 bg-neutral-900/50 rounded border border-neutral-800">
+                  <div className="text-xs font-semibold text-emerald-400 mb-1">✓ Good Prompt</div>
+                  <div className="text-xs text-neutral-400">
+                    "You are a helpful assistant. Task: {'{'}{'{'}{'}'}task{'}'}{'}'}<br/>
+                    Constraints: Keep response under 100 words<br/>
+                    Output: JSON with 'summary' and 'actions' keys"
+                  </div>
+                </div>
+                <div className="p-2 bg-neutral-900/50 rounded border border-neutral-800">
+                  <div className="text-xs font-semibold text-rose-400 mb-1">✗ Vague Prompt</div>
+                  <div className="text-xs text-neutral-400">
+                    "Help me with {'{'}{'{'}{'}'}task{'}'}{'}'}."
+                  </div>
+                </div>
+              </div>
+              <p className="text-xs mt-2">
+                <strong>Tip:</strong> Use the <span className="px-1 py-0.5 bg-emerald-600/20 text-emerald-400 rounded">Refine prompt</span> tool below to improve your prompts with AI assistance.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div className="mt-4 grid gap-4 lg:grid-cols-[2fr,1fr]">
         <div className="p-4 border rounded-xl border-neutral-800 bg-neutral-950 space-y-3">
-          <div className="font-semibold">Import prompt files</div>
+          <div className="font-semibold flex items-center gap-2">
+            <span>📁</span> Import prompt files
+          </div>
           <p className="text-sm opacity-80">
             Upload a JSON file that contains an array of prompt objects. Each
             object can use the full editor schema or the simple format shown
@@ -648,43 +709,89 @@ export default function PromptLibraryPage() {
           className="p-4 border rounded-xl border-neutral-800 bg-neutral-950 space-y-2"
           onSubmit={handleQuickAddSubmit}
         >
-          <div className="font-semibold">Quick add prompt</div>
+          <div className="font-semibold flex items-center gap-2">
+            <span>⚡</span> Quick add prompt
+          </div>
           <div className="text-xs opacity-70">
             Save a single prompt with the essentials. You can refine it in the
             editor afterwards.
           </div>
           <input
-            className="w-full bg-neutral-900 border border-neutral-800 rounded px-2 py-1"
+            className="w-full bg-neutral-900 border border-neutral-800 rounded px-2 py-1 placeholder:text-neutral-600"
             value={quickAdd.title}
             onChange={(e) => setQuickField('title', e.target.value)}
-            placeholder="Title (e.g. Welcome Message)"
+            placeholder="Title (e.g., 'Customer Support Response Template')"
+            title="A descriptive name for your prompt that explains its purpose"
           />
           <input
-            className="w-full bg-neutral-900 border border-neutral-800 rounded px-2 py-1"
+            className="w-full bg-neutral-900 border border-neutral-800 rounded px-2 py-1 placeholder:text-neutral-600"
             value={quickAdd.category}
             onChange={(e) => setQuickField('category', e.target.value)}
-            placeholder="Category (e.g. Support, Sales)"
+            placeholder="Category (e.g., 'Support', 'Sales', 'Engineering')"
+            title="Group similar prompts together for easy filtering"
           />
           <textarea
-            className="w-full bg-neutral-900 border border-neutral-800 rounded px-2 py-1 h-20"
+            className="w-full bg-neutral-900 border border-neutral-800 rounded px-2 py-1 h-20 placeholder:text-neutral-600"
             value={quickAdd.context}
             onChange={(e) => setQuickField('context', e.target.value)}
-            placeholder="Context / usage notes"
+            placeholder="When to use this prompt and what problem it solves..."
+            title="Describe when and how to use this prompt effectively"
           />
           <textarea
-            className="w-full bg-neutral-900 border border-neutral-800 rounded px-2 py-1 h-24"
+            className="w-full bg-neutral-900 border border-neutral-800 rounded px-2 py-1 h-24 placeholder:text-neutral-600"
             value={quickAdd.prompt}
             onChange={(e) => setQuickField('prompt', e.target.value)}
-            placeholder="Prompt template (use {{variables}} if needed)"
+            placeholder="You are a [role]. Task: {{task}} Constraints: [specify limits] Output: [desired format]"
+            title="Use {{variable_name}} for dynamic values. Include role, task, constraints, and output format."
             required
           />
           <button
             type="submit"
-            className="w-full px-3 py-1 rounded bg-emerald-600 hover:bg-emerald-500"
+            className="w-full px-3 py-1 rounded bg-emerald-600 hover:bg-emerald-500 flex items-center justify-center gap-2"
+            title="Create prompt and open in editor for further refinement"
           >
-            Create &amp; edit
+            <span>✨</span> Create &amp; edit
           </button>
         </form>
+      </div>
+
+      {/* PromptRefiner Tool Integration */}
+      <div className="mt-4 p-4 border rounded-xl border-purple-900/50 bg-purple-950/20 space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3 flex-1">
+            <span className="text-2xl">🔧</span>
+            <div className="flex-1">
+              <div className="font-semibold text-purple-300 mb-2">PromptRefiner Tool</div>
+              <div className="text-sm text-neutral-300 space-y-2">
+                <p>Use the PromptRefiner PowerShell tool to iteratively improve prompts with AI assistance before adding them to your library.</p>
+                <div className="text-xs space-y-1 text-neutral-400">
+                  <p><strong>Features:</strong> Multi-iteration refinement • Token tracking • Cost estimation • Session logging</p>
+                  <p><strong>Location:</strong> <code className="px-1 py-0.5 bg-neutral-900 rounded">UnifiedAIToolbox/apps/PromptRefiner/</code></p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-col gap-2">
+            <button
+              className="px-3 py-1.5 rounded bg-purple-600 hover:bg-purple-500 text-sm whitespace-nowrap"
+              onClick={() => {
+                window.open('/help#prompt-refiner', '_blank')
+              }}
+              title="View documentation on how to use the PromptRefiner tool"
+            >
+              📖 View Docs
+            </button>
+            <button
+              className="px-3 py-1.5 rounded bg-purple-700/50 hover:bg-purple-600/50 text-sm whitespace-nowrap"
+              onClick={() => {
+                window.alert(PROMPT_REFINER_INSTRUCTIONS)
+              }}
+              title="Show quick instructions for launching PromptRefiner"
+            >
+              ⚙️ Launch Info
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Search + Filters */}
@@ -692,13 +799,15 @@ export default function PromptLibraryPage() {
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search title, category, context, prompt text…"
-          className="w-full px-3 py-2 rounded bg-neutral-900 border border-neutral-800"
+          placeholder="🔍 Search by title, category, context, prompt text, or tags..."
+          className="w-full px-3 py-2 rounded bg-neutral-900 border border-neutral-800 placeholder:text-neutral-600"
+          title="Search across all prompt fields including title, description, template text, and tags"
         />
         <select
           value={filterCategory}
           onChange={(e) => setFilterCategory(e.target.value)}
-          className="px-3 py-2 rounded bg-neutral-900 border border-neutral-800"
+          className="px-3 py-2 rounded bg-neutral-900 border border-neutral-800 min-w-[180px]"
+          title="Filter prompts by category"
         >
           <option value="">All categories</option>
           {allCategories.map((t) => (
@@ -1027,37 +1136,57 @@ export default function PromptLibraryPage() {
               </div>
 
               {/* Refinement */}
-              <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-3 space-y-2">
+              <div className="rounded-lg border border-emerald-800/50 bg-emerald-950/20 p-3 space-y-2">
                 <div className="flex items-center justify-between">
-                  <div className="font-semibold text-sm">Refine prompt</div>
-                  <div className="text-xs text-neutral-500">
+                  <div className="font-semibold text-sm flex items-center gap-2">
+                    <span>✨</span> AI Prompt Refinement
+                  </div>
+                  <div className="text-xs text-neutral-500" title="If a dataset is selected above, its sample data will be included in the refinement">
                     Uses dataset sample if selected
                   </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="text-xs text-neutral-400 mb-2">
+                  Generate an improved version of your prompt with better structure, clarity, and adherence to best practices.
+                </div>
+                <div className="flex gap-2 items-center flex-wrap">
                   <button
-                    className="px-3 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-xs text-white"
+                    className="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-sm text-white flex items-center gap-1.5"
                     onClick={handleRefine}
                     disabled={refineLoading}
+                    title="Use AI to generate an improved version of this prompt"
                   >
-                    {refineLoading ? 'Refining…' : 'Generate suggestion'}
+                    {refineLoading ? (
+                      <>
+                        <span className="animate-spin">⟳</span> Refining…
+                      </>
+                    ) : (
+                      <>
+                        <span>✨</span> Generate suggestion
+                      </>
+                    )}
                   </button>
                   {refineOutput && (
                     <button
-                      className="px-3 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-xs text-slate-100"
+                      className="px-3 py-1.5 rounded bg-neutral-800 hover:bg-neutral-700 text-sm text-slate-100"
                       onClick={applyRefinement}
+                      title="Replace the current template with the refined version"
                     >
-                      Apply to template
+                      ✓ Apply to template
                     </button>
                   )}
                 {refineStatus && (
-                  <div className="text-[11px] text-emerald-400">{refineStatus}</div>
+                  <div className="text-sm text-emerald-400 flex items-center gap-1">
+                    ✓ {refineStatus}
+                  </div>
                 )}
                 </div>
                 {refineOutput && (
-                  <pre className="bg-neutral-950 border border-neutral-800 rounded p-2 whitespace-pre-wrap text-xs max-h-48 overflow-auto">
-                    {refineOutput}
-                  </pre>
+                  <div>
+                    <div className="text-xs text-neutral-400 mb-1">Refined version:</div>
+                    <pre className="bg-neutral-950 border border-neutral-800 rounded p-2 whitespace-pre-wrap text-xs max-h-48 overflow-auto">
+                      {refineOutput}
+                    </pre>
+                  </div>
                 )}
               </div>
 
@@ -1177,15 +1306,21 @@ function PromptEditor({
 
   return (
     <div className="p-3 border rounded-xl border-neutral-800 space-y-2">
-      <div className="font-semibold">Editor</div>
+      <div className="font-semibold flex items-center gap-2">
+        <span>✏️</span> Editor
+      </div>
+      <div className="text-xs text-neutral-400 mb-2">
+        💡 Tip: Hover over fields for guidance on best practices
+      </div>
       <input
-        className="w-full bg-neutral-900 border border-neutral-800 rounded px-2 py-1"
+        className="w-full bg-neutral-900 border border-neutral-800 rounded px-2 py-1 placeholder:text-neutral-600"
         value={p.title}
         onChange={(e) => update('title', e.target.value)}
-        placeholder="Title"
+        placeholder="e.g., 'Email Response Generator' or 'Bug Report Analyzer'"
+        title="Give your prompt a clear, descriptive name that explains its purpose"
       />
       <input
-        className="w-full bg-neutral-900 border border-neutral-800 rounded px-2 py-1"
+        className="w-full bg-neutral-900 border border-neutral-800 rounded px-2 py-1 placeholder:text-neutral-600"
         value={p.category ?? ''}
         onChange={(e) => {
           const raw = e.target.value
@@ -1203,10 +1338,11 @@ function PromptEditor({
             tags: deduped,
           })
         }}
-        placeholder="Category"
+        placeholder="e.g., 'Support', 'Sales', 'Engineering', 'Analytics'"
+        title="Organize prompts into categories for easier filtering and discovery"
       />
       <textarea
-        className="w-full bg-neutral-900 border border-neutral-800 rounded px-2 py-1 h-16"
+        className="w-full bg-neutral-900 border border-neutral-800 rounded px-2 py-1 h-16 placeholder:text-neutral-600"
         value={p.context ?? ''}
         onChange={(e) =>
           updateMany({
@@ -1214,42 +1350,58 @@ function PromptEditor({
             description: e.target.value,
           })
         }
-        placeholder="Context / usage notes"
+        placeholder="Describe when to use this prompt, what problems it solves, and any important usage notes..."
+        title="Provide context about when and how this prompt should be used to help others understand its purpose"
       />
 
       {/* tags */}
-      <div className="flex items-center gap-2">
-        <input
-          ref={tagInput}
-          className="flex-1 bg-neutral-900 border border-neutral-800 rounded px-2 py-1"
-          placeholder="Add tag…"
-        />
-        <button
-          className="px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700"
-          onClick={() => {
-            const v = tagInput.current?.value.trim() ?? ''
-            addTag(v)
-            if (tagInput.current) tagInput.current.value = ''
-          }}
-        >
-          Add
-        </button>
-      </div>
-      <div className="flex flex-wrap gap-1">
-        {(p.tags ?? []).map((t) => (
-          <span
-            key={t}
-            className="text-[10px] px-2 py-0.5 rounded bg-neutral-800 cursor-pointer"
-            onClick={() =>
-              update(
-                'tags',
-                (p.tags ?? []).filter((x) => x !== t)
-              )
-            }
-          >
-            {t} ✕
+      <div>
+        <div className="text-xs text-neutral-400 mb-1 flex items-center gap-2">
+          Tags
+          <span className="text-[10px] px-1.5 py-0.5 bg-neutral-800 text-neutral-500 rounded" title="Add keywords to help find this prompt later">
+            🏷️ For searchability
           </span>
-        ))}
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            ref={tagInput}
+            className="flex-1 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 placeholder:text-neutral-600"
+            placeholder="e.g., 'email', 'customer-facing', 'urgent'"
+            title="Add keywords that describe this prompt's use case or domain"
+          />
+          <button
+            className="px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700"
+            onClick={() => {
+              const v = tagInput.current?.value.trim() ?? ''
+              addTag(v)
+              if (tagInput.current) tagInput.current.value = ''
+            }}
+            title="Add tag"
+          >
+            + Add
+          </button>
+        </div>
+        <div className="flex flex-wrap gap-1 mt-2">
+          {(p.tags ?? []).length === 0 ? (
+            <div className="text-[11px] text-neutral-500 italic">No tags yet. Add tags to improve searchability.</div>
+          ) : (
+            (p.tags ?? []).map((t) => (
+              <span
+                key={t}
+                className="text-[10px] px-2 py-0.5 rounded bg-neutral-800 cursor-pointer hover:bg-neutral-700"
+                onClick={() =>
+                  update(
+                    'tags',
+                    (p.tags ?? []).filter((x) => x !== t)
+                  )
+                }
+                title="Click to remove this tag"
+              >
+                {t} ✕
+              </span>
+            ))
+          )}
+        </div>
       </div>
 
       {/* meta */}
@@ -1258,16 +1410,18 @@ function PromptEditor({
           className="bg-neutral-900 border border-neutral-800 rounded px-2 py-1"
           value={p.role ?? 'system'}
           onChange={(e) => update('role', e.target.value as PromptItem['role'])}
+          title="System: Instructions for the AI. User: Messages from the user. Assistant: AI responses."
         >
           <option value="system">role: system</option>
           <option value="user">role: user</option>
           <option value="assistant">role: assistant</option>
         </select>
         <input
-          className="bg-neutral-900 border border-neutral-800 rounded px-2 py-1"
+          className="bg-neutral-900 border border-neutral-800 rounded px-2 py-1 placeholder:text-neutral-600"
           value={p.style ?? ''}
           onChange={(e) => update('style', e.target.value)}
-          placeholder="Style/Tone hints"
+          placeholder="e.g., 'Professional', 'Casual', 'Technical'"
+          title="Specify the tone and style of responses (e.g., formal, friendly, concise)"
         />
         <input
           type="number"
@@ -1275,7 +1429,8 @@ function PromptEditor({
           className="bg-neutral-900 border border-neutral-800 rounded px-2 py-1"
           value={p.temperature ?? 0.2}
           onChange={(e) => update('temperature', Number(e.target.value))}
-          placeholder="temperature"
+          placeholder="temperature (0-2)"
+          title="Temperature: 0 = deterministic/focused, 1 = balanced, 2 = creative/random"
         />
         <input
           type="number"
@@ -1283,48 +1438,70 @@ function PromptEditor({
           className="bg-neutral-900 border border-neutral-800 rounded px-2 py-1"
           value={p.top_p ?? 1}
           onChange={(e) => update('top_p', Number(e.target.value))}
-          placeholder="top_p"
+          placeholder="top_p (0-1)"
+          title="Top-p (nucleus sampling): 1 = all tokens considered, lower = more focused"
         />
       </div>
 
       {/* template */}
-      <div className="text-xs opacity-70">Template (use {'{{var}}'})</div>
+      <div className="text-xs opacity-70 flex items-center gap-2">
+        <span>Template (use {'{{var}}'} for variables)</span>
+        <span className="text-[10px] px-1.5 py-0.5 bg-blue-900/30 text-blue-300 rounded" title="Best practice: Include role, task, constraints, and output format">
+          📋 Structure Guide
+        </span>
+      </div>
       <textarea
-        className="w-full bg-neutral-900 border border-neutral-800 rounded px-2 py-1 h-48"
+        className="w-full bg-neutral-900 border border-neutral-800 rounded px-2 py-1 h-48 placeholder:text-neutral-600"
         value={p.template}
         onChange={(e) => update('template', e.target.value)}
+        placeholder={TEMPLATE_PLACEHOLDER}
+        title="Structure your prompt with: Role definition, Clear task, Explicit constraints, Desired output format. Use {{variable_name}} for dynamic values."
       />
 
       {/* variables */}
       <div className="mt-2">
         <div className="flex items-center justify-between">
-          <div className="font-semibold">Variables</div>
+          <div className="font-semibold flex items-center gap-2">
+            <span>Variables</span>
+            <span className="text-[10px] px-1.5 py-0.5 bg-neutral-800 text-neutral-400 rounded" title="Define dynamic values that users can customize when using the prompt">
+              Use {'{'}{'{'}{'}'}name{'}'}{'}'} in template
+            </span>
+          </div>
           <button
-            className="px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700"
+            className="px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-sm"
             onClick={addVar}
+            title="Add a new variable to make your prompt customizable"
           >
-            Add Var
+            + Add Var
           </button>
         </div>
+        {(p.variables ?? []).length === 0 && (
+          <div className="text-xs text-neutral-500 italic mt-2 p-2 bg-neutral-900/50 rounded border border-neutral-800">
+            No variables defined. Add variables to make your prompt dynamic and reusable.
+          </div>
+        )}
         <div className="space-y-2 mt-2">
           {(p.variables ?? []).map((v, i) => (
             <div key={i} className="grid grid-cols-5 gap-2">
               <input
-                className="bg-neutral-900 border border-neutral-800 rounded px-2 py-1"
+                className="bg-neutral-900 border border-neutral-800 rounded px-2 py-1 placeholder:text-neutral-600 text-sm"
                 value={v.name}
                 onChange={(e) => updateVar(i, 'name', e.target.value)}
-                placeholder="name"
+                placeholder="e.g., 'user_name'"
+                title="Variable name (use in template as {{variable_name}})"
               />
               <input
-                className="bg-neutral-900 border border-neutral-800 rounded px-2 py-1"
+                className="bg-neutral-900 border border-neutral-800 rounded px-2 py-1 placeholder:text-neutral-600 text-sm"
                 value={v.label ?? ''}
                 onChange={(e) => updateVar(i, 'label', e.target.value)}
-                placeholder="label"
+                placeholder="e.g., 'User Name'"
+                title="Display label shown to users when filling in this variable"
               />
               <select
-                className="bg-neutral-900 border border-neutral-800 rounded px-2 py-1"
+                className="bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-sm"
                 value={v.type ?? 'string'}
                 onChange={(e) => updateVar(i, 'type', e.target.value as PromptVarType)}
+                title="Type of input field: string (single line), multiline (textarea), number, or boolean (checkbox)"
               >
                 <option value="string">string</option>
                 <option value="multiline">multiline</option>
@@ -1332,13 +1509,14 @@ function PromptEditor({
                 <option value="boolean">boolean</option>
               </select>
               <input
-                className="bg-neutral-900 border border-neutral-800 rounded px-2 py-1"
+                className="bg-neutral-900 border border-neutral-800 rounded px-2 py-1 placeholder:text-neutral-600 text-sm"
                 value={v.default ?? ''}
                 onChange={(e) => updateVar(i, 'default', e.target.value)}
-                placeholder="default"
+                placeholder="default value"
+                title="Default value if user doesn't provide one"
               />
               <div className="flex items-center gap-2">
-                <label className="text-xs opacity-80">
+                <label className="text-xs opacity-80" title="Check if this variable must be provided by the user">
                   <input
                     type="checkbox"
                     className="mr-1"
@@ -1348,10 +1526,11 @@ function PromptEditor({
                   required
                 </label>
                 <button
-                  className="px-2 py-1 rounded bg-rose-700 hover:bg-rose-600"
+                  className="px-2 py-1 rounded bg-rose-700 hover:bg-rose-600 text-xs"
                   onClick={() => removeVar(i)}
+                  title="Remove this variable"
                 >
-                  Remove
+                  ✕
                 </button>
               </div>
             </div>
@@ -1368,7 +1547,7 @@ function PromptEditor({
       {/* stop / output format */}
       <div className="grid grid-cols-2 gap-2 mt-2">
         <input
-          className="bg-neutral-900 border border-neutral-800 rounded px-2 py-1"
+          className="bg-neutral-900 border border-neutral-800 rounded px-2 py-1 placeholder:text-neutral-600 text-sm"
           value={(p.stop ?? []).join(',')}
           onChange={(e) =>
             update(
@@ -1379,13 +1558,15 @@ function PromptEditor({
                 .filter(Boolean)
             )
           }
-          placeholder="stop sequences (comma separated)"
+          placeholder="e.g., '\n\n', 'END', '---'"
+          title="Stop sequences: text patterns that tell the AI to stop generating (comma-separated)"
         />
         <input
-          className="bg-neutral-900 border border-neutral-800 rounded px-2 py-1"
+          className="bg-neutral-900 border border-neutral-800 rounded px-2 py-1 placeholder:text-neutral-600 text-sm"
           value={p.outputFormat ?? ''}
           onChange={(e) => update('outputFormat', e.target.value)}
-          placeholder="Output format hint (optional)"
+          placeholder="e.g., 'JSON', 'Markdown', 'Plain text'"
+          title="Desired output format for the AI response"
         />
       </div>
 

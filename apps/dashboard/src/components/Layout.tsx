@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { BarChart3, Settings, Github, Workflow, BookOpen, Bot, Users, Sparkles, Database, Activity, HelpCircle } from 'lucide-react'
+import { BarChart3, Settings, Github, Workflow, BookOpen, Bot, Sparkles, Database, Activity, HelpCircle } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 
 const navSections = [
@@ -8,16 +8,22 @@ const navSections = [
     items: [{ to: '/dashboard', label: 'Dashboard', icon: BarChart3 }],
   },
   {
+    title: 'AI Orchestration',
+    isPrimary: true,
+    items: [
+      { to: '/orchestrator', label: 'Orchestrator', icon: Sparkles },
+    ],
+  },
+  {
     title: 'Libraries',
     items: [
-      { to: '/prompts', label: 'Prompt Library', icon: BookOpen },
       { to: '/agents', label: 'Agent Library', icon: Bot },
+      { to: '/prompts', label: 'Prompt Library', icon: BookOpen },
     ],
   },
   {
     title: 'Integration Tools',
     items: [
-      { to: '/orchestrator', label: 'Orchestrator', icon: Users },
       { to: '/genesys', label: 'Genesys', icon: Workflow },
       { to: '/github', label: 'GitHub', icon: Github },
     ],
@@ -113,9 +119,17 @@ export function Layout({ children }: { children: ReactNode }) {
             {navSections.map((section) => (
               <div
                 key={section.title}
-                className={section.isSettings ? 'pt-4 border-t border-slate-200' : undefined}
+                className={
+                  section.isSettings 
+                    ? 'pt-4 border-t border-slate-800' 
+                    : section.isPrimary
+                    ? 'rounded-lg border border-blue-500/30 bg-blue-900/10 p-2'
+                    : undefined
+                }
               >
-                <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3 px-3">
+                <div className={`text-[11px] font-semibold uppercase tracking-wider mb-2 px-3 ${
+                  section.isPrimary ? 'text-blue-300' : 'text-slate-400'
+                }`}>
                   {section.title}
                 </div>
                 <div className="space-y-1">

@@ -4,8 +4,7 @@ import { listAgents } from '../services/agentStore'
 import { loadDatasets } from '../services/datasetStore'
 import { listRuns } from '../services/orchestratorStore'
 import { Link } from 'react-router-dom'
-import { BookOpen, Bot, Database, Activity, Plus, Play, Upload, Settings as SettingsIcon } from 'lucide-react'
-import { CardSkeleton } from '../components/LoadingSpinner'
+import { Sparkles, Zap, Users } from 'lucide-react'
 
 type Card = { title: string; value: string; sub?: string; to: string; icon: React.ElementType }
 
@@ -42,101 +41,98 @@ export default function HomePage() {
     [promptCount, agentCount, datasetCount, runsCount]
   )
 
-  const quickLinks = [
-    { title: 'New prompt', description: 'Create a new AI prompt', to: '/prompts', icon: Plus, color: 'blue' },
-    { title: 'Launch orchestration', description: 'Run AI workflows', to: '/orchestrator', icon: Play, color: 'emerald' },
-    { title: 'Import dataset', description: 'Upload data files', to: '/datasets', icon: Upload, color: 'purple' },
-    { title: 'Settings', description: 'Configure toolbox', to: '/settings', icon: SettingsIcon, color: 'slate' },
-  ]
-
-  const getColorClasses = (color: string) => {
-    const colors: Record<string, string> = {
-      blue: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
-      emerald: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
-      purple: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
-      slate: 'bg-slate-500/10 text-slate-400 border-slate-500/20',
-    }
-    return colors[color] || colors.blue
-  }
-
   return (
-    <div className="p-6 space-y-6 animate-fade-in">
-      <div className="space-y-2">
-        <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-          Dashboard
-        </h1>
-        <p className="text-sm text-slate-400">
-          Your unified AI orchestration hub - manage prompts, agents, datasets, and workflows all in one place.
+    <div className="p-6 space-y-6">
+      <div className="space-y-1">
+        <h1 className="text-2xl font-bold">Unified AI Toolbox</h1>
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          Multi-agent orchestration platform for complex AI workflows
         </p>
       </div>
 
-      {loading ? (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <CardSkeleton key={i} />
-          ))}
+      {/* Hero Section - AI Orchestration */}
+      <div className="rounded-xl border-2 border-blue-500/50 bg-gradient-to-br from-blue-900/20 to-purple-900/20 p-6 shadow-lg">
+        <div className="flex items-start justify-between">
+          <div className="space-y-3 flex-1">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-6 w-6 text-blue-400" />
+              <h2 className="text-xl font-bold text-slate-100">AI Orchestration</h2>
+            </div>
+            <p className="text-sm text-slate-300 max-w-2xl">
+              Transform high-level ideas into results through intelligent multi-agent collaboration. 
+              The orchestrator analyzes your goal, selects the right agents from the library, creates 
+              ad-hoc specialists when needed, and coordinates them to deliver high-quality outcomes.
+            </p>
+            <div className="flex flex-wrap gap-3 pt-2">
+              <div className="flex items-center gap-2 text-xs text-slate-400">
+                <Users className="h-4 w-4" />
+                <span>{agentCount} agents available</span>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-slate-400">
+                <Zap className="h-4 w-4" />
+                <span>{runsCount} successful orchestrations</span>
+              </div>
+            </div>
+          </div>
         </div>
-      ) : (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {cards.map((card) => {
-            const Icon = card.icon
-            return (
-              <Link
-                to={card.to}
-                key={card.title}
-                className="group rounded-xl border border-slate-800 bg-slate-900/60 p-5 shadow-lg hover:shadow-xl hover:border-blue-600/50 transition-all duration-200 hover:scale-105"
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <div className="text-sm font-medium text-slate-400">{card.title}</div>
-                  <Icon className="h-5 w-5 text-slate-500 group-hover:text-blue-400 transition-colors" />
-                </div>
-                <div className="text-4xl font-bold text-slate-100 mb-1">{card.value}</div>
-                {card.sub && <div className="text-xs text-slate-500">{card.sub}</div>}
-              </Link>
-            )
-          })}
-        </div>
-      )}
-
-      <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6 shadow-lg">
-        <div className="flex items-center gap-2 mb-4">
-          <div className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
-          <h2 className="text-lg font-semibold text-slate-200">Quick Actions</h2>
-        </div>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {quickLinks.map((link) => {
-            const Icon = link.icon
-            return (
-              <Link
-                key={link.title}
-                to={link.to}
-                className={`group rounded-lg border px-4 py-4 hover:shadow-md transition-all duration-200 ${getColorClasses(
-                  link.color
-                )}`}
-              >
-                <div className="flex items-center gap-3 mb-2">
-                  <Icon className="h-5 w-5 flex-shrink-0" />
-                  <div className="text-sm font-semibold text-slate-100">{link.title}</div>
-                </div>
-                <div className="text-xs opacity-80">{link.description}</div>
-              </Link>
-            )
-          })}
+        <div className="mt-4">
+          <Link
+            to="/orchestrator"
+            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-6 py-3 text-sm font-semibold text-white hover:bg-blue-500 transition-colors shadow-lg"
+          >
+            <Sparkles className="h-4 w-4" />
+            Start New Orchestration
+          </Link>
         </div>
       </div>
 
-      <div className="rounded-xl border border-slate-800 bg-gradient-to-br from-slate-900/60 to-slate-900/40 p-6 shadow-lg">
-        <h2 className="text-lg font-semibold text-slate-200 mb-2">Getting Started</h2>
-        <div className="space-y-2 text-sm text-slate-400">
-          <p>
-            <span className="font-medium text-slate-300">1. Create prompts</span> - Build your AI prompt library with templates and variables
-          </p>
-          <p>
-            <span className="font-medium text-slate-300">2. Define agents</span> - Configure autonomous agents with specific roles and capabilities
-          </p>
-          <p>
-            <span className="font-medium text-slate-300">3. Run orchestrations</span> - Execute complex AI workflows with your prompts and agents
-          </p>
+      {/* Stats Grid */}
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {cards.map((card) => (
+          <Link
+            to={card.to}
+            key={card.title}
+            className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 shadow hover:border-emerald-600 transition-colors"
+          >
+            <div className="text-sm text-slate-400">{card.title}</div>
+            <div className="mt-2 text-3xl font-semibold text-slate-100">{card.value}</div>
+            {card.sub && <div className="text-xs text-slate-500 mt-1">{card.sub}</div>}
+          </Link>
+        ))}
+      </div>
+
+      {/* Quick Links */}
+      <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 shadow">
+        <div className="text-sm font-semibold text-slate-200">Quick actions</div>
+        <div className="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+          <Link
+            to="/orchestrator"
+            className="rounded-lg border border-blue-700 bg-blue-800/30 px-3 py-3 text-sm font-medium text-slate-100 hover:bg-blue-700/40 transition-colors"
+          >
+            <div className="text-xs text-blue-300">Multi-agent orchestration</div>
+            <div className="text-base text-slate-100">Launch</div>
+          </Link>
+          <Link
+            to="/agents"
+            className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-3 text-sm font-medium text-slate-100 hover:bg-slate-700 transition-colors"
+          >
+            <div className="text-xs text-slate-400">Manage agents</div>
+            <div className="text-base text-slate-100">Agent Library</div>
+          </Link>
+          <Link
+            to="/prompts"
+            className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-3 text-sm font-medium text-slate-100 hover:bg-slate-700 transition-colors"
+          >
+            <div className="text-xs text-slate-400">Browse prompts</div>
+            <div className="text-base text-slate-100">Prompt Library</div>
+          </Link>
+          <Link
+            to="/settings"
+            className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-3 text-sm font-medium text-slate-100 hover:bg-slate-700 transition-colors"
+          >
+            <div className="text-xs text-slate-400">Configure system</div>
+            <div className="text-base text-slate-100">Settings</div>
+          </Link>
         </div>
       </div>
     </div>

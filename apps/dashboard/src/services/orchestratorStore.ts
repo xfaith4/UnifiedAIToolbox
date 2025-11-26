@@ -10,9 +10,11 @@ export interface OrchestrationRun {
   dataset_name?: string
   goal?: string
   mode?: 'executed' | 'simulated' | string
-  run_mode?: 'default' | 'codex-swarm' | string
+  run_mode?: 'default' | 'codex-swarm' | 'multi-agent' | string
   repo_root?: string
   events?: { ts: string; type: string; message: string }[]
+  agents?: string[]
+  model?: string
 }
 
 /**
