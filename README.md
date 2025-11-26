@@ -67,10 +67,7 @@ docker compose up -d
 ```
 
 ### Access Your Services
-- 📊 **Dashboard**: http://localhost:5173
-- 🌐 **Web Portal**: http://localhost:3000
-- 🔌 **API**: http://localhost:8000
-- 📚 **API Docs**: http://localhost:8000/docs
+- 🌐 **Web Portal**: http://localhost:3001
 
 **📖 Need more details?** See the [Launch Guide](docs/help/launch-guide.md) for comprehensive setup instructions.
 
