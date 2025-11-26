@@ -11,6 +11,7 @@ import {
   PROMPT_API_BASE,
 } from '../services/promptStore'
 import { loadDatasets, previewDataset, type DatasetEntry } from '../services/datasetStore'
+import { useToast } from '../contexts/ToastContext'
 
 const SIMPLE_IMPORT_SAMPLE = `[
   {
@@ -191,6 +192,7 @@ function buildVarMap(item: PromptItem | null, uiVars: Record<string, string>) {
 // ---------------- Main Page ----------------
 
 export default function PromptLibraryPage() {
+  const { showToast } = useToast()
   const [items, setItems] = useState<PromptItem[]>([])
   const [query, setQuery] = useState('')
   const [filterCategory, setFilterCategory] = useState<string>('')
@@ -408,12 +410,15 @@ export default function PromptLibraryPage() {
         )
         setItems(merged)
         if (skippedCount > 0) {
-          window.alert(
-            `Imported ${importedCount} prompts. Skipped ${skippedCount} entries missing required fields.`
+          showToast(
+            `Imported ${importedCount} prompts. Skipped ${skippedCount} entries missing required fields.`,
+            'warning'
           )
+        } else {
+          showToast(`Successfully imported ${importedCount} prompts`, 'success')
         }
       } catch (e) {
-        window.alert('Import failed: ' + (e as Error).message)
+        showToast('Import failed: ' + (e as Error).message, 'error')
       }
     }
     reader.readAsText(file)
@@ -466,7 +471,7 @@ export default function PromptLibraryPage() {
     event.preventDefault()
     const promptText = quickAdd.prompt.trim()
     if (!promptText) {
-      window.alert('Prompt text is required.')
+      showToast('Prompt text is required.', 'warning')
       return
     }
     const normalized = normalizePrompt({
@@ -490,21 +495,23 @@ export default function PromptLibraryPage() {
       context: '',
       prompt: '',
     })
+    showToast('Prompt created successfully', 'success')
   }
 
   async function copy(text: string) {
     try {
       await navigator.clipboard.writeText(text)
+      showToast('Copied to clipboard', 'success')
     } catch (err) {
       console.error('clipboard write failed', err)
-      window.alert('Copy failed. Please copy manually.')
+      showToast('Copy failed. Please copy manually.', 'error')
     }
   }
 
   async function handleApiRender() {
     if (!active) return
     if (!apiAvailable) {
-      window.alert('Set VITE_API_BASE in your .env to call the Prompt API.')
+      showToast('Set VITE_API_BASE in your .env to call the Prompt API.', 'warning')
       return
     }
     setApiRenderLoading(true)
@@ -731,9 +738,9 @@ export default function PromptLibraryPage() {
               <button
                 className="px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-xs text-slate-100"
                 onClick={() => {
-                  navigator.clipboard.writeText(selectedDatasetPreview).catch(() => {
-                    window.alert('Copy failed; please copy manually.')
-                  })
+                  navigator.clipboard.writeText(selectedDatasetPreview)
+                    .then(() => showToast('Copied to clipboard', 'success'))
+                    .catch(() => showToast('Copy failed; please copy manually.', 'error'))
                 }}
               >
                 Copy

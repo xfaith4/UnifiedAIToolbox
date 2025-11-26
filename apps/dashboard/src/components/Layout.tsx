@@ -40,9 +40,9 @@ const navSections = [
 ]
 
 const baseLinkClass =
-  'flex items-center gap-2 rounded-xl px-3 py-2 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900'
-const inactiveLinkClass = 'text-slate-300 hover:bg-slate-800/70'
-const activeLinkClass = 'bg-slate-800/90 text-white font-medium shadow-inner'
+  'flex items-center gap-3 rounded-lg px-3 py-2.5 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900'
+const inactiveLinkClass = 'text-slate-300 hover:bg-slate-800/70 hover:text-white hover:translate-x-1'
+const activeLinkClass = 'bg-gradient-to-r from-blue-600 to-blue-500 text-white font-medium shadow-lg shadow-blue-500/20'
 
 export function Layout({ children }: { children: ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -99,13 +99,13 @@ export function Layout({ children }: { children: ReactNode }) {
             sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
           }`}
         >
-          <div className="hidden md:flex items-center gap-2 mb-6">
-            <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
-              <Sparkles size={20} className="text-white" />
+          <div className="hidden md:flex items-center gap-3 mb-8">
+            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg shadow-blue-500/30">
+              <Sparkles size={22} className="text-white" />
             </div>
             <div>
-              <div className="font-semibold">AI Toolbox</div>
-              <div className="text-[10px] text-slate-400">Unified Prompt Hub</div>
+              <div className="font-bold text-lg">AI Toolbox</div>
+              <div className="text-[10px] text-slate-400 tracking-wide">Unified Orchestration</div>
             </div>
           </div>
 
@@ -115,7 +115,7 @@ export function Layout({ children }: { children: ReactNode }) {
                 key={section.title}
                 className={section.isSettings ? 'pt-4 border-t border-slate-200' : undefined}
               >
-                <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2 px-3">
+                <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3 px-3">
                   {section.title}
                 </div>
                 <div className="space-y-1">
