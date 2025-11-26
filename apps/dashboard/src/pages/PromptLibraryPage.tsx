@@ -34,6 +34,26 @@ const SIMPLE_IMPORT_SAMPLE = `[
   }
 ]`
 
+const PROMPT_REFINER_INSTRUCTIONS = `To use PromptRefiner:
+
+1. Navigate to: UnifiedAIToolbox/apps/PromptRefiner/
+2. Run: powershell.exe -NoProfile -sta -File .\\OpenAI_Refiner.Wpf.ps1
+
+Or for CLI: .\\OpenAI_Refiner.ps1
+
+See the README.md in that directory for full instructions.`
+
+const TEMPLATE_PLACEHOLDER = `You are a [role/expert in X].
+
+Task: {{task_description}}
+
+Constraints:
+- Keep responses under [N] words
+- Use [tone/style]
+- Focus on [specific aspects]
+
+Output format: [JSON/Markdown/Plain text with specific structure]`
+
 // ---------------- Types & Schema ----------------
 export type Provider = 'openai' | 'anthropic' | 'google' | 'ollama'
 
@@ -757,7 +777,7 @@ export default function PromptLibraryPage() {
             <button
               className="px-3 py-1.5 rounded bg-purple-700/50 hover:bg-purple-600/50 text-sm whitespace-nowrap"
               onClick={() => {
-                window.alert('To use PromptRefiner:\n\n1. Navigate to: UnifiedAIToolbox/apps/PromptRefiner/\n2. Run: powershell.exe -NoProfile -sta -File .\\OpenAI_Refiner.Wpf.ps1\n\nOr for CLI: .\\OpenAI_Refiner.ps1\n\nSee the README.md in that directory for full instructions.')
+                window.alert(PROMPT_REFINER_INSTRUCTIONS)
               }}
               title="Show quick instructions for launching PromptRefiner"
             >
@@ -1427,7 +1447,7 @@ function PromptEditor({
         className="w-full bg-neutral-900 border border-neutral-800 rounded px-2 py-1 h-48 placeholder:text-neutral-600"
         value={p.template}
         onChange={(e) => update('template', e.target.value)}
-        placeholder="You are a [role/expert in X].&#10;&#10;Task: {{task_description}}&#10;&#10;Constraints:&#10;- Keep responses under [N] words&#10;- Use [tone/style]&#10;- Focus on [specific aspects]&#10;&#10;Output format: [JSON/Markdown/Plain text with specific structure]"
+        placeholder={TEMPLATE_PLACEHOLDER}
         title="Structure your prompt with: Role definition, Clear task, Explicit constraints, Desired output format. Use {{variable_name}} for dynamic values."
       />
 
