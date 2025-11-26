@@ -1,5 +1,5 @@
+import React from 'react'
 import { BookOpen, ExternalLink, FileText, Rocket, Settings, Shield } from 'lucide-react'
-import { useState } from 'react'
 
 interface DocSection {
   title: string
@@ -67,8 +67,6 @@ const docSections: DocSection[] = [
 ]
 
 export default function HelpPage() {
-  const [selectedDoc, setSelectedDoc] = useState<string | null>(null)
-
   const openDocumentation = (file: string) => {
     // Try to open the documentation file
     const docsUrl = `/docs/help/${file}`
