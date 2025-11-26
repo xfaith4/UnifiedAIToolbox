@@ -368,7 +368,6 @@ function Search-Prompts {
         [string]$Category,
         [string]$Owner,
         [string[]]$Tags = @(),
-        [string]$Category,
         [string]$RiskTier,
         [int]$Limit = 50
     )
