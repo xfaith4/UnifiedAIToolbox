@@ -1,3 +1,34 @@
+# OpenAI pricing constants (as of Nov 2024, per 1M tokens)
+$script:OPENAI_PRICING = @{
+    'gpt-4o-mini' = @{
+        Prompt     = 0.000150
+        Completion = 0.000600
+    }
+    'gpt-4o' = @{
+        Prompt     = 0.005
+        Completion = 0.015
+    }
+    'gpt-4' = @{
+        Prompt     = 0.03
+        Completion = 0.06
+    }
+}
+
+# Token estimation constants
+$script:CHARS_PER_TOKEN = 4      # Approximate characters per token
+$script:MIN_MAX_TOKENS = 1024    # Minimum max_tokens to allow
+$script:MAX_MAX_TOKENS = 4096    # Maximum max_tokens to prevent excessive usage
+$script:TOKEN_MULTIPLIER = 2     # Multiplier for estimating response size from prompt
+
+# Early stopping patterns (configurable)
+$script:EARLY_STOP_PATTERNS = @(
+    "cannot\s+improve"
+    "already\s+optimal"
+    "no\s+further\s+refinements?"
+    "nothing\s+more\s+to\s+improve"
+    "no\s+additional\s+improvements?"
+)
+
 function New-RefinedPrompt {
     <#
 .SYNOPSIS
@@ -231,19 +262,29 @@ $currentPrompt
 "@ | Set-Content -Path $iterationFile -Encoding UTF8
             }
 
-            # Check for early stop indicators
-            if ($currentPrompt -match "cannot improve|already optimal|no further refinements") {
-                Write-Verbose "AI indicated refinement is complete at iteration $iterationNum"
-                break
+            # Check for early stop indicators using configurable patterns
+            $shouldStop = $false
+            foreach ($pattern in $script:EARLY_STOP_PATTERNS) {
+                if ($currentPrompt -match $pattern) {
+                    Write-Verbose "AI indicated refinement is complete at iteration $iterationNum (matched pattern: $pattern)"
+                    $shouldStop = $true
+                    break
+                }
             }
+            if ($shouldStop) { break }
         }
 
-        # Calculate cost estimate (rates for gpt-4o-mini as of Nov 2024)
-        $promptCostRate = 0.000150    # $0.150 per 1M prompt tokens
-        $completionCostRate = 0.000600 # $0.600 per 1M completion tokens
+        # Calculate cost estimate using pricing constants
+        $pricing = $script:OPENAI_PRICING[$Model]
+        if (-not $pricing) {
+            # Fallback to gpt-4o-mini pricing if model not found
+            Write-Verbose "Pricing not found for model '$Model', using gpt-4o-mini pricing"
+            $pricing = $script:OPENAI_PRICING['gpt-4o-mini']
+        }
+        
         $estimatedCost = [Math]::Round(
-            (($totalPromptTokens / 1000000) * $promptCostRate) +
-            (($totalCompletionTokens / 1000000) * $completionCostRate),
+            (($totalPromptTokens / 1000000) * $pricing.Prompt) +
+            (($totalCompletionTokens / 1000000) * $pricing.Completion),
             6
         )
 
@@ -337,8 +378,10 @@ function Invoke-OpenAIRefinement {
     }
 
     # Estimate max tokens needed based on prompt length
-    $promptLength = [Math]::Ceiling($Prompt.Length / 4)
-    $maxTokens = [Math]::Min(4096, [Math]::Max(1024, $promptLength * 2))
+    # Uses CHARS_PER_TOKEN ratio to estimate tokens from character count
+    $promptLength = [Math]::Ceiling($Prompt.Length / $script:CHARS_PER_TOKEN)
+    # Allow response to be TOKEN_MULTIPLIER times prompt length, bounded by MIN/MAX_MAX_TOKENS
+    $maxTokens = [Math]::Min($script:MAX_MAX_TOKENS, [Math]::Max($script:MIN_MAX_TOKENS, $promptLength * $script:TOKEN_MULTIPLIER))
 
     $body = @{
         model       = $Model
@@ -396,7 +439,7 @@ function Build-PromptYaml {
 
     # Build tags array string
     $tagsString = if ($Tags.Count -gt 0) {
-        '[' + (($Tags | ForEach-Object { $_ }) -join ', ') + ']'
+        '[' + ($Tags -join ', ') + ']'
     }
     else {
         '[]'
