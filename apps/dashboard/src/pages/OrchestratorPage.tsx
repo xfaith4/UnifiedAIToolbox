@@ -128,8 +128,7 @@ export default function OrchestratorPage() {
 
   const handleCreateAgent = () => {
     if (!newAgent.name.trim() || !newAgent.prompt?.trim()) {
-      alert('Agent name and prompt are required')
-      return
+      return // Form validation will prevent submission
     }
     const updated = upsertAgent(newAgent)
     setAgents(updated)
@@ -140,9 +139,8 @@ export default function OrchestratorPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!form.goal?.trim() && !form.prompt_id.trim()) {
-      alert('Please provide either a goal or select a prompt')
-      return
+    if (!form.goal?.trim()) {
+      return // Form validation will show required field error
     }
     const entry: OrchestrationRun = {
       run_id: form.run_mode === 'codex-swarm' ? `codex-${Date.now()}` : `multi-agent-${Date.now()}`,
@@ -517,6 +515,7 @@ export default function OrchestratorPage() {
                   placeholder="e.g., Data Analyst"
                   value={newAgent.name}
                   onChange={(e) => setNewAgent((a) => ({ ...a, name: e.target.value }))}
+                  required
                 />
               </div>
               <div className="space-y-2">
@@ -537,6 +536,7 @@ export default function OrchestratorPage() {
                   placeholder="Describe the agent's role, capabilities, and instructions..."
                   value={newAgent.prompt || ''}
                   onChange={(e) => setNewAgent((a) => ({ ...a, prompt: e.target.value }))}
+                  required
                 />
               </div>
               <div className="space-y-2">
