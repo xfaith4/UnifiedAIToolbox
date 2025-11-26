@@ -3,10 +3,15 @@
 An opinionated workspace for capturing, searching, and testing AI prompts. The dashboard now provides a unified interface for all toolbox components including prompts, agents, orchestration, and service monitoring.
 
 ## Highlights
-- **Dashboard Home** - Service health monitoring showing status of all UnifiedAIToolbox services (Prompt API, Orchestration Bridge, Codex Swarm, Sensor Monitor, Dataset Explorer).
+- **AI Orchestration** (Primary Feature) - Transform high-level ideas into results through intelligent multi-agent collaboration. The orchestrator analyzes your goals, automatically selects or creates the right agents, and coordinates them to deliver high-quality outcomes.
+  - Natural language goal input for describing what you want to accomplish
+  - Intelligent agent recommendation based on goal analysis
+  - Multi-select agent team building with visual feedback
+  - Ad-hoc agent creation with automatic library integration
+  - Real-time orchestration monitoring with detailed history
+- **Dashboard Home** - Service health monitoring showing status of all UnifiedAIToolbox services with prominent orchestration call-to-action.
+- **Agent Library** - Curate and manage AI agents with roles, prompts, and capabilities. Create specialized agents on-the-fly during orchestration.
 - **Prompt Library** - Import/export prompt collections, quick capture, deep editing, and provider payload previews (OpenAI, Anthropic, Google Gemini, Ollama).
-- **Agent Library** - Curate orchestrator-ready agents with missions, triggers, playbooks, and handoff definitions.
-- **Orchestrator** - Supervisor workspace to assemble tasks, pick agents/prompts, and download ready-to-run manifests for the automation bridge.
 - **Dataset Explorer** - Upload and analyze datasets (CSV, JSON, Excel) for use in prompts and agents with prompt-driven exploration.
 - **Sensor Monitor** - Track sensor rewards and telemetry data, view runbooks, and monitor operational health metrics.
 - **GitHub Integration** - Browse repositories and manage GitHub workflows.
@@ -26,9 +31,10 @@ Prefer a fixed port? You can still use `npm run dev`, or set `PORT=3000 npm run 
 ## Dashboard Pages
 
 ### Home Dashboard
+- **AI Orchestration Hero Section** - Prominently featured call-to-action for starting new multi-agent orchestrations with stats on available agents and successful runs.
 - **Service Health Monitoring** - Real-time status of all UnifiedAIToolbox services (Prompt API, Orchestration Bridge, Codex Swarm, Sensor Monitor, Dataset Explorer).
-- **Quick Actions** - Fast access to common tasks like creating prompts, running AI Refiner, uploading datasets, and executing Codex swarm reviews.
-- The dashboard home provides a single-pane-of-glass view for all toolbox operations.
+- **Quick Actions** - Fast access to orchestration launch, agent management, prompt library, and system settings.
+- The dashboard home provides a single-pane-of-glass view with orchestration as the central purpose.
 
 ### Dataset Explorer
 - Upload datasets (CSV, JSON, Excel, text files) for use in prompt-driven analysis.
@@ -119,3 +125,17 @@ Entries missing `prompt` are skipped during import. Existing prompts with the sa
 ## Environment Notes
 - Optional `.env` / `.env.local` can override host/port (`VITE_PORT`, `VITE_HOST`) and configure API targets (e.g. `VITE_API_BASE`, `VITE_GITHUB_TOKEN`). The default `.env.example` points `VITE_API_BASE` at `http://localhost:8000` so launching the toolbox starts a compatible backend immediately.
 - Tailwind, routing, Recharts demo components, and Zustand store wiring remain available from the original starter template for broader dashboard needs.
+
+## AI Orchestration Features
+
+### Multi-Agent Workflow Orchestration
+The orchestrator is now the central purpose of the Unified AI Toolbox, providing:
+
+- **Natural Language Goal Input** - Describe your objective in plain English
+- **Intelligent Agent Recommendation** - Auto-suggest agents based on goal keywords and capabilities
+- **Ad-Hoc Agent Creation** - Create specialized agents on-the-fly that are automatically saved to the library
+- **Visual Agent Selection** - Multi-select interface with checkmarks showing selected team members
+- **Orchestration History** - Track all runs with goals, agents, status, and timestamps
+- **Seamless Integration** - Works with Prompt API when available, gracefully falls back to local storage
+
+Available agent types include Researcher, Engineer, Critic, Synthesizer, Commissioner, and any custom agents you create.

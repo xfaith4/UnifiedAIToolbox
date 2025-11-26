@@ -2,18 +2,28 @@ import React, { useEffect, useState } from 'react'
 import { addRun, listRuns, type OrchestrationRun } from '../services/orchestratorStore'
 import { fetchPromptLibrary, PROMPT_API_BASE, type PromptItem } from '../services/promptStore'
 import { loadDatasets, type DatasetEntry } from '../services/datasetStore'
+import { listAgents, upsertAgent, type AgentDefinition } from '../services/agentStore'
 import { createRunApi, fetchRunApi, fetchRunsApi, fetchRunLogApi } from '../services/orchestratorApi'
+import { Sparkles, Plus, X, Check, Lightbulb, Users } from 'lucide-react'
 
 export default function OrchestratorPage() {
   const [runs, setRuns] = useState<OrchestrationRun[]>([])
   const [prompts, setPrompts] = useState<PromptItem[]>([])
   const [datasets, setDatasets] = useState<DatasetEntry[]>([])
+  const [agents, setAgents] = useState<AgentDefinition[]>([])
   const [logRun, setLogRun] = useState<OrchestrationRun | null>(null)
   const [logText, setLogText] = useState<string>('')
   const [logError, setLogError] = useState<string>('')
   const [logLoading, setLogLoading] = useState(false)
   const [logEvents, setLogEvents] = useState<OrchestrationRun['events']>([])
-  const [logPollId, setLogPollId] = useState<number | null>(null)
+  const [selectedAgents, setSelectedAgents] = useState<string[]>([])
+  const [showAgentCreator, setShowAgentCreator] = useState(false)
+  const [newAgent, setNewAgent] = useState<AgentDefinition>({
+    name: '',
+    role: 'system',
+    prompt: '',
+    description: '',
+  })
   const [form, setForm] = useState<OrchestrationRun>({
     prompt_id: '',
     version: '',
@@ -22,7 +32,7 @@ export default function OrchestratorPage() {
     dataset_id: '',
     dataset_name: '',
     goal: '',
-    run_mode: 'default',
+    run_mode: 'multi-agent',
   })
 
   useEffect(() => {
@@ -39,6 +49,7 @@ export default function OrchestratorPage() {
       }
       fetchPromptLibrary().then(setPrompts).catch(() => setPrompts([]))
       setDatasets(loadDatasets())
+      setAgents(listAgents())
     }
     void loadAll()
 
@@ -72,14 +83,71 @@ export default function OrchestratorPage() {
     }))
   }
 
+  const toggleAgentSelection = (agentName: string) => {
+    setSelectedAgents((prev) =>
+      prev.includes(agentName)
+        ? prev.filter((n) => n !== agentName)
+        : [...prev, agentName]
+    )
+  }
+
+  const recommendAgents = (goal: string): string[] => {
+    if (!goal.trim()) return []
+    const goalLower = goal.toLowerCase()
+    const recommendations: string[] = []
+    
+    // Basic keyword matching for agent recommendation
+    if (goalLower.includes('research') || goalLower.includes('analyze') || goalLower.includes('investigate')) {
+      recommendations.push('Researcher')
+    }
+    if (goalLower.includes('implement') || goalLower.includes('code') || goalLower.includes('build')) {
+      recommendations.push('Engineer')
+    }
+    if (goalLower.includes('review') || goalLower.includes('test') || goalLower.includes('validate')) {
+      recommendations.push('Critic')
+    }
+    if (goalLower.includes('combine') || goalLower.includes('merge') || goalLower.includes('integrate')) {
+      recommendations.push('Synthesizer')
+    }
+    if (goalLower.includes('evaluate') || goalLower.includes('assess') || goalLower.includes('judge')) {
+      recommendations.push('Commissioner')
+    }
+    
+    // If no specific keywords, suggest a basic workflow
+    if (recommendations.length === 0) {
+      recommendations.push('Researcher', 'Engineer', 'Critic', 'Synthesizer')
+    }
+    
+    return recommendations.filter((name) => agents.some((a) => a.name === name))
+  }
+
+  const handleSuggestAgents = () => {
+    const suggested = recommendAgents(form.goal || '')
+    setSelectedAgents(suggested)
+  }
+
+  const handleCreateAgent = () => {
+    if (!newAgent.name.trim() || !newAgent.prompt?.trim()) {
+      return // Form validation will prevent submission
+    }
+    const updated = upsertAgent(newAgent)
+    setAgents(updated)
+    setSelectedAgents((prev) => [...prev, newAgent.name])
+    setNewAgent({ name: '', role: 'system', prompt: '', description: '' })
+    setShowAgentCreator(false)
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!form.prompt_id.trim()) return
+    if (!form.goal?.trim()) {
+      return // Form validation will show required field error
+    }
     const entry: OrchestrationRun = {
-      run_id: form.run_mode === 'codex-swarm' ? `codex-${Date.now()}` : `local-${Date.now()}`,
+      run_id: form.run_mode === 'codex-swarm' ? `codex-${Date.now()}` : `multi-agent-${Date.now()}`,
       ...form,
       status: 'queued', // always system-managed
       requested_at: new Date().toISOString(),
+      agents: selectedAgents.length > 0 ? selectedAgents : undefined,
     }
 
     const launch = async () => {
@@ -120,7 +188,9 @@ export default function OrchestratorPage() {
         dataset_id: '',
         dataset_name: '',
         goal: '',
+        run_mode: 'multi-agent',
       })
+      setSelectedAgents([])
     }
     void launch()
   }
@@ -170,191 +240,337 @@ export default function OrchestratorPage() {
     const id = window.setInterval(() => {
       void fetchLogBundle(logRun, true)
     }, 4000)
-    setLogPollId(id)
     return () => {
       window.clearInterval(id)
-      setLogPollId(null)
     }
-  }, [logRun?.run_id, PROMPT_API_BASE])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [logRun?.run_id])
 
   return (
     <>
       <div className="space-y-4">
-      <div className="space-y-1">
-        <h1 className="text-2xl font-bold">Orchestrator</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          Select a prompt from the library and launch a new orchestration. Runs are merged from
-          bundled manifests and your local launches.
-        </p>
-        {!PROMPT_API_BASE && (
-          <p className="text-xs text-amber-400">
-            No API configured; runs are stored locally. Set VITE_API_URL to trigger backend execution.
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-6 w-6 text-blue-400" />
+            <h1 className="text-2xl font-bold">AI Orchestration</h1>
+          </div>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Transform high-level ideas into results through intelligent multi-agent collaboration
           </p>
-        )}
-        {runs.some((r) => r.mode === 'simulated' || (r.status || '').startsWith('error')) && (
-          <p className="text-xs text-amber-400">
-            Some runs are simulated or failed to execute the external orchestrator. Ensure ORCHESTRATOR_PS1 and PowerShell are configured on the server.
-          </p>
-        )}
-      </div>
+          {!PROMPT_API_BASE && (
+            <p className="text-xs text-amber-400">
+              No API configured; runs are stored locally. Set VITE_API_URL to trigger backend execution.
+            </p>
+          )}
+        </div>
 
-      <form
-        onSubmit={handleSubmit}
-        className="grid gap-4 rounded-xl border border-slate-800 bg-slate-900/60 p-4 shadow md:grid-cols-2 lg:grid-cols-3"
-      >
-        <div className="space-y-1">
-          <label className="text-sm text-slate-300">Prompt</label>
-          <select
-            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"
-            value={form.prompt_id}
-            onChange={(e) => handlePromptSelect(e.target.value)}
-          >
-            <option value="">Select a prompt…</option>
-            {prompts.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.title || p.id} {p.category ? `(${p.category})` : ''}
-              </option>
-            ))}
-          </select>
-          <p className="text-xs text-slate-500">
-            Populated from the prompt library (API + bundled prompts).
-          </p>
-        </div>
-        <div className="space-y-1">
-          <label className="text-sm text-slate-300">Version</label>
-          <input
-            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"
-            placeholder="e.g., 2.1.0"
-            value={form.version}
-            onChange={(e) => setForm((f) => ({ ...f, version: e.target.value }))}
-          />
-        </div>
-        <div className="space-y-1">
-          <label className="text-sm text-slate-300">Review Policy</label>
-          <select
-            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"
-            value={form.review_policy}
-            onChange={(e) => setForm((f) => ({ ...f, review_policy: e.target.value }))}
-          >
-            <option value="standard">standard</option>
-            <option value="critical">critical</option>
-            <option value="none">none</option>
-          </select>
-        </div>
-        <div className="space-y-1">
-          <label className="text-sm text-slate-300">Status</label>
-          <div className="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100">
-            <span className="rounded-full bg-slate-900 px-2 py-1 text-xs text-slate-200">
-              {form.status || 'queued'}
-            </span>
-            <span className="text-[11px] text-slate-400">System managed</span>
+        <form
+          onSubmit={handleSubmit}
+          className="space-y-4 rounded-xl border-2 border-blue-500/30 bg-slate-900/60 p-6 shadow-lg"
+        >
+          {/* High-Level Goal Input */}
+          <div className="space-y-2">
+            <label className="text-base font-semibold text-slate-200 flex items-center gap-2">
+              <Lightbulb className="h-5 w-5 text-yellow-400" />
+              What do you want to accomplish?
+            </label>
+            <textarea
+              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-3 text-sm text-slate-100 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              rows={4}
+              placeholder="Describe your goal in natural language. Example: 'I need to analyze user feedback and generate a summary report with key insights and recommendations'"
+              value={form.goal || ''}
+              onChange={(e) => setForm((f) => ({ ...f, goal: e.target.value }))}
+              required
+            />
+            <p className="text-xs text-slate-400">
+              The orchestrator will analyze your goal and automatically select or create the right agents to help you achieve it.
+            </p>
+          </div>
+
+          {/* Agent Selection */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-base font-semibold text-slate-200 flex items-center gap-2">
+                <Users className="h-5 w-5 text-blue-400" />
+                Agent Team ({selectedAgents.length} selected)
+              </label>
+              <button
+                type="button"
+                onClick={handleSuggestAgents}
+                className="flex items-center gap-1 rounded-lg border border-blue-700 bg-blue-800/30 px-3 py-1.5 text-xs font-medium text-blue-200 hover:bg-blue-700/40"
+              >
+                <Sparkles className="h-3 w-3" />
+                Auto-suggest agents
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-4">
+              {agents.map((agent) => (
+                <button
+                  key={agent.name}
+                  type="button"
+                  onClick={() => toggleAgentSelection(agent.name)}
+                  className={`flex items-center justify-between rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
+                    selectedAgents.includes(agent.name)
+                      ? 'border-blue-500 bg-blue-900/40 text-blue-100'
+                      : 'border-slate-700 bg-slate-800 text-slate-300 hover:border-slate-600'
+                  }`}
+                >
+                  <span className="truncate">{agent.name}</span>
+                  {selectedAgents.includes(agent.name) && <Check className="h-4 w-4 text-blue-400" />}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setShowAgentCreator(true)}
+                className="flex items-center gap-1 rounded-lg border border-green-700 bg-green-800/30 px-3 py-1.5 text-xs font-medium text-green-200 hover:bg-green-700/40"
+              >
+                <Plus className="h-3 w-3" />
+                Create ad-hoc agent
+              </button>
+            </div>
+          </div>
+
+          {/* Advanced Options (Collapsible) */}
+          <details className="space-y-3">
+            <summary className="cursor-pointer text-sm font-semibold text-slate-300 hover:text-slate-100">
+              Advanced Options
+            </summary>
+            <div className="grid gap-3 pt-2 md:grid-cols-2 lg:grid-cols-3">
+              <div className="space-y-1">
+                <label className="text-xs text-slate-400">Prompt (optional)</label>
+                <select
+                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"
+                  value={form.prompt_id}
+                  onChange={(e) => handlePromptSelect(e.target.value)}
+                >
+                  <option value="">None</option>
+                  {prompts.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.title || p.id}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-slate-400">Dataset</label>
+                <select
+                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"
+                  value={form.dataset_id || ''}
+                  onChange={(e) => handleDatasetSelect(e.target.value)}
+                >
+                  <option value="">None</option>
+                  {datasets.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-slate-400">Engine</label>
+                <select
+                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"
+                  value={form.run_mode || 'multi-agent'}
+                  onChange={(e) => setForm((f) => ({ ...f, run_mode: e.target.value }))}
+                >
+                  <option value="multi-agent">Multi-Agent</option>
+                  <option value="codex-swarm">Codex Swarm</option>
+                  <option value="default">Default</option>
+                </select>
+              </div>
+            </div>
+          </details>
+
+          <div className="flex gap-3 pt-2">
+            <button
+              type="submit"
+              className="flex items-center gap-2 rounded-lg bg-blue-600 px-6 py-3 text-sm font-semibold text-white hover:bg-blue-500 transition-colors shadow-lg"
+            >
+              <Sparkles className="h-4 w-4" />
+              Launch Orchestration
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setForm({
+                  prompt_id: '',
+                  version: '',
+                  review_policy: 'standard',
+                  status: 'queued',
+                  dataset_id: '',
+                  dataset_name: '',
+                  goal: '',
+                  run_mode: 'multi-agent',
+                })
+                setSelectedAgents([])
+              }}
+              className="rounded-lg border border-slate-700 px-6 py-3 text-sm font-medium text-slate-300 hover:bg-slate-800"
+            >
+              Reset
+            </button>
+          </div>
+        </form>
+
+        {/* Orchestration History */}
+        <div className="space-y-2">
+          <h2 className="text-lg font-semibold text-slate-200">Recent Orchestrations</h2>
+          <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900/60 shadow">
+            <table className="min-w-full text-sm">
+              <thead className="bg-slate-800/70 text-slate-200">
+                <tr>
+                  <th className="px-4 py-3 text-left">Goal</th>
+                  <th className="px-4 py-3 text-left">Agents</th>
+                  <th className="px-4 py-3 text-left">Status</th>
+                  <th className="px-4 py-3 text-left">Engine</th>
+                  <th className="px-4 py-3 text-left">Requested</th>
+                  <th className="px-4 py-3 text-left">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {runs.map((run, idx) => (
+                  <tr
+                    key={run.run_id || `${run.prompt_id}-${run.version || ''}-${idx}`}
+                    className="border-t border-slate-800 hover:bg-slate-800/30"
+                  >
+                    <td className="px-4 py-3 text-slate-100 max-w-xs">
+                      <div className="truncate" title={run.goal || run.prompt_id}>
+                        {run.goal || run.prompt_id}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-slate-300">
+                      {run.agents && run.agents.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {run.agents.slice(0, 3).map((agent) => (
+                            <span key={agent} className="rounded bg-blue-900/40 px-1.5 py-0.5 text-xs text-blue-200">
+                              {agent}
+                            </span>
+                          ))}
+                          {run.agents.length > 3 && (
+                            <span className="text-xs text-slate-400">+{run.agents.length - 3}</span>
+                          )}
+                        </div>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="rounded-full bg-slate-800 px-2 py-1 text-xs text-slate-200">
+                        {run.status || 'unknown'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-slate-300 text-xs">
+                      {run.run_mode || 'default'}
+                      {run.mode === 'simulated' && <span className="text-amber-400"> (sim)</span>}
+                    </td>
+                    <td className="px-4 py-3 text-slate-300 text-xs">
+                      {run.requested_at ? new Date(run.requested_at).toLocaleString() : '—'}
+                    </td>
+                    <td className="px-4 py-3">
+                      <button
+                        className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-100 hover:bg-slate-800"
+                        onClick={() => handleLogs(run)}
+                      >
+                        View
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {runs.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
+                      No orchestrations yet. Start your first one above!
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
-        <div className="space-y-1">
-          <label className="text-sm text-slate-300">Engine</label>
-          <select
-            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"
-            value={form.run_mode || 'default'}
-            onChange={(e) => setForm((f) => ({ ...f, run_mode: e.target.value }))}
-          >
-            <option value="default">Default Orchestrator</option>
-            <option value="codex-swarm">Codex Swarm Review</option>
-          </select>
-          <p className="text-xs text-slate-500">
-            Default uses MilestoneController; Codex Swarm runs Orchestrate-Codex.ps1 over the repo.
-          </p>
-        </div>
-        <div className="space-y-1 md:col-span-2 lg:col-span-3">
-          <label className="text-sm text-slate-300">Goal / Task (optional)</label>
-          <textarea
-            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"
-            rows={3}
-            placeholder="Describe the goal for this orchestration run"
-            value={form.goal || ''}
-            onChange={(e) => setForm((f) => ({ ...f, goal: e.target.value }))}
-          />
-        </div>
-        <div className="space-y-1">
-          <label className="text-sm text-slate-300">Dataset (optional)</label>
-          <select
-            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"
-            value={form.dataset_id || ''}
-            onChange={(e) => handleDatasetSelect(e.target.value)}
-          >
-            <option value="">No dataset</option>
-            {datasets.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.name} ({d.type})
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="md:col-span-2 lg:col-span-3">
-          <button
-            type="submit"
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500"
-          >
-            Launch orchestration
-          </button>
-        </div>
-      </form>
+      </div>
 
-      <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900/60 shadow">
-        <table className="min-w-full text-sm">
-          <thead className="bg-slate-800/70 text-slate-200">
-            <tr>
-              <th className="px-4 py-3 text-left">Prompt ID</th>
-              <th className="px-4 py-3 text-left">Version</th>
-              <th className="px-4 py-3 text-left">Status</th>
-              <th className="px-4 py-3 text-left">Review Policy</th>
-              <th className="px-4 py-3 text-left">Dataset</th>
-              <th className="px-4 py-3 text-left">Engine</th>
-              <th className="px-4 py-3 text-left">Requested</th>
-              <th className="px-4 py-3 text-left">Logs</th>
-            </tr>
-          </thead>
-          <tbody>
-            {runs.map((run, idx) => (
-              <tr
-                key={run.run_id || `${run.prompt_id}-${run.version || ''}-${idx}`}
-                className="border-t border-slate-800"
+      {/* Ad-hoc Agent Creator Modal */}
+      {showAgentCreator && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4">
+          <div className="w-full max-w-2xl rounded-xl border border-slate-800 bg-slate-900 shadow-xl">
+            <div className="flex items-center justify-between border-b border-slate-800 px-6 py-4">
+              <h3 className="text-lg font-semibold text-slate-100 flex items-center gap-2">
+                <Plus className="h-5 w-5 text-green-400" />
+                Create Ad-Hoc Agent
+              </h3>
+              <button
+                onClick={() => setShowAgentCreator(false)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-100"
               >
-                <td className="px-4 py-3 text-slate-100">{run.prompt_id}</td>
-                <td className="px-4 py-3 text-slate-300">{run.version || '—'}</td>
-                <td className="px-4 py-3">
-                  <span className="rounded-full bg-slate-800 px-2 py-1 text-xs text-slate-200">
-                    {run.status || 'unknown'}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-slate-300">{run.review_policy || '—'}</td>
-                <td className="px-4 py-3 text-slate-300">
-                  {run.dataset_name || run.dataset_id || '—'}
-                </td>
-                <td className="px-4 py-3 text-slate-300">
-                  {run.run_mode || 'default'} {run.mode === 'simulated' ? '(simulated)' : ''}
-                </td>
-                <td className="px-4 py-3 text-slate-300">{run.requested_at || '—'}</td>
-                <td className="px-4 py-3">
-                  <button
-                    className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-100 hover:bg-slate-800"
-                    onClick={() => handleLogs(run)}
-                  >
-                    View
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {runs.length === 0 && (
-              <tr>
-                <td colSpan={7} className="px-4 py-6 text-center text-slate-400">
-                  No runs found.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-      </div>
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300">Agent Name</label>
+                <input
+                  type="text"
+                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                  placeholder="e.g., Data Analyst"
+                  value={newAgent.name}
+                  onChange={(e) => setNewAgent((a) => ({ ...a, name: e.target.value }))}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300">Role</label>
+                <input
+                  type="text"
+                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                  placeholder="system"
+                  value={newAgent.role || 'system'}
+                  onChange={(e) => setNewAgent((a) => ({ ...a, role: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300">System Prompt / Instructions</label>
+                <textarea
+                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                  rows={6}
+                  placeholder="Describe the agent's role, capabilities, and instructions..."
+                  value={newAgent.prompt || ''}
+                  onChange={(e) => setNewAgent((a) => ({ ...a, prompt: e.target.value }))}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300">Description (optional)</label>
+                <textarea
+                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                  rows={2}
+                  placeholder="Brief description of what this agent does..."
+                  value={newAgent.description || ''}
+                  onChange={(e) => setNewAgent((a) => ({ ...a, description: e.target.value }))}
+                />
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={handleCreateAgent}
+                  className="flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-500"
+                >
+                  <Check className="h-4 w-4" />
+                  Create & Add to Team
+                </button>
+                <button
+                  onClick={() => setShowAgentCreator(false)}
+                  className="rounded-lg border border-slate-700 px-4 py-2 text-sm font-medium text-slate-300 hover:bg-slate-800"
+                >
+                  Cancel
+                </button>
+              </div>
+              <p className="text-xs text-slate-400">
+                This agent will be saved to your agent library and automatically added to the current orchestration team.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {logRun && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4">
