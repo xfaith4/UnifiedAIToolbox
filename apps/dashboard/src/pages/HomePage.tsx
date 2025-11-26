@@ -6,27 +6,37 @@ import { listRuns } from '../services/orchestratorStore'
 import { Link } from 'react-router-dom'
 import { Sparkles, Zap, Users } from 'lucide-react'
 
-type Card = { title: string; value: string; sub?: string; to: string }
+type Card = { title: string; value: string; sub?: string; to: string; icon: React.ElementType }
 
 export default function HomePage() {
   const [promptCount, setPromptCount] = useState(0)
   const [agentCount, setAgentCount] = useState(0)
   const [datasetCount, setDatasetCount] = useState(0)
   const [runsCount, setRunsCount] = useState(0)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetchPromptLibrary().then((p) => setPromptCount(p.length)).catch(() => setPromptCount(0))
-    setAgentCount(listAgents().length)
-    setDatasetCount(loadDatasets().length)
-    setRunsCount(listRuns().length)
+    const loadData = async () => {
+      try {
+        const prompts = await fetchPromptLibrary()
+        setPromptCount(prompts.length)
+      } catch {
+        setPromptCount(0)
+      }
+      setAgentCount(listAgents().length)
+      setDatasetCount(loadDatasets().length)
+      setRunsCount(listRuns().length)
+      setLoading(false)
+    }
+    loadData()
   }, [])
 
   const cards: Card[] = useMemo(
     () => [
-      { title: 'Prompts', value: String(promptCount), sub: 'Library size', to: '/prompts' },
-      { title: 'Agents', value: String(agentCount), sub: 'Ready to orchestrate', to: '/agents' },
-      { title: 'Datasets', value: String(datasetCount), sub: 'Imported locally', to: '/datasets' },
-      { title: 'Runs', value: String(runsCount), sub: 'Orchestrator history', to: '/orchestrator' },
+      { title: 'Prompts', value: String(promptCount), sub: 'Library size', to: '/prompts', icon: BookOpen },
+      { title: 'Agents', value: String(agentCount), sub: 'Ready to orchestrate', to: '/agents', icon: Bot },
+      { title: 'Datasets', value: String(datasetCount), sub: 'Imported locally', to: '/datasets', icon: Database },
+      { title: 'Runs', value: String(runsCount), sub: 'Orchestrator history', to: '/orchestrator', icon: Activity },
     ],
     [promptCount, agentCount, datasetCount, runsCount]
   )
