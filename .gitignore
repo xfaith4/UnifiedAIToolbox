@@ -47,3 +47,6 @@ dist/
 testResults.xml
 coverage/
 .coverage
+
+# Pester test artifacts
+tmp/

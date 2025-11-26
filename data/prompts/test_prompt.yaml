@@ -1,0 +1,12 @@
+id: test_prompt
+title: Test
+version: 1
+category: general
+tags: []
+model_hints: [gpt, gemini]
+system: |
+  You are a helpful AI assistant. Follow the instructions carefully and provide accurate, relevant responses.
+user_template: |
+  Refined prompt text
+checksum: f4462be15a94a1a32972801004cdc84ac0d42408b6e6a62897746adecdc1c717
+created_utc: 2025-11-26T12:02:42.3983436+00:00
