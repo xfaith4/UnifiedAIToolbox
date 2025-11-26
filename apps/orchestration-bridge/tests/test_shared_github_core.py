@@ -207,7 +207,3 @@ class TestCleanupRepository:
             result = cleanup_repository(repo_dir)
             
             assert result == False
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])

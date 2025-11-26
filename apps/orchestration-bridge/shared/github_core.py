@@ -163,7 +163,7 @@ def get_authenticated_clone_url(repo_url: str, token: Optional[str]) -> str:
     return repo_url
 
 
-def parse_repo_url(repo_url: str) -> tuple[str, str]:
+def parse_repo_url(repo_url: str) -> "tuple[str, str]":
     """
     Parse a repository URL to extract owner and repo name.
     
@@ -225,6 +225,7 @@ class GitHubClientMixin:
         owner: str,
         repo_name: str,
         include_branches: bool = False,
+        include_extended: bool = False,
     ) -> Dict[str, Any]:
         """
         Fetch repository metadata from GitHub API.
@@ -234,6 +235,7 @@ class GitHubClientMixin:
             owner: Repository owner
             repo_name: Repository name
             include_branches: Whether to include branch list
+            include_extended: Whether to include extended fields (ssh_url, created_at, open_issues)
             
         Returns:
             Dictionary with repository metadata
@@ -264,6 +266,11 @@ class GitHubClientMixin:
         if include_branches:
             metadata['branches'] = [branch.name for branch in repo.get_branches()]
         
+        if include_extended:
+            metadata['ssh_url'] = repo.ssh_url
+            metadata['created_at'] = repo.created_at.isoformat() if repo.created_at else None
+            metadata['open_issues'] = repo.open_issues_count
+        
         return metadata
     
     def _search_repos(
@@ -272,6 +279,7 @@ class GitHubClientMixin:
         query: str,
         limit: int = 20,
         include_topics: bool = True,
+        include_private: bool = False,
     ) -> List[Dict[str, Any]]:
         """
         Search for repositories on GitHub.
@@ -281,6 +289,7 @@ class GitHubClientMixin:
             query: Search query string
             limit: Maximum number of results
             include_topics: Whether to include topics (slower)
+            include_private: Whether to include private field
             
         Returns:
             List of repository metadata dictionaries
@@ -301,7 +310,12 @@ class GitHubClientMixin:
             if include_topics:
                 result['topics'] = repo.get_topics()
             
+            if include_private:
+                result['private'] = repo.private
+            
             results.append(result)
+        
+        return results
         
         return results
 
@@ -350,7 +364,7 @@ class CloneUrlMixin:
         """
         return get_authenticated_clone_url(repo_url, token)
     
-    def _parse_repo_url(self, repo_url: str) -> tuple[str, str]:
+    def _parse_repo_url(self, repo_url: str) -> "tuple[str, str]":
         """
         Parse repository URL to extract owner and repo name.
         

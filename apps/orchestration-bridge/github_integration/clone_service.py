@@ -125,12 +125,9 @@ class GitHubCloneService(GitHubClientMixin, FileTreeMixin, CloneUrlMixin):
             )
         
         try:
-            metadata = self._fetch_repo_metadata(self.github_client, owner, repo_name)
-            # Add additional fields expected by this API
-            repo = self.github_client.get_repo(f"{owner}/{repo_name}")
-            metadata['ssh_url'] = repo.ssh_url
-            metadata['created_at'] = repo.created_at.isoformat() if repo.created_at else None
-            metadata['open_issues'] = repo.open_issues_count
+            metadata = self._fetch_repo_metadata(
+                self.github_client, owner, repo_name, include_extended=True
+            )
             return metadata
         except GithubException as e:
             raise RepositoryCloneError(
@@ -160,12 +157,9 @@ class GitHubCloneService(GitHubClientMixin, FileTreeMixin, CloneUrlMixin):
             )
         
         try:
-            results = self._search_repos(self.github_client, query, limit, include_topics=True)
-            # Add additional fields expected by this API
-            repos = self.github_client.search_repositories(query=query)
-            for i, repo in enumerate(repos[:limit]):
-                if i < len(results):
-                    results[i]['private'] = repo.private
+            results = self._search_repos(
+                self.github_client, query, limit, include_topics=True, include_private=True
+            )
             return results
         except GithubException as e:
             raise RepositoryCloneError(f"Search failed: {e.data.get('message', str(e))}")

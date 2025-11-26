@@ -17,6 +17,7 @@ from shared.github_core import (
     build_file_tree,
     list_repo_branches,
     cleanup_repository,
+    switch_repo_branch,
 )
 
 
@@ -357,8 +358,6 @@ class GitHubCloner(GitHubClientMixin, FileTreeMixin, CloneUrlMixin):
         Returns:
             True if successful, False otherwise
         """
-        from shared.github_core import switch_repo_branch
-        
         progress = self.get_progress(clone_id)
         if not progress or not progress.clone_path:
             return False
