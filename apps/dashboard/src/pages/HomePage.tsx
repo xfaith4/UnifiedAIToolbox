@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { fetchPromptLibrary } from '../services/promptStore'
 import { listAgents } from '../services/agentStore'
 import { loadDatasets } from '../services/datasetStore'
 import { listRuns } from '../services/orchestratorStore'
 import { Link } from 'react-router-dom'
-import { Sparkles, Zap, Users } from 'lucide-react'
+import { Sparkles, Zap, Users, BookOpen, Bot, Database, Activity } from 'lucide-react'
 
 type Card = { title: string; value: string; sub?: string; to: string; icon: React.ElementType }
 
@@ -13,7 +13,6 @@ export default function HomePage() {
   const [agentCount, setAgentCount] = useState(0)
   const [datasetCount, setDatasetCount] = useState(0)
   const [runsCount, setRunsCount] = useState(0)
-  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const loadData = async () => {
@@ -26,7 +25,6 @@ export default function HomePage() {
       setAgentCount(listAgents().length)
       setDatasetCount(loadDatasets().length)
       setRunsCount(listRuns().length)
-      setLoading(false)
     }
     loadData()
   }, [])
