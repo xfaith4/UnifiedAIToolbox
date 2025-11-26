@@ -119,7 +119,7 @@ Read these key documents to understand what was delivered:
 
 Follow the deployment guide:
 
-- **[docs/PRODUCTION_DEPLOYMENT.md](docs/PRODUCTION_DEPLOYMENT.md)** 🚀
+- **[docs/help/deployment.md](../../docs/help/deployment.md)** 🚀
   - System requirements and prerequisites
   - Step-by-step deployment instructions
   - Security configuration (HTTPS, firewall)

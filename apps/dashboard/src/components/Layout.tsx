@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { BarChart3, Settings, Github, Workflow, BookOpen, Bot, Users, Sparkles, Database, Activity } from 'lucide-react'
+import { BarChart3, Settings, Github, Workflow, BookOpen, Bot, Users, Sparkles, Database, Activity, HelpCircle } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 
 const navSections = [
@@ -32,7 +32,10 @@ const navSections = [
   {
     title: 'Settings',
     isSettings: true,
-    items: [{ to: '/settings', label: 'Settings', icon: Settings }],
+    items: [
+      { to: '/help', label: 'Help', icon: HelpCircle },
+      { to: '/settings', label: 'Settings', icon: Settings },
+    ],
   },
 ]
 

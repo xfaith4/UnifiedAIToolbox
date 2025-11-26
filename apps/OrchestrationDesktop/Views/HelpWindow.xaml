@@ -2,18 +2,95 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="AI Orchestration Desktop – Help"
-        Height="520"
-        Width="720"
+        Height="600"
+        Width="920"
         WindowStartupLocation="CenterOwner"
         ResizeMode="CanResize">
     <Grid Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
         <Border Margin="16"
-                Padding="24"
+                Padding="0"
                 Background="White"
                 CornerRadius="12"
                 BorderBrush="#e0e6f0"
                 BorderThickness="1">
-            <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="220"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Navigation Sidebar -->
+                <Border Grid.Column="0" 
+                        Background="#f8f9fa" 
+                        BorderBrush="#e0e6f0" 
+                        BorderThickness="0,0,1,0"
+                        CornerRadius="12,0,0,12">
+                    <StackPanel Margin="16">
+                        <TextBlock Text="Documentation"
+                                   FontSize="16"
+                                   FontWeight="Bold"
+                                   Margin="0,0,0,16"
+                                   Foreground="#113663"/>
+                        
+                        <Button x:Name="BtnOverview" 
+                                Content="Overview" 
+                                Click="OnNavigate"
+                                Tag="overview"
+                                Style="{StaticResource HelpNavButton}"
+                                Margin="0,0,0,4"/>
+                        <Button x:Name="BtnQuickStart" 
+                                Content="Quick Start" 
+                                Click="OnNavigate"
+                                Tag="quick-start"
+                                Style="{StaticResource HelpNavButton}"
+                                Margin="0,0,0,4"/>
+                        <Button x:Name="BtnLaunchGuide" 
+                                Content="Launch Guide" 
+                                Click="OnNavigate"
+                                Tag="launch-guide"
+                                Style="{StaticResource HelpNavButton}"
+                                Margin="0,0,0,4"/>
+                        <Button x:Name="BtnArchitecture" 
+                                Content="Architecture" 
+                                Click="OnNavigate"
+                                Tag="architecture"
+                                Style="{StaticResource HelpNavButton}"
+                                Margin="0,0,0,4"/>
+                        <Button x:Name="BtnPromptRefiner" 
+                                Content="Prompt Refiner" 
+                                Click="OnNavigate"
+                                Tag="prompt-refiner"
+                                Style="{StaticResource HelpNavButton}"
+                                Margin="0,0,0,4"/>
+                        <Button x:Name="BtnApiReference" 
+                                Content="API Reference" 
+                                Click="OnNavigate"
+                                Tag="api-reference"
+                                Style="{StaticResource HelpNavButton}"
+                                Margin="0,0,0,4"/>
+                        <Button x:Name="BtnDeployment" 
+                                Content="Deployment" 
+                                Click="OnNavigate"
+                                Tag="deployment"
+                                Style="{StaticResource HelpNavButton}"
+                                Margin="0,0,0,4"/>
+                        
+                        <Separator Margin="0,16,0,16" Background="#d0d6e0"/>
+                        
+                        <Button x:Name="BtnOpenDocs" 
+                                Content="📁 Open Docs Folder" 
+                                Click="OnOpenDocsFolder"
+                                Style="{StaticResource HelpNavButton}"
+                                Margin="0,0,0,4"/>
+                        <Button x:Name="BtnOnlineHelp" 
+                                Content="🌐 Online Help" 
+                                Click="OnOpenOnlineHelp"
+                                Style="{StaticResource HelpNavButton}"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Content Area -->
+                <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" Padding="24">
                 <StackPanel>
                     <TextBlock Text="AI Orchestration Desktop"
                                FontSize="22"
@@ -130,6 +207,7 @@
                     </TextBlock>
                 </StackPanel>
             </ScrollViewer>
+            </Grid>
         </Border>
     </Grid>
 </Window>
