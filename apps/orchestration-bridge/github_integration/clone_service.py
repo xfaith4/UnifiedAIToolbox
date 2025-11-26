@@ -6,7 +6,6 @@ and cleanup for the Codex orchestration workflow.
 """
 
 import os
-import shutil
 import logging
 from pathlib import Path
 from typing import Optional, Dict, Any, Callable
@@ -15,12 +14,22 @@ import tempfile
 
 try:
     from git import Repo, RemoteProgress
-    from github import Github, GithubException
+    from github import GithubException
 except ImportError:
     raise ImportError(
         "GitPython and PyGithub are required. "
         "Install with: pip install GitPython PyGithub"
     )
+
+from shared.github_core import (
+    GitHubClientMixin,
+    FileTreeMixin,
+    CloneUrlMixin,
+    build_file_tree,
+    list_repo_branches,
+    switch_repo_branch,
+    cleanup_repository,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +79,7 @@ class RepositoryCloneError(Exception):
     pass
 
 
-class GitHubCloneService:
+class GitHubCloneService(GitHubClientMixin, FileTreeMixin, CloneUrlMixin):
     """Service for cloning and managing GitHub repositories."""
     
     def __init__(
@@ -93,13 +102,8 @@ class GitHubCloneService:
         self.clone_base_dir = Path(clone_base_dir)
         self.clone_base_dir.mkdir(parents=True, exist_ok=True)
         
-        # Initialize GitHub API client if token is available
-        self.github_client = None
-        if self.github_token:
-            try:
-                self.github_client = Github(self.github_token)
-            except Exception as e:
-                logger.warning(f"Failed to initialize GitHub client: {e}")
+        # Initialize GitHub API client using shared mixin
+        self.github_client = self._init_github_client(self.github_token, use_auth_class=False)
     
     def get_repo_metadata(self, owner: str, repo_name: str) -> Dict[str, Any]:
         """
@@ -121,26 +125,13 @@ class GitHubCloneService:
             )
         
         try:
+            metadata = self._fetch_repo_metadata(self.github_client, owner, repo_name)
+            # Add additional fields expected by this API
             repo = self.github_client.get_repo(f"{owner}/{repo_name}")
-            
-            return {
-                'full_name': repo.full_name,
-                'description': repo.description or '',
-                'stars': repo.stargazers_count,
-                'forks': repo.forks_count,
-                'language': repo.language or 'Unknown',
-                'size': repo.size,  # KB
-                'default_branch': repo.default_branch,
-                'clone_url': repo.clone_url,
-                'ssh_url': repo.ssh_url,
-                'html_url': repo.html_url,
-                'created_at': repo.created_at.isoformat() if repo.created_at else None,
-                'updated_at': repo.updated_at.isoformat() if repo.updated_at else None,
-                'open_issues': repo.open_issues_count,
-                'private': repo.private,
-                'archived': repo.archived,
-                'topics': repo.get_topics(),
-            }
+            metadata['ssh_url'] = repo.ssh_url
+            metadata['created_at'] = repo.created_at.isoformat() if repo.created_at else None
+            metadata['open_issues'] = repo.open_issues_count
+            return metadata
         except GithubException as e:
             raise RepositoryCloneError(
                 f"Failed to fetch repository metadata: {e.data.get('message', str(e))}"
@@ -169,21 +160,12 @@ class GitHubCloneService:
             )
         
         try:
+            results = self._search_repos(self.github_client, query, limit, include_topics=True)
+            # Add additional fields expected by this API
             repos = self.github_client.search_repositories(query=query)
-            results = []
-            
-            for repo in repos[:limit]:
-                results.append({
-                    'full_name': repo.full_name,
-                    'description': repo.description or '',
-                    'stars': repo.stargazers_count,
-                    'language': repo.language or 'Unknown',
-                    'size': repo.size,
-                    'html_url': repo.html_url,
-                    'private': repo.private,
-                    'topics': repo.get_topics(),
-                })
-            
+            for i, repo in enumerate(repos[:limit]):
+                if i < len(results):
+                    results[i]['private'] = repo.private
             return results
         except GithubException as e:
             raise RepositoryCloneError(f"Search failed: {e.data.get('message', str(e))}")
@@ -213,32 +195,26 @@ class GitHubCloneService:
             RepositoryCloneError: If cloning fails
         """
         try:
-            # Parse repository URL to extract owner/repo
+            # Parse repository URL using shared utility
+            owner, repo_name = self._parse_repo_url(repo_url)
+            
+            # Normalize URL if needed
             if not repo_url.startswith(('http://', 'https://', 'git@')):
-                # Assume it's in owner/repo format
-                owner, repo_name = repo_url.split('/')[-2:]
                 repo_url = f"https://github.com/{owner}/{repo_name}.git"
             
             # Generate clone directory
             if clone_id is None:
                 clone_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}"
             
-            repo_name = repo_url.split('/')[-1].replace('.git', '')
             clone_path = self.clone_base_dir / f"{repo_name}_{clone_id}"
             
             # Clean up if directory already exists
             if clone_path.exists():
                 logger.warning(f"Clone directory already exists, removing: {clone_path}")
-                shutil.rmtree(clone_path)
+                cleanup_repository(clone_path)
             
-            # Prepare clone URL with authentication if token is available
-            if self.github_token and repo_url.startswith('https://'):
-                # Insert token into URL
-                clone_url_with_auth = repo_url.replace(
-                    'https://', f'https://{self.github_token}@'
-                )
-            else:
-                clone_url_with_auth = repo_url
+            # Prepare clone URL with authentication using shared utility
+            clone_url_with_auth = self._get_auth_url(repo_url, self.github_token)
             
             # Create progress tracker
             progress = CloneProgress(callback=progress_callback)
@@ -259,10 +235,7 @@ class GitHubCloneService:
         except Exception as e:
             # Clean up on failure
             if 'clone_path' in locals() and Path(clone_path).exists():
-                try:
-                    shutil.rmtree(clone_path)
-                except Exception as cleanup_error:
-                    logger.error(f"Failed to cleanup after clone error: {cleanup_error}")
+                cleanup_repository(Path(clone_path))
             
             raise RepositoryCloneError(f"Failed to clone repository: {str(e)}")
     
@@ -276,12 +249,7 @@ class GitHubCloneService:
         Returns:
             List of branch names
         """
-        try:
-            repo = Repo(repo_path)
-            return [ref.name.replace('origin/', '') for ref in repo.remote().refs]
-        except Exception as e:
-            logger.error(f"Failed to list branches: {e}")
-            return []
+        return list_repo_branches(repo_path)
     
     def switch_branch(self, repo_path: Path, branch: str) -> bool:
         """
@@ -294,14 +262,7 @@ class GitHubCloneService:
         Returns:
             True if successful, False otherwise
         """
-        try:
-            repo = Repo(repo_path)
-            repo.git.checkout(branch)
-            logger.info(f"Switched to branch: {branch}")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to switch branch: {e}")
-            return False
+        return switch_repo_branch(repo_path, branch)
     
     def cleanup_clone(self, clone_path: Path) -> bool:
         """
@@ -313,15 +274,7 @@ class GitHubCloneService:
         Returns:
             True if cleanup was successful, False otherwise
         """
-        try:
-            if clone_path.exists():
-                shutil.rmtree(clone_path)
-                logger.info(f"Cleaned up clone at {clone_path}")
-                return True
-            return False
-        except Exception as e:
-            logger.error(f"Failed to cleanup clone at {clone_path}: {e}")
-            return False
+        return cleanup_repository(clone_path)
     
     def get_file_tree(self, repo_path: Path, max_depth: int = 3) -> Dict[str, Any]:
         """
@@ -334,32 +287,4 @@ class GitHubCloneService:
         Returns:
             Dictionary representing the file tree
         """
-        def build_tree(path: Path, current_depth: int = 0) -> Dict[str, Any]:
-            """Recursively build file tree."""
-            if current_depth >= max_depth:
-                return {'name': path.name, 'type': 'directory', 'truncated': True}
-            
-            if path.is_file():
-                return {
-                    'name': path.name,
-                    'type': 'file',
-                    'size': path.stat().st_size
-                }
-            
-            children = []
-            try:
-                for item in sorted(path.iterdir()):
-                    # Skip .git directory and hidden files
-                    if item.name.startswith('.') and item.name != '.github':
-                        continue
-                    children.append(build_tree(item, current_depth + 1))
-            except PermissionError:
-                pass
-            
-            return {
-                'name': path.name,
-                'type': 'directory',
-                'children': children
-            }
-        
-        return build_tree(repo_path)
+        return build_file_tree(repo_path, max_depth=max_depth, skip_hidden=True, allow_github_dir=True)
