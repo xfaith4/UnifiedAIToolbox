@@ -103,8 +103,8 @@ Explore repository analysis and Codex swarm in the [API Reference](api-reference
 
 ### Documentation
 - Browse this documentation
-- Check the [FAQ](faq.md)
 - Review [Troubleshooting](launch-guide.md#troubleshooting)
+- Check [Quick Start Guide](quick-start.md)
 
 ### Community
 - [GitHub Issues](https://github.com/xfaith4/UnifiedAIToolbox/issues)

@@ -71,8 +71,8 @@ cp .env.example .env
 
 ## Need Help?
 
-- 📖 Full guide: [LAUNCH_GUIDE.md](LAUNCH_GUIDE.md)
-- 📘 Main docs: [README.md](README.md)
+- 📖 Full guide: [launch-guide.md](launch-guide.md)
+- 📘 Main docs: [../../README.md](../../README.md)
 - 🐛 Issues: [GitHub Issues](https://github.com/xfaith4/UnifiedAIToolbox/issues)
 
 ## Troubleshooting

@@ -380,6 +380,6 @@ To extend or modify the Prompt Refiner functionality:
 
 ## See Also
 
-- [PromptLibrary Module Documentation](../modules/PromptLibrary/README.md)
-- [Unified Orchestration Guide](../QUICK_START.md)
+- [PromptLibrary Module Documentation](../../modules/PromptLibrary/README.md)
+- [Quick Start Guide](quick-start.md)
 - [OpenAI API Documentation](https://platform.openai.com/docs/api-reference)
