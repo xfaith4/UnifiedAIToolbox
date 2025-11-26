@@ -62,12 +62,14 @@ class TestGitHubCloneService:
             )
             assert service.github_token == "test_token"
     
-    @patch('github_integration.clone_service.Github')
+    @patch('shared.github_core.Github')
     def test_get_repo_metadata_success(self, mock_github):
         """Test successful repository metadata fetching."""
         # Setup mock
         mock_repo = Mock()
         mock_repo.full_name = "owner/repo"
+        mock_repo.name = "repo"
+        mock_repo.owner.login = "owner"
         mock_repo.description = "Test repo"
         mock_repo.stargazers_count = 100
         mock_repo.forks_count = 50
@@ -102,7 +104,7 @@ class TestGitHubCloneService:
             assert metadata['language'] == "Python"
             assert "python" in metadata['topics']
     
-    @patch('github_integration.clone_service.Github')
+    @patch('shared.github_core.Github')
     def test_get_repo_metadata_no_token(self, mock_github):
         """Test metadata fetch without token raises error."""
         with tempfile.TemporaryDirectory() as tmpdir:

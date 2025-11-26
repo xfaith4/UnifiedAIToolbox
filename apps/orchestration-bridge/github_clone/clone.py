@@ -1,7 +1,5 @@
 """GitHub repository cloning service with progress tracking."""
 
-import os
-import shutil
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -10,7 +8,17 @@ from pathlib import Path
 from typing import Optional, Dict, List
 import threading
 import git
-from github import Github, GithubException, Auth
+from github import GithubException
+
+from shared.github_core import (
+    GitHubClientMixin,
+    FileTreeMixin,
+    CloneUrlMixin,
+    build_file_tree,
+    list_repo_branches,
+    cleanup_repository,
+    switch_repo_branch,
+)
 
 
 class CloneStatus(str, Enum):
@@ -38,7 +46,7 @@ class CloneProgress:
     branches: List[str] = field(default_factory=list)
 
 
-class GitHubCloner:
+class GitHubCloner(GitHubClientMixin, FileTreeMixin, CloneUrlMixin):
     """
     Service for cloning GitHub repositories with authentication,
     progress tracking, and cleanup.
@@ -56,12 +64,8 @@ class GitHubCloner:
         self.base_clone_dir = Path(base_clone_dir)
         self.base_clone_dir.mkdir(parents=True, exist_ok=True)
         
-        # Initialize GitHub API client
-        if token:
-            auth = Auth.Token(token)
-            self.github = Github(auth=auth)
-        else:
-            self.github = Github()
+        # Initialize GitHub API client using mixin
+        self.github = self._init_github_client(token, use_auth_class=True)
         
         # Track active clones
         self._clones: Dict[str, CloneProgress] = {}
@@ -114,28 +118,19 @@ class GitHubCloner:
             Repository metadata dictionary
         """
         try:
-            repo = self.github.get_repo(f"{owner}/{repo_name}")
-            
-            # Get branches
-            branches = [branch.name for branch in repo.get_branches()]
-            
-            return {
-                'full_name': repo.full_name,
-                'name': repo.name,
-                'owner': repo.owner.login,
-                'description': repo.description,
-                'url': repo.html_url,
-                'clone_url': repo.clone_url,
-                'stars': repo.stargazers_count,
-                'forks': repo.forks_count,
-                'language': repo.language,
-                'size_kb': repo.size,
-                'updated_at': repo.updated_at.isoformat() if repo.updated_at else None,
-                'default_branch': repo.default_branch,
-                'branches': branches,
-                'topics': repo.get_topics(),
-                'license': repo.license.name if repo.license else None,
-            }
+            metadata = self._fetch_repo_metadata(
+                self.github, owner, repo_name, include_branches=True
+            )
+            # Add additional fields expected by this API
+            metadata['url'] = metadata['html_url']
+            metadata['size_kb'] = metadata['size']
+            metadata['license'] = None
+            try:
+                repo = self.github.get_repo(f"{owner}/{repo_name}")
+                metadata['license'] = repo.license.name if repo.license else None
+            except Exception:
+                pass
+            return metadata
         except GithubException as e:
             raise Exception(f"GitHub API error: {e.data.get('message', str(e))}")
 
@@ -195,9 +190,8 @@ class GitHubCloner:
             progress.message = "Cloning repository..."
             progress.progress_percent = 10.0
             
-            # Parse repo name from URL
-            repo_name = repo_url.rstrip('/').split('/')[-1].replace('.git', '')
-            owner = repo_url.rstrip('/').split('/')[-2]
+            # Parse repo name from URL using shared utility
+            owner, repo_name = self._parse_repo_url(repo_url)
             
             # Create clone directory
             clone_path = self.base_clone_dir / f"{owner}_{repo_name}_{clone_id}"
@@ -213,21 +207,14 @@ class GitHubCloner:
             if depth:
                 clone_kwargs['depth'] = depth
             
-            # Add authentication if token is available
-            if self.token:
-                # Insert token into URL
-                if repo_url.startswith('https://github.com/'):
-                    auth_url = repo_url.replace(
-                        'https://github.com/',
-                        f'https://{self.token}@github.com/'
-                    )
-                    repo_url = auth_url
+            # Add authentication using shared utility
+            auth_url = self._get_auth_url(repo_url, self.token)
             
             # Clone the repository
             progress.message = "Downloading files..."
             progress.progress_percent = 30.0
             
-            repo = git.Repo.clone_from(repo_url, clone_path, **clone_kwargs)
+            repo = git.Repo.clone_from(auth_url, clone_path, **clone_kwargs)
             
             progress.progress_percent = 80.0
             progress.message = "Analyzing repository..."
@@ -237,8 +224,8 @@ class GitHubCloner:
             size_bytes = sum(f.stat().st_size for f in clone_path.rglob('*') if f.is_file())
             size_mb = size_bytes / (1024 * 1024)
             
-            # Get branches
-            branches = [ref.name.replace('origin/', '') for ref in repo.remote().refs]
+            # Get branches using shared utility
+            branches = list_repo_branches(clone_path)
             
             progress.file_count = file_count
             progress.size_mb = round(size_mb, 2)
@@ -296,35 +283,7 @@ class GitHubCloner:
         if not clone_path.exists():
             return None
         
-        def build_tree(path: Path, depth: int = 0) -> Dict:
-            """Recursively build file tree."""
-            if depth > max_depth:
-                return {'type': 'truncated', 'name': '...'}
-            
-            if path.is_file():
-                return {
-                    'type': 'file',
-                    'name': path.name,
-                    'size': path.stat().st_size
-                }
-            
-            children = []
-            try:
-                for child in sorted(path.iterdir(), key=lambda x: (not x.is_dir(), x.name)):
-                    # Skip .git directory
-                    if child.name == '.git':
-                        continue
-                    children.append(build_tree(child, depth + 1))
-            except PermissionError:
-                pass
-            
-            return {
-                'type': 'directory',
-                'name': path.name,
-                'children': children
-            }
-        
-        return build_tree(clone_path)
+        return build_file_tree(clone_path, max_depth=max_depth, skip_hidden=True, allow_github_dir=False)
 
     def cleanup_clone(self, clone_id: str) -> bool:
         """
@@ -345,13 +304,12 @@ class GitHubCloner:
             progress.message = "Cleaning up..."
             
             clone_path = Path(progress.clone_path)
-            if clone_path.exists():
-                shutil.rmtree(clone_path)
+            result = cleanup_repository(clone_path)
             
             with self._lock:
                 del self._clones[clone_id]
             
-            return True
+            return result
         except Exception as e:
             progress.error = f"Cleanup failed: {str(e)}"
             return False
@@ -386,11 +344,8 @@ class GitHubCloner:
         if not progress or not progress.clone_path:
             return []
         
-        try:
-            repo = git.Repo(progress.clone_path)
-            return [ref.name.replace('origin/', '') for ref in repo.remote().refs]
-        except Exception:
-            return progress.branches
+        branches = list_repo_branches(Path(progress.clone_path))
+        return branches if branches else progress.branches
 
     def checkout_branch(self, clone_id: str, branch: str) -> bool:
         """
@@ -407,9 +362,4 @@ class GitHubCloner:
         if not progress or not progress.clone_path:
             return False
         
-        try:
-            repo = git.Repo(progress.clone_path)
-            repo.git.checkout(branch)
-            return True
-        except Exception:
-            return False
+        return switch_repo_branch(Path(progress.clone_path), branch)
