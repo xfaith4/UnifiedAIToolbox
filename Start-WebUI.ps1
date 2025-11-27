@@ -15,13 +15,13 @@
 param (
     [Parameter(HelpMessage="Starting port number")]
     [int]$Port = 8000,
-    
+
     [Parameter(HelpMessage="Maximum port number to try")]
     [int]$MaxPort = 8100,
-    
+
     [Parameter(HelpMessage="Skip the build step")]
     [switch]$SkipBuild = $false,
-    
+
     [Parameter(HelpMessage="Automatically terminate processes using the port")]
     [switch]$Force
 )
@@ -38,7 +38,7 @@ $originalPort = $Port
 # Check if required commands are available
 function Test-CommandExists {
     param($command)
-    return (Get-Command $command -ErrorAction SilentlyContinue) -ne $null
+    return $null -ne (Get-Command $command -ErrorAction SilentlyContinue)
 }
 
 # Function to test if a port is available
@@ -58,7 +58,7 @@ function Test-PortAvailable {
 function Get-ProcessUsingPort {
     param([int]$Port)
     try {
-        return Get-NetTCPConnection -LocalPort $Port -ErrorAction SilentlyContinue | 
+        return Get-NetTCPConnection -LocalPort $Port -ErrorAction SilentlyContinue |
                Select-Object -ExpandProperty OwningProcess -First 1
     } catch {
         return $null
@@ -86,12 +86,12 @@ try {
     if (-not $nodeVersion) {
         throw "Node.js is not installed or not in PATH"
     }
-    
+
     $requiredVersion = [version]'18.0.0'
     if ($nodeVersion -lt $requiredVersion) {
         throw "Node.js 18.0.0 or later is required. Found version $nodeVersion"
     }
-    
+
     Write-Verbose "✅ Node.js version $nodeVersion detected"
 } catch {
     Write-Error "❌ Node.js check failed: $_"
@@ -123,13 +123,13 @@ $processId = $null
 if (-not $portAvailable) {
     $processId = Get-ProcessUsingPort -Port $Port
     $processInfo = if ($processId) { (Get-Process -Id $processId -ErrorAction SilentlyContinue) } else { $null }
-    
+
     Write-Warning "Port $Port is currently in use"
     if ($processInfo) {
         Write-Host "  Process: $($processInfo.ProcessName) (PID: $processId)" -ForegroundColor Yellow
         Write-Host "  Path: $($processInfo.Path)" -ForegroundColor Yellow
     }
-    
+
     if ($Force) {
         Write-Host "🚫 Force flag is set. Attempting to terminate process..." -ForegroundColor Red
         try {
@@ -146,7 +146,7 @@ if (-not $portAvailable) {
         # Try to find an alternative port
         $originalPort = $Port
         $Port++
-        
+
         while ($Port -le $MaxPort) {
             $portAvailable = Test-PortAvailable -Port $Port
             if ($portAvailable) {
@@ -155,7 +155,7 @@ if (-not $portAvailable) {
             }
             $Port++
         }
-        
+
         if (-not $portAvailable) {
             Write-Error "❌ Could not find an available port between $originalPort and $MaxPort"
             Write-Host "Try one of these solutions:" -ForegroundColor Yellow
@@ -194,24 +194,24 @@ try {
     # Set the port and start the server
     $env:PORT = $Port
     $url = "http://localhost:$Port"
-    
+
     Write-Host "\n" + ("*" * 60) -ForegroundColor Green
     Write-Host "🚀 Starting PromptWeb" -ForegroundColor Green
     Write-Host "🌐 URL: $url" -ForegroundColor Cyan
     Write-Host "📁 Directory: $promptWebDir" -ForegroundColor Cyan
     Write-Host ("*" * 60) -ForegroundColor Green
     Write-Host "🛑 Press Ctrl+C to stop the server\n" -ForegroundColor Yellow
-    
+
     # Try to open the browser
     try {
         Start-Process $url
     } catch {
         Write-Warning "Could not open browser automatically. Please visit $url"
     }
-    
+
     # Start the server
     npm run preview
-    
+
 } catch {
     Write-Error "❌ Failed to start the web server: $_"
     Write-Host "Troubleshooting tips:" -ForegroundColor Yellow
