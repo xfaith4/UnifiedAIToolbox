@@ -211,9 +211,9 @@ try {
     # Generate milestones
     $context.Milestones = Split-GoalIntoMilestones -Goal $goalText
     
-    # Execute milestones
-    foreach ($milestone in $context.Milestones) {
-        $milestone = Invoke-Milestone -Milestone $milestone -Context $context
+    # Execute milestones - use index to update the array in place
+    for ($i = 0; $i -lt $context.Milestones.Count; $i++) {
+        $context.Milestones[$i] = Invoke-Milestone -Milestone $context.Milestones[$i] -Context $context
     }
     
     # Complete orchestration

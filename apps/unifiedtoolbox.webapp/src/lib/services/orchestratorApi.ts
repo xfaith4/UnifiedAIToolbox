@@ -2,9 +2,10 @@
 
 import type { OrchestrationRun, OrchestrationRunEvent } from '@/lib/types/orchestrator'
 
-// API base URL from environment, with fallback
-const API_BASE_RAW = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:8000'
-const API_BASE = API_BASE_RAW ? API_BASE_RAW.replace(/\/$/, '') : ''
+// API base URL from environment, with fallback for development
+// Empty string means API is not configured (local-only mode)
+const API_BASE_RAW = process.env.NEXT_PUBLIC_API_BASE ?? ''
+const API_BASE = API_BASE_RAW.trim().replace(/\/$/, '')
 export const ORCHESTRATOR_API_BASE = API_BASE
 
 /**

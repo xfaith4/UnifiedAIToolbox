@@ -18,6 +18,9 @@
 .PARAMETER OutputDir
     Directory for swarm outputs (default: ./swarm-output).
 
+.PARAMETER ExcludePattern
+    Regex pattern for directories to exclude from analysis.
+
 .EXAMPLE
     .\Orchestrate-Codex.ps1 -RepoRoot . -MaxAgents 4
 
@@ -38,6 +41,9 @@ param(
 
     [Parameter(Mandatory = $false)]
     [string]$OutputDir = "./swarm-output",
+
+    [Parameter(Mandatory = $false)]
+    [string]$ExcludePattern = "node_modules|\.git|bin|obj|dist|\.next|__pycache__|\.venv",
 
     [Parameter(Mandatory = $false)]
     [switch]$DryRun
@@ -124,9 +130,9 @@ function Get-RepoAnalysis {
         Directories = @()
     }
     
-    # Get file listing
+    # Get file listing (using configurable exclusion pattern)
     $files = Get-ChildItem -Path $RepoPath -Recurse -File -ErrorAction SilentlyContinue | 
-        Where-Object { $_.DirectoryName -notmatch "node_modules|\.git|bin|obj|dist" }
+        Where-Object { $_.DirectoryName -notmatch $ExcludePattern }
     
     $analysis.Files = $files | Select-Object -First 100 -Property Name, Extension, DirectoryName
     
@@ -135,9 +141,9 @@ function Get-RepoAnalysis {
         $analysis.Languages[$_.Name] = $_.Count
     }
     
-    # Get directories
+    # Get directories (excluding based on pattern)
     $analysis.Directories = Get-ChildItem -Path $RepoPath -Directory -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -notmatch "^\.git$|node_modules|bin|obj|dist" } |
+        Where-Object { $_.Name -notmatch "^($ExcludePattern)$" } |
         Select-Object -Property Name
     
     Write-Log "Found $($analysis.Files.Count) files in $($analysis.Directories.Count) directories"
