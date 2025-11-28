@@ -25,6 +25,15 @@ const defaultTheme: ThemeConfig = {
   reducedMotion: false,
 }
 
+/** Accent color palette - extracted for maintainability */
+export const ACCENT_COLORS: Record<AccentColor, { primary: string; secondary: string; label: string }> = {
+  blue: { primary: '59, 130, 246', secondary: '96, 165, 250', label: 'Blue' },
+  purple: { primary: '168, 85, 247', secondary: '192, 132, 252', label: 'Purple' },
+  emerald: { primary: '16, 185, 129', secondary: '52, 211, 153', label: 'Emerald' },
+  rose: { primary: '244, 63, 94', secondary: '251, 113, 133', label: 'Rose' },
+  amber: { primary: '245, 158, 11', secondary: '251, 191, 36', label: 'Amber' },
+}
+
 const ThemeContext = createContext<ThemeContextValue | undefined>(undefined)
 
 function getSystemPreference(): 'dark' | 'light' {
@@ -84,15 +93,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     root.classList.add(effectiveMode)
 
     // Set accent color CSS variable
-    const accentColors: Record<AccentColor, { primary: string; secondary: string }> = {
-      blue: { primary: '59, 130, 246', secondary: '96, 165, 250' },
-      purple: { primary: '168, 85, 247', secondary: '192, 132, 252' },
-      emerald: { primary: '16, 185, 129', secondary: '52, 211, 153' },
-      rose: { primary: '244, 63, 94', secondary: '251, 113, 133' },
-      amber: { primary: '245, 158, 11', secondary: '251, 191, 36' },
-    }
-
-    const accent = accentColors[theme.accent]
+    const accent = ACCENT_COLORS[theme.accent]
     root.style.setProperty('--accent-primary', accent.primary)
     root.style.setProperty('--accent-secondary', accent.secondary)
 

@@ -109,7 +109,7 @@ function ThemeToggle() {
                   setShowPalette(false)
                 }}
                 className={`w-6 h-6 rounded-full ${color.class} transition-transform hover:scale-110 ${
-                  theme.accent === color.value ? 'ring-2 ring-offset-2 ring-offset-[var(--bg-elevated)] ring-white' : ''
+                  theme.accent === color.value ? 'ring-2 ring-offset-2 ring-offset-[var(--bg-elevated)] ring-slate-900 dark:ring-white' : ''
                 }`}
                 title={color.label}
                 aria-label={`Set ${color.label} accent color`}
@@ -238,7 +238,7 @@ export function Layout({ children }: { children: ReactNode }) {
           {/* Footer */}
           <div className="absolute bottom-5 left-5 right-5">
             <div className="p-3 rounded-xl bg-gradient-to-br from-[rgba(var(--accent-primary),0.1)] to-transparent border border-[rgba(var(--accent-primary),0.2)]">
-              <div className="text-xs text-[var(--text-tertiary)]">Version 2.0</div>
+              <div className="text-xs text-[var(--text-tertiary)]">Version {import.meta.env.VITE_APP_VERSION || '0.1.0'}</div>
               <div className="text-[10px] text-[var(--text-muted)] mt-0.5">Professional Theme</div>
             </div>
           </div>

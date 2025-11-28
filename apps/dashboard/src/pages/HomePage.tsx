@@ -151,7 +151,9 @@ export default function HomePage() {
                 <div className="text-sm text-[var(--text-tertiary)] font-medium">{card.title}</div>
                 <div className="mt-1 text-3xl font-bold text-[var(--text-primary)] tracking-tight">
                   {isLoading ? (
-                    <div className="h-9 w-16 rounded-lg bg-[var(--bg-tertiary)] animate-shimmer" />
+                    <div className="h-9 w-16 rounded-lg bg-[var(--bg-tertiary)] animate-shimmer" role="status" aria-label={`Loading ${card.title} count`}>
+                      <span className="sr-only">Loading {card.title}...</span>
+                    </div>
                   ) : (
                     card.value
                   )}
