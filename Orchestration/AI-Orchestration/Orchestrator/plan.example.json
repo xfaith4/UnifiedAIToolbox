@@ -1,0 +1,80 @@
+{
+  "goal": "Review https://github.com/xfaith4/AI-Orchestration for defects and propose fixes",
+  "assumptions": ["Public repo; read-only unless PR creation is explicitly allowed"],
+  "artifacts": [
+    { "name": "repoTree", "description": "GitHub file tree", "type": "json" },
+    { "name": "top5Files", "description": "Most critical files", "type": "json" },
+    { "name": "filesContent", "description": "Selected file contents", "type": "dir" }
+  ],
+  "steps": [
+    {
+      "id": 1,
+      "title": "Fetch repo tree",
+      "agent": "GitHub Tool User",
+      "task": "Get file tree",
+      "inputs": {},
+      "produces": ["repoTree"],
+      "dependencies": [0],
+      "tool": { "name": "github:getRepoTree", "args": { "repoUrl": "https://github.com/xfaith4/AI-Orchestration" } },
+      "constraints": ["timeout:60s","retries:2"],
+      "estimates": { "tokens": 200, "latencySec": 6, "costUSD": 0.0008 }
+    },
+    {
+      "id": 2,
+      "title": "Select key files",
+      "agent": "Code Generator",
+      "task": "Pick the 5 most important files for review",
+      "inputs": { "repoTree": "repoTree" },
+      "produces": ["top5Files"],
+      "dependencies": [1],
+      "tool": { "name": "selector:selectFiles", "args": { "limit": 5 } }
+    },
+    {
+      "id": 3,
+      "title": "Fetch file contents",
+      "agent": "GitHub Tool User",
+      "task": "Download selected files",
+      "inputs": { "fileList": "top5Files" },
+      "produces": ["filesContent"],
+      "dependencies": [2],
+      "tool": { "name": "github:getFilesContent", "args": { "repoUrl": "https://github.com/xfaith4/AI-Orchestration" } }
+    },
+    {
+      "id": 4,
+      "title": "Implementer A review",
+      "agent": "Implementer",
+      "task": "Perform review approach A",
+      "inputs": { "files": "filesContent" },
+      "produces": ["reviewA.md","patchA.json","testReportA.json"],
+      "dependencies": [3]
+    },
+    {
+      "id": 5,
+      "title": "Implementer B review",
+      "agent": "Implementer",
+      "task": "Perform review approach B",
+      "inputs": { "files": "filesContent" },
+      "produces": ["reviewB.md","patchB.json","testReportB.json"],
+      "dependencies": [3]
+    },
+    {
+      "id": 6,
+      "title": "Reviewer choose best",
+      "agent": "Reviewer",
+      "task": "Score A vs B with rubric and promote winner",
+      "inputs": { "A": ["reviewA.md","patchA.json","testReportA.json"], "B": ["reviewB.md","patchB.json","testReportB.json"] },
+      "produces": ["winner.json","promotedArtifacts"],
+      "dependencies": [4,5]
+    },
+    {
+      "id": 7,
+      "title": "Write final report",
+      "agent": "Report Writer",
+      "task": "Synthesize findings and actions",
+      "inputs": { "winner": "winner.json", "notes": ["reviewA.md","reviewB.md"] },
+      "produces": ["finalReport.md"],
+      "dependencies": [6]
+    }
+  ],
+  "waves": [[1],[2],[3],[4,5],[6],[7]]
+}

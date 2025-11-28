@@ -1,0 +1,1107 @@
+[
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\.github\\copilot-instructions.md",
+    "LastWriteTime": "2025-10-15T22:57:47.0822739-04:00",
+    "Length": 5184
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\.github\\workflows\\build-dashboard.yml",
+    "LastWriteTime": "2025-10-15T21:56:33.3037166-04:00",
+    "Length": 382
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\.github2.zip",
+    "LastWriteTime": "2025-10-15T23:27:34.7498747-04:00",
+    "Length": 851863
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\.gitignore",
+    "LastWriteTime": "2025-10-15T23:08:46.2906982-04:00",
+    "Length": 483
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\EXAMPLE.md",
+    "LastWriteTime": "2025-10-15T21:59:41.8546992-04:00",
+    "Length": 7756
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\file_manifest.json",
+    "LastWriteTime": "2025-10-15T23:35:19.6296658-04:00",
+    "Length": 0
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\Goals\\archive\\20251015_231424_NextGoal.txt",
+    "LastWriteTime": "2025-10-15T23:13:47.7531302-04:00",
+    "Length": 1378
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\Goals\\CurrentGoal.txt",
+    "LastWriteTime": "2025-10-15T23:13:47.7531302-04:00",
+    "Length": 1378
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\Goals\\MyGoal.txt",
+    "LastWriteTime": "2025-10-15T23:11:21.6370057-04:00",
+    "Length": 383
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\Goals\\NextGoal.txt",
+    "LastWriteTime": "2025-10-15T23:16:28.3139046-04:00",
+    "Length": 908
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\Goals\\RefinedGoal_20251015_231214.txt",
+    "LastWriteTime": "2025-10-15T23:12:14.7734338-04:00",
+    "Length": 776
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\Goals\\RefinedGoal_20251015_231258.txt",
+    "LastWriteTime": "2025-10-15T23:12:58.3503808-04:00",
+    "Length": 1190
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\Goals\\RefinedGoal_20251015_231347.txt",
+    "LastWriteTime": "2025-10-15T23:13:47.7521109-04:00",
+    "Length": 1378
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\Goals\\RefinedGoal_20251015_231628.txt",
+    "LastWriteTime": "2025-10-15T23:16:28.3119045-04:00",
+    "Length": 908
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\IMPLEMENTATION_NOTES.md",
+    "LastWriteTime": "2025-10-15T22:00:49.5012207-04:00",
+    "Length": 6627
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\MERGE_SUMMARY.md",
+    "LastWriteTime": "2025-10-15T23:08:46.2906982-04:00",
+    "Length": 6424
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\Milestone_Log.csv",
+    "LastWriteTime": "2025-10-15T23:16:24.7125087-04:00",
+    "Length": 21503
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\Milestone_Log.xlsx",
+    "LastWriteTime": "2025-10-15T23:16:24.6904814-04:00",
+    "Length": 7960
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\MilestoneController.ps1",
+    "LastWriteTime": "2025-10-15T21:56:33.3057203-04:00",
+    "Length": 6238
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\MilestoneDashboard.html",
+    "LastWriteTime": "2025-10-15T21:56:33.3057203-04:00",
+    "Length": 3197
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\MilestoneDashboard\\.gitignore",
+    "LastWriteTime": "2025-10-15T21:56:33.3067217-04:00",
+    "Length": 277
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\MilestoneDashboard\\eslint.config.js",
+    "LastWriteTime": "2025-10-15T21:56:33.3067217-04:00",
+    "Length": 792
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\MilestoneDashboard\\index.html",
+    "LastWriteTime": "2025-10-15T21:56:33.3067217-04:00",
+    "Length": 1509
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\MilestoneDashboard\\package-lock.json",
+    "LastWriteTime": "2025-10-15T22:17:23.0446258-04:00",
+    "Length": 156160
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\MilestoneDashboard\\package.json",
+    "LastWriteTime": "2025-10-15T21:56:33.3093203-04:00",
+    "Length": 975
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\MilestoneDashboard\\public\\data\\Milestone_Log.json",
+    "LastWriteTime": "2025-10-15T23:16:24.7235077-04:00",
+    "Length": 24788
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\MilestoneDashboard\\public\\data\\synth\\20251013-024600.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3103205-04:00",
+    "Length": 16800
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\MilestoneDashboard\\public\\data\\synth\\20251013-032445.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3113203-04:00",
+    "Length": 20705
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\MilestoneDashboard\\public\\data\\synth\\20251013-034646.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3118243-04:00",
+    "Length": 13943
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\MilestoneDashboard\\public\\data\\synth\\20251014-015104.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3123619-04:00",
+    "Length": 22358
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\MilestoneDashboard\\public\\data\\synth\\20251015-011643.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3123619-04:00",
+    "Length": 18345
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\MilestoneDashboard\\public\\data\\synth\\20251015-231121.txt",
+    "LastWriteTime": "2025-10-15T23:12:10.5012846-04:00",
+    "Length": 20979
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\MilestoneDashboard\\public\\data\\synth\\20251015-231214.txt",
+    "LastWriteTime": "2025-10-15T23:12:53.3951944-04:00",
+    "Length": 22405
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\MilestoneDashboard\\public\\data\\synth\\20251015-231258.txt",
+    "LastWriteTime": "2025-10-15T23:13:43.2347839-04:00",
+    "Length": 24415
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\MilestoneDashboard\\public\\data\\synth\\20251015-231347.txt",
+    "LastWriteTime": "2025-10-15T23:14:24.0803477-04:00",
+    "Length": 24849
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\MilestoneDashboard\\public\\data\\synth\\20251015-231549.txt",
+    "LastWriteTime": "2025-10-15T23:16:23.6885127-04:00",
+    "Length": 20613
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\MilestoneDashboard\\public\\vite.svg",
+    "LastWriteTime": "2025-10-15T21:56:33.3123619-04:00",
+    "Length": 1497
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\MilestoneDashboard\\README.md",
+    "LastWriteTime": "2025-10-15T21:56:33.3067217-04:00",
+    "Length": 1173
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\MilestoneDashboard\\server\\api-server.js",
+    "LastWriteTime": "2025-10-15T23:08:46.2916978-04:00",
+    "Length": 7739
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\MilestoneDashboard\\src\\App.css",
+    "LastWriteTime": "2025-10-15T21:56:33.3133666-04:00",
+    "Length": 648
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\MilestoneDashboard\\src\\App.jsx",
+    "LastWriteTime": "2025-10-15T21:56:33.3143961-04:00",
+    "Length": 23034
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\MilestoneDashboard\\src\\assets\\logo.svg",
+    "LastWriteTime": "2025-10-15T21:56:33.3143961-04:00",
+    "Length": 0
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\MilestoneDashboard\\src\\assets\\react.svg",
+    "LastWriteTime": "2025-10-15T21:56:33.3153966-04:00",
+    "Length": 4126
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\MilestoneDashboard\\src\\components\\AgentActivityStatus.jsx",
+    "LastWriteTime": "2025-10-15T21:56:33.3153966-04:00",
+    "Length": 5222
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\MilestoneDashboard\\src\\components\\AgentDetails.jsx",
+    "LastWriteTime": "2025-10-15T21:56:33.3163969-04:00",
+    "Length": 3611
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\MilestoneDashboard\\src\\components\\AgentInstructionsEditor.jsx",
+    "LastWriteTime": "2025-10-15T21:56:33.3169014-04:00",
+    "Length": 8780
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\MilestoneDashboard\\src\\components\\Header.jsx",
+    "LastWriteTime": "2025-10-15T21:56:33.3169014-04:00",
+    "Length": 1655
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\MilestoneDashboard\\src\\components\\KeyboardShortcuts.jsx",
+    "LastWriteTime": "2025-10-15T21:56:33.3169014-04:00",
+    "Length": 3523
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\MilestoneDashboard\\src\\components\\RunTable.jsx",
+    "LastWriteTime": "2025-10-15T21:56:33.3169014-04:00",
+    "Length": 1378
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\MilestoneDashboard\\src\\components\\SummaryCards.jsx",
+    "LastWriteTime": "2025-10-15T21:56:33.3169014-04:00",
+    "Length": 902
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\MilestoneDashboard\\src\\components\\TrendChart.jsx",
+    "LastWriteTime": "2025-10-15T21:56:33.3184057-04:00",
+    "Length": 1077
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\MilestoneDashboard\\src\\context\\ThemeContext.jsx",
+    "LastWriteTime": "2025-10-15T21:56:33.3184057-04:00",
+    "Length": 1241
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\MilestoneDashboard\\src\\context\\ToastContext.jsx",
+    "LastWriteTime": "2025-10-15T21:56:33.319411-04:00",
+    "Length": 2495
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\MilestoneDashboard\\src\\hooks\\useKeyboardShortcuts.js",
+    "LastWriteTime": "2025-10-15T21:56:33.319411-04:00",
+    "Length": 1073
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\MilestoneDashboard\\src\\index.css",
+    "LastWriteTime": "2025-10-15T21:56:33.319411-04:00",
+    "Length": 2003
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\MilestoneDashboard\\src\\main.jsx",
+    "LastWriteTime": "2025-10-15T21:56:33.3204107-04:00",
+    "Length": 457
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\MilestoneDashboard\\tailwind.config.js",
+    "LastWriteTime": "2025-10-15T21:56:33.3204107-04:00",
+    "Length": 246
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\MilestoneDashboard\\UX_MODERNIZATION.md",
+    "LastWriteTime": "2025-10-15T21:56:33.3067217-04:00",
+    "Length": 9361
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\MilestoneDashboard\\vite.config.js",
+    "LastWriteTime": "2025-10-15T21:56:33.3204107-04:00",
+    "Length": 168
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\OpenAI_Refiner.ps1",
+    "LastWriteTime": "2025-10-15T21:56:33.3219132-04:00",
+    "Length": 3401
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\POF.ps1",
+    "LastWriteTime": "2025-10-15T21:56:33.3219132-04:00",
+    "Length": 11970
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\Projects.json",
+    "LastWriteTime": "2025-10-15T21:56:33.3229178-04:00",
+    "Length": 260
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\prompts\\Agents.json",
+    "LastWriteTime": "2025-10-15T21:56:33.3239237-04:00",
+    "Length": 4173
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\prompts\\Agents2.json",
+    "LastWriteTime": "2025-10-15T21:56:33.3239237-04:00",
+    "Length": 2452
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\QUICKSTART.md",
+    "LastWriteTime": "2025-10-15T21:56:33.3229178-04:00",
+    "Length": 6254
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\README.md",
+    "LastWriteTime": "2025-10-15T21:56:33.3234215-04:00",
+    "Length": 11895
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-215540\\Commissioner.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.324928-04:00",
+    "Length": 6
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-215540\\Critic.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.324928-04:00",
+    "Length": 6
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-215540\\Engineer.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.324928-04:00",
+    "Length": 6
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-215540\\Final_Synthesis.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.324928-04:00",
+    "Length": 397
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-215540\\Researcher.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.324928-04:00",
+    "Length": 6
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-215540\\Synthesizer.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3264323-04:00",
+    "Length": 6
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-215628\\Commissioner.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3269437-04:00",
+    "Length": 6
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-215628\\Critic.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3269437-04:00",
+    "Length": 6
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-215628\\Engineer.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3269437-04:00",
+    "Length": 6
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-215628\\Final_Synthesis.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3269437-04:00",
+    "Length": 397
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-215628\\Researcher.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3269437-04:00",
+    "Length": 6
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-215628\\Synthesizer.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3269437-04:00",
+    "Length": 6
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-215855\\Commissioner.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3284528-04:00",
+    "Length": 6
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-215855\\Critic.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3284528-04:00",
+    "Length": 6
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-215855\\Engineer.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3284528-04:00",
+    "Length": 6
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-215855\\Final_Synthesis.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3294573-04:00",
+    "Length": 397
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-215855\\Researcher.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3294573-04:00",
+    "Length": 6
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-215855\\Synthesizer.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3294573-04:00",
+    "Length": 6
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-220309\\.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3304566-04:00",
+    "Length": 30
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-220309\\Commissioner.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3304566-04:00",
+    "Length": 6
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-220309\\Critic.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3304566-04:00",
+    "Length": 6
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-220309\\Engineer.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3314573-04:00",
+    "Length": 6
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-220309\\Final_Synthesis.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3314573-04:00",
+    "Length": 397
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-220309\\Max retries reached. Returning null response..txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3314573-04:00",
+    "Length": 105
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-220309\\Researcher.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3324576-04:00",
+    "Length": 6
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-220309\\Synthesizer.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3324576-04:00",
+    "Length": 6
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-220526\\.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3324576-04:00",
+    "Length": 30
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-220526\\Commissioner.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3334582-04:00",
+    "Length": 6
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-220526\\Critic.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3334582-04:00",
+    "Length": 6
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-220526\\Engineer.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3334582-04:00",
+    "Length": 6
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-220526\\Final_Synthesis.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3344602-04:00",
+    "Length": 397
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-220526\\Max retries reached. Returning null response..txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3344602-04:00",
+    "Length": 105
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-220526\\Researcher.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3344602-04:00",
+    "Length": 6
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-220526\\Synthesizer.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3344602-04:00",
+    "Length": 6
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-220606\\.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3354844-04:00",
+    "Length": 30
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-220606\\Commissioner.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3354844-04:00",
+    "Length": 6
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-220606\\Critic.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3354844-04:00",
+    "Length": 6
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-220606\\Engineer.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3365218-04:00",
+    "Length": 6
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-220606\\Final_Synthesis.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3365218-04:00",
+    "Length": 397
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-220606\\Max retries reached. Returning null response..txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3365218-04:00",
+    "Length": 105
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-220606\\Researcher.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3375211-04:00",
+    "Length": 6
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-220606\\Synthesizer.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3375211-04:00",
+    "Length": 6
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-220650\\.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3375211-04:00",
+    "Length": 60
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-220650\\Commissioner.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3375211-04:00",
+    "Length": 297
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-220650\\Critic.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3375211-04:00",
+    "Length": 297
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-220650\\Engineer.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.339025-04:00",
+    "Length": 297
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-220650\\Final_Synthesis.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.339025-04:00",
+    "Length": 1852
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-220650\\Researcher.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.339025-04:00",
+    "Length": 297
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-220650\\Synthesizer.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3400296-04:00",
+    "Length": 297
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-221418\\Commissioner.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3400296-04:00",
+    "Length": 6
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-221418\\Critic.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3400296-04:00",
+    "Length": 6
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-221418\\Engineer.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3410296-04:00",
+    "Length": 6
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-221418\\Final_Synthesis.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3410296-04:00",
+    "Length": 397
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-221418\\Researcher.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3410296-04:00",
+    "Length": 6
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-221418\\Synthesizer.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3410296-04:00",
+    "Length": 6
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-221601\\.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3420284-04:00",
+    "Length": 60
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-221601\\Commissioner.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3420284-04:00",
+    "Length": 297
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-221601\\Critic.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3420284-04:00",
+    "Length": 297
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-221601\\Engineer.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3430299-04:00",
+    "Length": 297
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-221601\\Final_Synthesis.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3435333-04:00",
+    "Length": 1852
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-221601\\Researcher.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3435333-04:00",
+    "Length": 297
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-221601\\Synthesizer.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3435333-04:00",
+    "Length": 297
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-223828\\API.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3445381-04:00",
+    "Length": 229
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-223828\\Commissioner.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3445381-04:00",
+    "Length": 1448
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-223828\\Critic.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3445381-04:00",
+    "Length": 3413
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-223828\\Engineer.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3445381-04:00",
+    "Length": 3936
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-223828\\Researcher.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3456-04:00",
+    "Length": 3068
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-223828\\Synthesizer.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3456-04:00",
+    "Length": 848
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-223920\\API.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3456-04:00",
+    "Length": 230
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-223920\\Commissioner.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3456-04:00",
+    "Length": 2537
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-223920\\Critic.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3471026-04:00",
+    "Length": 6472
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-223920\\Engineer.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3471026-04:00",
+    "Length": 5470
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-223920\\Researcher.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3471026-04:00",
+    "Length": 3800
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-223920\\Synthesizer.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.348108-04:00",
+    "Length": 5976
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-225015\\API.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3486151-04:00",
+    "Length": 277
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-225015\\Commissioner.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3486151-04:00",
+    "Length": 2239
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-225015\\Critic.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3496178-04:00",
+    "Length": 5030
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-225015\\Engineer.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3496178-04:00",
+    "Length": 1184
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-225015\\Final_Synthesis.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3496178-04:00",
+    "Length": 15098
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-225015\\Researcher.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3506165-04:00",
+    "Length": 3321
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-225015\\Synthesizer.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3506165-04:00",
+    "Length": 3125
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-225147\\API.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3516169-04:00",
+    "Length": 232
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-225147\\Commissioner.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3516169-04:00",
+    "Length": 2132
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-225147\\Critic.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3516169-04:00",
+    "Length": 5351
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-225147\\Engineer.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.352616-04:00",
+    "Length": 1257
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-225147\\Final_Synthesis.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.352616-04:00",
+    "Length": 12117
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-225147\\Researcher.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.352616-04:00",
+    "Length": 191
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-225147\\Synthesizer.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3536172-04:00",
+    "Length": 3011
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-230532\\Final_Synthesis.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3536172-04:00",
+    "Length": 161
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-231218\\API.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3536172-04:00",
+    "Length": 46
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-231218\\Commissioner.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3547221-04:00",
+    "Length": 1166
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-231218\\Critic.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3547221-04:00",
+    "Length": 3460
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-231218\\Engineer.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3547221-04:00",
+    "Length": 5477
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-231218\\Final_Synthesis.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3556913-04:00",
+    "Length": 17734
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-231218\\Researcher.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3556913-04:00",
+    "Length": 3727
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251012-231218\\Synthesizer.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3567054-04:00",
+    "Length": 3590
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251013-002212\\API.txt",
+    "LastWriteTime": "2025-10-15T21:56:33.3567054-04:00",
+    "Length": 46
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231121\\agent_improvements.json",
+    "LastWriteTime": "2025-10-15T23:12:10.4822899-04:00",
+    "Length": 253
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231121\\agent_status.json",
+    "LastWriteTime": "2025-10-15T23:12:10.4552574-04:00",
+    "Length": 909
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231121\\API.txt",
+    "LastWriteTime": "2025-10-15T23:12:10.452288-04:00",
+    "Length": 46
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231121\\Commissioner.txt",
+    "LastWriteTime": "2025-10-15T23:12:10.4532567-04:00",
+    "Length": 3680
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231121\\Critic.txt",
+    "LastWriteTime": "2025-10-15T23:11:48.4528458-04:00",
+    "Length": 4011
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231121\\Engineer.txt",
+    "LastWriteTime": "2025-10-15T23:11:48.4608437-04:00",
+    "Length": 5380
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231121\\Final_Synthesis.txt",
+    "LastWriteTime": "2025-10-15T23:12:10.5012846-04:00",
+    "Length": 20979
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231121\\Researcher.txt",
+    "LastWriteTime": "2025-10-15T23:11:48.4688391-04:00",
+    "Length": 5292
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231121\\Synthesizer.txt",
+    "LastWriteTime": "2025-10-15T23:11:48.4478703-04:00",
+    "Length": 1989
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231214\\agent_improvements.json",
+    "LastWriteTime": "2025-10-15T23:12:53.3851899-04:00",
+    "Length": 268
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231214\\agent_status.json",
+    "LastWriteTime": "2025-10-15T23:12:53.3811954-04:00",
+    "Length": 909
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231214\\API.txt",
+    "LastWriteTime": "2025-10-15T23:12:53.3791947-04:00",
+    "Length": 46
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231214\\Commissioner.txt",
+    "LastWriteTime": "2025-10-15T23:12:53.3801663-04:00",
+    "Length": 4289
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231214\\Critic.txt",
+    "LastWriteTime": "2025-10-15T23:12:37.0767881-04:00",
+    "Length": 3941
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231214\\Engineer.txt",
+    "LastWriteTime": "2025-10-15T23:12:37.0838084-04:00",
+    "Length": 5275
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231214\\Final_Synthesis.txt",
+    "LastWriteTime": "2025-10-15T23:12:53.3951944-04:00",
+    "Length": 22405
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231214\\Researcher.txt",
+    "LastWriteTime": "2025-10-15T23:12:37.0917943-04:00",
+    "Length": 5367
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231214\\Synthesizer.txt",
+    "LastWriteTime": "2025-10-15T23:12:37.0738088-04:00",
+    "Length": 2513
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231258\\agent_improvements.json",
+    "LastWriteTime": "2025-10-15T23:13:43.2247418-04:00",
+    "Length": 272
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231258\\agent_status.json",
+    "LastWriteTime": "2025-10-15T23:13:43.2197657-04:00",
+    "Length": 909
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231258\\API.txt",
+    "LastWriteTime": "2025-10-15T23:13:43.2187847-04:00",
+    "Length": 46
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231258\\Commissioner.txt",
+    "LastWriteTime": "2025-10-15T23:13:43.2197657-04:00",
+    "Length": 4291
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231258\\Critic.txt",
+    "LastWriteTime": "2025-10-15T23:13:27.426614-04:00",
+    "Length": 4023
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231258\\Engineer.txt",
+    "LastWriteTime": "2025-10-15T23:13:27.4446365-04:00",
+    "Length": 5646
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231258\\Final_Synthesis.txt",
+    "LastWriteTime": "2025-10-15T23:13:43.2347839-04:00",
+    "Length": 24415
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231258\\Researcher.txt",
+    "LastWriteTime": "2025-10-15T23:13:27.4336072-04:00",
+    "Length": 5304
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231258\\Synthesizer.txt",
+    "LastWriteTime": "2025-10-15T23:13:27.4246477-04:00",
+    "Length": 3717
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231347\\agent_status.json",
+    "LastWriteTime": "2025-10-15T23:14:24.0763492-04:00",
+    "Length": 909
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231347\\API.txt",
+    "LastWriteTime": "2025-10-15T23:14:24.0743488-04:00",
+    "Length": 46
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231347\\Commissioner.txt",
+    "LastWriteTime": "2025-10-15T23:14:24.0753497-04:00",
+    "Length": 4156
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231347\\Critic.txt",
+    "LastWriteTime": "2025-10-15T23:14:09.3829985-04:00",
+    "Length": 4171
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231347\\Engineer.txt",
+    "LastWriteTime": "2025-10-15T23:14:09.3850044-04:00",
+    "Length": 5788
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231347\\Final_Synthesis.txt",
+    "LastWriteTime": "2025-10-15T23:14:24.0803477-04:00",
+    "Length": 24849
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231347\\Researcher.txt",
+    "LastWriteTime": "2025-10-15T23:14:09.4019735-04:00",
+    "Length": 5577
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231347\\Synthesizer.txt",
+    "LastWriteTime": "2025-10-15T23:14:09.3980076-04:00",
+    "Length": 3634
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231549\\agent_status.json",
+    "LastWriteTime": "2025-10-15T23:16:23.6765173-04:00",
+    "Length": 909
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231549\\API.txt",
+    "LastWriteTime": "2025-10-15T23:16:23.6734827-04:00",
+    "Length": 46
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231549\\Commissioner.txt",
+    "LastWriteTime": "2025-10-15T23:16:23.6744963-04:00",
+    "Length": 3471
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231549\\Critic.txt",
+    "LastWriteTime": "2025-10-15T23:16:11.0481541-04:00",
+    "Length": 4108
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231549\\Engineer.txt",
+    "LastWriteTime": "2025-10-15T23:16:11.0631497-04:00",
+    "Length": 5493
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231549\\Final_Synthesis.txt",
+    "LastWriteTime": "2025-10-15T23:16:23.6885127-04:00",
+    "Length": 20613
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231549\\Researcher.txt",
+    "LastWriteTime": "2025-10-15T23:16:11.0561207-04:00",
+    "Length": 4499
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231549\\Synthesizer.txt",
+    "LastWriteTime": "2025-10-15T23:16:11.0441367-04:00",
+    "Length": 2514
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231628\\agent_status.json",
+    "LastWriteTime": "2025-10-15T23:16:57.1400497-04:00",
+    "Length": 909
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231628\\API.txt",
+    "LastWriteTime": "2025-10-15T23:16:57.1380454-04:00",
+    "Length": 46
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231628\\Commissioner.txt",
+    "LastWriteTime": "2025-10-15T23:16:57.1390142-04:00",
+    "Length": 3903
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231628\\Critic.txt",
+    "LastWriteTime": "2025-10-15T23:16:45.60872-04:00",
+    "Length": 4056
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231628\\Engineer.txt",
+    "LastWriteTime": "2025-10-15T23:16:45.6156799-04:00",
+    "Length": 5531
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231628\\Final_Synthesis.txt",
+    "LastWriteTime": "2025-10-15T23:16:57.1420163-04:00",
+    "Length": 22593
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231628\\Researcher.txt",
+    "LastWriteTime": "2025-10-15T23:16:45.5996825-04:00",
+    "Length": 5098
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\runs\\20251015-231628\\Synthesizer.txt",
+    "LastWriteTime": "2025-10-15T23:16:45.5976824-04:00",
+    "Length": 2987
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\scripts\\ContextResolver.ps1",
+    "LastWriteTime": "2025-10-15T21:56:33.3567054-04:00",
+    "Length": 3997
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\scripts\\Improve-ValueScore.ps1",
+    "LastWriteTime": "2025-10-15T21:56:33.3567054-04:00",
+    "Length": 6466
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\scripts\\MilestoneController.ps1",
+    "LastWriteTime": "2025-10-15T21:56:33.358296-04:00",
+    "Length": 8030
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\scripts\\OpenAI_Refiner.ps1",
+    "LastWriteTime": "2025-10-15T21:56:33.358296-04:00",
+    "Length": 3417
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\scripts\\Patch.ps1",
+    "LastWriteTime": "2025-10-15T21:56:33.3592992-04:00",
+    "Length": 2272
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\scripts\\POF.ps1",
+    "LastWriteTime": "2025-10-15T23:08:46.2926984-04:00",
+    "Length": 12063
+  },
+  {
+    "FullName": "C:\\Users\\benfu\\AI-Orchestration\\scripts\\Setup-RepoStructure.ps1",
+    "LastWriteTime": "2025-10-15T21:56:33.3592992-04:00",
+    "Length": 2319
+  }
+]

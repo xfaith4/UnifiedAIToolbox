@@ -1,0 +1,2 @@
+I have started building out a Prompt library several times and with dangerously terrible version control. I need help combining and reducing these libraries down to a single tool.  I also have a prompt refiner app and an AI Orchestration App that could easily enhance this prompt library and vice versa.  Please design a strategy for bringing everything in the following directory together as a single consolidated application. 
+G:\Development\20_Staging\AI-Toolbox\Prompt Library Projects\

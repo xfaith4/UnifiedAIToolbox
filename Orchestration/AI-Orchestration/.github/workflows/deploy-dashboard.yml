@@ -1,0 +1,36 @@
+name: Deploy Milestone Dashboard
+
+on:
+  push:
+    branches: [ React/Vite-Dashboard ]
+    paths:
+      - "MilestoneDashboard/**"
+      - "scripts/Update-OrchestrationMetrics.psm1"
+      - "MilestoneDashboard/public/data/*.json"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 🧩 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Build Milestone Dashboard (Vite)
+        run: |
+          cd MilestoneDashboard
+          npm install --legacy-peer-deps
+          npm test
+          npm run build
+
+      - name: 🚀 Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: MilestoneDashboard/dist
+          publish_branch: gh-pages
+          commit_message: "🚀 Deploy Milestone Dashboard $(date +'%Y-%m-%d %H:%M:%S')"

@@ -1,0 +1,5 @@
+{
+  "name": "Google AI Agentic Orchestrator",
+  "description": "A collaborative, real-time 'cockpit' interface for a graph-driven, multi-agent orchestration system. Visualize dynamic task graphs, interact with AI-generated artifacts in real-time, and manage a memory-enabled, multi-modal workflow.",
+  "requestFramePermissions": []
+}

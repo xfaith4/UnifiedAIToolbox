@@ -1,0 +1,54 @@
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build outputs
+dist/
+build/
+*.log
+
+# Environment files
+.env
+.env.local
+.env.production
+
+# IDE and Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Dashboard specific
+MilestoneDashboard/dist/
+MilestoneDashboard/node_modules/
+MilestoneDashboard/public/data/synth/
+!MilestoneDashboard/public/data/synth/.gitkeep
+
+# Agent prompt backups
+prompts/backups/
+
+# Excel temp files
+~$*.xlsx
+~$*.xls
+
+# Generated orchestration artifacts
+runs/
+!runs/.gitkeep
+AI Orchestration/runs/
+Milestone_Log.csv
+Milestone_Log.xlsx
+Goals/*
+!Goals/README.md
+runs/*.zip

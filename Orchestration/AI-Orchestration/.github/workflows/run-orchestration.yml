@@ -1,0 +1,73 @@
+name: Run AI-Orchestration
+
+on:
+  push:
+    branches: [ React/Vite-Dashboard ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  orchestrate:
+    runs-on: windows-latest
+
+    steps:
+      - name: 🧩 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🧹 Normalize line endings
+        run: git config --global core.autocrlf false
+
+      - name: 🚀 Initialize AI-Orchestration environment
+        shell: pwsh
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          Write-Host "------------------------------------------------------------"
+          Write-Host "🚀 Initializing environment..." -ForegroundColor Cyan
+          .\scripts\Init-OrchestrationEnv.ps1
+          Write-Host "✅ Environment initialized." -ForegroundColor Green
+          Write-Host "------------------------------------------------------------"
+
+      - name: ⚙️ Run POF Orchestrator
+        shell: pwsh
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          Write-Host "⚙️ Launching POF.ps1 orchestrator..." -ForegroundColor Yellow
+          .\scripts\POF.ps1
+          Write-Host "✅ Orchestration complete." -ForegroundColor Green
+
+      - name: 📊 Update Orchestration Metrics
+        shell: pwsh
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          Write-Host "------------------------------------------------------------"
+          Write-Host "📊 Updating dashboard metrics..." -ForegroundColor Cyan
+          Import-Module .\scripts\Update-OrchestrationMetrics.psm1 -Force
+          Update-OrchestrationMetrics -BaseDir "$PWD"
+          Write-Host "✅ Metrics updated successfully." -ForegroundColor Green
+          Write-Host "------------------------------------------------------------"
+
+      - name: 🤖 Commit and Push Updated Metrics
+        shell: pwsh
+        run: |
+          Write-Host "------------------------------------------------------------"
+          Write-Host "🤖 Preparing to commit updated metrics..." -ForegroundColor Cyan
+          git config user.name "AI Orchestrator Bot"
+          git config user.email "actions@github.com"
+
+          # Stage only relevant JSON files (avoid empty commits)
+          git add "MilestoneDashboard/public/data/*.json" 2>$null
+
+          if (git diff --cached --quiet) {
+            Write-Host "✅ No changes detected; skipping commit." -ForegroundColor Yellow
+          } else {
+            $commitMsg = "🤖 Automated Orchestration Metrics Update $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+            git commit -m $commitMsg
+            git push
+            Write-Host "✅ Updated metrics committed and pushed." -ForegroundColor Green
+          }
+          Write-Host "------------------------------------------------------------"

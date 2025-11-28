@@ -1,0 +1,109 @@
+messages:
+  - role: system
+    content: |
+      ### BEGIN FILE: prompts/orchestration_pipeline.prompt.yml
+      name: orchestration_pipeline
+      description: >
+        A multi-agent orchestration test that evaluates how Researcher, Engineer, Critic, Synthesizer,
+        and Commissioner collaborate to generate, evaluate, and refine a complete implementation plan
+        for optimizing orchestration performance with advanced analytics and enhanced user experience.
+
+      prompts:
+        - name: Researcher
+          model: openai/gpt-4.1
+          system: |
+            You are the Researcher agent. Explore multiple solution paths to achieve the given goal.
+            Produce 2–3 distinct approaches that balance scalability, actionable insights, and analytics.
+            Each approach must include Pros, Cons, and Dependencies. Compare trade-offs clearly.
+
+        - name: Engineer
+          model: openai/gpt-4.1
+          system: |
+            You are the Engineer agent. Design a concrete implementation plan based on the Researcher’s findings.
+            Include a phased roadmap with deliverables, technologies, success metrics, and example code or pseudocode.
+            Ensure scalability, maintainability, and clear performance objectives.
+
+        - name: Critic
+          model: openai/gpt-4.1-mini
+          system: |
+            You are the Critic agent. Review the Engineer’s plan for completeness, feasibility, and quality.
+            Provide 1–2 actionable suggestions for improvement and numerical ratings (0–10) for each category.
+
+        - name: Synthesizer
+          model: openai/gpt-4.1
+          system: |
+            You are the Synthesizer agent. Integrate the Researcher’s insights, Engineer’s plan, and Critic’s feedback
+            into a unified roadmap. Summarize the final phases, deliverables, and success criteria that align with
+            the goal of orchestration performance optimization and enhanced user experience.
+
+        - name: Commissioner
+          model: openai/gpt-4.1
+          system: |
+            You are the Commissioner agent. Evaluate the entire orchestration result for coherence and real-world value.
+            Assign a Value Score (1–10) and offer targeted improvement feedback for each agent.
+            Your evaluation should be concise but strategic, highlighting collaboration quality and refinement needs.
+
+      dataset:
+        - input: |
+            Goal: Optimize orchestration performance by implementing advanced analytics and enhancing user experience through actionable insights.
+          expected: |
+            Step 1 - Researcher:
+            The Researcher explores possibilities to meet the goal of optimizing orchestration performance through advanced analytics
+            and enhanced user experience. It produces 2–3 distinct approaches addressing scalability, actionable insights,
+            and analytics with a comparison of trade-offs.
+
+            Example output:
+            Approach A: Develop an AI-driven analytics engine with real-time visualization.
+            Pros: High scalability, real-time adaptability, potential for deep actionable insights.
+            Cons: High complexity, costly AI dependencies.
+            Dependencies: Reliable data pipelines, AI expertise.
+
+            Approach B: Integrate a lightweight rules-based analytics system.
+            Pros: Low cost, fast deployment.
+            Cons: Less scalability, limited customization.
+            Dependencies: Prebuilt templates, existing APIs.
+
+            Approach C: Hybrid analytics with workflow automation.
+            Pros: Balanced scalability and UX.
+            Cons: Setup complexity.
+            Dependencies: Cloud infrastructure, automation tools.
+
+            Step 2 - Engineer:
+            Based on the chosen approach, the Engineer defines architecture, phases, technologies, metrics, and code samples.
+
+            Example output:
+            Architecture: Cloud microservices running AI-driven analytics engine.
+            Phases:
+              1. Data pipeline setup via APIs.
+              2. Model training and analytics dashboard.
+              3. Visualization and user feedback integration.
+              4. Optimization and scalability testing.
+            Technologies: Python, TensorFlow, React, Kubernetes.
+            Success Metrics: <2-second query latency, >85% user satisfaction, 1M+ tx/min throughput.
+
+            Step 3 - Critic:
+            The Critic evaluates the Engineer’s plan and rates:
+            Completeness: 7/10
+            Feasibility: 8/10
+            Quality: 7/10
+            Suggestions: Add contingency plans for high load; clarify user feedback integration.
+
+            Step 4 - Synthesizer:
+            The Synthesizer merges all insights into a unified roadmap:
+            Phase 1: Robust data pipeline with logging.
+            Phase 2: Hybrid analytics with preconfigured AI templates.
+            Phase 3: Visualization tools + load testing.
+            Success Criteria: Scalable, resilient, high usability.
+
+            Step 5 - Commissioner:
+            The Commissioner provides a Value Score and feedback:
+            Value Score: 8/10
+            Agent Feedback:
+              Researcher – Add cost-optimized open-source options.
+              Engineer – Include DR plan for analytics deployment.
+              Critic – Elaborate on high-load risk mitigation.
+              Synthesizer – Tie UX feedback to KPIs.
+            Expected Output: A cohesive orchestration output demonstrating collaboration quality,
+            technical feasibility, and actionable improvements.
+      ### END FILE
+model: openai/gpt-4o
