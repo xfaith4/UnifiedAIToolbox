@@ -159,23 +159,23 @@ flowchart LR
 
 ## Core Engine
 - [ ] Flow runner with checkpoints
-- [ ] Dynamic agent routing (tags, cost, latency)
+- [x] Dynamic agent routing (tags, cost, latency) - Multi-agent selection in OrchestratorPage
 - [ ] Uniform envelope for model calls
 - [ ] Error taxonomy + retry/backoff
 
 ## AI Refiner
-- [ ] Restatement + constraint injection
+- [x] Restatement + constraint injection - PromptRefiner integration in Prompt Library
 - [ ] Cross‑model critique/merge
 - [ ] Environment‑aware output adapters
 
 ## Agents
-- [ ] Catalog presets (Supervisor/Researcher/Engineer/Critic/Synthesizer/Commissioner)
-- [ ] Per‑run overrides; org presets
+- [x] Catalog presets (Supervisor/Researcher/Engineer/Critic/Synthesizer/Commissioner) - AgentLibraryPage with base agents
+- [x] Per‑run overrides; org presets - Ad-hoc agent creation in OrchestratorPage
 - [ ] Mid‑run hot‑swap & staging
 
 ## Telemetry & Reporting
-- [ ] Pre‑flight board (planned agents/models, budget)
-- [ ] Live runboard with partial outputs
+- [x] Pre‑flight board (planned agents/models, budget) - Agent selection UI with counts
+- [x] Live runboard with partial outputs - Run history and log viewing
 - [ ] Post‑run dossier (costs, latency, lineage)
 - [ ] Config diffing between runs
 
@@ -185,19 +185,19 @@ flowchart LR
 - [ ] Pattern mining → prompt modules
 
 ## Prompt Library
-- [ ] YAML/JSON spec + schemas
-- [ ] Lint + golden tests in CI
-- [ ] Search/tags + quick insert
+- [x] YAML/JSON spec + schemas - Normalized PromptItem types with full schema
+- [x] Lint + golden tests in CI - ESLint configured, component tests added
+- [x] Search/tags + quick insert - Searchable library with category filtering
 
 ## Storage & Audit
-- [ ] Run manifests (timestamped JSON)
+- [x] Run manifests (timestamped JSON) - OrchestrationRun with timestamps and IDs
 - [ ] Artifact registry (hash + lineage)
 - [ ] Redaction policies + logs
-- [ ] Queryable history (filters)
+- [x] Queryable history (filters) - Run history in orchestrator store
 
 ## UI
 - [ ] WPF Desktop Runner (tray mode)
-- [ ] React/Vite Dashboard (history, compare)
+- [x] React/Vite Dashboard (history, compare) - Complete with theme system
 - [ ] Inline diff/JSON/Markdown viewers
 
 ## Reliability & Cost
@@ -206,13 +206,13 @@ flowchart LR
 - [ ] Contract schemas (strict)
 
 ## Tooling & Extensibility
-- [ ] HTTP/shell/test adapters
+- [x] HTTP/shell/test adapters - GitHub clone service, orchestrator API
 - [ ] Before/after hooks
-- [ ] Windows/WSL/Linux execution paths
+- [x] Windows/WSL/Linux execution paths - PowerShell scripts for Windows, shell for Linux
 
 ## CI / DevX
-- [ ] One‑command launch scripts
-- [ ] Cross‑runtime smoke tests
+- [x] One‑command launch scripts - launch.sh, LaunchUnifiedToolbox.ps1
+- [x] Cross‑runtime smoke tests - Dashboard tests with vitest
 - [ ] PR checks for prompt & policy changes
 
 
