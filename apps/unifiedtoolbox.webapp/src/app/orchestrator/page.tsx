@@ -1,24 +1,76 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import type { AgentInstruction } from '@/lib/types/agents' // This path is already correct, but good to confirm
+import { useEffect, useMemo, useState, useCallback } from 'react'
+import type { AgentInstruction } from '@/lib/types/agents'
 import type { PromptItem } from '@/lib/types/prompts'
-import type { OrchestrationRun } from '@/lib/types/orchestrator'
+import type { OrchestrationRun, OrchestrationForm, OrchestratorAgent } from '@/lib/types/orchestrator'
 import { fetchAgentLibrary } from '@/lib/services/agentStore'
 import { fetchPromptLibrary } from '@/lib/services/promptStore'
 import { getChatCompletion } from '@/lib/services/ai'
+import {
+  createOrchestrationRun,
+  fetchOrchestrationRuns,
+  fetchOrchestrationRun,
+  fetchOrchestrationRunLog,
+  ORCHESTRATOR_API_BASE,
+} from '@/lib/services/orchestratorApi'
+import {
+  listLocalRuns,
+  addLocalRun,
+  updateLocalRun,
+  createNewRun,
+} from '@/lib/services/orchestratorStore'
+
+// Default agents for multi-agent orchestration
+const DEFAULT_ORCHESTRATOR_AGENTS: OrchestratorAgent[] = [
+  { name: 'Researcher', role: 'system', description: 'Investigates and gathers information' },
+  { name: 'Engineer', role: 'system', description: 'Implements solutions and writes code' },
+  { name: 'Critic', role: 'system', description: 'Reviews and validates work' },
+  { name: 'Synthesizer', role: 'system', description: 'Combines outputs into coherent results' },
+  { name: 'Commissioner', role: 'system', description: 'Evaluates and makes final decisions' },
+]
 
 export default function OrchestratorPage() {
+  // Libraries
   const [agents, setAgents] = useState<AgentInstruction[]>([])
+  const [orchestratorAgents, setOrchestratorAgents] = useState<OrchestratorAgent[]>(DEFAULT_ORCHESTRATOR_AGENTS)
   const [prompts, setPrompts] = useState<PromptItem[]>([])
+  
+  // Form state
+  const [form, setForm] = useState<OrchestrationForm>({
+    goal: '',
+    promptId: '',
+    version: '',
+    reviewPolicy: 'standard',
+    datasetId: '',
+    datasetName: '',
+    runMode: 'multi-agent',
+    agents: [],
+    model: '',
+  })
+  const [selectedAgents, setSelectedAgents] = useState<string[]>([])
+  
+  // Run state
+  const [runs, setRuns] = useState<OrchestrationRun[]>([])
+  const [isRunning, setIsRunning] = useState(false)
+  
+  // Modal state
+  const [showAgentCreator, setShowAgentCreator] = useState(false)
+  const [newAgent, setNewAgent] = useState<OrchestratorAgent>({ name: '', role: 'system', prompt: '', description: '' })
+  const [logRun, setLogRun] = useState<OrchestrationRun | null>(null)
+  const [logText, setLogText] = useState('')
+  const [logLoading, setLogLoading] = useState(false)
+  const [logError, setLogError] = useState('')
+  
+  // Legacy mode state
+  const [legacyMode, setLegacyMode] = useState(false)
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null)
   const [selectedPromptId, setSelectedPromptId] = useState<string | null>(null)
   const [inputs, setInputs] = useState<Record<string, string>>({})
-  const [runs, setRuns] = useState<OrchestrationRun[]>([])
-  const [isRunning, setIsRunning] = useState(false)
 
+  // Load libraries on mount
   useEffect(() => {
-    async function loadLibraries() {
+    async function loadAll() {
       const [agentData, promptData] = await Promise.all([
         fetchAgentLibrary(),
         fetchPromptLibrary(),
@@ -27,10 +79,37 @@ export default function OrchestratorPage() {
       setPrompts(promptData)
       if (agentData.length > 0) setSelectedAgentId(agentData[0].id)
       if (promptData.length > 0) setSelectedPromptId(promptData[0].id)
+      
+      // Load runs
+      if (ORCHESTRATOR_API_BASE) {
+        try {
+          const apiRuns = await fetchOrchestrationRuns()
+          setRuns(apiRuns)
+        } catch {
+          setRuns(listLocalRuns())
+        }
+      } else {
+        setRuns(listLocalRuns())
+      }
     }
-    void loadLibraries()
+    void loadAll()
   }, [])
 
+  // Polling for run updates
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (ORCHESTRATOR_API_BASE) {
+        fetchOrchestrationRuns()
+          .then(setRuns)
+          .catch(() => setRuns(listLocalRuns()))
+      } else {
+        setRuns(listLocalRuns())
+      }
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [])
+
+  // Memoized selections
   const selectedAgent = useMemo(
     () => agents.find((a) => a.id === selectedAgentId),
     [agents, selectedAgentId]
@@ -41,6 +120,7 @@ export default function OrchestratorPage() {
     [prompts, selectedPromptId]
   )
 
+  // Template rendering for legacy mode
   function renderTemplate(): string {
     if (!selectedPrompt) return ''
     let tpl = selectedPrompt.template
@@ -51,7 +131,121 @@ export default function OrchestratorPage() {
     return tpl
   }
 
-  async function handleRun() {
+  // Recommend agents based on goal keywords
+  const recommendAgents = useCallback((goal: string): string[] => {
+    if (!goal.trim()) return []
+    const goalLower = goal.toLowerCase()
+    const recommendations: string[] = []
+    
+    if (goalLower.includes('research') || goalLower.includes('analyze') || goalLower.includes('investigate')) {
+      recommendations.push('Researcher')
+    }
+    if (goalLower.includes('implement') || goalLower.includes('code') || goalLower.includes('build')) {
+      recommendations.push('Engineer')
+    }
+    if (goalLower.includes('review') || goalLower.includes('test') || goalLower.includes('validate')) {
+      recommendations.push('Critic')
+    }
+    if (goalLower.includes('combine') || goalLower.includes('merge') || goalLower.includes('integrate')) {
+      recommendations.push('Synthesizer')
+    }
+    if (goalLower.includes('evaluate') || goalLower.includes('assess') || goalLower.includes('judge')) {
+      recommendations.push('Commissioner')
+    }
+    
+    // Default workflow if no specific keywords
+    if (recommendations.length === 0) {
+      recommendations.push('Researcher', 'Engineer', 'Critic', 'Synthesizer')
+    }
+    
+    return recommendations.filter((name) => orchestratorAgents.some((a) => a.name === name))
+  }, [orchestratorAgents])
+
+  const handleSuggestAgents = () => {
+    const suggested = recommendAgents(form.goal)
+    setSelectedAgents(suggested)
+  }
+
+  const toggleAgentSelection = (agentName: string) => {
+    setSelectedAgents((prev) =>
+      prev.includes(agentName)
+        ? prev.filter((n) => n !== agentName)
+        : [...prev, agentName]
+    )
+  }
+
+  // Create ad-hoc agent
+  const handleCreateAgent = () => {
+    if (!newAgent.name.trim() || !newAgent.prompt?.trim()) return
+    
+    setOrchestratorAgents((prev) => [...prev, newAgent])
+    setSelectedAgents((prev) => [...prev, newAgent.name])
+    setNewAgent({ name: '', role: 'system', prompt: '', description: '' })
+    setShowAgentCreator(false)
+  }
+
+  // Launch multi-agent orchestration
+  async function handleMultiAgentRun(e: React.FormEvent) {
+    e.preventDefault()
+    if (!form.goal.trim()) return
+    
+    setIsRunning(true)
+    const run = createNewRun(form.goal, {
+      promptId: form.promptId,
+      version: form.version,
+      reviewPolicy: form.reviewPolicy,
+      datasetId: form.datasetId,
+      datasetName: form.datasetName,
+      runMode: form.runMode,
+      agents: selectedAgents.length > 0 ? selectedAgents : undefined,
+      model: form.model,
+    })
+
+    try {
+      if (ORCHESTRATOR_API_BASE) {
+        const apiRun = await createOrchestrationRun(run)
+        setRuns((prev) => [apiRun, ...prev])
+      } else {
+        // Local simulation
+        addLocalRun(run)
+        setRuns((prev) => [run, ...prev])
+        
+        // Simulate completion
+        setTimeout(() => {
+          updateLocalRun(run.id, { status: 'completed', mode: 'simulated' })
+          setRuns((prev) =>
+            prev.map((r) =>
+              r.id === run.id ? { ...r, status: 'completed', mode: 'simulated' } : r
+            )
+          )
+        }, 2500)
+      }
+
+      // Reset form
+      setForm({
+        goal: '',
+        promptId: '',
+        version: '',
+        reviewPolicy: 'standard',
+        datasetId: '',
+        datasetName: '',
+        runMode: 'multi-agent',
+        agents: [],
+        model: '',
+      })
+      setSelectedAgents([])
+    } catch (error) {
+      console.error('Orchestration failed:', error)
+      // Fallback to local
+      addLocalRun(run)
+      setRuns((prev) => [run, ...prev])
+    } finally {
+      setIsRunning(false)
+    }
+  }
+
+  // Legacy single-agent run
+  async function handleLegacyRun() {
     if (!selectedAgent || !selectedPrompt) return
 
     setIsRunning(true)
@@ -69,6 +263,7 @@ export default function OrchestratorPage() {
         tokens: result.tokens,
         startedAt: new Date().toISOString(),
         completedAt: new Date().toISOString(),
+        status: 'completed',
       }
       setRuns((prev) => [run, ...prev])
     } catch (error) {
@@ -79,99 +274,546 @@ export default function OrchestratorPage() {
     }
   }
 
+  // Fetch log details
+  const fetchLogBundle = async (run: OrchestrationRun, silent = false) => {
+    if (!run) return
+    if (!silent) setLogLoading(true)
+    setLogError('')
+    
+    try {
+      if (run.id && ORCHESTRATOR_API_BASE) {
+        const latest = await fetchOrchestrationRun(run.id)
+        setLogRun(latest)
+        
+        let manifestText = JSON.stringify(latest, null, 2)
+        try {
+          const logResp = await fetchOrchestrationRunLog(run.id)
+          if (logResp?.log) {
+            manifestText = `${manifestText}\n\n--- LOG ---\n${logResp.log}`
+          }
+        } catch {
+          // Log fetch can fail independently
+        }
+        setLogText(manifestText)
+      } else {
+        setLogText(JSON.stringify(run, null, 2))
+      }
+    } catch (err) {
+      setLogError(err instanceof Error ? err.message : 'Failed to fetch run')
+      setLogText(JSON.stringify(run, null, 2))
+    } finally {
+      if (!silent) setLogLoading(false)
+    }
+  }
+
+  const handleViewLogs = (run: OrchestrationRun) => {
+    setLogRun(run)
+    setLogText('')
+    void fetchLogBundle(run)
+  }
+
+  // Polling for log updates
+  useEffect(() => {
+    if (!logRun || !ORCHESTRATOR_API_BASE) return
+    const interval = setInterval(() => {
+      void fetchLogBundle(logRun, true)
+    }, 4000)
+    return () => clearInterval(interval)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [logRun?.id])
+
   return (
     <main className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Orchestrator</h1>
-        <p className="text-sm text-slate-400">
-          Combine agents and prompts to execute complex AI tasks.
-        </p>
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <svg className="h-6 w-6 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            <h1 className="text-2xl font-semibold">AI Orchestration</h1>
+          </div>
+          <p className="text-sm text-slate-400">
+            Transform high-level ideas into results through intelligent multi-agent collaboration
+          </p>
+        </div>
+        <button
+          onClick={() => setLegacyMode(!legacyMode)}
+          className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-slate-800"
+        >
+          {legacyMode ? 'Multi-Agent Mode' : 'Classic Mode'}
+        </button>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_1fr_1fr]">
-        {/* Column 1: Selections */}
-        <div className="space-y-4 rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
-          <h2 className="font-semibold">1. Select Components</h2>
-          <div>
-            <label className="text-sm font-medium text-slate-300">Agent</label>
-            <select
-              className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-800/60 px-3 py-2 text-sm"
-              value={selectedAgentId ?? ''}
-              onChange={(e) => setSelectedAgentId(e.target.value)}
-            >
-              {agents.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="text-sm font-medium text-slate-300">Prompt</label>
-            <select
-              className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-800/60 px-3 py-2 text-sm"
-              value={selectedPromptId ?? ''}
-              onChange={(e) => setSelectedPromptId(e.target.value)}
-            >
-              {prompts.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.title}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
+      {!ORCHESTRATOR_API_BASE && (
+        <p className="text-xs text-amber-400">
+          No API configured; runs are stored locally. Set NEXT_PUBLIC_API_BASE to enable backend execution.
+        </p>
+      )}
 
-        {/* Column 2: Inputs */}
-        <div className="space-y-4 rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
-          <h2 className="font-semibold">2. Provide Inputs</h2>
-          {(selectedPrompt?.variables ?? []).length === 0 && (
-            <p className="text-sm text-slate-400">This prompt has no variables.</p>
-          )}
-          {selectedPrompt?.variables?.map((v) => (
-            <div key={v.name}>
-              <label className="text-sm font-medium text-slate-300">{v.label || v.name}</label>
-              <textarea
+      {legacyMode ? (
+        /* Legacy Single-Agent Mode */
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_1fr_1fr]">
+          <div className="space-y-4 rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
+            <h2 className="font-semibold">1. Select Components</h2>
+            <div>
+              <label className="text-sm font-medium text-slate-300">Agent</label>
+              <select
                 className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-800/60 px-3 py-2 text-sm"
-                rows={v.type === 'multiline' ? 4 : 2}
-                value={inputs[v.name] ?? v.default ?? ''}
-                onChange={(e) => setInputs((p) => ({ ...p, [v.name]: e.target.value }))}
-              />
+                value={selectedAgentId ?? ''}
+                onChange={(e) => setSelectedAgentId(e.target.value)}
+              >
+                {agents.map((a) => (
+                  <option key={a.id} value={a.id}>{a.name}</option>
+                ))}
+              </select>
             </div>
-          ))}
-          <button
-            className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
-            onClick={handleRun}
-            disabled={isRunning || !selectedAgent || !selectedPrompt}
-          >
-            {isRunning ? 'Running...' : 'Run Orchestration'}
-          </button>
-        </div>
+            <div>
+              <label className="text-sm font-medium text-slate-300">Prompt</label>
+              <select
+                className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-800/60 px-3 py-2 text-sm"
+                value={selectedPromptId ?? ''}
+                onChange={(e) => setSelectedPromptId(e.target.value)}
+              >
+                {prompts.map((p) => (
+                  <option key={p.id} value={p.id}>{p.title}</option>
+                ))}
+              </select>
+            </div>
+          </div>
 
-        {/* Column 3: Results */}
-        <div className="space-y-4 rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
-          <h2 className="font-semibold">3. View Results</h2>
-          {runs.length === 0 && (
-            <p className="text-sm text-slate-400">No runs yet. Configure and run an orchestration.</p>
-          )}
-          <div className="space-y-4 max-h-[calc(100vh-250px)] overflow-y-auto">
-            {runs.map((run) => (
-              <div key={run.id} className="rounded-xl bg-slate-800/50 p-3">
-                <div className="flex items-center justify-between">
-                  <div className="text-sm font-semibold">{run.prompt.title}</div>
-                  <div className="text-xs text-slate-400">
-                    {run.tokens?.total} tokens
-                  </div>
-                </div>
-                <p className="mt-2 text-sm text-slate-200">{run.output}</p>
-                <div className="mt-2 text-right text-xs text-slate-500">
-                  {new Date(run.completedAt).toLocaleTimeString()}
-                </div>
+          <div className="space-y-4 rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
+            <h2 className="font-semibold">2. Provide Inputs</h2>
+            {(selectedPrompt?.variables ?? []).length === 0 && (
+              <p className="text-sm text-slate-400">This prompt has no variables.</p>
+            )}
+            {selectedPrompt?.variables?.map((v) => (
+              <div key={v.name}>
+                <label className="text-sm font-medium text-slate-300">{v.label || v.name}</label>
+                <textarea
+                  className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-800/60 px-3 py-2 text-sm"
+                  rows={v.type === 'multiline' ? 4 : 2}
+                  value={inputs[v.name] ?? v.default ?? ''}
+                  onChange={(e) => setInputs((p) => ({ ...p, [v.name]: e.target.value }))}
+                />
               </div>
             ))}
+            <button
+              className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+              onClick={handleLegacyRun}
+              disabled={isRunning || !selectedAgent || !selectedPrompt}
+            >
+              {isRunning ? 'Running...' : 'Run Orchestration'}
+            </button>
+          </div>
+
+          <div className="space-y-4 rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
+            <h2 className="font-semibold">3. View Results</h2>
+            {runs.length === 0 && (
+              <p className="text-sm text-slate-400">No runs yet. Configure and run an orchestration.</p>
+            )}
+            <div className="space-y-4 max-h-[calc(100vh-250px)] overflow-y-auto">
+              {runs.map((run) => (
+                <div key={run.id} className="rounded-xl bg-slate-800/50 p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm font-semibold">{run.prompt?.title || run.goal || run.id}</div>
+                    <div className="text-xs text-slate-400">{run.tokens?.total || 0} tokens</div>
+                  </div>
+                  <p className="mt-2 text-sm text-slate-200 line-clamp-3">{run.output}</p>
+                  <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
+                    <span className="rounded bg-slate-700 px-1.5 py-0.5">{run.status}</span>
+                    <span>{run.completedAt ? new Date(run.completedAt).toLocaleTimeString() : ''}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
-      </div>
+      ) : (
+        /* Multi-Agent Orchestration Mode */
+        <>
+          <form
+            onSubmit={handleMultiAgentRun}
+            className="space-y-4 rounded-xl border-2 border-blue-500/30 bg-slate-900/60 p-6 shadow-lg"
+          >
+            {/* Goal Input */}
+            <div className="space-y-2">
+              <label className="text-base font-semibold text-slate-200 flex items-center gap-2">
+                <svg className="h-5 w-5 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                </svg>
+                What do you want to accomplish?
+              </label>
+              <textarea
+                className="w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-3 text-sm text-slate-100 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                rows={4}
+                placeholder="Describe your goal in natural language. Example: 'I need to analyze user feedback and generate a summary report with key insights and recommendations'"
+                value={form.goal}
+                onChange={(e) => setForm((f) => ({ ...f, goal: e.target.value }))}
+                required
+              />
+              <p className="text-xs text-slate-400">
+                The orchestrator will analyze your goal and automatically select or create the right agents to help you achieve it.
+              </p>
+            </div>
+
+            {/* Agent Selection */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-base font-semibold text-slate-200 flex items-center gap-2">
+                  <svg className="h-5 w-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                  </svg>
+                  Agent Team ({selectedAgents.length} selected)
+                </label>
+                <button
+                  type="button"
+                  onClick={handleSuggestAgents}
+                  className="flex items-center gap-1 rounded-lg border border-blue-700 bg-blue-800/30 px-3 py-1.5 text-xs font-medium text-blue-200 hover:bg-blue-700/40"
+                >
+                  <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  Auto-suggest agents
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-5">
+                {orchestratorAgents.map((agent) => (
+                  <button
+                    key={agent.name}
+                    type="button"
+                    onClick={() => toggleAgentSelection(agent.name)}
+                    className={`flex items-center justify-between rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
+                      selectedAgents.includes(agent.name)
+                        ? 'border-blue-500 bg-blue-900/40 text-blue-100'
+                        : 'border-slate-700 bg-slate-800 text-slate-300 hover:border-slate-600'
+                    }`}
+                  >
+                    <span className="truncate">{agent.name}</span>
+                    {selectedAgents.includes(agent.name) && (
+                      <svg className="h-4 w-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAgentCreator(true)}
+                className="flex items-center gap-1 rounded-lg border border-green-700 bg-green-800/30 px-3 py-1.5 text-xs font-medium text-green-200 hover:bg-green-700/40"
+              >
+                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Create ad-hoc agent
+              </button>
+            </div>
+
+            {/* Advanced Options */}
+            <details className="space-y-3">
+              <summary className="cursor-pointer text-sm font-semibold text-slate-300 hover:text-slate-100">
+                Advanced Options
+              </summary>
+              <div className="grid gap-3 pt-2 md:grid-cols-2 lg:grid-cols-3">
+                <div className="space-y-1">
+                  <label className="text-xs text-slate-400">Prompt (optional)</label>
+                  <select
+                    className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"
+                    value={form.promptId}
+                    onChange={(e) => {
+                      const p = prompts.find((pr) => pr.id === e.target.value)
+                      setForm((f) => ({ ...f, promptId: e.target.value, version: p?.version || '' }))
+                    }}
+                  >
+                    <option value="">None</option>
+                    {prompts.map((p) => (
+                      <option key={p.id} value={p.id}>{p.title || p.id}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-slate-400">Engine</label>
+                  <select
+                    className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"
+                    value={form.runMode}
+                    onChange={(e) => setForm((f) => ({ ...f, runMode: e.target.value as 'default' | 'codex-swarm' | 'multi-agent' }))}
+                  >
+                    <option value="multi-agent">Multi-Agent</option>
+                    <option value="codex-swarm">Codex Swarm</option>
+                    <option value="default">Default</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-slate-400">Model (optional)</label>
+                  <input
+                    type="text"
+                    className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"
+                    placeholder="gpt-4o-mini"
+                    value={form.model}
+                    onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))}
+                  />
+                </div>
+              </div>
+            </details>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                type="submit"
+                disabled={isRunning}
+                className="flex items-center gap-2 rounded-lg bg-blue-600 px-6 py-3 text-sm font-semibold text-white hover:bg-blue-500 transition-colors shadow-lg disabled:opacity-50"
+              >
+                <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                {isRunning ? 'Launching...' : 'Launch Orchestration'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setForm({
+                    goal: '',
+                    promptId: '',
+                    version: '',
+                    reviewPolicy: 'standard',
+                    datasetId: '',
+                    datasetName: '',
+                    runMode: 'multi-agent',
+                    agents: [],
+                    model: '',
+                  })
+                  setSelectedAgents([])
+                }}
+                className="rounded-lg border border-slate-700 px-6 py-3 text-sm font-medium text-slate-300 hover:bg-slate-800"
+              >
+                Reset
+              </button>
+            </div>
+          </form>
+
+          {/* Recent Orchestrations */}
+          <div className="space-y-2">
+            <h2 className="text-lg font-semibold text-slate-200">Recent Orchestrations</h2>
+            <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900/60 shadow">
+              <table className="min-w-full text-sm">
+                <thead className="bg-slate-800/70 text-slate-200">
+                  <tr>
+                    <th className="px-4 py-3 text-left">Goal</th>
+                    <th className="px-4 py-3 text-left">Agents</th>
+                    <th className="px-4 py-3 text-left">Status</th>
+                    <th className="px-4 py-3 text-left">Engine</th>
+                    <th className="px-4 py-3 text-left">Requested</th>
+                    <th className="px-4 py-3 text-left">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {runs.map((run, idx) => (
+                    <tr key={run.id || `run-${idx}`} className="border-t border-slate-800 hover:bg-slate-800/30">
+                      <td className="px-4 py-3 text-slate-100 max-w-xs">
+                        <div className="truncate" title={run.goal || run.promptId}>
+                          {run.goal || run.promptId || run.id}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-slate-300">
+                        {run.agents && run.agents.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {run.agents.slice(0, 3).map((agent) => (
+                              <span key={agent} className="rounded bg-blue-900/40 px-1.5 py-0.5 text-xs text-blue-200">
+                                {agent}
+                              </span>
+                            ))}
+                            {run.agents.length > 3 && (
+                              <span className="text-xs text-slate-400">+{run.agents.length - 3}</span>
+                            )}
+                          </div>
+                        ) : '—'}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="rounded-full bg-slate-800 px-2 py-1 text-xs text-slate-200">
+                          {run.status || 'unknown'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-slate-300 text-xs">
+                        {run.runMode || 'default'}
+                        {run.mode === 'simulated' && <span className="text-amber-400"> (sim)</span>}
+                      </td>
+                      <td className="px-4 py-3 text-slate-300 text-xs">
+                        {run.requestedAt ? new Date(run.requestedAt).toLocaleString() : '—'}
+                      </td>
+                      <td className="px-4 py-3">
+                        <button
+                          className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-100 hover:bg-slate-800"
+                          onClick={() => handleViewLogs(run)}
+                        >
+                          View
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {runs.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
+                        No orchestrations yet. Start your first one above!
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Ad-hoc Agent Creator Modal */}
+      {showAgentCreator && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4">
+          <div className="w-full max-w-2xl rounded-xl border border-slate-800 bg-slate-900 shadow-xl">
+            <div className="flex items-center justify-between border-b border-slate-800 px-6 py-4">
+              <h3 className="text-lg font-semibold text-slate-100 flex items-center gap-2">
+                <svg className="h-5 w-5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Create Ad-Hoc Agent
+              </h3>
+              <button
+                onClick={() => setShowAgentCreator(false)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-100"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300">Agent Name</label>
+                <input
+                  type="text"
+                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                  placeholder="e.g., Data Analyst"
+                  value={newAgent.name}
+                  onChange={(e) => setNewAgent((a) => ({ ...a, name: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300">Role</label>
+                <input
+                  type="text"
+                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                  placeholder="system"
+                  value={newAgent.role || 'system'}
+                  onChange={(e) => setNewAgent((a) => ({ ...a, role: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300">System Prompt / Instructions</label>
+                <textarea
+                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                  rows={6}
+                  placeholder="Describe the agent's role, capabilities, and instructions..."
+                  value={newAgent.prompt || ''}
+                  onChange={(e) => setNewAgent((a) => ({ ...a, prompt: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300">Description (optional)</label>
+                <textarea
+                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                  rows={2}
+                  placeholder="Brief description of what this agent does..."
+                  value={newAgent.description || ''}
+                  onChange={(e) => setNewAgent((a) => ({ ...a, description: e.target.value }))}
+                />
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={handleCreateAgent}
+                  className="flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-500"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  Create & Add to Team
+                </button>
+                <button
+                  onClick={() => setShowAgentCreator(false)}
+                  className="rounded-lg border border-slate-700 px-4 py-2 text-sm font-medium text-slate-300 hover:bg-slate-800"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Log Viewer Modal */}
+      {logRun && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4">
+          <div className="w-full max-w-4xl rounded-xl border border-slate-800 bg-slate-900 shadow-xl max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
+              <div className="text-sm font-semibold text-slate-100 flex flex-col gap-1">
+                <span>Run: {logRun.goal || logRun.promptId || logRun.id}</span>
+                <div className="flex items-center gap-2 text-[11px] text-slate-300">
+                  <span className="rounded-full bg-slate-800 px-2 py-1">{logRun.status || 'unknown'}</span>
+                  {logRun.runMode && (
+                    <span className="rounded-full bg-slate-800 px-2 py-1">Engine: {logRun.runMode}</span>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                {logRun.mode === 'simulated' && (
+                  <span className="text-[11px] text-amber-400">Simulated</span>
+                )}
+                {ORCHESTRATOR_API_BASE && (
+                  <button
+                    className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-100 hover:bg-slate-800"
+                    onClick={() => fetchLogBundle(logRun)}
+                    disabled={logLoading}
+                  >
+                    {logLoading ? 'Refreshing…' : 'Refresh'}
+                  </button>
+                )}
+                <button
+                  className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-100 hover:bg-slate-800"
+                  onClick={() => setLogRun(null)}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-auto px-4 py-3">
+              {logError && (
+                <p className="text-xs text-red-400 mb-2">{logError}</p>
+              )}
+              <div className="space-y-3">
+                {logRun.events && logRun.events.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-semibold text-slate-100 mb-2">Events</h4>
+                    <div className="space-y-2">
+                      {logRun.events.map((ev, idx) => (
+                        <div key={idx} className="rounded border border-slate-800 bg-slate-950 p-2">
+                          <div className="flex justify-between text-[11px] text-slate-400">
+                            <span>{ev.type}</span>
+                            <span>{ev.timestamp}</span>
+                          </div>
+                          <div className="text-slate-100 text-xs whitespace-pre-wrap">{ev.message}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div>
+                  <h4 className="text-sm font-semibold text-slate-100 mb-2">Manifest / Logs</h4>
+                  <pre className="bg-slate-950 p-4 rounded-lg text-xs text-slate-200 whitespace-pre-wrap overflow-auto max-h-96">
+                    {logText}
+                  </pre>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   )
 }

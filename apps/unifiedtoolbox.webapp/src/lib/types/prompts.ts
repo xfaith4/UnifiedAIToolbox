@@ -16,6 +16,7 @@ export interface PromptItem {
   template: string
   createdAt: string
   updatedAt: string
+  version?: string
   category?: string
   context?: string
   description?: string

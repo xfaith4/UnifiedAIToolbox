@@ -322,7 +322,7 @@ function AgentDetailForm({
         />
         <Field
           label="Mission"
-          value={agent.mission}
+          value={agent.mission ?? ''}
           onChange={(value) => update('mission', value)}
         />
       </div>
