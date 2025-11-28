@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom'
-import { BarChart3, Settings, Github, Workflow, BookOpen, Bot, Sparkles, Database, Activity, HelpCircle } from 'lucide-react'
-import { type ReactNode, useState } from 'react'
+import { BarChart3, Settings, Github, Workflow, BookOpen, Bot, Sparkles, Database, Activity, HelpCircle, Sun, Moon, Monitor, Palette } from 'lucide-react'
+import { type ReactNode, useState, useRef, useEffect } from 'react'
+import { useTheme, type AccentColor } from '../contexts/ThemeContext'
 
 const navSections = [
   {
@@ -45,13 +46,91 @@ const navSections = [
   },
 ]
 
+const accentColors: { value: AccentColor; label: string; class: string }[] = [
+  { value: 'blue', label: 'Blue', class: 'bg-blue-500' },
+  { value: 'purple', label: 'Purple', class: 'bg-purple-500' },
+  { value: 'emerald', label: 'Emerald', class: 'bg-emerald-500' },
+  { value: 'rose', label: 'Rose', class: 'bg-rose-500' },
+  { value: 'amber', label: 'Amber', class: 'bg-amber-500' },
+]
+
+function ThemeToggle() {
+  const { theme, effectiveMode, setThemeMode, setAccentColor } = useTheme()
+  const [showPalette, setShowPalette] = useState(false)
+  const paletteRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (paletteRef.current && !paletteRef.current.contains(event.target as Node)) {
+        setShowPalette(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const cycleThemeMode = () => {
+    const modes = ['dark', 'light', 'system'] as const
+    const currentIndex = modes.indexOf(theme.mode)
+    const nextIndex = (currentIndex + 1) % modes.length
+    setThemeMode(modes[nextIndex])
+  }
+
+  const ModeIcon = theme.mode === 'dark' ? Moon : theme.mode === 'light' ? Sun : Monitor
+
+  return (
+    <div className="flex items-center gap-1 relative" ref={paletteRef}>
+      <button
+        onClick={cycleThemeMode}
+        className="p-2 rounded-lg bg-[var(--bg-tertiary)] hover:bg-[var(--card-hover-border)] transition-all duration-200 group"
+        title={`Theme: ${theme.mode} (click to change)`}
+        aria-label={`Current theme: ${theme.mode}`}
+      >
+        <ModeIcon size={16} className="text-[var(--text-secondary)] group-hover:text-[var(--text-primary)] transition-colors" />
+      </button>
+      <button
+        onClick={() => setShowPalette(!showPalette)}
+        className="p-2 rounded-lg bg-[var(--bg-tertiary)] hover:bg-[var(--card-hover-border)] transition-all duration-200 group"
+        title="Change accent color"
+        aria-label="Change accent color"
+        aria-expanded={showPalette}
+      >
+        <Palette size={16} className="text-[var(--text-secondary)] group-hover:text-[var(--text-primary)] transition-colors" />
+      </button>
+      {showPalette && (
+        <div className="absolute top-full right-0 mt-2 p-2 rounded-xl bg-[var(--bg-elevated)] border border-[var(--card-border)] shadow-lg z-50 animate-scale-in">
+          <div className="text-xs text-[var(--text-tertiary)] mb-2 px-1">Accent Color</div>
+          <div className="flex gap-1.5">
+            {accentColors.map((color) => (
+              <button
+                key={color.value}
+                onClick={() => {
+                  setAccentColor(color.value)
+                  setShowPalette(false)
+                }}
+                className={`w-6 h-6 rounded-full ${color.class} transition-transform hover:scale-110 ${
+                  theme.accent === color.value ? 'ring-2 ring-offset-2 ring-offset-[var(--bg-elevated)] ring-white' : ''
+                }`}
+                title={color.label}
+                aria-label={`Set ${color.label} accent color`}
+                aria-pressed={theme.accent === color.value}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 const baseLinkClass =
-  'flex items-center gap-3 rounded-lg px-3 py-2.5 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900'
-const inactiveLinkClass = 'text-slate-300 hover:bg-slate-800/70 hover:text-white hover:translate-x-1'
-const activeLinkClass = 'bg-gradient-to-r from-blue-600 to-blue-500 text-white font-medium shadow-lg shadow-blue-500/20'
+  'flex items-center gap-3 rounded-xl px-3 py-2.5 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(var(--accent-primary),0.8)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-secondary)]'
+const inactiveLinkClass = 'text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] hover:translate-x-1'
+const activeLinkClass = 'bg-gradient-to-r from-[rgba(var(--accent-primary),1)] to-[rgba(var(--accent-secondary),1)] text-white font-medium shadow-lg'
 
 export function Layout({ children }: { children: ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const { effectiveMode } = useTheme()
 
   const navLinkClassName = ({ isActive }: { isActive: boolean }) =>
     `${baseLinkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`
@@ -59,41 +138,44 @@ export function Layout({ children }: { children: ReactNode }) {
   const closeSidebar = () => setSidebarOpen(false)
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
+    <div className={`min-h-screen bg-[var(--bg-primary)] text-[var(--text-primary)] ${effectiveMode}`}>
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:rounded-md focus:bg-white/90 focus:px-3 focus:py-2 focus:text-sm focus:font-semibold focus:text-slate-900"
       >
         Skip to main content
       </a>
-      <div className="min-h-screen md:grid md:grid-cols-[260px_1fr]">
+      <div className="min-h-screen md:grid md:grid-cols-[280px_1fr]">
         {/* Mobile top bar */}
-        <div className="flex items-center justify-between border-b border-slate-800 bg-slate-900 px-4 py-3 md:hidden">
-          <div className="flex items-center gap-2">
-            <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+        <div className="flex items-center justify-between border-b border-[var(--card-border)] bg-[var(--bg-secondary)] px-4 py-3 md:hidden">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-[rgba(var(--accent-primary),1)] to-[rgba(var(--accent-secondary),1)] flex items-center justify-center shadow-lg animate-pulse-glow">
               <Sparkles size={20} className="text-white" />
             </div>
             <div>
-              <div className="font-semibold">AI Toolbox</div>
-              <div className="text-[10px] text-slate-400">Unified Prompt Hub</div>
+              <div className="font-bold text-[var(--text-primary)]">AI Toolbox</div>
+              <div className="text-[10px] text-[var(--text-tertiary)] tracking-wide">Unified Orchestration</div>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => setSidebarOpen((prev) => !prev)}
-            className="rounded-md border border-slate-700 px-3 py-1 text-sm font-medium text-slate-100 shadow-sm bg-slate-800/60"
-            aria-expanded={sidebarOpen}
-            aria-controls="sidebar-nav"
-          >
-            {sidebarOpen ? 'Close Menu' : 'Menu'}
-          </button>
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            <button
+              type="button"
+              onClick={() => setSidebarOpen((prev) => !prev)}
+              className="rounded-lg border border-[var(--card-border)] px-3 py-1.5 text-sm font-medium text-[var(--text-primary)] shadow-sm bg-[var(--bg-tertiary)] hover:bg-[var(--card-hover-border)] transition-colors"
+              aria-expanded={sidebarOpen}
+              aria-controls="sidebar-nav"
+            >
+              {sidebarOpen ? 'Close' : 'Menu'}
+            </button>
+          </div>
         </div>
 
         {/* Overlay for mobile */}
         {sidebarOpen && (
           <button
             type="button"
-            className="fixed inset-0 z-30 bg-slate-900/30 md:hidden"
+            className="fixed inset-0 z-30 bg-black/50 backdrop-blur-sm md:hidden animate-fade-in"
             aria-label="Close sidebar"
             onClick={closeSidebar}
           />
@@ -101,34 +183,44 @@ export function Layout({ children }: { children: ReactNode }) {
 
         <aside
           id="sidebar-nav"
-          className={`fixed inset-y-0 left-0 z-40 w-64 bg-slate-900 border-r border-slate-800 p-4 transition-transform duration-200 ease-out md:static md:z-auto md:w-full md:translate-x-0 ${
+          className={`fixed inset-y-0 left-0 z-40 w-72 bg-[var(--bg-secondary)] border-r border-[var(--card-border)] p-5 transition-transform duration-300 ease-out md:static md:z-auto md:w-full md:translate-x-0 ${
             sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
           }`}
         >
-          <div className="hidden md:flex items-center gap-3 mb-8">
-            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg shadow-blue-500/30">
-              <Sparkles size={22} className="text-white" />
+          {/* Logo Section */}
+          <div className="hidden md:flex items-center gap-4 mb-8 px-1">
+            <div className="relative">
+              <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-[rgba(var(--accent-primary),1)] to-[rgba(var(--accent-secondary),1)] flex items-center justify-center shadow-xl animate-pulse-glow">
+                <Sparkles size={24} className="text-white" />
+              </div>
+              <div className="absolute -bottom-1 -right-1 h-4 w-4 rounded-full bg-emerald-500 border-2 border-[var(--bg-secondary)]" title="Online" />
             </div>
             <div>
-              <div className="font-bold text-lg">AI Toolbox</div>
-              <div className="text-[10px] text-slate-400 tracking-wide">Unified Orchestration</div>
+              <div className="font-bold text-xl text-[var(--text-primary)] tracking-tight">AI Toolbox</div>
+              <div className="text-[11px] text-[var(--text-tertiary)] tracking-wide font-medium">Unified Orchestration</div>
             </div>
           </div>
 
-          <nav className="space-y-5">
+          {/* Theme Toggle - Desktop */}
+          <div className="hidden md:flex items-center justify-between mb-6 px-1">
+            <span className="text-xs text-[var(--text-tertiary)] font-medium">Theme</span>
+            <ThemeToggle />
+          </div>
+
+          <nav className="space-y-6">
             {navSections.map((section) => (
               <div
                 key={section.title}
                 className={
                   section.isSettings 
-                    ? 'pt-4 border-t border-slate-800' 
+                    ? 'pt-4 border-t border-[var(--card-border)]' 
                     : section.isPrimary
-                    ? 'rounded-lg border border-blue-500/30 bg-blue-900/10 p-2'
+                    ? 'rounded-xl border border-[rgba(var(--accent-primary),0.3)] bg-[rgba(var(--accent-primary),0.05)] p-3'
                     : undefined
                 }
               >
-                <div className={`text-[11px] font-semibold uppercase tracking-wider mb-2 px-3 ${
-                  section.isPrimary ? 'text-blue-300' : 'text-slate-400'
+                <div className={`text-[11px] font-semibold uppercase tracking-wider mb-2.5 px-3 ${
+                  section.isPrimary ? 'text-[rgba(var(--accent-secondary),1)]' : 'text-[var(--text-tertiary)]'
                 }`}>
                   {section.title}
                 </div>
@@ -142,10 +234,20 @@ export function Layout({ children }: { children: ReactNode }) {
               </div>
             ))}
           </nav>
+
+          {/* Footer */}
+          <div className="absolute bottom-5 left-5 right-5">
+            <div className="p-3 rounded-xl bg-gradient-to-br from-[rgba(var(--accent-primary),0.1)] to-transparent border border-[rgba(var(--accent-primary),0.2)]">
+              <div className="text-xs text-[var(--text-tertiary)]">Version 2.0</div>
+              <div className="text-[10px] text-[var(--text-muted)] mt-0.5">Professional Theme</div>
+            </div>
+          </div>
         </aside>
 
-        <main id="main-content" className="p-4 md:p-6 bg-slate-950">
-          {children}
+        <main id="main-content" className="p-4 md:p-8 bg-[var(--bg-primary)] min-h-screen">
+          <div className="animate-fade-in">
+            {children}
+          </div>
         </main>
       </div>
     </div>
