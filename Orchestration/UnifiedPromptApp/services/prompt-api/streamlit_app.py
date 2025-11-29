@@ -34,7 +34,7 @@ desired_output = st.multiselect(
 
 st.markdown("#### Input Data")
 log_snippet = st.text_area("Raw log snippet", height=120, placeholder="Paste a log or short context fragment...")
-timestamp = st.text_input("Timestamp (ISO8601)", datetime.datetime.utcnow().replace(microsecond=0).isoformat() + "Z")
+timestamp = st.text_input("Timestamp (ISO8601)", datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat() + "Z")
 
 # --- Submit -----------------------------------------------------------------
 if st.button("Generate", type="primary", use_container_width=True):

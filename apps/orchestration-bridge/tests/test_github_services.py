@@ -159,9 +159,10 @@ class TestCodexSwarmService:
                     codex_script_path=Path(tmpdir) / "nonexistent.ps1"
                 )
     
-    @pytest.mark.asyncio
-    async def test_start_codex_run(self):
+    def test_start_codex_run(self):
         """Test starting a Codex run."""
+        import asyncio
+        
         with tempfile.TemporaryDirectory() as tmpdir:
             script_path = Path(tmpdir) / "Orchestrate-Codex.ps1"
             script_path.write_text("# dummy script")
@@ -175,7 +176,9 @@ class TestCodexSwarmService:
             
             # Mock PowerShell check
             with patch.object(service, '_check_powershell_available', return_value=True):
-                run_id = await service.start_codex_run(repo_path)
+                run_id = asyncio.new_event_loop().run_until_complete(
+                    service.start_codex_run(repo_path)
+                )
                 
                 assert run_id in service.active_runs
                 assert service.active_runs[run_id]['status'] == CodexRunStatus.PENDING
