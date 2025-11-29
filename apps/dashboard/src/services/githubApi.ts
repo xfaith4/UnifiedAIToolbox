@@ -79,6 +79,9 @@ export interface CodexFinding {
 
 /**
  * Search for GitHub repositories
+ * 
+ * Note: Uses POST to match the backend API endpoint pattern established
+ * in the orchestration bridge, which expects JSON body parameters.
  */
 export async function searchRepositories(
   query: string,
