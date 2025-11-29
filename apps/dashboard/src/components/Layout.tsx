@@ -55,7 +55,7 @@ const accentColors: { value: AccentColor; label: string; class: string }[] = [
 ]
 
 function ThemeToggle() {
-  const { theme, effectiveMode, setThemeMode, setAccentColor } = useTheme()
+  const { theme, setThemeMode, setAccentColor } = useTheme()
   const [showPalette, setShowPalette] = useState(false)
   const paletteRef = useRef<HTMLDivElement>(null)
 
