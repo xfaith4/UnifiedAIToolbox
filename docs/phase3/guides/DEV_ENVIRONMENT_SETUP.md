@@ -36,7 +36,7 @@ This guide covers setting up the development environment for Phase 3 features, w
 # Start PostgreSQL with Docker Compose
 docker compose -f docker-compose.phase3.yml up -d postgres
 
-# Or standalone:
+# Or standalone (development only - use secure credentials for staging/production):
 docker run -d \
   --name postgres-unified \
   -p 5432:5432 \

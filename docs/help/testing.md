@@ -229,12 +229,20 @@ from app import app
 
 @pytest.fixture
 def client():
-    """Create test client."""
+    """Create a FastAPI test client.
+    
+    Returns a TestClient instance that can be used to make HTTP requests
+    to the API. The client handles all request/response serialization.
+    """
     return TestClient(app)
 
 @pytest.fixture
 def sample_prompt():
-    """Create sample prompt data."""
+    """Create sample prompt data for testing.
+    
+    Returns a dictionary with valid prompt fields that can be used
+    to test prompt creation and update endpoints.
+    """
     return {
         "title": "Test Prompt",
         "template": "Hello {{name}}",
