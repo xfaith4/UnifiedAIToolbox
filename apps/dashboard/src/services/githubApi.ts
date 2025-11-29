@@ -79,16 +79,24 @@ export interface CodexFinding {
 
 /**
  * Search for GitHub repositories
+ * 
+ * Note: Uses POST to match the backend API endpoint pattern established
+ * in the orchestration bridge, which expects JSON body parameters.
  */
 export async function searchRepositories(
   query: string,
   limit = 20
 ): Promise<RepositorySearchResult[]> {
-  const url = `${API_BASE}/github/search?query=${encodeURIComponent(query)}&limit=${limit}`;
-  const response = await fetch(url);
+  const url = `${API_BASE}/github/search`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query, max_results: limit }),
+  });
   
   if (!response.ok) {
-    throw new Error(`Search failed: ${response.statusText}`);
+    const error = await response.json().catch(() => ({ detail: 'Search failed' }));
+    throw new Error(error.detail || `Search failed: ${response.statusText}`);
   }
   
   return response.json();

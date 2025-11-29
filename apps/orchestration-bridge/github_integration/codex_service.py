@@ -12,7 +12,7 @@ import subprocess
 import uuid
 from pathlib import Path
 from typing import Optional, Dict, Any, AsyncGenerator
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 
 logger = logging.getLogger(__name__)
@@ -136,7 +136,7 @@ class CodexSwarmService:
             'repo_path': str(repo_path),
             'model': model,
             'max_parallel': max_parallel,
-            'start_time': datetime.utcnow().isoformat(),
+            'start_time': datetime.now(timezone.utc).isoformat(),
             'end_time': None,
             'output_dir': str(run_dir),
             'log_file': str(run_dir / 'codex_run.log'),
@@ -217,7 +217,7 @@ class CodexSwarmService:
                         'status': CodexRunStatus.RUNNING,
                         'line_count': line_count,
                         'log_line': line,
-                        'timestamp': datetime.utcnow().isoformat()
+                        'timestamp': datetime.now(timezone.utc).isoformat()
                     }
             
             # Wait for process to complete
@@ -241,7 +241,7 @@ class CodexSwarmService:
                     'return_code': return_code
                 }
             
-            run_info['end_time'] = datetime.utcnow().isoformat()
+            run_info['end_time'] = datetime.now(timezone.utc).isoformat()
             
             # Parse findings
             findings = await self._parse_findings(run_dir)
@@ -255,7 +255,7 @@ class CodexSwarmService:
             logger.error(f"Codex run {run_id} failed: {e}")
             run_info['status'] = CodexRunStatus.FAILED
             run_info['error'] = str(e)
-            run_info['end_time'] = datetime.utcnow().isoformat()
+            run_info['end_time'] = datetime.now(timezone.utc).isoformat()
             
             yield {
                 'run_id': run_id,
@@ -340,7 +340,7 @@ class CodexSwarmService:
                 process.kill()
             
             run_info['status'] = CodexRunStatus.CANCELLED
-            run_info['end_time'] = datetime.utcnow().isoformat()
+            run_info['end_time'] = datetime.now(timezone.utc).isoformat()
             
             return True
         

@@ -159,27 +159,31 @@ class TestCodexSwarmService:
                     codex_script_path=Path(tmpdir) / "nonexistent.ps1"
                 )
     
-    @pytest.mark.asyncio
-    async def test_start_codex_run(self):
+    def test_start_codex_run(self):
         """Test starting a Codex run."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            script_path = Path(tmpdir) / "Orchestrate-Codex.ps1"
-            script_path.write_text("# dummy script")
-            repo_path = Path(tmpdir) / "repo"
-            repo_path.mkdir()
-            
-            service = CodexSwarmService(
-                codex_script_path=script_path,
-                output_dir=Path(tmpdir) / "runs"
-            )
-            
-            # Mock PowerShell check
-            with patch.object(service, '_check_powershell_available', return_value=True):
-                run_id = await service.start_codex_run(repo_path)
+        import asyncio
+        
+        async def run_test():
+            with tempfile.TemporaryDirectory() as tmpdir:
+                script_path = Path(tmpdir) / "Orchestrate-Codex.ps1"
+                script_path.write_text("# dummy script")
+                repo_path = Path(tmpdir) / "repo"
+                repo_path.mkdir()
                 
-                assert run_id in service.active_runs
-                assert service.active_runs[run_id]['status'] == CodexRunStatus.PENDING
-                assert service.active_runs[run_id]['repo_path'] == str(repo_path)
+                service = CodexSwarmService(
+                    codex_script_path=script_path,
+                    output_dir=Path(tmpdir) / "runs"
+                )
+                
+                # Mock PowerShell check
+                with patch.object(service, '_check_powershell_available', return_value=True):
+                    run_id = await service.start_codex_run(repo_path)
+                    
+                    assert run_id in service.active_runs
+                    assert service.active_runs[run_id]['status'] == CodexRunStatus.PENDING
+                    assert service.active_runs[run_id]['repo_path'] == str(repo_path)
+        
+        asyncio.run(run_test())
     
     def test_get_run_status(self):
         """Test getting run status."""
