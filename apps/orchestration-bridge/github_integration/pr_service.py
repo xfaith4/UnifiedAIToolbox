@@ -12,7 +12,7 @@ import logging
 import uuid
 from pathlib import Path
 from typing import Optional, Dict, Any, List
-from datetime import datetime
+from datetime import datetime, timezone
 
 try:
     from git import Repo, GitCommandError
@@ -74,7 +74,7 @@ class GitHubPRService:
             
             # Generate branch name if not provided
             if not branch_name:
-                timestamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+                timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
                 branch_name = f"codex-improvements-{timestamp}"
             
             # Ensure we're on the base branch

@@ -210,11 +210,9 @@ class GitHubClientMixin:
             return None if use_auth_class else Github()
         
         try:
-            if use_auth_class:
-                auth = Auth.Token(token)
-                return Github(auth=auth)
-            else:
-                return Github(token)
+            # Always use Auth.Token for token-based authentication (modern API)
+            auth = Auth.Token(token)
+            return Github(auth=auth)
         except Exception as e:
             logger.warning(f"Failed to initialize GitHub client: {e}")
             return None
@@ -314,8 +312,6 @@ class GitHubClientMixin:
                 result['private'] = repo.private
             
             results.append(result)
-        
-        return results
         
         return results
 
