@@ -465,7 +465,11 @@ def _execute_run_manifest(manifest_path: Path) -> bool:
         orch_script = REPO_ROOT.parent / "AI-Orchestration" / "scripts" / "MilestoneController.ps1"
         log_path = manifest_path.with_suffix(".log")
         
-        if orch_script.exists() and subprocess.run(["which", ps_exe], capture_output=True).returncode == 0:
+        # Check if PowerShell is available (use 'where' on Windows, 'which' on Unix)
+        check_cmd = ["where", ps_exe] if os.name == "nt" else ["which", ps_exe]
+        ps_available = subprocess.run(check_cmd, capture_output=True).returncode == 0
+        
+        if orch_script.exists() and ps_available:
             manifest["mode"] = "executed"
             manifest["events"].append({
                 "ts": _now_iso(),
@@ -474,9 +478,9 @@ def _execute_run_manifest(manifest_path: Path) -> bool:
             })
             manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
             
-            # Create goal file from manifest
+            # Create goal file from manifest - prefer goal field, fall back to prompt_id
             goal_file = manifest_path.with_suffix(".goal.txt")
-            goal_text = manifest.get("prompt_id", "")
+            goal_text = manifest.get("goal") or manifest.get("prompt_id", "")
             goal_file.write_text(goal_text, encoding="utf-8")
             
             args = [ps_exe, "-File", str(orch_script), "-GoalFile", str(goal_file)]
