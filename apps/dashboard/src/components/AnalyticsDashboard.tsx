@@ -3,16 +3,8 @@
  * Displays prompt usage metrics, performance trends, and insights
  */
 import React, { useEffect, useState, useMemo } from 'react'
-import {
-  getAnalyticsDashboardData,
-  getAnalyticsSummary,
-  getAnalyticsTimeSeries,
-} from '../services/analyticsStore'
-import type {
-  AnalyticsDashboardData,
-  AnalyticsTimeSeriesPoint,
-  PromptUsageMetric,
-} from '../types/analytics'
+import { getAnalyticsDashboardData } from '../services/analyticsStore'
+import type { AnalyticsDashboardData, AnalyticsTimeSeriesPoint } from '../types/analytics'
 
 interface MetricCardProps {
   title: string
@@ -185,7 +177,7 @@ export default function AnalyticsDashboard() {
     )
   }
 
-  const { summary, timeSeries, byProvider, byModel } = dashboardData
+  const { summary, timeSeries, byModel } = dashboardData
 
   return (
     <div className="p-4 space-y-6">

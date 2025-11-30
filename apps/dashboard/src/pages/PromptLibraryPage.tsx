@@ -11,7 +11,7 @@ import {
   PROMPT_API_BASE,
 } from '../services/promptStore'
 import { loadDatasets, previewDataset, type DatasetEntry } from '../services/datasetStore'
-import { useToast } from '../contexts/ToastContext'
+import { useToast } from '../contexts/useToast'
 
 const SIMPLE_IMPORT_SAMPLE = `[
   {
