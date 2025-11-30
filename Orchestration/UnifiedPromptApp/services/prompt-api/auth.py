@@ -4,8 +4,11 @@ Authentication module for AI Prompt Workbench.
 Provides JWT-based authentication with role-based access control.
 This module can be configured via environment variables or disabled entirely.
 """
+import base64
+import json
 import os
 import secrets
+import uuid
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Optional
@@ -90,9 +93,6 @@ def _verify_password(plain_password: str, hashed_password: str) -> bool:
 
 def _create_token(data: dict, expires_delta: timedelta) -> str:
     """Create a simple token (base64 encoded JSON with signature)."""
-    import base64
-    import json
-    
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + expires_delta
     to_encode.update({"exp": expire.isoformat()})
@@ -113,9 +113,6 @@ def _create_token(data: dict, expires_delta: timedelta) -> str:
 
 def _decode_token(token: str) -> Optional[dict]:
     """Decode and verify a token."""
-    import base64
-    import json
-    
     try:
         parts = token.split(".")
         if len(parts) != 2:
@@ -161,7 +158,7 @@ def initialize_auth() -> None:
     
     if admin_username not in _users_db:
         _users_db[admin_username] = UserInDB(
-            id="1",
+            id=str(uuid.uuid4()),
             username=admin_username,
             role=UserRole.admin,
             disabled=False,
@@ -201,7 +198,7 @@ def create_user(user_data: UserCreate) -> User:
             detail="Username already registered"
         )
     
-    user_id = str(len(_users_db) + 1)
+    user_id = str(uuid.uuid4())
     user = UserInDB(
         id=user_id,
         username=user_data.username,
