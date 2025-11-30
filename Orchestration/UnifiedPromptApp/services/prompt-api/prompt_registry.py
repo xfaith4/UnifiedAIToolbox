@@ -15,7 +15,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 import importlib
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
 
 def _ensure_local_registry_on_path() -> bool:
@@ -85,8 +85,9 @@ if not _real_imported:
                 for item in items:
                     if item.get("id") == prompt_id:
                         raw = item.get("prompt") or item
+                        item_id = item.get("id", "")
                         return PromptSpec(
-                            id=item.get("id"),
+                            id=item_id,
                             version=item.get("version", "0.0.0"),
                             raw=raw,
                             payload=item,
@@ -97,19 +98,21 @@ if not _real_imported:
             pass
         return None
 
-    def load_prompt(path: str | Path) -> PromptSpec:
+    def load_prompt(path: Union[str, Path]) -> PromptSpec:
         """
         Load a prompt YAML file (used by tests that create temporary prompt files).
         Returns a PromptSpec-like object.
         """
         p = Path(path)
         data = yaml.safe_load(p.read_text(encoding="utf-8"))
+        prompt_id = data.get("id", "")
+        prompt_version = data.get("version", "0.0.0")
         payload = {
-            "id": data.get("id"),
-            "version": data.get("version", "0.0.0"),
+            "id": prompt_id,
+            "version": prompt_version,
             "prompt": data.get("blocks") or {},
             "variables": data.get("variables", {}),
         }
-        return PromptSpec(id=data.get("id"), version=data.get("version", "0.0.0"), raw=data, payload=payload, path=p)
+        return PromptSpec(id=prompt_id, version=prompt_version, raw=data, payload=payload, path=p)
 
     __all__ = ["PromptSpec", "find_prompt_by_id", "load_prompt"]
