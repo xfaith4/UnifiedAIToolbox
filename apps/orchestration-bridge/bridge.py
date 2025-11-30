@@ -15,6 +15,7 @@ import argparse
 import json
 import os
 import requests
+import shutil
 import subprocess
 import sys
 import time
@@ -441,36 +442,38 @@ def _pull_remote_tasks() -> List[dict]:
         return []
 
 
-def _find_powershell() -> Optional[str]:
+def _find_powershell() -> Tuple[Optional[str], List[str]]:
     """
     Find an available PowerShell executable.
     
     Tries pwsh first (PowerShell 7+, cross-platform), then falls back to
     powershell (Windows PowerShell 5.1) on Windows.
     
-    Returns the executable name if found, None otherwise.
+    Returns a tuple of (executable_name, detection_log) where:
+      - executable_name is the found executable or None
+      - detection_log is a list of diagnostic messages for debugging
     """
+    detection_log: List[str] = []
+    
     # Prefer pwsh (PowerShell 7+) on all platforms
     candidates = ["pwsh"]
     if os.name == "nt":
         # On Windows, also try Windows PowerShell as fallback
         candidates.append("powershell")
     
-    check_tool = "where" if os.name == "nt" else "which"
+    detection_log.append(f"os.name={os.name}, candidates={candidates}")
     
     for candidate in candidates:
-        try:
-            result = subprocess.run(
-                [check_tool, candidate],
-                capture_output=True,
-                timeout=10
-            )
-            if result.returncode == 0:
-                return candidate
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            continue
+        # Use shutil.which for reliable cross-platform executable detection
+        path = shutil.which(candidate)
+        if path:
+            detection_log.append(f"{candidate}: found at {path}")
+            return candidate, detection_log
+        else:
+            detection_log.append(f"{candidate}: not found in PATH")
     
-    return None
+    detection_log.append("No PowerShell executable found")
+    return None, detection_log
 
 
 def _execute_run_manifest(manifest_path: Path) -> bool:
@@ -497,14 +500,14 @@ def _execute_run_manifest(manifest_path: Path) -> bool:
         log_path = manifest_path.with_suffix(".log")
         
         # Find available PowerShell executable (pwsh preferred, powershell fallback on Windows)
-        ps_exe = _find_powershell()
+        ps_exe, ps_detection_log = _find_powershell()
         
         # Add diagnostic event for debugging path/PowerShell detection
         script_exists = orch_script.exists()
         manifest["events"].append({
             "ts": _now_iso(),
             "type": "debug",
-            "message": f"Detection: orch_script={orch_script}, exists={script_exists}, ps_exe={ps_exe}"
+            "message": f"Detection: orch_script={orch_script}, exists={script_exists}, ps_exe={ps_exe}, ps_log={ps_detection_log}"
         })
         manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
         
@@ -533,10 +536,15 @@ def _execute_run_manifest(manifest_path: Path) -> bool:
         else:
             # Simulate execution if script or PowerShell is missing
             manifest["mode"] = "simulated"
+            reason = []
+            if not script_exists:
+                reason.append(f"script not found at {orch_script}")
+            if not ps_exe:
+                reason.append("no PowerShell executable available")
             manifest["events"].append({
                 "ts": _now_iso(),
                 "type": "warn",
-                "message": "Simulated run (script or PowerShell missing)"
+                "message": f"Simulated run: {'; '.join(reason)}"
             })
             manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
             time.sleep(1)  # Brief simulation delay
