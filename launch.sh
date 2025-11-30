@@ -448,6 +448,18 @@ echo ""
 echo -e "${YELLOW}Press Ctrl+C to stop all services...${NC}"
 echo ""
 
+echo -e "${CYAN}Running post-launch verification...${NC}"
+VERIFY_SCRIPT="${SCRIPT_DIR}/scripts/verify-launch.py"
+VERIFY_ARGS=("--api-port" "${API_PORT}" "--frontend-port" "${FRONTEND_PORT}" "--web-port" "${WEB_PORT}")
+if [ "$BACKEND_ONLY" = true ]; then
+    VERIFY_ARGS=("--api-port" "${API_PORT}" "--skip-frontend" "--skip-web")
+elif [ "$FRONTEND_ONLY" = true ]; then
+    VERIFY_ARGS=("--skip-frontend" "--skip-web")
+fi
+if ! python3 "${VERIFY_SCRIPT}" "${VERIFY_ARGS[@]}"; then
+    echo -e "${YELLOW}Launch verification script reported issues. Check the logs above.${NC}"
+fi
+
 if [ "$OPEN_BROWSER" = true ] && [ "$BACKEND_ONLY" != true ]; then
     if command -v xdg-open >/dev/null 2>&1; then
         xdg-open "http://localhost:${FRONTEND_PORT}" >/dev/null 2>&1 &

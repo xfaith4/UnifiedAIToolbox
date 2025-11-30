@@ -1820,7 +1820,7 @@ class CloneRequest(BaseModel):
 # Orchestration Run Stub
 # ----------------------------
 class OrchestrationRequest(BaseModel):
-    prompt_id: str
+    prompt_id: Optional[str] = None
     version: Optional[str] = None
     review_policy: Optional[str] = None
     status: Optional[str] = "queued"
@@ -1944,10 +1944,31 @@ def orchestrate_run(req: OrchestrationRequest):
             # choose orchestrator script based on run_mode (default => POF)
             run_mode = (req.run_mode or "default").lower()
             ps1_candidate = pathlib.Path(CODEX_SWARM_PS1 if run_mode == "codex-swarm" else ORCH_PS1)
+            data.setdefault("events", []).append({
+                "ts": now_iso(),
+                "type": "debug",
+                "message": f"Resolved ORCH_PS1={ORCH_PS1}, POF_PS1={POF_PS1}",
+            })
+            data.setdefault("events", []).append({
+                "ts": now_iso(),
+                "type": "debug",
+                "message": f"Resolving orchestrator script: ROOT={ROOT_DIR}, candidate={ps1_candidate}, exists={ps1_candidate.exists()}, run_mode={run_mode}",
+            })
+            path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            env_snapshot = {
+                "root": str(ROOT_DIR),
+                "candidate": str(ps1_candidate),
+                "exists": ps1_candidate.exists(),
+                "cwd": str(ps1_candidate.parent),
+                "pwsh_path": ps_exe,
+                "run_mode": run_mode,
+            }
+            with open(log_path, "w", encoding="utf-8") as logf:
+                logf.write(f"PRE-EXEC ENV: {json.dumps(env_snapshot)}\n")
             try:
                 ps1 = ps1_candidate.resolve(strict=True)
             except FileNotFoundError:
-                raise FileNotFoundError(f"Orchestrator script not found: {ps1_candidate}")
+                raise FileNotFoundError(f"Orchestrator script not found: {ps1_candidate.as_posix()}")
 
             status_file = out_dir / "agent_status.json"
             final_synthesis = out_dir / "Final_Synthesis.txt"
@@ -1980,7 +2001,14 @@ def orchestrate_run(req: OrchestrationRequest):
                     "-RunId", run_id,
                     "-OutputRoot", str(BRIDGE_RUN_DIR),
                 ]
-            with open(log_path, "w", encoding="utf-8") as logf:
+            data.setdefault("events", []).append({
+                "ts": now_iso(),
+                "type": "debug",
+                "message": f"Prepared orchestration run with script {ps1} and args {args}",
+            })
+            path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            with open(log_path, "a", encoding="utf-8") as logf:
+                logf.write(f"READY TO EXECUTE: {json.dumps({'script': str(ps1), 'args': args})}\n")
                 subprocess.run(args, check=True, stdout=logf, stderr=logf)
 
             stop_event.set()
