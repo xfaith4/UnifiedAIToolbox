@@ -40,7 +40,7 @@ def _load_real_registry(src_path: Path):
 
     # Use a unique module name to avoid collision with this shim
     module_name = "prompt_registry_real"
-    
+
     spec = importlib.util.spec_from_file_location(
         module_name,
         real_module_path,
@@ -49,7 +49,7 @@ def _load_real_registry(src_path: Path):
         return None
 
     module = importlib.util.module_from_spec(spec)
-    
+
     # Register in sys.modules BEFORE exec_module - required for dataclass decorator
     sys.modules[module_name] = module
     
