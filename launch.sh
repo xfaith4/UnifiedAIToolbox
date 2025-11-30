@@ -470,7 +470,32 @@ if [ "$BACKEND_ONLY" = true ]; then
 elif [ "$FRONTEND_ONLY" = true ]; then
     VERIFY_ARGS=("--skip-frontend" "--skip-web")
 fi
-if ! python3 "${VERIFY_SCRIPT}" "${VERIFY_ARGS[@]}"; then
+VERIFY_OUTPUT=$(python3 "${VERIFY_SCRIPT}" "${VERIFY_ARGS[@]}" 2>&1)
+printf '%s\n' "$VERIFY_OUTPUT"
+RUN_ID="$(printf '%s\n' "$VERIFY_OUTPUT" | awk -F': ' '/^RUN_ID:/ {print $2}')"
+if [ -z "${RUN_ID}" ]; then
+    echo -e "${YELLOW}Verification script did not emit a RUN_ID; skipping run inspection.${NC}"
+else
+    echo -e "${CYAN}Inspecting orchestration run ${RUN_ID}...${NC}"
+    RUN_JSON="$(curl -fsS "http://localhost:${API_PORT}/orchestrate/run/${RUN_ID}")"
+    RUN_STATUS="$(python3 - <<'PY'
+import json,sys
+try:
+    data=json.load(sys.stdin)
+    status=data.get("status")
+    print(status or "unknown")
+except Exception as exc:
+    print(f"error:{exc}")
+PY
+<<< "${RUN_JSON}")"
+    echo -e "${CYAN}Run status: ${RUN_STATUS}${NC}"
+    LOG_CONTENT="$(curl -fsS "http://localhost:${API_PORT}/orchestrate/run/${RUN_ID}/log?max_bytes=4000" || true)"
+    if [ -n "$LOG_CONTENT" ]; then
+        echo -e "${CYAN}Orchestrator log snippet:${NC}"
+        printf '%s\n' "$LOG_CONTENT"
+    fi
+fi
+if [ "${PIPESTATUS[0]}" -ne 0 ]; then
     echo -e "${YELLOW}Launch verification script reported issues. Check the logs above.${NC}"
 fi
 

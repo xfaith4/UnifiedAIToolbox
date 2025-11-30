@@ -52,6 +52,7 @@ def verify_orchestrator(api_port):
             manifest = json.loads(body)
             run_id = manifest.get("run_id") or manifest.get("manifest", {}).get("run_id")
             print(f"  -> Created run_id: {run_id}")
+            print(f"RUN_ID: {run_id}")
         except Exception:
             print("  -> Could not parse response body as JSON")
 
