@@ -7,7 +7,6 @@ import pytest
 import tempfile
 from pathlib import Path
 from unittest.mock import patch, MagicMock
-import subprocess
 import sys
 
 # Add parent directory to path
@@ -19,66 +18,60 @@ from bridge import _find_powershell, _execute_run_manifest
 class TestFindPowerShell:
     """Tests for _find_powershell function."""
 
-    @patch('bridge.subprocess.run')
-    def test_finds_pwsh_when_available(self, mock_run):
+    @patch('bridge.shutil.which')
+    def test_finds_pwsh_when_available(self, mock_which):
         """Test that pwsh is found and returned when available."""
-        mock_run.return_value = MagicMock(returncode=0)
+        mock_which.return_value = "/usr/bin/pwsh"
         
-        result = _find_powershell()
+        result, detection_log = _find_powershell()
         
         assert result == "pwsh"
-        # Should check for pwsh first
-        assert mock_run.call_count >= 1
-        first_call_args = mock_run.call_args_list[0][0][0]
-        assert "pwsh" in first_call_args
+        assert any("pwsh: found" in log for log in detection_log)
 
-    @patch('bridge.subprocess.run')
+    @patch('bridge.shutil.which')
     @patch('bridge.os.name', 'nt')
-    def test_falls_back_to_powershell_on_windows(self, mock_run):
+    def test_falls_back_to_powershell_on_windows(self, mock_which):
         """Test fallback to powershell on Windows when pwsh is not available."""
-        # First call (pwsh) fails, second call (powershell) succeeds
-        mock_run.side_effect = [
-            MagicMock(returncode=1),  # pwsh not found
-            MagicMock(returncode=0),  # powershell found
-        ]
+        # First call (pwsh) returns None, second call (powershell) returns path
+        mock_which.side_effect = [None, "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"]
         
-        result = _find_powershell()
+        result, detection_log = _find_powershell()
         
         assert result == "powershell"
-        assert mock_run.call_count == 2
+        assert any("pwsh: not found" in log for log in detection_log)
+        assert any("powershell: found" in log for log in detection_log)
 
-    @patch('bridge.subprocess.run')
+    @patch('bridge.shutil.which')
     @patch('bridge.os.name', 'posix')
-    def test_returns_none_when_no_powershell_on_linux(self, mock_run):
+    def test_returns_none_when_no_powershell_on_linux(self, mock_which):
         """Test that None is returned on Linux when pwsh is not available."""
-        mock_run.return_value = MagicMock(returncode=1)
+        mock_which.return_value = None
         
-        result = _find_powershell()
+        result, detection_log = _find_powershell()
         
         assert result is None
-        # On Linux, should only check for pwsh (not powershell)
-        assert mock_run.call_count == 1
+        assert any("No PowerShell executable found" in log for log in detection_log)
 
-    @patch('bridge.subprocess.run')
+    @patch('bridge.shutil.which')
     @patch('bridge.os.name', 'nt')
-    def test_returns_none_when_no_powershell_on_windows(self, mock_run):
+    def test_returns_none_when_no_powershell_on_windows(self, mock_which):
         """Test that None is returned on Windows when no PowerShell is available."""
-        mock_run.return_value = MagicMock(returncode=1)
+        mock_which.return_value = None
         
-        result = _find_powershell()
+        result, detection_log = _find_powershell()
         
         assert result is None
-        # On Windows, should check both pwsh and powershell
-        assert mock_run.call_count == 2
+        assert any("No PowerShell executable found" in log for log in detection_log)
 
-    @patch('bridge.subprocess.run')
-    def test_handles_timeout_gracefully(self, mock_run):
-        """Test that timeouts are handled gracefully."""
-        mock_run.side_effect = subprocess.TimeoutExpired(cmd="which", timeout=10)
+    @patch('bridge.shutil.which')
+    def test_returns_detection_log_with_os_info(self, mock_which):
+        """Test that detection log includes OS information."""
+        mock_which.return_value = "/usr/bin/pwsh"
         
-        result = _find_powershell()
+        result, detection_log = _find_powershell()
         
-        assert result is None
+        assert any("os.name=" in log for log in detection_log)
+        assert any("candidates=" in log for log in detection_log)
 
 
 class TestExecuteRunManifest:
@@ -94,7 +87,7 @@ class TestExecuteRunManifest:
                 "status": "queued"
             }), encoding="utf-8")
             
-            with patch('bridge._find_powershell', return_value=None):
+            with patch('bridge._find_powershell', return_value=(None, ["test log entry"])):
                 with patch('bridge.REPO_ROOT', Path(tmpdir)):
                     _execute_run_manifest(manifest_path)
             
@@ -108,6 +101,7 @@ class TestExecuteRunManifest:
             assert "orch_script=" in debug_events[0]["message"]
             assert "exists=" in debug_events[0]["message"]
             assert "ps_exe=" in debug_events[0]["message"]
+            assert "ps_log=" in debug_events[0]["message"]
 
     def test_simulated_mode_when_no_powershell(self):
         """Test that simulated mode is used when no PowerShell is available."""
@@ -119,7 +113,7 @@ class TestExecuteRunManifest:
                 "status": "queued"
             }), encoding="utf-8")
             
-            with patch('bridge._find_powershell', return_value=None):
+            with patch('bridge._find_powershell', return_value=(None, ["No PowerShell found"])):
                 with patch('bridge.REPO_ROOT', Path(tmpdir)):
                     _execute_run_manifest(manifest_path)
             
@@ -142,13 +136,16 @@ class TestExecuteRunManifest:
             }), encoding="utf-8")
             
             # Script path won't exist in tmpdir
-            with patch('bridge._find_powershell', return_value="pwsh"):
+            with patch('bridge._find_powershell', return_value=("pwsh", ["pwsh: found"])):
                 with patch('bridge.REPO_ROOT', Path(tmpdir)):
                     _execute_run_manifest(manifest_path)
             
             result = json.loads(manifest_path.read_text(encoding="utf-8"))
             
             assert result["mode"] == "simulated"
+            warn_events = [e for e in result.get("events", []) if e.get("type") == "warn"]
+            assert len(warn_events) >= 1
+            assert "script not found" in warn_events[0]["message"]
 
     def test_executed_mode_info_includes_powershell_exe(self):
         """Test that executed mode logs which PowerShell was used."""
@@ -166,7 +163,7 @@ class TestExecuteRunManifest:
                 "status": "queued"
             }), encoding="utf-8")
             
-            with patch('bridge._find_powershell', return_value="pwsh"):
+            with patch('bridge._find_powershell', return_value=("pwsh", ["pwsh: found at /usr/bin/pwsh"])):
                 with patch('bridge.REPO_ROOT', Path(tmpdir)):
                     with patch('bridge.subprocess.run') as mock_run:
                         mock_run.return_value = MagicMock(returncode=0)
