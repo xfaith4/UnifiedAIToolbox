@@ -33,8 +33,7 @@ goto :eof
 
 :checkService
 powershell -NoLogo -NoProfile -Command ^
-  "& { param($Url,$Name,$TimeoutSec); $deadline=(Get-Date).AddSeconds($TimeoutSec); while((Get-Date) -lt $deadline){ try { $resp=Invoke-WebRequest -UseBasicParsing -Uri $Url -TimeoutSec 5; if($resp.StatusCode -lt 500){ Write-Host \"$Name ready at $Url\"; exit 0 } } catch { } Start-Sleep -Seconds 1 } Write-Host \"$Name not responding after $TimeoutSec seconds on $Url\"; exit 1 }" ^
-  "%~1" "%~2" "%~3"
+  "& { param($Url,$Name,$TimeoutSec); $deadline=(Get-Date).AddSeconds($TimeoutSec); while((Get-Date) -lt $deadline){ try { $resp=Invoke-WebRequest -UseBasicParsing -Uri $Url -TimeoutSec 5; if($resp.StatusCode -lt 500){ Write-Host \"$Name ready at $Url\"; exit 0 } } catch { } Start-Sleep -Seconds 1 } Write-Host \"$Name not responding after $TimeoutSec seconds on $Url\"; exit 1 } '%~1' '%~2' %~3"
 exit /b %ERRORLEVEL%
 
 :fail
