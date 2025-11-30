@@ -2338,9 +2338,46 @@ def list_clones():
     ]
 
 
+def _is_port_available(port: int, host: str = "0.0.0.0") -> bool:
+    """Check if a port is available for binding."""
+    import socket
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind((host, port))
+            return True
+    except OSError:
+        return False
+
+
+def _find_available_port(start_port: int, max_attempts: int = 10, host: str = "0.0.0.0") -> int:
+    """Find an available port, starting from start_port."""
+    for offset in range(max_attempts):
+        port = start_port + offset
+        if _is_port_available(port, host):
+            return port
+    raise RuntimeError(f"No available port found in range {start_port}-{start_port + max_attempts - 1}")
+
+
 if __name__ == "__main__":
-    port = int(os.environ.get("PROMPT_API_PORT", "8000"))
-    uvicorn.run("app:app", host="0.0.0.0", port=port, reload=True)
+    requested_port = int(os.environ.get("PROMPT_API_PORT", "8000"))
+    host = os.environ.get("PROMPT_API_HOST", "0.0.0.0")
+    
+    # Check if port is available, find alternative if not
+    if _is_port_available(requested_port, host):
+        port = requested_port
+    else:
+        print(f"Port {requested_port} is already in use, searching for available port...")
+        try:
+            port = _find_available_port(requested_port + 1, max_attempts=10, host=host)
+            print(f"Using alternative port: {port}")
+        except RuntimeError as e:
+            print(f"Error: {e}")
+            print("Please free up port 8000 or set PROMPT_API_PORT to an available port.")
+            sys.exit(1)
+    
+    print(f"Starting server on {host}:{port}")
+    uvicorn.run("app:app", host=host, port=port, reload=True)
 ### END FILE
 
 
