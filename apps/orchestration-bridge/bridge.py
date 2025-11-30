@@ -441,6 +441,38 @@ def _pull_remote_tasks() -> List[dict]:
         return []
 
 
+def _find_powershell() -> Optional[str]:
+    """
+    Find an available PowerShell executable.
+    
+    Tries pwsh first (PowerShell 7+, cross-platform), then falls back to
+    powershell (Windows PowerShell 5.1) on Windows.
+    
+    Returns the executable name if found, None otherwise.
+    """
+    # Prefer pwsh (PowerShell 7+) on all platforms
+    candidates = ["pwsh"]
+    if os.name == "nt":
+        # On Windows, also try Windows PowerShell as fallback
+        candidates.append("powershell")
+    
+    check_tool = "where" if os.name == "nt" else "which"
+    
+    for candidate in candidates:
+        try:
+            result = subprocess.run(
+                [check_tool, candidate],
+                capture_output=True,
+                timeout=10
+            )
+            if result.returncode == 0:
+                return candidate
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            continue
+    
+    return None
+
+
 def _execute_run_manifest(manifest_path: Path) -> bool:
     """
     Execute a run manifest by invoking the orchestrator script or simulating execution.
@@ -460,21 +492,28 @@ def _execute_run_manifest(manifest_path: Path) -> bool:
         })
         manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
         
-        # Try to execute via PowerShell orchestrator (POF.ps1 is the functioning orchestrator)
-        ps_exe = "pwsh" if os.name != "nt" else "powershell"
+        # Resolve orchestrator script path
         orch_script = REPO_ROOT / "Orchestration" / "AI-Orchestration" / "scripts" / "POF.ps1"
         log_path = manifest_path.with_suffix(".log")
         
-        # Check if PowerShell is available (use 'where' on Windows, 'which' on Unix)
-        check_cmd = ["where", ps_exe] if os.name == "nt" else ["which", ps_exe]
-        ps_available = subprocess.run(check_cmd, capture_output=True).returncode == 0
+        # Find available PowerShell executable (pwsh preferred, powershell fallback on Windows)
+        ps_exe = _find_powershell()
         
-        if orch_script.exists() and ps_available:
+        # Add diagnostic event for debugging path/PowerShell detection
+        script_exists = orch_script.exists()
+        manifest["events"].append({
+            "ts": _now_iso(),
+            "type": "debug",
+            "message": f"Detection: orch_script={orch_script}, exists={script_exists}, ps_exe={ps_exe}"
+        })
+        manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        
+        if script_exists and ps_exe:
             manifest["mode"] = "executed"
             manifest["events"].append({
                 "ts": _now_iso(),
                 "type": "info",
-                "message": f"Executing {orch_script.name}"
+                "message": f"Executing {orch_script.name} via {ps_exe}"
             })
             manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
             
@@ -492,12 +531,12 @@ def _execute_run_manifest(manifest_path: Path) -> bool:
             if result.returncode != 0:
                 raise RuntimeError(f"Orchestrator exited with code {result.returncode}")
         else:
-            # Simulate execution if script or pwsh is missing
+            # Simulate execution if script or PowerShell is missing
             manifest["mode"] = "simulated"
             manifest["events"].append({
                 "ts": _now_iso(),
                 "type": "warn",
-                "message": "Simulated run (script or pwsh missing)"
+                "message": "Simulated run (script or PowerShell missing)"
             })
             manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
             time.sleep(1)  # Brief simulation delay
