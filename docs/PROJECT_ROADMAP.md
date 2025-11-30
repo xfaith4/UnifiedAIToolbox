@@ -172,14 +172,16 @@
 
 ---
 
-## 📊 Resource Plans (Phase 3)
+## 📊 Resource Plans (Phase 3 - Planned)
 
-| Plan | Users | Prompts | API Calls/Month | Price |
-|------|-------|---------|-----------------|-------|
-| Free | 5 | 100 | 10,000 | $0 |
-| Starter | 10 | 500 | 50,000 | $29/mo |
-| Professional | 50 | 5,000 | 500,000 | $99/mo |
-| Enterprise | Unlimited | Unlimited | Custom | Contact |
+> **Note**: These are preliminary tier definitions for multi-tenancy. Final pricing will be determined based on market research and cost analysis.
+
+| Plan | Users | Prompts | API Calls/Month |
+|------|-------|---------|-----------------|
+| Free | 5 | 100 | 10,000 |
+| Starter | 10 | 500 | 50,000 |
+| Professional | 50 | 5,000 | 500,000 |
+| Enterprise | Unlimited | Unlimited | Custom |
 
 ---
 
