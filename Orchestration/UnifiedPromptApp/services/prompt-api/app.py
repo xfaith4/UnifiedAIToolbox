@@ -53,7 +53,13 @@ def simple_cache(ttl: int = CACHE_TTL):
 # Configuration
 # ----------------------------
 BASE_DIR = pathlib.Path(__file__).parent.resolve()
-ROOT_DIR = BASE_DIR.parent.parent
+# Project root (repo root), not the service folder
+ROOT_DIR = BASE_DIR.parents[3]
+
+# On Windows, avoid noisy Proactor connection_lost stack traces
+if sys.platform.startswith("win"):
+    import asyncio
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
 class ServiceSettings(BaseSettings):
@@ -98,9 +104,10 @@ BRIDGE_RUN_DIR = BRIDGE_DIR / "runs"
 BRIDGE_RUN_DIR.mkdir(parents=True, exist_ok=True)
 PS_REFINER = BRIDGE_DIR / "OpenAI_Refiner.ps1"
 # Prefer in-repo orchestrator; fallback to external path or env override
-ORCH_PS1 = os.environ.get("ORCHESTRATOR_PS1") or str(
-    (ROOT_DIR / "Orchestration" / "AI-Orchestration" / "scripts" / "MilestoneController.ps1").resolve()
+POF_PS1 = os.environ.get("POF_PS1") or str(
+    (ROOT_DIR / "Orchestration" / "AI-Orchestration" / "scripts" / "POF.ps1").resolve()
 )
+ORCH_PS1 = os.environ.get("ORCHESTRATOR_PS1") or POF_PS1
 CODEX_SWARM_PS1 = os.environ.get("CODEX_SWARM_PS1") or str(
     (ROOT_DIR / "Orchestration" / "AI-Orchestration" / "codex-multiagent-swarm" / "Orchestrate-Codex.ps1").resolve()
 )
@@ -1822,17 +1829,23 @@ class OrchestrationRequest(BaseModel):
     model: Optional[str] = None
     run_mode: Optional[str] = "default"  # default | codex-swarm
     repo_root: Optional[str] = None
+    max_iterations: Optional[int] = None
 
 
 @app.post("/orchestrate/run")
 def orchestrate_run(req: OrchestrationRequest):
     """
-    Queue an orchestration run (lightweight stub). Writes a manifest and kicks off a
-    background task that executes the external orchestrator if configured, otherwise
+    Queue an orchestration run (lightweight orchestrator). Writes a manifest and kicks off a
+    background task that executes the external orchestrator (POF.ps1 by default), otherwise
     simulates a completion.
     """
+    run_id = f"{req.prompt_id.replace('.', '_')}.{now_iso().replace(':','-')}"
+    out_dir = BRIDGE_RUN_DIR / run_id
+    log_path = BRIDGE_RUN_DIR / f"{run_id}.log"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
     manifest = {
-        "run_id": None,  # will be filled after run_id constructed
+        "run_id": run_id,
         "prompt_id": req.prompt_id,
         "version": req.version or "latest",
         "review_policy": req.review_policy or "standard",
@@ -1847,67 +1860,152 @@ def orchestrate_run(req: OrchestrationRequest):
         "model": req.model or DEFAULT_MODEL,
         "run_mode": req.run_mode or "default",
         "mode": "simulated",
+        "run_dir": str(out_dir),
+        "log_path": str(log_path),
         "events": [
             {"ts": now_iso(), "type": "status", "message": "queued"},
         ],
+        "scratchpad": [],
     }
-    run_id = f"{req.prompt_id.replace('.', '_')}.{manifest['requested_at'].replace(':','-')}"
-    manifest["run_id"] = run_id
     path = BRIDGE_RUN_DIR / f"{run_id}.json"
     path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 
+    def _update_manifest(update_fn):
+        try:
+            data = json.loads(path.read_text())
+            data = update_fn(data) or data
+            path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        except Exception:
+            pass
+
+    def _append_events(events: List[Dict[str, Any]]):
+        def _inner(data):
+            data.setdefault("events", [])
+            data["events"].extend(events)
+            return data
+        _update_manifest(_inner)
+
+    def _append_scratchpad(entries: List[Dict[str, Any]]):
+        def _inner(data):
+            data.setdefault("scratchpad", [])
+            data["scratchpad"].extend(entries)
+            return data
+        _update_manifest(_inner)
+
+    def _ingest_status_file(status_file: pathlib.Path, processed: int):
+        if not status_file.exists():
+            return processed
+        try:
+            lines = status_file.read_text(encoding="utf-8").splitlines()
+        except Exception:
+            return processed
+        if processed >= len(lines):
+            return processed
+        new_lines = lines[processed:]
+        processed = len(lines)
+        entries = []
+        events = []
+        for line in new_lines:
+            try:
+                rec = json.loads(line)
+                entries.append(rec)
+                events.append(
+                    {
+                        "ts": rec.get("timestamp") or now_iso(),
+                        "type": f"agent:{rec.get('agent')}",
+                        "message": rec.get("status") or "",
+                    }
+                )
+            except Exception:
+                continue
+        if entries:
+            _append_scratchpad(entries)
+        if events:
+            _append_events(events)
+        return processed
+
     def _execute(path: pathlib.Path, manifest: Dict[str, Any]):
         try:
-          data = json.loads(path.read_text())
-          data["status"] = "running"
-          data["started_at"] = now_iso()
-          data.setdefault("events", []).append({"ts": data["started_at"], "type": "status", "message": "running"})
-          path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-
-          goal_text = manifest.get("goal") or manifest.get("prompt_id") or ""
-          repo_root = req.repo_root or REPO_ROOT_DEFAULT
-          ps_exe = shutil.which("pwsh") or shutil.which("powershell")
-          log_path = BRIDGE_RUN_DIR / f"{run_id}.log"
-
-          # choose orchestrator script based on run_mode
-          run_mode = (req.run_mode or "default").lower()
-          ps1 = pathlib.Path(CODEX_SWARM_PS1 if run_mode == "codex-swarm" else ORCH_PS1)
-
-          if ps1.exists() and ps_exe:
-              data["mode"] = "executed"
-              data["events"].append({"ts": now_iso(), "type": "info", "message": f"Executing {ps1.name}"})
-              path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-              args = [ps_exe, "-File", str(ps1)]
-              if run_mode == "codex-swarm":
-                  args += ["-RepoRoot", repo_root]
-              else:
-                  goal_file = path.with_suffix(".goal.txt")
-                  goal_file.write_text(str(goal_text), encoding="utf-8")
-                  args += ["-GoalFile", str(goal_file)]
-                  if manifest.get("model"):
-                      args += ["-Model", manifest.get("model")]
-              with open(log_path, "w", encoding="utf-8") as logf:
-                  subprocess.run(args, check=True, stdout=logf, stderr=logf)
-          else:
-              # simulate work if script/exe missing
-              data["mode"] = "simulated"
-              data["events"].append({"ts": now_iso(), "type": "warn", "message": "Simulated run (script or pwsh missing)"})
-              path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-              time.sleep(2)
-
-          data["status"] = "completed"
-          data["completed_at"] = now_iso()
-          data["events"].append({"ts": data["completed_at"], "type": "status", "message": "completed"})
-          path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-        except Exception as exc:
-          try:
             data = json.loads(path.read_text())
-            data["status"] = f"error:{exc}"
-            data["completed_at"] = now_iso()
-            data.setdefault("events", []).append({"ts": data["completed_at"], "type": "error", "message": str(exc)})
+            data["status"] = "running"
+            data["started_at"] = now_iso()
+            data.setdefault("events", []).append({"ts": data["started_at"], "type": "status", "message": "running"})
+            data["mode"] = "executed"
             path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-          except Exception:
-            pass
+
+            goal_text = manifest.get("goal") or manifest.get("prompt_id") or ""
+            repo_root = req.repo_root or REPO_ROOT_DEFAULT
+            ps_exe = shutil.which("pwsh") or shutil.which("powershell")
+
+            # choose orchestrator script based on run_mode (default => POF)
+            run_mode = (req.run_mode or "default").lower()
+            ps1 = pathlib.Path(CODEX_SWARM_PS1 if run_mode == "codex-swarm" else ORCH_PS1)
+
+            status_file = out_dir / "agent_status.json"
+            final_synthesis = out_dir / "Final_Synthesis.txt"
+            processed_status = 0
+            stop_event = threading.Event()
+
+            def _poll_status():
+                nonlocal processed_status
+                while not stop_event.is_set():
+                    processed_status = _ingest_status_file(status_file, processed_status)
+                    stop_event.wait(1.0)
+
+            poller = threading.Thread(target=_poll_status, daemon=True)
+            poller.start()
+
+            if ps1.exists() and ps_exe:
+                data["events"].append({"ts": now_iso(), "type": "info", "message": f"Executing {ps1.name}"})
+                path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+                args = [ps_exe, "-NoLogo", "-File", str(ps1)]
+                if run_mode == "codex-swarm":
+                    args += ["-RepoRoot", repo_root]
+                else:
+                    args += [
+                        "-Goal", str(goal_text),
+                        "-Model", manifest.get("model") or DEFAULT_MODEL,
+                        "-Instruction", manifest.get("notes") or "",
+                        "-MaxIterations", str(req.max_iterations or 3),
+                        "-RunId", run_id,
+                        "-OutputRoot", str(BRIDGE_RUN_DIR),
+                    ]
+                with open(log_path, "w", encoding="utf-8") as logf:
+                    subprocess.run(args, check=True, stdout=logf, stderr=logf)
+            else:
+                # simulate work if script/exe missing
+                data["mode"] = "simulated"
+                data["events"].append({"ts": now_iso(), "type": "warn", "message": "Simulated run (script or pwsh missing)"})
+                path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+                time.sleep(2)
+
+            stop_event.set()
+            poller.join(timeout=2.0)
+            processed_status = _ingest_status_file(status_file, processed_status)
+
+            if final_synthesis.exists():
+                try:
+                    final_text = final_synthesis.read_text(encoding="utf-8")
+                    _update_manifest(lambda d: {**d, "final_synthesis": final_text})
+                except Exception:
+                    pass
+
+            data = json.loads(path.read_text())
+            data["status"] = "completed"
+            data["completed_at"] = now_iso()
+            data.setdefault("events", []).append({"ts": data["completed_at"], "type": "status", "message": "completed"})
+            path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        except Exception as exc:
+            try:
+                _append_events(
+                    [{"ts": now_iso(), "type": "error", "message": f"orchestrator failed: {exc}"}]
+                )
+                data = json.loads(path.read_text())
+                data["status"] = f"error:{exc}"
+                data["completed_at"] = now_iso()
+                path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            except Exception:
+                pass
 
     threading.Thread(target=_execute, args=(path, manifest), daemon=True).start()
 

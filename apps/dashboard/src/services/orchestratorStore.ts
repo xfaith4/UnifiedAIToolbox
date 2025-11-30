@@ -12,9 +12,15 @@ export interface OrchestrationRun {
   mode?: 'executed' | 'simulated' | string
   run_mode?: 'default' | 'codex-swarm' | 'multi-agent' | string
   repo_root?: string
+  run_dir?: string
+  log_path?: string
+  log_excerpt?: string
   events?: { ts: string; type: string; message: string }[]
+  scratchpad?: { agent?: string; status?: string; timestamp?: string }[]
   agents?: string[]
   model?: string
+  final_synthesis?: string
+  notes?: string
 }
 
 /**

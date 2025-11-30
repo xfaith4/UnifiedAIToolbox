@@ -16,6 +16,7 @@ export default function OrchestratorPage() {
   const [logError, setLogError] = useState<string>('')
   const [logLoading, setLogLoading] = useState(false)
   const [logEvents, setLogEvents] = useState<OrchestrationRun['events']>([])
+  const [logScratchpad, setLogScratchpad] = useState<OrchestrationRun['scratchpad']>([])
   const [selectedAgents, setSelectedAgents] = useState<string[]>([])
   const [showAgentCreator, setShowAgentCreator] = useState(false)
   const [newAgent, setNewAgent] = useState<AgentDefinition>({
@@ -204,6 +205,7 @@ export default function OrchestratorPage() {
         const latest = await fetchRunApi(run.run_id)
         setLogRun(latest)
         setLogEvents(latest.events ?? [])
+        setLogScratchpad(latest.scratchpad ?? [])
 
         let manifestText = JSON.stringify(latest, null, 2)
         try {
@@ -218,11 +220,13 @@ export default function OrchestratorPage() {
       } else {
         setLogText(JSON.stringify(run, null, 2))
         setLogEvents(run.events ?? [])
+        setLogScratchpad(run.scratchpad ?? [])
       }
     } catch (err) {
       setLogError(err instanceof Error ? err.message : 'Failed to fetch run')
       setLogText(JSON.stringify(run, null, 2))
       setLogEvents(run.events ?? [])
+      setLogScratchpad(run.scratchpad ?? [])
     } finally {
       if (!silent) setLogLoading(false)
     }
@@ -616,34 +620,69 @@ export default function OrchestratorPage() {
             </div>
           </div>
           <div className="px-4 py-3 text-xs text-slate-300 flex flex-col md:flex-row gap-4">
-            <div className="w-full md:w-1/3">
-              <div className="font-semibold text-slate-100 mb-2">Events</div>
-              <div className="max-h-[60vh] overflow-auto space-y-2">
-                {logEvents && logEvents.length > 0 ? (
-                  logEvents.map((ev, idx) => (
-                    <div key={idx} className="rounded border border-slate-800 bg-slate-950 p-2">
-                      <div className="flex justify-between text-[11px] text-slate-400">
-                        <span>{ev.type}</span>
-                        <span>{ev.ts}</span>
+            <div className="w-full md:w-1/3 space-y-4">
+              <div>
+                <div className="font-semibold text-slate-100 mb-2">Events</div>
+                <div className="max-h-[28vh] overflow-auto space-y-2">
+                  {logEvents && logEvents.length > 0 ? (
+                    logEvents.map((ev, idx) => (
+                      <div key={idx} className="rounded border border-slate-800 bg-slate-950 p-2">
+                        <div className="flex justify-between text-[11px] text-slate-400">
+                          <span>{ev.type}</span>
+                          <span>{ev.ts}</span>
+                        </div>
+                        <div className="text-slate-100 text-xs whitespace-pre-wrap">{ev.message}</div>
                       </div>
-                      <div className="text-slate-100 text-xs whitespace-pre-wrap">{ev.message}</div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="text-xs text-slate-500">No events.</div>
-                )}
-              </div>
-            </div>
-            <div className="w-full md:w-2/3">
-              <div className="flex items-center justify-between">
-                <div className="font-semibold text-slate-100 mb-2">Manifest / Logs</div>
-                <div className="text-xs text-slate-400">
-                  {logLoading ? 'Loading…' : logError ? logError : ''}
+                    ))
+                  ) : (
+                    <div className="text-xs text-slate-500">No events.</div>
+                  )}
                 </div>
               </div>
-              <pre className="max-h-[60vh] overflow-auto bg-slate-950 px-4 py-3 text-xs text-slate-200 whitespace-pre-wrap">
-                {logText}
-              </pre>
+              <div>
+                <div className="font-semibold text-slate-100 mb-2">Scratchpad (agent status)</div>
+                <div className="max-h-[28vh] overflow-auto space-y-2">
+                  {logScratchpad && logScratchpad.length > 0 ? (
+                    logScratchpad.map((sp, idx) => (
+                      <div key={idx} className="rounded border border-slate-800 bg-slate-950 p-2">
+                        <div className="flex justify-between text-[11px] text-slate-400">
+                          <span>{sp.agent || 'agent'}</span>
+                          <span>{sp.timestamp}</span>
+                        </div>
+                        <div className="text-slate-100 text-xs whitespace-pre-wrap">
+                          {sp.status || 'update'}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-xs text-slate-500">Scratchpad will appear as agents report status.</div>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="w-full md:w-2/3 space-y-3">
+              <div>
+                <div className="flex items-center justify-between">
+                  <div className="font-semibold text-slate-100 mb-2">Final synthesis</div>
+                  {logRun?.final_synthesis && (
+                    <span className="text-[11px] text-slate-400">from orchestrator</span>
+                  )}
+                </div>
+                <pre className="max-h-[22vh] overflow-auto bg-slate-950 px-4 py-3 text-xs text-slate-200 whitespace-pre-wrap">
+                  {logRun?.final_synthesis ? logRun.final_synthesis : 'Waiting for synthesis…'}
+                </pre>
+              </div>
+              <div>
+                <div className="flex items-center justify-between">
+                  <div className="font-semibold text-slate-100 mb-2">Manifest / Logs</div>
+                  <div className="text-xs text-slate-400">
+                    {logLoading ? 'Loading…' : logError ? logError : ''}
+                  </div>
+                </div>
+                <pre className="max-h-[36vh] overflow-auto bg-slate-950 px-4 py-3 text-xs text-slate-200 whitespace-pre-wrap">
+                  {logText}
+                </pre>
+              </div>
             </div>
           </div>
         </div>

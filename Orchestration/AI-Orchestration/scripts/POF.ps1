@@ -18,7 +18,10 @@ param(
     [switch]$VerboseMode,
     # Paths for Milestone Dashboard integration (optional)
     [string]$LogPath = "$PSScriptRoot\..\MilestoneDashboard\public\data\Milestone_Log.json",
-    [string]$TrendPath = "$PSScriptRoot\..\MilestoneDashboard\public\data\Metrics_Trend.json"
+    [string]$TrendPath = "$PSScriptRoot\..\MilestoneDashboard\public\data\Metrics_Trend.json",
+    # Optional overrides for external orchestrators
+    [string]$RunId = $(Get-Date -Format 'yyyyMMdd-HHmmss'),
+    [string]$OutputRoot = ""
 )
 
 Import-Module "$PSScriptRoot\MilestoneController.psm1" -Force
@@ -56,8 +59,11 @@ else {
 ### END: Fix AgentConfigPath
 
 $Agents = (Get-Content -Raw $AgentConfigPath | ConvertFrom-Json).Agents
-$RunId = (Get-Date -Format 'yyyyMMdd-HHmmss')
-$OutDir = "$PSScriptRoot\..\runs\$RunId"
+$OutDir = if (-not [string]::IsNullOrWhiteSpace($OutputRoot)) {
+    Join-Path $OutputRoot $RunId
+} else {
+    "$PSScriptRoot\..\runs\$RunId"
+}
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
 # --- LOGGING ---------------------------------------------------------------

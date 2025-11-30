@@ -1,0 +1,1145 @@
+[
+  {
+    "id": "agent.webrtc.disconnect",
+    "title": "Agent Webrtc Disconnect",
+    "category": "genesys",
+    "context": "",
+    "description": "Follow the dataset, output, and language contracts defined in this file.",
+    "tags": [
+      "genesys",
+      "ops"
+    ],
+    "role": "system",
+    "style": "",
+    "template": "Follow the dataset, output, and language contracts defined in this file.",
+    "variables": [
+      {
+        "name": "role",
+        "label": "role",
+        "type": "string",
+        "default": "",
+        "required": false,
+        "description": null
+      },
+      {
+        "name": "input_data",
+        "label": "input_data",
+        "type": "json",
+        "default": "",
+        "required": true,
+        "description": "JSON payload expected by the legacy PromptService template."
+      }
+    ],
+    "fewShot": [],
+    "outputFormat": "json",
+    "stop": [],
+    "temperature": 0.2,
+    "top_p": 1,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": "1.0.0",
+    "outputs": {
+      "format": "json"
+    },
+    "models": {
+      "recommended": [
+        "gpt-4o-mini",
+        "gpt-4o"
+      ],
+      "temperature": 0.2,
+      "top_p": 1
+    }
+  },
+  {
+    "id": "agent_webrtc_disconnect_v1.0.0",
+    "title": "Agent_Webrtc_Disconnect_V1 0 0",
+    "category": "",
+    "context": "",
+    "description": "",
+    "tags": [],
+    "role": "system",
+    "style": "",
+    "template": "",
+    "variables": [],
+    "fewShot": [],
+    "outputFormat": "",
+    "stop": [],
+    "temperature": 0.2,
+    "top_p": 1,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": null,
+    "outputs": null,
+    "models": null
+  },
+  {
+    "id": "analytics.divisions.performance.summary",
+    "title": "Analytics Divisions Performance Summary",
+    "category": "kpi",
+    "context": "",
+    "description": "Summarize KPIs for ${division} (${month}). Use bullet lists. If ${include_mos_detail}, include MOS\u22643.5 breakdown.",
+    "tags": [
+      "kpi",
+      "monthly",
+      "genesys"
+    ],
+    "role": "system",
+    "style": "",
+    "template": "Summarize KPIs for ${division} (${month}). Use bullet lists. If ${include_mos_detail}, include MOS\u22643.5 breakdown.",
+    "variables": [
+      {
+        "name": "division",
+        "label": "division",
+        "type": "string",
+        "default": "",
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "month",
+        "label": "month",
+        "type": "string",
+        "default": "",
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "include_mos_detail",
+        "label": "include_mos_detail",
+        "type": "boolean",
+        "default": "false",
+        "required": false,
+        "description": null
+      }
+    ],
+    "fewShot": [],
+    "outputFormat": "",
+    "stop": [],
+    "temperature": 0.2,
+    "top_p": 1,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": "2.1.0",
+    "outputs": null,
+    "models": {
+      "recommended": [
+        "gpt-5-thinking"
+      ],
+      "max_tokens": 2200,
+      "temperature": 0.2
+    }
+  },
+  {
+    "id": "comms.meeting.minutes.summarizer",
+    "title": "Comms Meeting Minutes Summarizer",
+    "category": "meetings",
+    "context": "",
+    "description": "Create minutes for '${title}' on ${date}. Sections: Decisions, Action Items (owner/date), Risks, Open Questions. Base only on ${raw_notes}.",
+    "tags": [
+      "meetings",
+      "minutes"
+    ],
+    "role": "system",
+    "style": "",
+    "template": "Create minutes for '${title}' on ${date}. Sections: Decisions, Action Items (owner/date), Risks, Open Questions. Base only on ${raw_notes}.",
+    "variables": [
+      {
+        "name": "title",
+        "label": "title",
+        "type": "string",
+        "default": "",
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "date",
+        "label": "date",
+        "type": "string",
+        "default": "",
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "attendees",
+        "label": "attendees",
+        "type": "string",
+        "default": "",
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "raw_notes",
+        "label": "raw_notes",
+        "type": "string",
+        "default": "",
+        "required": true,
+        "description": null
+      }
+    ],
+    "fewShot": [],
+    "outputFormat": "",
+    "stop": [],
+    "temperature": 0.3,
+    "top_p": 1,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": "1.0.0",
+    "outputs": null,
+    "models": {
+      "recommended": [
+        "gpt-5-thinking"
+      ],
+      "max_tokens": 1800,
+      "temperature": 0.3
+    }
+  },
+  {
+    "id": "divisions.performance.summary.meta",
+    "title": "Divisions Performance Summary Meta",
+    "category": "",
+    "context": "",
+    "description": "",
+    "tags": [],
+    "role": "system",
+    "style": "",
+    "template": "",
+    "variables": [],
+    "fewShot": [],
+    "outputFormat": "",
+    "stop": [],
+    "temperature": 0.2,
+    "top_p": 1,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": null,
+    "outputs": null,
+    "models": null
+  },
+  {
+    "id": "examples.analytics.divisions.performance.summary",
+    "title": "Examples Analytics Divisions Performance Summary",
+    "category": "example",
+    "context": "",
+    "description": "Summarize the latest KPI results for ${division} covering ${month}.\nInclude call volume, service level, average MOS, and notable shifts.\nIf ${include_mos_detail} is True, add a short paragraph that explains the primary drivers behind MOS changes.\n",
+    "tags": [
+      "example",
+      "quickstart"
+    ],
+    "role": "system",
+    "style": "",
+    "template": "Summarize the latest KPI results for ${division} covering ${month}.\nInclude call volume, service level, average MOS, and notable shifts.\nIf ${include_mos_detail} is True, add a short paragraph that explains the primary drivers behind MOS changes.",
+    "variables": [
+      {
+        "name": "division",
+        "label": "division",
+        "type": "string",
+        "default": "",
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "month",
+        "label": "month",
+        "type": "string",
+        "default": "",
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "include_mos_detail",
+        "label": "include_mos_detail",
+        "type": "boolean",
+        "default": "false",
+        "required": false,
+        "description": null
+      }
+    ],
+    "fewShot": [],
+    "outputFormat": "",
+    "stop": [],
+    "temperature": 0.2,
+    "top_p": 1,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": "0.1.0",
+    "outputs": null,
+    "models": {
+      "recommended": [
+        "gpt-4.1"
+      ],
+      "max_tokens": 1800,
+      "temperature": 0.2
+    }
+  },
+  {
+    "id": "divisions.performance.summary.tests",
+    "title": "Divisions Performance Summary Tests",
+    "category": "",
+    "context": "",
+    "description": "",
+    "tags": [],
+    "role": "system",
+    "style": "",
+    "template": "",
+    "variables": [],
+    "fewShot": [],
+    "outputFormat": "",
+    "stop": [],
+    "temperature": 0.2,
+    "top_p": 1,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": null,
+    "outputs": null,
+    "models": null
+  },
+  {
+    "id": "engineering.powershell.code.review",
+    "title": "Engineering Powershell Code Review",
+    "category": "powershell",
+    "context": "",
+    "description": "Review ${script_name}. Identify: portability issues, security pitfalls, performance hotspots, and style problems. Suggest concrete fixes with exact code snippets. Assume target versions ${target_versions}.",
+    "tags": [
+      "powershell",
+      "review"
+    ],
+    "role": "system",
+    "style": "",
+    "template": "Review ${script_name}. Identify: portability issues, security pitfalls, performance hotspots, and style problems. Suggest concrete fixes with exact code snippets. Assume target versions ${target_versions}.",
+    "variables": [
+      {
+        "name": "script_name",
+        "label": "script_name",
+        "type": "string",
+        "default": "",
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "script_content",
+        "label": "script_content",
+        "type": "string",
+        "default": "",
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "target_versions",
+        "label": "target_versions",
+        "type": "string",
+        "default": "[\n  \"5.1\",\n  \"7.4\"\n]",
+        "required": false,
+        "description": null
+      }
+    ],
+    "fewShot": [],
+    "outputFormat": "",
+    "stop": [],
+    "temperature": 0.2,
+    "top_p": 1,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": "1.1.0",
+    "outputs": null,
+    "models": {
+      "recommended": [
+        "gpt-5-thinking"
+      ],
+      "max_tokens": 2200,
+      "temperature": 0.2
+    }
+  },
+  {
+    "id": "engineering.sql.query.generator",
+    "title": "Engineering Sql Query Generator",
+    "category": "sql",
+    "context": "",
+    "description": "Given schema:\n${schema}\nWrite ONE SELECT-only query for: ${request}. Return JSON with keys: sql, notes, caveats.",
+    "tags": [
+      "sql",
+      "generator"
+    ],
+    "role": "system",
+    "style": "",
+    "template": "Given schema:\n${schema}\nWrite ONE SELECT-only query for: ${request}. Return JSON with keys: sql, notes, caveats.",
+    "variables": [
+      {
+        "name": "dialect",
+        "label": "dialect",
+        "type": "string",
+        "default": "",
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "schema",
+        "label": "schema",
+        "type": "string",
+        "default": "",
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "request",
+        "label": "request",
+        "type": "string",
+        "default": "",
+        "required": true,
+        "description": null
+      }
+    ],
+    "fewShot": [],
+    "outputFormat": "",
+    "stop": [],
+    "temperature": 0.1,
+    "top_p": 1,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": "1.0.0",
+    "outputs": null,
+    "models": {
+      "recommended": [
+        "gpt-5-thinking"
+      ],
+      "max_tokens": 2000,
+      "temperature": 0.1
+    }
+  },
+  {
+    "id": "incident.postmortem.synthesizer.meta",
+    "title": "Incident Postmortem Synthesizer Meta",
+    "category": "",
+    "context": "",
+    "description": "",
+    "tags": [],
+    "role": "system",
+    "style": "",
+    "template": "",
+    "variables": [],
+    "fewShot": [],
+    "outputFormat": "",
+    "stop": [],
+    "temperature": 0.2,
+    "top_p": 1,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": null,
+    "outputs": null,
+    "models": null
+  },
+  {
+    "id": "operations.incident.postmortem.synthesizer",
+    "title": "Operations Incident Postmortem Synthesizer",
+    "category": "postmortem",
+    "context": "",
+    "description": "Produce a blameless postmortem for ${incident_id} (${when}). Sections: Overview, Impact, Timeline (bullet list), Root Cause, Corrective Actions (owner+ETA), Lessons Learned.",
+    "tags": [
+      "postmortem",
+      "sre"
+    ],
+    "role": "system",
+    "style": "",
+    "template": "Produce a blameless postmortem for ${incident_id} (${when}). Sections: Overview, Impact, Timeline (bullet list), Root Cause, Corrective Actions (owner+ETA), Lessons Learned.",
+    "variables": [
+      {
+        "name": "incident_id",
+        "label": "incident_id",
+        "type": "string",
+        "default": "",
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "when",
+        "label": "when",
+        "type": "string",
+        "default": "",
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "impact_summary",
+        "label": "impact_summary",
+        "type": "string",
+        "default": "",
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "timeline",
+        "label": "timeline",
+        "type": "string",
+        "default": "",
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "root_cause",
+        "label": "root_cause",
+        "type": "string",
+        "default": "",
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "actions",
+        "label": "actions",
+        "type": "string",
+        "default": "",
+        "required": true,
+        "description": null
+      }
+    ],
+    "fewShot": [],
+    "outputFormat": "",
+    "stop": [],
+    "temperature": 0.2,
+    "top_p": 1,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": "1.2.0",
+    "outputs": null,
+    "models": {
+      "recommended": [
+        "gpt-5-thinking"
+      ],
+      "max_tokens": 2600,
+      "temperature": 0.2
+    }
+  },
+  {
+    "id": "incident.postmortem.synthesizer.tests",
+    "title": "Incident Postmortem Synthesizer Tests",
+    "category": "",
+    "context": "",
+    "description": "",
+    "tags": [],
+    "role": "system",
+    "style": "",
+    "template": "",
+    "variables": [],
+    "fewShot": [],
+    "outputFormat": "",
+    "stop": [],
+    "temperature": 0.2,
+    "top_p": 1,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": null,
+    "outputs": null,
+    "models": null
+  },
+  {
+    "id": "legacy.genesys-kpi-brief-1",
+    "title": "Legacy Genesys-Kpi-Brief-1",
+    "category": "analytics",
+    "context": "",
+    "description": "Context: {{context}}\nData Highlights: {{highlights}}\nExplain the likely causes and recommended actions in <=5 bullets.",
+    "tags": [
+      "analytics",
+      "brief",
+      "genesys",
+      "prompt-library",
+      "react"
+    ],
+    "role": "system",
+    "style": "",
+    "template": "Context: {{context}}\nData Highlights: {{highlights}}\nExplain the likely causes and recommended actions in <=5 bullets.",
+    "variables": [
+      {
+        "name": "context",
+        "label": "context",
+        "type": "string",
+        "default": "",
+        "required": false,
+        "description": null
+      },
+      {
+        "name": "highlights",
+        "label": "highlights",
+        "type": "string",
+        "default": "",
+        "required": false,
+        "description": null
+      }
+    ],
+    "fewShot": [],
+    "outputFormat": "",
+    "stop": [],
+    "temperature": 0.3,
+    "top_p": 1,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": "1.0.0",
+    "outputs": null,
+    "models": {
+      "temperature": 0.3,
+      "top_p": 1,
+      "recommended": [
+        "gpt-4o-mini"
+      ]
+    }
+  },
+  {
+    "id": "legacy.sys-troubleshoot-1",
+    "title": "Legacy Sys-Troubleshoot-1",
+    "category": "events",
+    "context": "",
+    "description": "You are a senior Windows engineer. Analyze the following event text and return JSON with keys: root_cause, severity (Low/Medium/High), actions (array), references (array of URLs).\n\nEVENT:\n{{event_text}}",
+    "tags": [
+      "events",
+      "json",
+      "ops",
+      "prompt-library",
+      "react",
+      "windows"
+    ],
+    "role": "system",
+    "style": "",
+    "template": "You are a senior Windows engineer. Analyze the following event text and return JSON with keys: root_cause, severity (Low/Medium/High), actions (array), references (array of URLs).\n\nEVENT:\n{{event_text}}",
+    "variables": [
+      {
+        "name": "event_text",
+        "label": "Event Text",
+        "type": "string",
+        "default": "",
+        "required": true,
+        "description": null
+      }
+    ],
+    "fewShot": [],
+    "outputFormat": "json",
+    "stop": [],
+    "temperature": 0.2,
+    "top_p": 1,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": "1.0.0",
+    "outputs": {
+      "format": "json",
+      "schema": "{\"root_cause\":\"...\",\"severity\":\"...\",\"actions\":[\"...\"],\"references\":[\"...\"]}"
+    },
+    "models": {
+      "temperature": 0.2,
+      "top_p": 1,
+      "recommended": [
+        "gpt-4o-mini"
+      ]
+    }
+  },
+  {
+    "id": "meeting.minutes.summarizer.meta",
+    "title": "Meeting Minutes Summarizer Meta",
+    "category": "",
+    "context": "",
+    "description": "",
+    "tags": [],
+    "role": "system",
+    "style": "",
+    "template": "",
+    "variables": [],
+    "fewShot": [],
+    "outputFormat": "",
+    "stop": [],
+    "temperature": 0.2,
+    "top_p": 1,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": null,
+    "outputs": null,
+    "models": null
+  },
+  {
+    "id": "meeting.minutes.summarizer.tests",
+    "title": "Meeting Minutes Summarizer Tests",
+    "category": "",
+    "context": "",
+    "description": "",
+    "tags": [],
+    "role": "system",
+    "style": "",
+    "template": "",
+    "variables": [],
+    "fewShot": [],
+    "outputFormat": "",
+    "stop": [],
+    "temperature": 0.2,
+    "top_p": 1,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": null,
+    "outputs": null,
+    "models": null
+  },
+  {
+    "id": "powershell.code.review.meta",
+    "title": "Powershell Code Review Meta",
+    "category": "",
+    "context": "",
+    "description": "",
+    "tags": [],
+    "role": "system",
+    "style": "",
+    "template": "",
+    "variables": [],
+    "fewShot": [],
+    "outputFormat": "",
+    "stop": [],
+    "temperature": 0.2,
+    "top_p": 1,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": null,
+    "outputs": null,
+    "models": null
+  },
+  {
+    "id": "powershell.code.review.tests",
+    "title": "Powershell Code Review Tests",
+    "category": "",
+    "context": "",
+    "description": "",
+    "tags": [],
+    "role": "system",
+    "style": "",
+    "template": "",
+    "variables": [],
+    "fewShot": [],
+    "outputFormat": "",
+    "stop": [],
+    "temperature": 0.2,
+    "top_p": 1,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": null,
+    "outputs": null,
+    "models": null
+  },
+  {
+    "id": "pr_20251109_sample",
+    "title": "Sample Division Performance (Genesys)",
+    "category": "",
+    "context": "",
+    "description": "",
+    "tags": [],
+    "role": "system",
+    "style": "",
+    "template": "",
+    "variables": [],
+    "fewShot": [],
+    "outputFormat": "",
+    "stop": [],
+    "temperature": 0.2,
+    "top_p": 1,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": 1,
+    "outputs": null,
+    "models": null
+  },
+  {
+    "id": "sql.query.generator.meta",
+    "title": "Sql Query Generator Meta",
+    "category": "",
+    "context": "",
+    "description": "",
+    "tags": [],
+    "role": "system",
+    "style": "",
+    "template": "",
+    "variables": [],
+    "fewShot": [],
+    "outputFormat": "",
+    "stop": [],
+    "temperature": 0.2,
+    "top_p": 1,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": null,
+    "outputs": null,
+    "models": null
+  },
+  {
+    "id": "sql.query.generator.tests",
+    "title": "Sql Query Generator Tests",
+    "category": "",
+    "context": "",
+    "description": "",
+    "tags": [],
+    "role": "system",
+    "style": "",
+    "template": "",
+    "variables": [],
+    "fewShot": [],
+    "outputFormat": "",
+    "stop": [],
+    "temperature": 0.2,
+    "top_p": 1,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": null,
+    "outputs": null,
+    "models": null
+  },
+  {
+    "id": "support.webrtc.disconnects.explainer",
+    "title": "Support Webrtc Disconnects Explainer",
+    "category": "webrtc",
+    "context": "",
+    "description": "Create a brief explainer for ${division} covering ${period}. List top 3\u20135 causes from ${top_causes}. If actions exist, add 'What we did'. Close with 'What to watch next'.",
+    "tags": [
+      "webrtc",
+      "disconnects"
+    ],
+    "role": "system",
+    "style": "",
+    "template": "Create a brief explainer for ${division} covering ${period}. List top 3\u20135 causes from ${top_causes}. If actions exist, add 'What we did'. Close with 'What to watch next'.",
+    "variables": [
+      {
+        "name": "division",
+        "label": "division",
+        "type": "string",
+        "default": "",
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "period",
+        "label": "period",
+        "type": "string",
+        "default": "",
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "top_causes",
+        "label": "top_causes",
+        "type": "string",
+        "default": "",
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "actions_taken",
+        "label": "actions_taken",
+        "type": "string",
+        "default": "",
+        "required": false,
+        "description": null
+      }
+    ],
+    "fewShot": [],
+    "outputFormat": "",
+    "stop": [],
+    "temperature": 0.1,
+    "top_p": 1,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": "1.0.0",
+    "outputs": null,
+    "models": {
+      "recommended": [
+        "gpt-5-thinking"
+      ],
+      "max_tokens": 1800,
+      "temperature": 0.1
+    }
+  },
+  {
+    "id": "volume.anomaly.summary",
+    "title": "Volume Anomaly Summary",
+    "category": "genesys",
+    "context": "",
+    "description": "Follow the dataset, output, and language contracts defined in this file.",
+    "tags": [
+      "genesys",
+      "ops"
+    ],
+    "role": "system",
+    "style": "",
+    "template": "Follow the dataset, output, and language contracts defined in this file.",
+    "variables": [
+      {
+        "name": "role",
+        "label": "role",
+        "type": "string",
+        "default": "",
+        "required": false,
+        "description": null
+      },
+      {
+        "name": "input_data",
+        "label": "input_data",
+        "type": "json",
+        "default": "",
+        "required": true,
+        "description": "JSON payload expected by the legacy PromptService template."
+      }
+    ],
+    "fewShot": [],
+    "outputFormat": "json",
+    "stop": [],
+    "temperature": 0.2,
+    "top_p": 1,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": "1.0.0",
+    "outputs": {
+      "format": "json"
+    },
+    "models": {
+      "recommended": [
+        "gpt-4o-mini",
+        "gpt-4o"
+      ],
+      "temperature": 0.2,
+      "top_p": 1
+    }
+  },
+  {
+    "id": "volume_anomaly_summary_v1.0.0",
+    "title": "Volume_Anomaly_Summary_V1 0 0",
+    "category": "",
+    "context": "",
+    "description": "",
+    "tags": [],
+    "role": "system",
+    "style": "",
+    "template": "",
+    "variables": [],
+    "fewShot": [],
+    "outputFormat": "",
+    "stop": [],
+    "temperature": 0.2,
+    "top_p": 1,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": null,
+    "outputs": null,
+    "models": null
+  },
+  {
+    "id": "volume_anomaly_summary_v2.0.0",
+    "title": "Volume Anomaly Incident Brief (v2)",
+    "category": "incident",
+    "context": "",
+    "description": "Summarize the anomaly detected for ${division} between ${anomaly_window_start} and\n${anomaly_window_end}. Highlight volume variance vs forecast, SLA impact, abandon\ntrends, MOS or quality deltas, and staffing gaps. If ${include_staffing_detail} is\nfalse, omit staffing commentary. Call out primary drivers (queue, channel, campaign,\nIVR issues) and conclude with prioritized actions.",
+    "tags": [
+      "incident",
+      "anomaly",
+      "contact-center"
+    ],
+    "role": "system",
+    "style": "",
+    "template": "Summarize the anomaly detected for ${division} between ${anomaly_window_start} and\n${anomaly_window_end}. Highlight volume variance vs forecast, SLA impact, abandon\ntrends, MOS or quality deltas, and staffing gaps. If ${include_staffing_detail} is\nfalse, omit staffing commentary. Call out primary drivers (queue, channel, campaign,\nIVR issues) and conclude with prioritized actions.",
+    "variables": [
+      {
+        "name": "division",
+        "label": "division",
+        "type": "string",
+        "default": "",
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "anomaly_window_start",
+        "label": "anomaly_window_start",
+        "type": "string",
+        "default": "",
+        "required": true,
+        "description": "ISO-8601 UTC timestamp"
+      },
+      {
+        "name": "anomaly_window_end",
+        "label": "anomaly_window_end",
+        "type": "string",
+        "default": "",
+        "required": true,
+        "description": "ISO-8601 UTC timestamp"
+      },
+      {
+        "name": "window_minutes",
+        "label": "window_minutes",
+        "type": "string",
+        "default": "120",
+        "required": false,
+        "description": null
+      },
+      {
+        "name": "include_staffing_detail",
+        "label": "include_staffing_detail",
+        "type": "boolean",
+        "default": "true",
+        "required": false,
+        "description": null
+      }
+    ],
+    "fewShot": [],
+    "outputFormat": "",
+    "stop": [],
+    "temperature": 0.15,
+    "top_p": 1,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": "2.0.0",
+    "outputs": null,
+    "models": {
+      "recommended": [
+        "gpt-5",
+        "gpt-4o"
+      ],
+      "max_tokens": 2000,
+      "temperature": 0.15
+    }
+  },
+  {
+    "id": "webrtc.disconnects.explainer.meta",
+    "title": "Webrtc Disconnects Explainer Meta",
+    "category": "",
+    "context": "",
+    "description": "",
+    "tags": [],
+    "role": "system",
+    "style": "",
+    "template": "",
+    "variables": [],
+    "fewShot": [],
+    "outputFormat": "",
+    "stop": [],
+    "temperature": 0.2,
+    "top_p": 1,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": null,
+    "outputs": null,
+    "models": null
+  },
+  {
+    "id": "webrtc.disconnects.explainer.tests",
+    "title": "Webrtc Disconnects Explainer Tests",
+    "category": "",
+    "context": "",
+    "description": "",
+    "tags": [],
+    "role": "system",
+    "style": "",
+    "template": "",
+    "variables": [],
+    "fewShot": [],
+    "outputFormat": "",
+    "stop": [],
+    "temperature": 0.2,
+    "top_p": 1,
+    "updatedAt": "2025-11-23T23:40:15",
+    "createdAt": "2025-11-23T23:40:15",
+    "version": null,
+    "outputs": null,
+    "models": null
+  },
+  {
+    "id": "sys-troubleshoot-1",
+    "title": "Troubleshoot Windows Event (structured)",
+    "category": "Operations",
+    "context": "Summarize the Windows event payload and propose corrective steps with a JSON response.",
+    "description": "Summarize event and propose corrective steps. Returns JSON.",
+    "tags": [
+      "Operations",
+      "ops",
+      "windows",
+      "events",
+      "json"
+    ],
+    "role": "system",
+    "style": "Be concise, actionable, and accurate.",
+    "template": "You are a senior Windows engineer. Analyze the following event text and return JSON with keys: root_cause, severity (Low/Medium/High), actions (array), references (array of URLs).\n\nEVENT:\n{{event_text}}",
+    "variables": [
+      {
+        "name": "event_text",
+        "label": "Event Text",
+        "type": "multiline",
+        "default": "",
+        "required": true
+      }
+    ],
+    "fewShot": [],
+    "outputFormat": "{\"root_cause\":\"...\",\"severity\":\"...\",\"actions\":[\"...\"],\"references\":[\"...\"]}",
+    "stop": [],
+    "temperature": 0.2,
+    "top_p": 1,
+    "updatedAt": "2025-01-01T00:00:00.000Z",
+    "createdAt": "2025-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "genesys-kpi-brief-1",
+    "title": "Genesys KPI Brief",
+    "category": "Analytics",
+    "context": "Explain KPI movement for Genesys dashboards to non-technical leads.",
+    "description": "Explain KPI movement to non-technical leads with crisp bullets.",
+    "tags": [
+      "Analytics",
+      "genesys",
+      "analytics",
+      "brief"
+    ],
+    "role": "system",
+    "style": "Plain English, exec-friendly, 5 bullets max.",
+    "template": "Context: {{context}}\nData Highlights: {{highlights}}\nExplain the likely causes and recommended actions in <=5 bullets.",
+    "variables": [
+      {
+        "name": "context",
+        "label": "",
+        "type": "string",
+        "default": "",
+        "required": false
+      },
+      {
+        "name": "highlights",
+        "label": "",
+        "type": "multiline",
+        "default": "",
+        "required": false
+      }
+    ],
+    "fewShot": [],
+    "outputFormat": "",
+    "stop": [],
+    "temperature": 0.3,
+    "top_p": 1,
+    "updatedAt": "2025-01-01T00:00:00.000Z",
+    "createdAt": "2025-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "2n5whkk2fbxmifza6ni",
+    "title": "New Prompt",
+    "category": "",
+    "context": "",
+    "description": "",
+    "tags": [],
+    "role": "system",
+    "style": "",
+    "template": "You are a helpful AI.\nTask: {{task}}\nConstraints: {{constraints}}",
+    "variables": [
+      {
+        "name": "task",
+        "label": "Task",
+        "type": "multiline",
+        "default": "",
+        "required": false
+      },
+      {
+        "name": "constraints",
+        "label": "Constraints",
+        "type": "string",
+        "default": "",
+        "required": false
+      }
+    ],
+    "fewShot": [],
+    "outputFormat": "",
+    "stop": [],
+    "temperature": 0.2,
+    "top_p": 1,
+    "updatedAt": "2025-11-26T12:25:46.541Z",
+    "createdAt": "2025-11-26T12:25:46.541Z"
+  }
+]
