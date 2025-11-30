@@ -237,9 +237,9 @@ export default function OrchestratorPage() {
       setSelectedAgents([])
     } catch (error) {
       console.error('Orchestration failed:', error)
-      // Fallback to local
-      addLocalRun(run)
-      setRuns((prev) => [run, ...prev])
+      const message =
+        error instanceof Error ? error.message : 'Unknown error launching orchestration'
+      window.alert(`Orchestration failed: ${message}`)
     } finally {
       setIsRunning(false)
     }

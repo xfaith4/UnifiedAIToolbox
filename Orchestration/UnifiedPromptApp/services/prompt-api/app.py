@@ -1959,29 +1959,27 @@ def orchestrate_run(req: OrchestrationRequest):
             poller = threading.Thread(target=_poll_status, daemon=True)
             poller.start()
 
-            if ps1.exists() and ps_exe:
-                data["events"].append({"ts": now_iso(), "type": "info", "message": f"Executing {ps1.name}"})
-                path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-                args = [ps_exe, "-NoLogo", "-File", str(ps1)]
-                if run_mode == "codex-swarm":
-                    args += ["-RepoRoot", repo_root]
-                else:
-                    args += [
-                        "-Goal", str(goal_text),
-                        "-Model", manifest.get("model") or DEFAULT_MODEL,
-                        "-Instruction", manifest.get("notes") or "",
-                        "-MaxIterations", str(req.max_iterations or 3),
-                        "-RunId", run_id,
-                        "-OutputRoot", str(BRIDGE_RUN_DIR),
-                    ]
-                with open(log_path, "w", encoding="utf-8") as logf:
-                    subprocess.run(args, check=True, stdout=logf, stderr=logf)
+            if not ps1.exists():
+                raise FileNotFoundError(f"Orchestrator script not found: {ps1}")
+            if not ps_exe:
+                raise RuntimeError("PowerShell executable not found (pwsh or powershell)")
+
+            data["events"].append({"ts": now_iso(), "type": "info", "message": f"Executing {ps1.name}"})
+            path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            args = [ps_exe, "-NoLogo", "-File", str(ps1)]
+            if run_mode == "codex-swarm":
+                args += ["-RepoRoot", repo_root]
             else:
-                # simulate work if script/exe missing
-                data["mode"] = "simulated"
-                data["events"].append({"ts": now_iso(), "type": "warn", "message": "Simulated run (script or pwsh missing)"})
-                path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-                time.sleep(2)
+                args += [
+                    "-Goal", str(goal_text),
+                    "-Model", manifest.get("model") or DEFAULT_MODEL,
+                    "-Instruction", manifest.get("notes") or "",
+                    "-MaxIterations", str(req.max_iterations or 3),
+                    "-RunId", run_id,
+                    "-OutputRoot", str(BRIDGE_RUN_DIR),
+                ]
+            with open(log_path, "w", encoding="utf-8") as logf:
+                subprocess.run(args, check=True, stdout=logf, stderr=logf)
 
             stop_event.set()
             poller.join(timeout=2.0)
