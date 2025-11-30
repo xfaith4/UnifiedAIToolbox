@@ -151,7 +151,8 @@ class CostTracker:
         # If no explicit start_date/end_date are provided, treat the window as the full history
         # (delegate to get_total_cost which accepts None to mean no filtering). Do not automatically
         # set a trailing window based on period_days to avoid surprising differences between
-        # get_total_cost() and check_budget().
+        # get_total_cost() and check_budget(). Note: period_days is still included in the response
+        # for informational purposes even when not used for date filtering.
 
         current_cost = self.get_total_cost(start_date, end_date, provider, user_id)
         remaining = max(0.0, budget_amount - current_cost)
