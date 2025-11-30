@@ -460,9 +460,9 @@ def _execute_run_manifest(manifest_path: Path) -> bool:
         })
         manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
         
-        # Try to execute via PowerShell orchestrator
+        # Try to execute via PowerShell orchestrator (POF.ps1 is the functioning orchestrator)
         ps_exe = "pwsh" if os.name != "nt" else "powershell"
-        orch_script = REPO_ROOT.parent / "AI-Orchestration" / "scripts" / "MilestoneController.ps1"
+        orch_script = REPO_ROOT / "Orchestration" / "AI-Orchestration" / "scripts" / "POF.ps1"
         log_path = manifest_path.with_suffix(".log")
         
         # Check if PowerShell is available (use 'where' on Windows, 'which' on Unix)
@@ -478,12 +478,14 @@ def _execute_run_manifest(manifest_path: Path) -> bool:
             })
             manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
             
-            # Create goal file from manifest - prefer goal field, fall back to prompt_id
-            goal_file = manifest_path.with_suffix(".goal.txt")
+            # Get goal text from manifest - prefer goal field, fall back to prompt_id
             goal_text = manifest.get("goal") or manifest.get("prompt_id", "")
-            goal_file.write_text(goal_text, encoding="utf-8")
             
-            args = [ps_exe, "-File", str(orch_script), "-GoalFile", str(goal_file)]
+            # POF.ps1 takes -Goal parameter directly and -OutputRoot for run output directory
+            run_output_dir = manifest_path.parent / f"run_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
+            run_output_dir.mkdir(parents=True, exist_ok=True)
+            
+            args = [ps_exe, "-File", str(orch_script), "-Goal", goal_text, "-OutputRoot", str(run_output_dir)]
             with open(log_path, "w", encoding="utf-8") as logf:
                 result = subprocess.run(args, stdout=logf, stderr=logf)
             
