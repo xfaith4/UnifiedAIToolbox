@@ -47,7 +47,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.12.1'
           cache: 'pip'
           cache-dependency-path: Orchestration/UnifiedPromptApp/services/prompt-api/requirements.txt
 
