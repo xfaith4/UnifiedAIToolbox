@@ -211,7 +211,7 @@ flowchart LR
 - [x] Windows/WSL/Linux execution paths - PowerShell scripts for Windows, shell for Linux
 
 ## CI / DevX
-- [x] One‑command launch scripts - launch.sh, LaunchUnifiedToolbox.ps1
+- [x] One‑command launch script - launch.sh
 - [x] Cross‑runtime smoke tests - Dashboard tests with vitest
 - [ ] PR checks for prompt & policy changes
 

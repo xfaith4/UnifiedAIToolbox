@@ -14,30 +14,7 @@ Open `launch-portal.html` in your web browser for a visual interface to:
 
 ### Launch Methods
 
-#### 1. Windows (PowerShell) - Recommended for Windows
-```powershell
-.\LaunchUnifiedToolbox.ps1
-```
-
-**Options:**
-```powershell
-# Launch with custom ports
-.\LaunchUnifiedToolbox.ps1 -FrontendPort 5180 -ApiPort 8100
-
-# Launch frontend only
-.\LaunchUnifiedToolbox.ps1 -FrontendOnly
-
-# Launch backend only
-.\LaunchUnifiedToolbox.ps1 -BackendOnly
-
-# Skip dependency installation
-.\LaunchUnifiedToolbox.ps1 -SkipInstall
-
-# Enable deprecated Streamlit workbench
-.\LaunchUnifiedToolbox.ps1 -EnableStreamlit
-```
-
-#### 2. Linux/Mac/WSL - Universal Bash Script
+#### 1. Universal Bash (Linux/Mac/WSL/Git Bash on Windows)
 ```bash
 ./launch.sh
 ```
@@ -63,7 +40,7 @@ Open `launch-portal.html` in your web browser for a visual interface to:
 ./launch.sh --help
 ```
 
-#### 3. Docker Compose - All Platforms
+#### 2. Docker Compose - All Platforms
 ```bash
 # Start all services
 docker compose up -d
@@ -85,9 +62,10 @@ cp .env.example .env
 docker compose up -d
 ```
 
-#### 4. Windows Batch File (Simple)
-```cmd
-LaunchUnifiedDashboard.bat
+#### 3. Quick Launch (API + Dashboard)
+```bash
+./launch.sh          # from repo root; installs deps, starts API + dashboard
+./launch.sh --help   # view options (ports, skip install, no-open)
 ```
 
 ## Services Overview

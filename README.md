@@ -60,7 +60,7 @@ The Unified AI Toolbox is a comprehensive platform that unifies prompt managemen
 **Windows:**
 
 ```powershell
-.\LaunchUnifiedToolbox.ps1
+./launch.sh   # run via Git Bash or WSL
 ```
 
 **Linux/Mac:**
@@ -112,6 +112,15 @@ UnifiedAIToolbox/
 - **[Deployment Guide](docs/help/deployment.md)** - Production deployment checklist
 
 ## 🛠️ Development
+
+### Quick Launch (API + Dashboard)
+
+```bash
+./launch.sh                # preflight checks, installs deps, starts API and dashboard, opens browser
+./launch.sh --no-open      # skip opening the browser
+./launch.sh --frontend-only  # just the Vite dashboard
+```
+> Requires Node.js 18+ and Python 3.12.1+ (checked automatically).
 
 ### Build the Project
 

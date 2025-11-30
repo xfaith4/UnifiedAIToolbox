@@ -7,6 +7,9 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+REQUIRED_NODE="18.0.0"
+REQUIRED_PYTHON="3.12.1"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -22,6 +25,7 @@ BACKEND_ONLY=false
 API_PORT=8000
 FRONTEND_PORT=5173
 WEB_PORT=3000
+OPEN_BROWSER=true
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -54,6 +58,10 @@ while [[ $# -gt 0 ]]; do
             WEB_PORT="$2"
             shift 2
             ;;
+        --no-open)
+            OPEN_BROWSER=false
+            shift
+            ;;
         --help|-h)
             echo "Usage: $0 [OPTIONS]"
             echo ""
@@ -65,6 +73,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --api-port PORT       Set API port (default: 8000)"
             echo "  --frontend-port PORT  Set frontend port (default: 5173)"
             echo "  --web-port PORT       Set web port (default: 3000)"
+            echo "  --no-open             Do not auto-open the dashboard in a browser"
             echo "  --help, -h            Show this help message"
             echo ""
             echo "Examples:"
@@ -98,6 +107,23 @@ check_command() {
     return 0
 }
 
+check_version() {
+    local bin="$1"
+    local required="$2"
+    local found
+    found="$($bin --version 2>/dev/null | grep -Eo '[0-9]+(\.[0-9]+){1,}')"
+    if [ -z "$found" ]; then
+        echo -e "${RED}Error: could not determine $bin version${NC}"
+        return 1
+    fi
+    if [ "$(printf '%s\n%s\n' "$required" "$found" | sort -V | head -n1)" != "$required" ]; then
+        echo -e "${RED}$bin $required+ required; found $found${NC}"
+        return 1
+    fi
+    echo -e "${GREEN}✓ $bin $found (>= $required)${NC}"
+    return 0
+}
+
 echo -e "${CYAN}Checking prerequisites...${NC}"
 
 if [ "$USE_DOCKER" = true ]; then
@@ -105,9 +131,13 @@ if [ "$USE_DOCKER" = true ]; then
     check_command docker-compose || check_command docker compose || exit 1
 else
     check_command node || exit 1
+    check_version node "$REQUIRED_NODE" || exit 1
     check_command npm || exit 1
-    check_command python3 || exit 1
-    check_command pip3 || exit 1
+    check_command python3 || check_command python || exit 1
+    PYTHON_BIN_GLOBAL="$(command -v python3 || command -v python)"
+    check_version "$PYTHON_BIN_GLOBAL" "$REQUIRED_PYTHON" || exit 1
+    check_command pip3 || check_command pip || exit 1
+    check_command curl || exit 1
 fi
 
 echo ""
@@ -194,13 +224,12 @@ if [ "$FRONTEND_ONLY" != true ]; then
         PYTHON_BIN=".venv/Scripts/python.exe"
     fi
 
-    if [ "$SKIP_INSTALL" != true ] && [ ! -d ".venv_installed" ]; then
-        echo -e "${YELLOW}Installing Python dependencies...${NC}"
-        "$PYTHON_BIN" -m pip install --upgrade pip || true
-        "$PYTHON_BIN" -m pip install -r requirements.txt || true
-        touch .venv_installed
+    if [ "$SKIP_INSTALL" != true ]; then
+        echo -e "${YELLOW}Installing Python dependencies (respecting constraints)...${NC}"
+        "$PYTHON_BIN" -m pip install --upgrade pip
+        "$PYTHON_BIN" -m pip install -r requirements.txt
     else
-        echo -e "${YELLOW}Skipping dependency install (set SKIP_INSTALL=false to force)${NC}"
+        echo -e "${YELLOW}Skipping dependency install (set SKIP_INSTALL=false to reinstall)${NC}"
     fi
     
     # Load local env if present
@@ -217,7 +246,14 @@ if [ "$FRONTEND_ONLY" != true ]; then
     API_PID=$!
     
     cd "$SCRIPT_DIR"
-    sleep 3
+    echo -e "${CYAN}Waiting for API to respond...${NC}"
+    for _ in $(seq 1 30); do
+        if curl -fsS "http://localhost:${API_PORT}/health" >/dev/null 2>&1; then
+            echo -e "${GREEN}API is up at http://localhost:${API_PORT}${NC}"
+            break
+        fi
+        sleep 1
+    done
 fi
 
 # Start frontend services
@@ -267,6 +303,14 @@ fi
 echo ""
 echo -e "${YELLOW}Press Ctrl+C to stop all services...${NC}"
 echo ""
+
+if [ "$OPEN_BROWSER" = true ] && [ "$BACKEND_ONLY" != true ]; then
+    if command -v xdg-open >/dev/null 2>&1; then
+        xdg-open "http://localhost:${FRONTEND_PORT}" >/dev/null 2>&1 &
+    elif command -v open >/dev/null 2>&1; then
+        open "http://localhost:${FRONTEND_PORT}" >/dev/null 2>&1 &
+    fi
+fi
 
 # Wait for all background jobs
 wait

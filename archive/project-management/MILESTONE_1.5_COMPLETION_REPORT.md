@@ -585,7 +585,7 @@ npm run dev
 ```
 
 **Option 3: Production Scripts**
-- Windows: `LaunchUnifiedToolbox.ps1`
+- Windows: `./launch.sh` (via Git Bash or WSL)
 - Linux/Mac: `./launch.sh`
 - Visual Portal: `launch-portal.html`
 

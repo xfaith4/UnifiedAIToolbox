@@ -17,6 +17,14 @@
 
 ---
 
+## ⚠️ Immediate Hardening Priorities
+- Replace stub auth with real token/role validation (currently local-only stub).
+- Wire GitHub integration to live APIs (status endpoint is stubbed).
+- Extend provider router to support Anthropic/Azure, removing 501 placeholders.
+- Ensure orchestrator runs default to real execution path when scripts/tools are present (simulate only as fallback).
+
+---
+
 ## ✅ What's Complete (Milestone 1.5)
 
 ### Core Platform

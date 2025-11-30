@@ -11,7 +11,7 @@
 
 **Windows:**
 ```powershell
-.\LaunchUnifiedToolbox.ps1
+./launch.sh   # run via Git Bash or WSL
 ```
 
 **Linux/Mac:**

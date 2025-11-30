@@ -239,6 +239,45 @@ def test_orchestrator_task_list_and_update(tmp_path, monkeypatch):
         app.DB_PATH = original_db_path
 
 
+def test_orchestrator_queue_process_dispatches(tmp_path, monkeypatch):
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    temp_db = tmp_path / "workbench.db"
+    runs_dir = tmp_path / "runs"
+    runs_dir.mkdir()
+    original_data_dir = app.DATA_DIR
+    original_db_path = app.DB_PATH
+    original_runs_dir = app.BRIDGE_RUN_DIR
+    try:
+        app.DATA_DIR = data_dir
+        app.DB_PATH = temp_db
+        app.BRIDGE_RUN_DIR = runs_dir
+        app.init_db()
+        client.post(
+            "/orchestrator/tasks",
+            json={
+                "supervisor": {"task": "Process queue", "objective": "ensure run"},
+                "agents": [],
+                "prompts": [{"id": "analytics.divisions.performance.summary"}],
+            },
+        )
+        resp = client.post("/orchestrator/tasks:process")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["processed"] == 1
+        with sqlite3.connect(app.DB_PATH) as conn:
+            row = conn.execute("SELECT payload FROM orchestrator_tasks").fetchone()
+        task = json.loads(row[0])
+        assert task["status"] == "dispatched"
+        assert task["run_id"]
+        manifests = list(runs_dir.glob("*.json"))
+        assert manifests, "expected a run manifest to be created"
+    finally:
+        app.DATA_DIR = original_data_dir
+        app.DB_PATH = original_db_path
+        app.BRIDGE_RUN_DIR = original_runs_dir
+
+
 def test_render_prompt_falls_back_to_synced_payload(tmp_path, monkeypatch):
     sync_file = tmp_path / "prompt-library.json"
     payload = [

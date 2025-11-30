@@ -59,32 +59,12 @@ The Unified AI Toolbox web application has been evaluated and is **READY FOR LAU
 
 **Usage:** Simply open `launch-portal.html` in any web browser.
 
-### 2. PowerShell Script (Windows)
-**File:** `LaunchUnifiedToolbox.ps1`
-
-**Features:**
-- Full-featured launcher
-- Automatic dependency management
-- Health checks
-- Process monitoring
-- Comprehensive error handling
-
-**Usage:**
-```powershell
-.\LaunchUnifiedToolbox.ps1
-
-# With options
-.\LaunchUnifiedToolbox.ps1 -FrontendPort 5180 -ApiPort 8100
-.\LaunchUnifiedToolbox.ps1 -FrontendOnly
-.\LaunchUnifiedToolbox.ps1 -BackendOnly
-```
-
-### 3. Bash Script (Linux/Mac/WSL)
+### 2. Bash Script (All Platforms with Bash)
 **File:** `launch.sh`
 
 **Features:**
-- Universal Unix-like system support
-- Dependency installation
+- Preflight checks (Node.js, Python, ports)
+- Dependency installation (API + dashboard)
 - Port availability checking
 - Graceful shutdown handling
 - Help documentation
@@ -98,9 +78,10 @@ The Unified AI Toolbox web application has been evaluated and is **READY FOR LAU
 ./launch.sh --frontend-only
 ./launch.sh --backend-only
 ./launch.sh --docker  # Use Docker Compose
+./launch.sh --no-open # Do not auto-open the dashboard
 ```
 
-### 4. Docker Compose (All Platforms)
+### 3. Docker Compose (All Platforms)
 **File:** `docker-compose.yml`
 
 **Features:**
@@ -122,8 +103,8 @@ docker compose logs -f
 docker compose down
 ```
 
-### 5. Windows Batch Files
-**Files:** `LaunchUnifiedDashboard.bat`, `Launch-Portal.bat`
+### 4. Quick Launch Scripts
+**Files:** `launch.sh`, `Launch-Portal.bat`
 
 **Features:**
 - Simple double-click launch

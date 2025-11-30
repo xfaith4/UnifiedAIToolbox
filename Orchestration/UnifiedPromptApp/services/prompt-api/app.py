@@ -1914,6 +1914,76 @@ def orchestrate_run(req: OrchestrationRequest):
     return {"run_id": run_id, "manifest": manifest}
 
 
+def _select_prompt_id(task: Dict[str, Any]) -> Optional[str]:
+    prompts = task.get("prompts")
+    if isinstance(prompts, list):
+        for entry in prompts:
+            if isinstance(entry, dict) and entry.get("id"):
+                return str(entry.get("id"))
+    supervisor = task.get("supervisor") or {}
+    if supervisor.get("prompt_id"):
+        return str(supervisor.get("prompt_id"))
+    return None
+
+
+def process_orchestrator_queue(limit: int = 5, run_mode: Optional[str] = None) -> Dict[str, Any]:
+    """Process queued orchestrator tasks by dispatching them to the orchestrate_run stub."""
+    processed: List[Dict[str, Any]] = []
+    queue = load_task_queue()
+    for task in queue:
+        if task.get("status") not in ("queued", "pending"):
+            continue
+        task_id = task.get("id")
+        if not task_id:
+            continue
+        update_task_queue(task_id, {"status": "running", "started_at": now_iso()})
+        try:
+            prompt_id = _select_prompt_id(task)
+            if not prompt_id:
+                raise ValueError("task missing prompt id")
+            supervisor = task.get("supervisor") or {}
+            goal = supervisor.get("objective") or supervisor.get("task") or prompt_id
+            notes = supervisor.get("notes")
+            model = supervisor.get("model")
+            run_mode_value = run_mode or task.get("run_mode") or supervisor.get("run_mode") or "default"
+            run_req = OrchestrationRequest(
+                prompt_id=prompt_id,
+                goal=goal,
+                notes=notes,
+                model=model,
+                run_mode=run_mode_value,
+                repo_root=task.get("repo_root"),
+            )
+            res = orchestrate_run(run_req)
+            run_id = cast(str, res.get("run_id"))
+            manifest = res.get("manifest")
+            update_task_queue(
+                task_id,
+                {
+                    "status": "dispatched",
+                    "run_id": run_id,
+                    "manifest": manifest,
+                    "updated_at": now_iso(),
+                },
+            )
+            processed.append({"task_id": task_id, "run_id": run_id, "status": "dispatched"})
+        except Exception as exc:
+            update_task_queue(task_id, {"status": f"error:{exc}", "error": str(exc), "updated_at": now_iso()})
+        if len(processed) >= limit:
+            break
+    return {"processed": len(processed), "results": processed}
+
+
+@app.post("/orchestrator/tasks:process")
+def process_orchestrator_tasks(
+    limit: int = Query(1, ge=1, le=20),
+    run_mode: Optional[str] = Query(None, description="Override run mode for processed tasks"),
+    admin_token: Optional[str] = Header(default=None, alias="X-Admin-Token"),
+):
+    _require_admin_access(admin_token)
+    return process_orchestrator_queue(limit=limit, run_mode=run_mode)
+
+
 @app.get("/orchestrate/runs")
 def list_orchestration_runs():
     runs = []

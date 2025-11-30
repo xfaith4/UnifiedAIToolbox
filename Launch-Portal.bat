@@ -26,8 +26,7 @@ start "" "%PORTAL_FILE%"
 echo Portal opened successfully!
 echo.
 echo To launch services, use one of these commands:
-echo   - LaunchUnifiedToolbox.ps1   (PowerShell - Full featured)
-echo   - LaunchUnifiedDashboard.bat (Batch - Simple)
+echo   - ./launch.sh                (Bash - preflight + start API & dashboard)
 echo   - docker compose up -d       (Docker)
 echo.
 pause
