@@ -1109,6 +1109,28 @@
     "createdAt": "2025-01-01T00:00:00.000Z"
   },
   {
+    "id": "test_prompt",
+    "title": "Test",
+    "category": "general",
+    "context": "",
+    "description": "",
+    "tags": [
+      "general"
+    ],
+    "role": "system",
+    "style": "",
+    "template": "",
+    "variables": [],
+    "fewShot": [],
+    "outputFormat": "",
+    "stop": [],
+    "temperature": 0.2,
+    "top_p": 1,
+    "updatedAt": "2025-11-30T08:37:32.382Z",
+    "createdAt": "2025-11-30T08:37:32.382Z",
+    "version": "1"
+  },
+  {
     "id": "2n5whkk2fbxmifza6ni",
     "title": "New Prompt",
     "category": "",
