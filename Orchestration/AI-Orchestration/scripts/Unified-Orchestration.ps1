@@ -62,13 +62,33 @@ if (-not $SkipContextResolution -and (Test-Path $contextResolver)) {
     }
 }
 
-$milestoneController = Join-Path $ScriptsDir "MilestoneController.ps1"
-if (-not (Test-Path $milestoneController)) {
-    throw "Milestone controller script not found at $milestoneController"
+$pofScript = Join-Path $ScriptsDir "POF.ps1"
+if (-not (Test-Path $pofScript)) {
+    throw "POF orchestration script not found at $pofScript"
 }
 
-Write-Host "`n🚀 Running milestone orchestration (POF + dashboard)..." -ForegroundColor Green
-& $milestoneController -GoalFile $GoalFile -Model $Model -MaxIterations $MaxIterations -PassThreshold $PassThreshold -ModelInstruction $ModelInstruction
+# Read goal from file for POF
+$goalText = ""
+if (Test-Path $GoalFile) {
+    $goalText = Get-Content -Path $GoalFile -Raw
+    if ([string]::IsNullOrWhiteSpace($goalText)) {
+        $goalText = "Execute default orchestration workflow"
+    }
+} else {
+    $goalText = "Execute default orchestration workflow"
+}
+
+Write-Host "`n🚀 Running POF orchestration..." -ForegroundColor Green
+$pofParams = @{
+    Goal = $goalText.Trim()
+    Model = $Model
+    MaxIterations = $MaxIterations
+    VerboseMode = $true
+}
+if (-not [string]::IsNullOrWhiteSpace($ModelInstruction)) {
+    $pofParams["Instruction"] = $ModelInstruction
+}
+& $pofScript @pofParams
 
 if ($SkipCodex) {
     Write-Host "`n⏭️ Codex swarm skipped by request." -ForegroundColor Yellow
