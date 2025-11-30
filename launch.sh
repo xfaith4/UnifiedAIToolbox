@@ -2,7 +2,7 @@
 # Universal Launch Script for Unified AI Toolbox
 # Works on Linux, macOS, and WSL
 
-set -e
+set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
@@ -17,6 +17,15 @@ YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
+# Logging
+LOG_DIR="$SCRIPT_DIR/runs"
+mkdir -p "$LOG_DIR"
+LOG_FILE="$LOG_DIR/launch-$(date +%Y%m%d-%H%M%S).log"
+FAILURE_REASON=""
+
+# Mirror output to console and log file
+exec > >(tee -a "$LOG_FILE") 2>&1
+
 # Default values
 USE_DOCKER=false
 SKIP_INSTALL=false
@@ -26,6 +35,19 @@ API_PORT=8000
 FRONTEND_PORT=5173
 WEB_PORT=3000
 OPEN_BROWSER=true
+
+# Error trap to surface the failing command before exiting
+on_error() {
+    local exit_code=$1
+    local line_no=$2
+    local cmd=$3
+    FAILURE_REASON="Command \"${cmd}\" failed with exit code ${exit_code} (line ${line_no})."
+    echo -e "${RED}${FAILURE_REASON}${NC}"
+    echo -e "${YELLOW}Full log: ${LOG_FILE}${NC}"
+    exit "$exit_code"
+}
+
+trap 'on_error $? ${LINENO} "$BASH_COMMAND"' ERR
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -96,6 +118,7 @@ echo "╔═══════════════════════�
 echo "║     Unified AI Toolbox - Launch Script       ║"
 echo "╚═══════════════════════════════════════════════╝"
 echo -e "${NC}"
+echo -e "${YELLOW}Logs: ${LOG_FILE}${NC}"
 
 # Check prerequisites
 check_command() {
@@ -193,12 +216,27 @@ check_port() {
 
 # Cleanup function
 cleanup() {
+    local status=$1
+
     echo -e "\n${YELLOW}Shutting down services...${NC}"
     jobs -p | xargs -r kill 2>/dev/null || true
     echo -e "${GREEN}Cleanup complete${NC}"
+
+    if [ "$status" -ne 0 ]; then
+        if [ -z "$FAILURE_REASON" ]; then
+            FAILURE_REASON="Launch failed with exit code ${status}."
+        fi
+        echo -e "${RED}${FAILURE_REASON}${NC}"
+        echo -e "${YELLOW}See detailed log: ${LOG_FILE}${NC}"
+        if [ -t 1 ]; then
+            read -rp "Press Enter to close..." < /dev/tty
+        fi
+    fi
+
+    exit "$status"
 }
 
-trap cleanup EXIT INT TERM
+trap 'cleanup $?' EXIT
 
 # Start backend services
 # Start backend services
@@ -219,10 +257,32 @@ if [ "$FRONTEND_ONLY" != true ]; then
     fi
 
     # Resolve Python executable inside venv (Linux/macOS vs Windows)
-    PYTHON_BIN=".venv/bin/python"
+    PYTHON_BIN=""
     if [ -x ".venv/Scripts/python.exe" ]; then
         PYTHON_BIN=".venv/Scripts/python.exe"
+    elif [ -x ".venv/bin/python" ]; then
+        PYTHON_BIN=".venv/bin/python"
     fi
+
+    # Detect broken/mismatched venvs (common when switching between WSL and Git Bash)
+    if [ -z "$PYTHON_BIN" ] || ! "$PYTHON_BIN" - <<'PY' 2>/dev/null; then
+import sys, pathlib
+print(sys.executable)
+PY
+        echo -e "${YELLOW}Existing virtual environment looks incompatible; rebuilding with current Python...${NC}"
+        rm -rf .venv
+        python3 -m venv .venv || python -m venv .venv
+        if [ -x ".venv/Scripts/python.exe" ]; then
+            PYTHON_BIN=".venv/Scripts/python.exe"
+        elif [ -x ".venv/bin/python" ]; then
+            PYTHON_BIN=".venv/bin/python"
+        else
+            echo -e "${RED}Failed to locate Python inside the recreated virtual environment${NC}"
+            exit 1
+        fi
+    fi
+
+    echo -e "${CYAN}Using virtualenv Python: $PYTHON_BIN${NC}"
 
     if [ "$SKIP_INSTALL" != true ]; then
         echo -e "${YELLOW}Installing Python dependencies (respecting constraints)...${NC}"

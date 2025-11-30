@@ -3,6 +3,7 @@
 ## Launch in 30 Seconds
 
 ### Option 1: Visual Launch Portal (Easiest)
+
 1. Open `launch-portal.html` in any web browser
 2. Check service status
 3. Copy and run the appropriate launch command
@@ -10,16 +11,19 @@
 ### Option 2: Direct Launch
 
 **Windows:**
+
 ```powershell
 ./launch.sh   # run via Git Bash or WSL
 ```
 
 **Linux/Mac:**
+
 ```bash
 ./launch.sh
 ```
 
 **Docker:**
+
 ```bash
 docker compose up -d
 ```
@@ -36,6 +40,7 @@ Once launched, open these URLs:
 ## Prerequisites
 
 Install these first:
+
 - ✅ Node.js 18+ ([nodejs.org](https://nodejs.org/))
 - ✅ Python 3.12+ ([python.org](https://www.python.org/))
 - ⚡ Docker (optional, for containerized launch)
@@ -43,6 +48,7 @@ Install these first:
 ## Configuration
 
 ### Set Your API Key (Optional)
+
 ```bash
 # Linux/Mac
 export OPENAI_API_KEY=your-key-here
@@ -58,14 +64,17 @@ cp .env.example .env
 ## Common Commands
 
 ### Stop Services
+
 - **Native launch:** Press `Ctrl+C` in terminal
 - **Docker:** `docker compose down`
 
 ### View Logs
+
 - **Docker:** `docker compose logs -f`
 - **Native:** Check terminal output
 
 ### Restart
+
 - **Native:** Press `Ctrl+C`, then re-run launch command
 - **Docker:** `docker compose restart`
 
@@ -78,12 +87,14 @@ cp .env.example .env
 ## Troubleshooting
 
 ### Port Already in Use
+
 ```bash
 # Use custom ports
 ./launch.sh --api-port 8100 --frontend-port 5180
 ```
 
 ### Dependencies Failed
+
 ```bash
 # Clean install
 rm -rf node_modules apps/*/node_modules
@@ -92,6 +103,7 @@ npm cache clean --force
 ```
 
 ### Services Won't Start
+
 1. Check prerequisites are installed: `node --version`, `python3 --version`
 2. Read error messages in terminal
 3. See [LAUNCH_GUIDE.md](LAUNCH_GUIDE.md) for detailed troubleshooting
