@@ -24,7 +24,14 @@ dev = [
 ]
 
 [tool.setuptools]
-py-modules = ["app", "prompt_registry"]
+py-modules = [
+    "app",
+    "auth",
+    "cost_tracker",
+    "github_api",
+    "prompt_registry",
+    "streamlit_app",
+]
 
 [tool.pytest.ini_options]
 addopts = "-q"
