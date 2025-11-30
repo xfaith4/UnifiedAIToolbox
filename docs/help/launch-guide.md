@@ -116,6 +116,8 @@ npm install
 npm run dev
 ```
 
+> The Next.js portal reads `NEXT_PUBLIC_API_BASE` (defaults to `http://localhost:8000`) so it can reach the prompt API for real orchestrations. When you launch the stack via `./launch.sh` (and omit `--frontend-only`), the script automatically sets that variable to whichever port the prompt API claimed so the orchestrator hits the backend without extra configuration.
+
 ## Prerequisites Checklist
 
 ### Required Software

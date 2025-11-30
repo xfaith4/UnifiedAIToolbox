@@ -13,6 +13,7 @@ import {
   fetchOrchestrationRun,
   fetchOrchestrationRunLog,
   ORCHESTRATOR_API_BASE,
+  ORCHESTRATOR_API_USING_DEFAULT_BASE,
 } from '@/lib/services/orchestratorApi'
 import {
   listLocalRuns,
@@ -345,9 +346,9 @@ export default function OrchestratorPage() {
         </button>
       </div>
 
-      {!ORCHESTRATOR_API_BASE && (
+      {ORCHESTRATOR_API_USING_DEFAULT_BASE && (
         <p className="text-xs text-amber-400">
-          No API configured; runs are stored locally. Set NEXT_PUBLIC_API_BASE to enable backend execution.
+          Defaulting to <span className="font-mono">{ORCHESTRATOR_API_BASE}</span> because <code>NEXT_PUBLIC_API_BASE</code> is unset; configure the variable to point to your running prompt API so orchestrations execute against the backend.
         </p>
       )}
 

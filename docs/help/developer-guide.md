@@ -91,6 +91,15 @@ python app.py
 # API docs at http://localhost:8000/docs
 ```
 
+**Unified Web Portal (Next.js):**
+```bash
+cd apps/unifiedtoolbox.webapp
+NEXT_PUBLIC_API_BASE=http://localhost:8000 npm run dev
+# Access at http://localhost:3000
+```
+
+The Next.js portal relies on `NEXT_PUBLIC_API_BASE` to know where the prompt API lives so orchestrations reach the backend instead of falling back to the local simulation UI.
+
 ## Project Structure
 
 ```

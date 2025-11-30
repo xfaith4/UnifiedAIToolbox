@@ -15,34 +15,40 @@ This project is a collaborative, real-time "cockpit" interface for a graph-drive
 
 To run this application on your local machine, you will need Node.js and npm installed.
 
-1.  **Clone the repository:**
+1. **Clone the repository:**
+
     ```bash
     git clone <repository_url>
     cd <repository_folder>
     ```
 
-2.  **Install dependencies:**
+2. **Install dependencies:**
     This project is configured to run in an environment like AI Studio where dependencies are managed. For local development, you would typically run:
+
     ```bash
     npm install
     ```
 
-3.  **Configure your API Key:**
+3. **Configure your API Key:**
     The application requires a Google AI API key to function.
 
-    -   Create a file named `.env` in the root of the project directory.
-    -   Add your API key to this file as follows:
-        ```
+    - Create a file named `.env` in the root of the project directory.
+    - Add your API key to this file as follows:
+
+    ```
         # .env file
         API_KEY=AIzaSy...your...api...key...here
-        ```
-    -   **Important:** The `.env` file is included in `.gitignore` and should **never** be committed to version control.
+    ```
 
-4.  **Run the development server:**
+    - **Important:** The `.env` file is included in `.gitignore` and should **never** be committed to version control.
+
+4. **Run the development server:**
     A `package.json` file with a start script would be required for local development. A typical command would be:
+
     ```bash
     npm run dev
     ```
+
     This will start a local server, usually at `http://localhost:3000`.
 
 ---
@@ -55,16 +61,17 @@ Using this tool within a corporate network often requires approval from IT and S
 
 The application makes direct calls to Google's Generative Language API. For these calls to succeed from behind a corporate firewall, the following endpoint must be whitelisted for outbound HTTPS (port 443) traffic:
 
--   **Endpoint:** `generativelanguage.googleapis.com`
+- **Endpoint:** `generativelanguage.googleapis.com`
 
 ### Authentication: Service Accounts (Recommended)
 
 While a personal API key from AI Studio is suitable for individual development, the recommended best practice for an enterprise environment is to use a **Google Cloud Service Account**.
 
 **Why use a Service Account?**
--   **Security:** Keys are not tied to an individual user's Google account. They can be managed, rotated, and revoked centrally.
--   **Permissions:** You can grant the Service Account fine-grained IAM roles, adhering to the principle of least privilege.
--   **Auditability:** All API calls made by the Service Account are logged in Google Cloud's Audit Logs, providing a clear trail of usage.
+
+- **Security:** Keys are not tied to an individual user's Google account. They can be managed, rotated, and revoked centrally.
+- **Permissions:** You can grant the Service Account fine-grained IAM roles, adhering to the principle of least privilege.
+- **Auditability:** All API calls made by the Service Account are logged in Google Cloud's Audit Logs, providing a clear trail of usage.
 
 To implement this, your company's Google Cloud administrator would need to create a Service Account, grant it the "AI Platform Model User" role (or a more specific one), and provide you with the necessary credentials to authenticate from the application's environment.
 
@@ -72,10 +79,10 @@ To implement this, your company's Google Cloud administrator would need to creat
 
 You can provide the following summary to your security team:
 
--   **Application:** AI Orchestrator - A frontend application for visualizing and interacting with a multi-agent AI workflow.
--   **Data Sent:**
-    -   The user-provided text goal.
-    -   The content of any user-uploaded text file.
--   **Data Destination:** All data is sent exclusively to `generativelanguage.googleapis.com` via HTTPS. No other third-party services are contacted.
--   **Authentication:** The application authenticates using a standard Google AI API Key. We recommend using a project-specific Google Cloud Service Account for enhanced security and auditability.
--   **Compliance:** The underlying Google Cloud services are compliant with major security standards. For more information, see the [Google Cloud Compliance documentation](https://cloud.google.com/security/compliance).
+- **Application:** AI Orchestrator - A frontend application for visualizing and interacting with a multi-agent AI workflow.
+- **Data Sent:**
+  - The user-provided text goal.
+  - The content of any user-uploaded text file.
+- **Data Destination:** All data is sent exclusively to `generativelanguage.googleapis.com` via HTTPS. No other third-party services are contacted.
+- **Authentication:** The application authenticates using a standard Google AI API Key. We recommend using a project-specific Google Cloud Service Account for enhanced security and auditability.
+- **Compliance:** The underlying Google Cloud services are compliant with major security standards. For more information, see the [Google Cloud Compliance documentation](https://cloud.google.com/security/compliance).

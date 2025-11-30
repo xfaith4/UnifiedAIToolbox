@@ -75,6 +75,8 @@ The Unified AI Toolbox is a comprehensive platform that unifies prompt managemen
 docker compose up -d
 ```
 
+> Running `./launch.sh` now sets `NEXT_PUBLIC_API_BASE` to the prompt API port it selected so the Next.js portal speaks to the backend automatically.
+
 ### Access Your Services
 
 - 🌐 **Web Portal**: <http://localhost:3001>
@@ -178,12 +180,17 @@ API_PORT=8000
 FRONTEND_PORT=5173
 WEB_PORT=3000
 
+# Web portal / orchestrator endpoint
+NEXT_PUBLIC_API_BASE=http://localhost:8000
+
 # Database
 PROMPT_API_DB_PATH=./services/prompt-api/workbench.db
 
 # Authentication
 JWT_SECRET_KEY=your-secret-key-here
 ```
+
+The Next.js portal uses `NEXT_PUBLIC_API_BASE` (default `http://localhost:8000`) to reach the prompt API so orchestrations run against the backend instead of the simulation fallback.
 
 ## 🤝 Contributing
 

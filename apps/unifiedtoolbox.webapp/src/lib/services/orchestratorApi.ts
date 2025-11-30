@@ -2,11 +2,13 @@
 
 import type { OrchestrationRun, OrchestrationRunEvent } from '@/lib/types/orchestrator'
 
-// API base URL from environment, with fallback for development
-// Empty string means API is not configured (local-only mode)
-const API_BASE_RAW = process.env.NEXT_PUBLIC_API_BASE ?? ''
-const API_BASE = API_BASE_RAW.trim().replace(/\/$/, '')
+// API base URL from environment, falling back to the onboard Prompt API for local dev
+const API_BASE_FROM_ENV = (process.env.NEXT_PUBLIC_API_BASE ?? process.env.NEXT_PUBLIC_PROMPT_API_BASE ?? '').trim()
+const DEFAULT_API_BASE = 'http://localhost:8000'
+const API_BASE_RAW = API_BASE_FROM_ENV || DEFAULT_API_BASE
+const API_BASE = API_BASE_RAW.replace(/\/$/, '')
 export const ORCHESTRATOR_API_BASE = API_BASE
+export const ORCHESTRATOR_API_USING_DEFAULT_BASE = API_BASE_FROM_ENV === ''
 
 /**
  * Create a new orchestration run via the API

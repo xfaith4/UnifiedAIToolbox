@@ -1163,5 +1163,335 @@
     "top_p": 1,
     "updatedAt": "2025-11-26T12:25:46.541Z",
     "createdAt": "2025-11-26T12:25:46.541Z"
+  },
+  {
+    "id": "engineering.react.dashboard.shell",
+    "title": "React Dashboard Shell",
+    "category": "engineering",
+    "context": "",
+    "description": "Plan a React dashboard layout, data layer, and components.",
+    "tags": [
+      "react",
+      "dashboard",
+      "scaffolding"
+    ],
+    "role": "system",
+    "style": "- Bullet points and short code fences.\n- Prefer named sections: Layout, Data, Components, Snippets, Risks.",
+    "template": "Create a React dashboard plan for **${dashboard_name}** covering: ${data_domains}.\n\nInclude:\n- Pages/routes and key sections.\n- Component list (with props/state shape) for layout: ${layout}; theme: ${theme}.\n- Data-fetch plan (REST/WS polling intervals, caching, error/empty/loading states).\n- Accessibility/keyboard notes and perf tactics (memoization, virtualization if needed).\n- Example code snippets (TypeScript) for data hooks and a representative card/chart component.\n\n\n\nConstraints:\n- Keep output brief and actionable; avoid lengthy prose.\n- Use functional components, hooks, and modern React patterns.\n- Do not hardcode secrets or tokens; reference env vars.\n- Note where mock data should be used for local dev.\n\n\nStyle:\n- Bullet points and short code fences.\n- Prefer named sections: Layout, Data, Components, Snippets, Risks.",
+    "variables": [
+      {
+        "name": "dashboard_name",
+        "label": "dashboard_name",
+        "type": "string",
+        "default": "",
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "data_domains",
+        "label": "data_domains",
+        "type": "string",
+        "default": "",
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "layout",
+        "label": "layout",
+        "type": "string",
+        "default": "cards + charts",
+        "required": false,
+        "description": null
+      },
+      {
+        "name": "theme",
+        "label": "theme",
+        "type": "string",
+        "default": "light",
+        "required": false,
+        "description": null
+      }
+    ],
+    "fewShot": [],
+    "outputFormat": "",
+    "stop": [],
+    "temperature": 0.2,
+    "top_p": 1,
+    "updatedAt": "2025-11-30T16:20:24Z",
+    "createdAt": "2025-11-30T16:20:24Z",
+    "version": "1.0.0",
+    "outputs": null,
+    "models": {
+      "recommended": [
+        "gpt-5-thinking"
+      ],
+      "max_tokens": 1800,
+      "temperature": 0.2
+    }
+  },
+  {
+    "id": "engineering.react.dashboard.windows.monitor",
+    "title": "React Windows Monitor Dashboard",
+    "category": "monitoring",
+    "context": "",
+    "description": "React dashboard for Windows PC health metrics.",
+    "tags": [
+      "react",
+      "dashboard",
+      "windows",
+      "monitoring"
+    ],
+    "role": "system",
+    "style": "- Sections: Layout, Data, Components, Snippets, Risks.\n- Bullets + short code fences.",
+    "template": "Design a React dashboard for **${host}** that monitors: ${metrics}. Timeframe: ${timeframe}. Data source: ${data_source}.\n\nDeliver:\n- Layout: header KPIs, charts for CPU/mem/disk/net/GPU, process table with sorting/filtering, alert panel.\n- Data contracts for each widget (shape, units, sample payload).\n- Data layer: polling cadence, stale times, and error/empty states; suggest mock data for dev.\n- Example TypeScript snippets: data hook, KPI card, and a chart config (no external secrets).\n- Perf/accessibility notes (virtualized tables, ARIA for controls, resize behavior).\n\n\n\nConstraints:\n- React 18 with hooks; no class components.\n- Use environment variables for API endpoints; never bake machine names or tokens into code.\n- Keep bundle light; avoid heavy chart libs unless justified.\n- Do not suggest OS-level privileged actions; assume a read-only metrics agent already exists.\n\n\nStyle:\n- Sections: Layout, Data, Components, Snippets, Risks.\n- Bullets + short code fences.",
+    "variables": [
+      {
+        "name": "host",
+        "label": "host",
+        "type": "string",
+        "default": "",
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "metrics",
+        "label": "metrics",
+        "type": "string",
+        "default": "cpu, memory, disk, network, gpu, processes",
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "timeframe",
+        "label": "timeframe",
+        "type": "string",
+        "default": "last 24h",
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "data_source",
+        "label": "data_source",
+        "type": "string",
+        "default": "WMI/perf counters via local agent",
+        "required": false,
+        "description": null
+      }
+    ],
+    "fewShot": [],
+    "outputFormat": "",
+    "stop": [],
+    "temperature": 0.2,
+    "top_p": 1,
+    "updatedAt": "2025-11-30T16:20:24Z",
+    "createdAt": "2025-11-30T16:20:24Z",
+    "version": "1.0.0",
+    "outputs": null,
+    "models": {
+      "recommended": [
+        "gpt-5-thinking"
+      ],
+      "max_tokens": 2000,
+      "temperature": 0.2
+    }
+  },
+  {
+    "id": "engineering.react.dashboard.asus.router",
+    "title": "React ASUS Router Dashboard",
+    "category": "networking",
+    "context": "",
+    "description": "Traffic and client visibility for ASUS routers (read-only).",
+    "tags": [
+      "react",
+      "dashboard",
+      "networking",
+      "router"
+    ],
+    "role": "system",
+    "style": "- Bullets and short code fences.\n- Sections: Layout, Data, Components, Snippets, Risks.",
+    "template": "Create a React dashboard plan for ASUS router **${router_model}**.\n\nCover:\n- Layout: traffic overview (bps/pps), per-interface cards (${interfaces}), top talkers, WiFi clients table, alert banner for outages.\n- Data contracts: shapes for interface stats, client list, throughput history.\n- Data layer: how to poll every ${polling_interval}, cache, and handle stale/error states; mock mode for dev with fixtures.\n- Example TypeScript snippets: data hook for interfaces, chart config for throughput, sortable client table columns.\n- Security/safety: never store admin creds; expect token/env var; note CORS/proxy approach.\n\n\n\nConstraints:\n- React 18 hooks only; keep bundle slim.\n- No invasive commands (factory reset, config writes); metrics are read-only.\n- Avoid vendor-locked UI kits; use lightweight components.\n\n\nStyle:\n- Bullets and short code fences.\n- Sections: Layout, Data, Components, Snippets, Risks.",
+    "variables": [
+      {
+        "name": "router_model",
+        "label": "router_model",
+        "type": "string",
+        "default": "",
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "interfaces",
+        "label": "interfaces",
+        "type": "string",
+        "default": "WAN, LAN1-4, WiFi 2.4/5GHz",
+        "required": false,
+        "description": null
+      },
+      {
+        "name": "polling_interval",
+        "label": "polling_interval",
+        "type": "string",
+        "default": "10s",
+        "required": false,
+        "description": null
+      },
+      {
+        "name": "data_source",
+        "label": "data_source",
+        "type": "string",
+        "default": "local JSON API or SNMP (read-only)",
+        "required": false,
+        "description": null
+      }
+    ],
+    "fewShot": [],
+    "outputFormat": "",
+    "stop": [],
+    "temperature": 0.2,
+    "top_p": 1,
+    "updatedAt": "2025-11-30T16:20:24Z",
+    "createdAt": "2025-11-30T16:20:24Z",
+    "version": "1.0.0",
+    "outputs": null,
+    "models": {
+      "recommended": [
+        "gpt-5-thinking"
+      ],
+      "max_tokens": 2000,
+      "temperature": 0.2
+    }
+  },
+  {
+    "id": "engineering.react.dashboard.github.repos",
+    "title": "React GitHub Repos Dashboard",
+    "category": "github",
+    "context": "",
+    "description": "Visualize GitHub repo activity and metrics.",
+    "tags": [
+      "react",
+      "dashboard",
+      "github"
+    ],
+    "role": "system",
+    "style": "- Bullet sections: Layout, Data, Components, Snippets, Risks.\n- Short code fences.",
+    "template": "Build a React dashboard plan for GitHub user/org **${username}** across repos: ${repos}.\n\nInclude:\n- Layout: summary KPIs, trends for ${metrics}, repo list, issue/PR queue, workflow runs status, activity timeline.\n- Data contracts: shapes for repo stats, issues/PRs, workflows; pagination strategy.\n- Data layer: GitHub REST/GraphQL endpoints to call, rate-limit strategy, caching, error/empty/loading handling.\n- Example TypeScript snippets: data hook using fetch, KPI card component, table columns.\n- Security: never log tokens; read from env; support unauthenticated mode with reduced limits.\n\n\n\nConstraints:\n- React 18 with hooks; avoid heavy dependencies.\n- No secret exposure; document required scopes if private repos are included.\n- Keep output concise; no lengthy prose.\n\n\nStyle:\n- Bullet sections: Layout, Data, Components, Snippets, Risks.\n- Short code fences.",
+    "variables": [
+      {
+        "name": "username",
+        "label": "username",
+        "type": "string",
+        "default": "",
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "repos",
+        "label": "repos",
+        "type": "array",
+        "default": [
+          "*"
+        ],
+        "required": false,
+        "description": null
+      },
+      {
+        "name": "metrics",
+        "label": "metrics",
+        "type": "string",
+        "default": "stars, forks, issues, PRs, releases, workflows",
+        "required": false,
+        "description": null
+      },
+      {
+        "name": "auth_mode",
+        "label": "auth_mode",
+        "type": "string",
+        "default": "token via env var GITHUB_TOKEN",
+        "required": false,
+        "description": null
+      }
+    ],
+    "fewShot": [],
+    "outputFormat": "",
+    "stop": [],
+    "temperature": 0.2,
+    "top_p": 1,
+    "updatedAt": "2025-11-30T16:20:24Z",
+    "createdAt": "2025-11-30T16:20:24Z",
+    "version": "1.0.0",
+    "outputs": null,
+    "models": {
+      "recommended": [
+        "gpt-5-thinking"
+      ],
+      "max_tokens": 1900,
+      "temperature": 0.2
+    }
+  },
+  {
+    "id": "engineering.react.dashboard.media.browser",
+    "title": "React Media Browser Dashboard",
+    "category": "media",
+    "context": "",
+    "description": "Browse image and video libraries via a read-only API.",
+    "tags": [
+      "react",
+      "dashboard",
+      "media",
+      "browsing"
+    ],
+    "role": "system",
+    "style": "- Bullet sections with short code fences.\n- Sections: Layout, Data, Components, Snippets, Risks.",
+    "template": "Design a React media browser dashboard for path **${root_path}** covering ${media_types}.\n\nProvide:\n- Layout: left nav (folders/filters), main grid for thumbnails, detail panel, player modal for video.\n- Data contracts: list/metadata payloads, paging params, thumbnail URLs, stream URLs; include sample JSON.\n- Data layer: how to page/sort (${sort_order}), prefetch, and handle empty/error states; offline-friendly notes.\n- Example TypeScript snippets: data hook, thumbnail grid item, keyboard navigation handlers.\n- Safety: read-only UI, no delete/move; warn about large directories and suggest virtualization.\n- Thumbnails: ${thumb_strategy}; include fallbacks if missing.\n\n\n\nConstraints:\n- React 18 with hooks and accessible controls (ARIA for grid/list, focus states).\n- Do not assume file system access from the browser; rely on an API.\n- Keep bundle lean; avoid heavy players unless needed.\n\n\nStyle:\n- Bullet sections with short code fences.\n- Sections: Layout, Data, Components, Snippets, Risks.",
+    "variables": [
+      {
+        "name": "root_path",
+        "label": "root_path",
+        "type": "string",
+        "default": "",
+        "required": true,
+        "description": null
+      },
+      {
+        "name": "media_types",
+        "label": "media_types",
+        "type": "string",
+        "default": "images (jpg/png), video (mp4/mkv)",
+        "required": false,
+        "description": null
+      },
+      {
+        "name": "thumb_strategy",
+        "label": "thumb_strategy",
+        "type": "string",
+        "default": "server-generated thumbnails with lazy loading",
+        "required": false,
+        "description": null
+      },
+      {
+        "name": "sort_order",
+        "label": "sort_order",
+        "type": "string",
+        "default": "recent first",
+        "required": false,
+        "description": null
+      }
+    ],
+    "fewShot": [],
+    "outputFormat": "",
+    "stop": [],
+    "temperature": 0.2,
+    "top_p": 1,
+    "updatedAt": "2025-11-30T16:20:24Z",
+    "createdAt": "2025-11-30T16:20:24Z",
+    "version": "1.0.0",
+    "outputs": null,
+    "models": {
+      "recommended": [
+        "gpt-5-thinking"
+      ],
+      "max_tokens": 1800,
+      "temperature": 0.2
+    }
   }
 ]

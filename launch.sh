@@ -343,6 +343,15 @@ PY
     done
 fi
 
+if [ "$FRONTEND_ONLY" != true ]; then
+    if [ -z "${NEXT_PUBLIC_API_BASE:-}" ]; then
+        export NEXT_PUBLIC_API_BASE="http://localhost:${API_PORT}"
+    fi
+    if [ -z "${NEXT_PUBLIC_PROMPT_API_BASE:-}" ]; then
+        export NEXT_PUBLIC_PROMPT_API_BASE="${NEXT_PUBLIC_API_BASE}"
+    fi
+fi
+
 # Start frontend services
 if [ "$BACKEND_ONLY" != true ]; then
     echo -e "${CYAN}Setting up frontend services...${NC}"
@@ -381,6 +390,43 @@ if [ "$BACKEND_ONLY" != true ]; then
     cd "$SCRIPT_DIR"
 fi
 
+# Start Next.js web portal
+if [ "$BACKEND_ONLY" != true ]; then
+    echo -e "${CYAN}Setting up web portal services...${NC}"
+    
+    if ! check_port "$WEB_PORT"; then
+        echo -e "${YELLOW}Port $WEB_PORT is already in use, searching for available port...${NC}"
+        ORIGINAL_WEB_PORT=$WEB_PORT
+        AVAILABLE_WEB_PORT=$(find_available_port "$((WEB_PORT + 1))" 10)
+        if [ -n "$AVAILABLE_WEB_PORT" ]; then
+            WEB_PORT=$AVAILABLE_WEB_PORT
+            echo -e "${GREEN}Using alternative port: $WEB_PORT${NC}"
+        else
+            echo -e "${RED}Error: Could not find an available port in range ${ORIGINAL_WEB_PORT}-$((ORIGINAL_WEB_PORT + 10))${NC}"
+            echo -e "${YELLOW}Please free up port $ORIGINAL_WEB_PORT or specify a different port with --web-port${NC}"
+            exit 1
+        fi
+    fi
+    
+    cd apps/unifiedtoolbox.webapp
+    
+    if [ "$SKIP_INSTALL" != true ]; then
+        if [ ! -d "node_modules" ]; then
+            echo -e "${YELLOW}Installing web portal dependencies...${NC}"
+            npm install
+        fi
+    else
+        echo -e "${YELLOW}Skipping web portal dependency install (set SKIP_INSTALL=false to reinstall)${NC}"
+    fi
+
+    echo -e "${GREEN}Starting Web Portal on port $WEB_PORT...${NC}"
+    export PORT=$WEB_PORT
+    npm run dev -- --hostname 0.0.0.0 --port $WEB_PORT &
+    WEB_PORTAL_PID=$!
+    
+    cd "$SCRIPT_DIR"
+fi
+
 # Display status
 echo ""
 echo -e "${GREEN}═══════════════════════════════════════════════${NC}"
@@ -390,6 +436,7 @@ echo ""
 
 if [ "$BACKEND_ONLY" != true ]; then
     echo -e "${CYAN}  Dashboard:${NC}  http://localhost:${FRONTEND_PORT}"
+    echo -e "${CYAN}  Web Portal:${NC}  http://localhost:${WEB_PORT}"
 fi
 
 if [ "$FRONTEND_ONLY" != true ]; then
