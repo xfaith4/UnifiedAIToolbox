@@ -1836,7 +1836,6 @@ def orchestrate_run(req: OrchestrationRequest):
         "prompt_id": req.prompt_id,
         "version": req.version or "latest",
         "review_policy": req.review_policy or "standard",
-        "status": req.status or "queued",
         "dataset_id": req.dataset_id,
         "dataset_name": req.dataset_name,
         "agents": req.agents or [],
@@ -1846,6 +1845,7 @@ def orchestrate_run(req: OrchestrationRequest):
         "status": "queued",
         "goal": req.goal,
         "model": req.model or DEFAULT_MODEL,
+        "run_mode": req.run_mode or "default",
         "mode": "simulated",
         "events": [
             {"ts": now_iso(), "type": "status", "message": "queued"},

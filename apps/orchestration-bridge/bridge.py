@@ -220,7 +220,8 @@ class BridgeService:
             print(f"[bridge] failed to post review to API: {exc}")
 
     def _process_supervisor_queue(self) -> None:
-        args = argparse.Namespace(source="api", status_filter=None)
+        # Only process tasks with status "queued" to avoid re-executing completed tasks
+        args = argparse.Namespace(source="api", status_filter="queued")
         cmd_run_supervisor(args)
 
     def _maybe_run_codex_swarm(self, spec: PromptSpec, runbook: Dict[str, Any]) -> None:
@@ -440,12 +441,95 @@ def _pull_remote_tasks() -> List[dict]:
         return []
 
 
+def _execute_run_manifest(manifest_path: Path) -> bool:
+    """
+    Execute a run manifest by invoking the orchestrator script or simulating execution.
+    
+    Returns True if execution completed successfully, False otherwise.
+    """
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        
+        # Update status to running
+        manifest["status"] = "running"
+        manifest["started_at"] = _now_iso()
+        manifest.setdefault("events", []).append({
+            "ts": manifest["started_at"],
+            "type": "status",
+            "message": "running"
+        })
+        manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        
+        # Try to execute via PowerShell orchestrator
+        ps_exe = "pwsh" if os.name != "nt" else "powershell"
+        orch_script = REPO_ROOT.parent / "AI-Orchestration" / "scripts" / "MilestoneController.ps1"
+        log_path = manifest_path.with_suffix(".log")
+        
+        if orch_script.exists() and subprocess.run(["which", ps_exe], capture_output=True).returncode == 0:
+            manifest["mode"] = "executed"
+            manifest["events"].append({
+                "ts": _now_iso(),
+                "type": "info",
+                "message": f"Executing {orch_script.name}"
+            })
+            manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+            
+            # Create goal file from manifest
+            goal_file = manifest_path.with_suffix(".goal.txt")
+            goal_text = manifest.get("prompt_id", "")
+            goal_file.write_text(goal_text, encoding="utf-8")
+            
+            args = [ps_exe, "-File", str(orch_script), "-GoalFile", str(goal_file)]
+            with open(log_path, "w", encoding="utf-8") as logf:
+                result = subprocess.run(args, stdout=logf, stderr=logf)
+            
+            if result.returncode != 0:
+                raise RuntimeError(f"Orchestrator exited with code {result.returncode}")
+        else:
+            # Simulate execution if script or pwsh is missing
+            manifest["mode"] = "simulated"
+            manifest["events"].append({
+                "ts": _now_iso(),
+                "type": "warn",
+                "message": "Simulated run (script or pwsh missing)"
+            })
+            manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+            time.sleep(1)  # Brief simulation delay
+        
+        # Mark as completed
+        manifest["status"] = "completed"
+        manifest["completed_at"] = _now_iso()
+        manifest["events"].append({
+            "ts": manifest["completed_at"],
+            "type": "status",
+            "message": "completed"
+        })
+        manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        return True
+        
+    except Exception as exc:
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["status"] = f"error:{exc}"
+            manifest["completed_at"] = _now_iso()
+            manifest.setdefault("events", []).append({
+                "ts": manifest["completed_at"],
+                "type": "error",
+                "message": str(exc)
+            })
+            manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        except Exception:
+            pass
+        print(f"[bridge] execution failed: {exc}")
+        return False
+
+
 def _execute_supervisor_task(task: dict) -> None:
     """
     Execute a supervisor orchestration task.
     
-    Processes prompts and agents specified in the task, generating artifacts
-    and logging results. This is the core orchestration execution logic.
+    Processes prompts and agents specified in the task, generating artifacts,
+    executing the orchestration logic, and logging results.
     """
     supervisor = task.get("supervisor", {})
     task_name = supervisor.get("task", "unnamed")
@@ -456,6 +540,9 @@ def _execute_supervisor_task(task: dict) -> None:
     print(f"[bridge] processing task: {task_name}")
     if objective:
         print(f"[bridge] objective: {objective}")
+    
+    executed_count = 0
+    failed_count = 0
     
     # Process each prompt in the task
     for prompt_ref in prompts:
@@ -468,12 +555,21 @@ def _execute_supervisor_task(task: dict) -> None:
             spec = find_prompt_by_id(prompt_id)
             if spec:
                 # Generate a manifest for the prompt
-                manifest = _write_run_manifest(spec)
-                print(f"[bridge] created manifest for {prompt_id}: {manifest}")
+                manifest_path = _write_run_manifest(spec)
+                print(f"[bridge] created manifest for {prompt_id}: {manifest_path}")
+                
+                # Execute the manifest
+                if _execute_run_manifest(manifest_path):
+                    print(f"[bridge] successfully executed {prompt_id}")
+                    executed_count += 1
+                else:
+                    print(f"[bridge] failed to execute {prompt_id}")
+                    failed_count += 1
             else:
                 print(f"[bridge] warning: prompt {prompt_id} not found in registry")
         except Exception as exc:
             print(f"[bridge] error processing prompt {prompt_id}: {exc}")
+            failed_count += 1
     
     # Log agent references
     for agent_ref in agents:
@@ -484,6 +580,7 @@ def _execute_supervisor_task(task: dict) -> None:
     # Record execution timestamp
     execution_time = datetime.now(timezone.utc).isoformat()
     print(f"[bridge] task execution completed at {execution_time}")
+    print(f"[bridge] results: {executed_count} succeeded, {failed_count} failed")
 
 
 def cmd_run_supervisor(args: argparse.Namespace) -> int:
