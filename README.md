@@ -93,6 +93,7 @@ UnifiedAIToolbox/
 
 ## 📚 Documentation
 
+- **[Project Roadmap](docs/PROJECT_ROADMAP.md)** - Current status, next steps, and future plans
 - **[Quick Start Guide](docs/help/quick-start.md)** - Get up and running in minutes
 - **[Launch Guide](docs/help/launch-guide.md)** - Detailed deployment instructions
 - **[Architecture Overview](docs/help/architecture.md)** - System design and components

@@ -4,6 +4,10 @@ Welcome to the comprehensive documentation for the Unified AI Toolbox. This docu
 
 ## 📚 Documentation Index
 
+### Project Planning
+- **[Project Roadmap](../PROJECT_ROADMAP.md)** - Current status, next steps, and future plans
+- **[Phase 3 Documentation](../phase3/README.md)** - Multi-tenancy and SaaS planning
+
 ### Getting Started
 - **[Quick Start Guide](quick-start.md)** - Get up and running in 30 seconds
 - **[Launch Guide](launch-guide.md)** - Comprehensive deployment instructions
@@ -123,6 +127,7 @@ For documentation for other versions:
 
 ## 🔄 Recently Updated
 
+- **2025-11-30**: Project Roadmap document added
 - **2025-11-26**: Documentation reorganization and consolidation
 - **2025-11-18**: Milestone 1.5 completion documentation
 - **2025-11-17**: Architecture and API reference added
