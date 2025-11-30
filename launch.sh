@@ -208,10 +208,27 @@ echo -e "${CYAN}Launching services natively...${NC}"
 
 # Function to check if port is available
 check_port() {
-    if lsof -Pi :$1 -sTCP:LISTEN -t >/dev/null 2>&1 || netstat -an 2>/dev/null | grep -q ":$1.*LISTEN"; then
+    if lsof -Pi :"$1" -sTCP:LISTEN -t >/dev/null 2>&1 || netstat -an 2>/dev/null | grep -q ":$1.*LISTEN"; then
         return 1
     fi
     return 0
+}
+
+# Function to find an available port starting from a given port
+find_available_port() {
+    local start_port=$1
+    local max_attempts=${2:-10}
+    local port=$start_port
+    
+    for ((i = 1; i <= max_attempts; i++)); do
+        if check_port "$port"; then
+            echo "$port"
+            return 0
+        fi
+        port=$((port + 1))
+    done
+    
+    return 1
 }
 
 # Cleanup function
@@ -243,9 +260,19 @@ trap 'cleanup $?' EXIT
 if [ "$FRONTEND_ONLY" != true ]; then
     echo -e "${CYAN}Setting up backend services...${NC}"
     
-    # Check port availability
-    if ! check_port $API_PORT; then
-        echo -e "${YELLOW}Warning: Port $API_PORT is already in use${NC}"
+    # Check port availability and find alternative if needed
+    if ! check_port "$API_PORT"; then
+        echo -e "${YELLOW}Port $API_PORT is already in use, searching for available port...${NC}"
+        ORIGINAL_API_PORT=$API_PORT
+        AVAILABLE_PORT=$(find_available_port "$((API_PORT + 1))" 10)
+        if [ -n "$AVAILABLE_PORT" ]; then
+            API_PORT=$AVAILABLE_PORT
+            echo -e "${GREEN}Using alternative port: $API_PORT${NC}"
+        else
+            echo -e "${RED}Error: Could not find an available port in range ${ORIGINAL_API_PORT}-$((ORIGINAL_API_PORT + 10))${NC}"
+            echo -e "${YELLOW}Please free up port $ORIGINAL_API_PORT or specify a different port with --api-port${NC}"
+            exit 1
+        fi
     fi
     
     cd Orchestration/UnifiedPromptApp/services/prompt-api || cd services/prompt-api
@@ -320,9 +347,19 @@ fi
 if [ "$BACKEND_ONLY" != true ]; then
     echo -e "${CYAN}Setting up frontend services...${NC}"
     
-    # Check port availability
-    if ! check_port $FRONTEND_PORT; then
-        echo -e "${YELLOW}Warning: Port $FRONTEND_PORT is already in use${NC}"
+    # Check port availability and find alternative if needed
+    if ! check_port "$FRONTEND_PORT"; then
+        echo -e "${YELLOW}Port $FRONTEND_PORT is already in use, searching for available port...${NC}"
+        ORIGINAL_FRONTEND_PORT=$FRONTEND_PORT
+        AVAILABLE_PORT=$(find_available_port "$((FRONTEND_PORT + 1))" 10)
+        if [ -n "$AVAILABLE_PORT" ]; then
+            FRONTEND_PORT=$AVAILABLE_PORT
+            echo -e "${GREEN}Using alternative port: $FRONTEND_PORT${NC}"
+        else
+            echo -e "${RED}Error: Could not find an available port in range ${ORIGINAL_FRONTEND_PORT}-$((ORIGINAL_FRONTEND_PORT + 10))${NC}"
+            echo -e "${YELLOW}Please free up port $ORIGINAL_FRONTEND_PORT or specify a different port with --frontend-port${NC}"
+            exit 1
+        fi
     fi
     
     cd apps/dashboard
