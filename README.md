@@ -12,30 +12,35 @@ The Unified AI Toolbox is a comprehensive platform that unifies prompt managemen
 ## ✨ Key Features
 
 ### 🎯 Prompt Management
+
 - **Searchable Library**: Fast SQLite-backed full-text search across thousands of prompts
 - **YAML-based Storage**: Simple, version-controllable prompt definitions
 - **Template Rendering**: Dynamic prompt generation with variable substitution
 - **Prompt Refinement**: Iterative AI-powered prompt optimization
 
 ### 🤖 AI Provider Integration
+
 - **Multiple Providers**: OpenAI (GPT-4, GPT-3.5), Anthropic (Claude 3.5), Azure OpenAI
 - **Provider Abstraction**: Unified interface for all providers
 - **Cost Tracking**: Real-time token usage and cost monitoring
 - **Rate Limiting**: Built-in protection against quota exhaustion
 
 ### 🔄 Orchestration & Automation
+
 - **GitHub Integration**: Clone repos, run code analysis, create PRs automatically
 - **Codex Swarm**: Multi-agent code review (security, linting, testing, refactoring)
 - **Workflow Automation**: PowerShell-based orchestration pipeline
 - **Real-time Monitoring**: Live log streaming and progress tracking
 
 ### 💻 Multiple Interfaces
+
 - **Web Dashboard**: Modern React/Vite interface for browser-based access
 - **Desktop App**: Native WPF application for Windows with rich UI
 - **CLI Tools**: PowerShell modules for scripting and automation
 - **REST API**: FastAPI backend for programmatic access
 
 ### 🔒 Enterprise-Ready
+
 - **Authentication**: JWT-based auth with role-based access control
 - **Security Scanning**: Integrated CodeQL for vulnerability detection
 - **Audit Logging**: Comprehensive activity tracking
@@ -44,6 +49,7 @@ The Unified AI Toolbox is a comprehensive platform that unifies prompt managemen
 ## 🚀 Quick Start
 
 ### Prerequisites
+
 - **Node.js 18+** - [Download](https://nodejs.org/)
 - **Python 3.12+** - [Download](https://www.python.org/)
 - **PowerShell 7.4+** - [Download](https://github.com/PowerShell/PowerShell/releases) *(for orchestration)*
@@ -52,22 +58,26 @@ The Unified AI Toolbox is a comprehensive platform that unifies prompt managemen
 ### Launch in 30 Seconds
 
 **Windows:**
+
 ```powershell
 .\LaunchUnifiedToolbox.ps1
 ```
 
 **Linux/Mac:**
+
 ```bash
 ./launch.sh
 ```
 
 **Docker:**
+
 ```bash
 docker compose up -d
 ```
 
 ### Access Your Services
-- 🌐 **Web Portal**: http://localhost:3001
+
+- 🌐 **Web Portal**: <http://localhost:3001>
 
 **📖 Need more details?** See the [Launch Guide](docs/help/launch-guide.md) for comprehensive setup instructions.
 
@@ -106,6 +116,7 @@ UnifiedAIToolbox/
 ### Build the Project
 
 **Web Dashboard:**
+
 ```bash
 cd apps/dashboard
 npm install
@@ -115,6 +126,7 @@ npm test           # Run tests
 ```
 
 **Desktop App:**
+
 ```bash
 cd apps/OrchestrationDesktop
 dotnet restore
@@ -123,6 +135,7 @@ dotnet run
 ```
 
 **API Service:**
+
 ```bash
 cd services/prompt-api
 python -m pip install -r requirements.txt
@@ -130,6 +143,7 @@ python app.py
 ```
 
 ### Run Tests
+
 ```bash
 # PowerShell module tests
 pwsh tests/Schema.Tests.ps1
@@ -173,6 +187,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 🙏 Acknowledgments
 
 Built with modern tools and frameworks:
+
 - React, Vite, TypeScript
 - FastAPI, Python
 - PowerShell Core
