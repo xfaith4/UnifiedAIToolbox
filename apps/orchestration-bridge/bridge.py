@@ -531,12 +531,12 @@ def _execute_run_manifest(manifest_path: Path) -> bool:
             if result.returncode != 0:
                 raise RuntimeError(f"Orchestrator exited with code {result.returncode}")
         else:
-            # Simulate execution if script or pwsh is missing
+            # Simulate execution if script or PowerShell is missing
             manifest["mode"] = "simulated"
             manifest["events"].append({
                 "ts": _now_iso(),
                 "type": "warn",
-                "message": "Simulated run (script or pwsh missing)"
+                "message": "Simulated run (script or PowerShell missing)"
             })
             manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
             time.sleep(1)  # Brief simulation delay

@@ -129,6 +129,7 @@ class TestExecuteRunManifest:
             warn_events = [e for e in result.get("events", []) if e.get("type") == "warn"]
             assert len(warn_events) >= 1
             assert "Simulated run" in warn_events[0]["message"]
+            assert "PowerShell" in warn_events[0]["message"]
 
     def test_simulated_mode_when_script_missing(self):
         """Test that simulated mode is used when script is missing."""
