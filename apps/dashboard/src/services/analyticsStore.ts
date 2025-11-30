@@ -17,6 +17,10 @@ const API_BASE = API_BASE_RAW ? API_BASE_RAW.replace(/\/$/, '') : ''
 // Local storage key for analytics data
 const ANALYTICS_STORAGE_KEY = 'promptAnalytics.v1'
 
+// Configuration constants
+const MAX_EVENTS_STORED = 1000
+const TOP_PROMPTS_LIMIT = 10
+
 interface AnalyticsEvent {
   id: string
   promptId: string
@@ -46,8 +50,8 @@ function loadAnalyticsFromStorage(): AnalyticsEvent[] {
 }
 
 function saveAnalyticsToStorage(events: AnalyticsEvent[]): void {
-  // Keep only last 1000 events to avoid storage bloat
-  const trimmed = events.slice(-1000)
+  // Keep only last N events to avoid storage bloat
+  const trimmed = events.slice(-MAX_EVENTS_STORED)
   localStorage.setItem(ANALYTICS_STORAGE_KEY, JSON.stringify(trimmed))
 }
 
@@ -128,7 +132,7 @@ export function getAnalyticsSummary(
   
   const topPrompts = Array.from(promptMap.values())
     .sort((a, b) => b.executionCount - a.executionCount)
-    .slice(0, 10)
+    .slice(0, TOP_PROMPTS_LIMIT)
   
   return {
     totalExecutions,

@@ -53,13 +53,19 @@ export default function EnhancedAIPage() {
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    fetchPromptLibrary().then((list) => {
-      setPrompts(list)
-      if (list.length > 0) {
-        setSelectedPromptId(list[0].id)
-      }
-      setIsLoading(false)
-    })
+    fetchPromptLibrary()
+      .then((list) => {
+        setPrompts(list)
+        if (list.length > 0) {
+          setSelectedPromptId(list[0].id)
+        }
+      })
+      .catch((error) => {
+        console.error('Failed to fetch prompt library:', error)
+      })
+      .finally(() => {
+        setIsLoading(false)
+      })
   }, [])
 
   const selectedPrompt = prompts.find((p) => p.id === selectedPromptId)

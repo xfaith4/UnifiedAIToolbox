@@ -19,6 +19,17 @@ const API_BASE = API_BASE_RAW ? API_BASE_RAW.replace(/\/$/, '') : ''
 // Local storage key
 const SUGGESTIONS_HISTORY_KEY = 'suggestionHistory.v1'
 
+// Configuration constants
+const MAX_HISTORY_ENTRIES = 100
+const SCORE_EXCELLENT_THRESHOLD = 80
+const SCORE_GOOD_THRESHOLD = 60
+const MIN_WORD_COUNT = 20
+const MAX_WORD_COUNT = 500
+const LONG_PROMPT_THRESHOLD = 100
+const HIGH_CONFIDENCE = 0.9
+const MEDIUM_CONFIDENCE = 0.85
+const LOW_CONFIDENCE = 0.75
+
 // In-memory store
 let suggestionHistory: SuggestionHistoryEntry[] = []
 
@@ -42,7 +53,7 @@ function loadFromStorage(): void {
 }
 
 function saveToStorage(): void {
-  const trimmed = suggestionHistory.slice(-100)
+  const trimmed = suggestionHistory.slice(-MAX_HISTORY_ENTRIES)
   localStorage.setItem(SUGGESTIONS_HISTORY_KEY, JSON.stringify(trimmed))
 }
 
@@ -87,13 +98,13 @@ function calculateCategoryScores(
   let clarityScore = 50
   if (structure.hasRole) clarityScore += 15
   if (structure.hasTask) clarityScore += 15
-  if (structure.wordCount > 20 && structure.wordCount < 500) clarityScore += 10
+  if (structure.wordCount > MIN_WORD_COUNT && structure.wordCount < MAX_WORD_COUNT) clarityScore += 10
   if (/\?/.test(content)) clarityScore += 5
   scores.push({
     name: 'Clarity',
     score: Math.min(clarityScore, 100),
     weight: 0.25,
-    feedback: clarityScore >= 80 
+    feedback: clarityScore >= SCORE_EXCELLENT_THRESHOLD 
       ? 'Prompt has clear structure and purpose.'
       : 'Consider adding a clearer role definition and task description.',
   })
@@ -108,7 +119,7 @@ function calculateCategoryScores(
     name: 'Specificity',
     score: Math.min(specificityScore, 100),
     weight: 0.25,
-    feedback: specificityScore >= 80
+    feedback: specificityScore >= SCORE_EXCELLENT_THRESHOLD
       ? 'Prompt includes specific constraints and output requirements.'
       : 'Add more specific constraints, expected output format, or quantifiable requirements.',
   })
@@ -117,12 +128,12 @@ function calculateCategoryScores(
   let contextScore = 50
   if (structure.hasRole) contextScore += 20
   if (structure.hasExamples) contextScore += 20
-  if (content.length > 100) contextScore += 10
+  if (content.length > LONG_PROMPT_THRESHOLD) contextScore += 10
   scores.push({
     name: 'Context',
     score: Math.min(contextScore, 100),
     weight: 0.2,
-    feedback: contextScore >= 80
+    feedback: contextScore >= SCORE_EXCELLENT_THRESHOLD
       ? 'Good context provided with role definition and examples.'
       : 'Consider adding more context, background information, or examples.',
   })
@@ -137,7 +148,7 @@ function calculateCategoryScores(
     name: 'Structure',
     score: Math.min(structureScore, 100),
     weight: 0.15,
-    feedback: structureScore >= 80
+    feedback: structureScore >= SCORE_EXCELLENT_THRESHOLD
       ? 'Well-organized with clear sections and formatting.'
       : 'Use formatting (line breaks, lists, headers) to improve readability.',
   })
@@ -152,7 +163,7 @@ function calculateCategoryScores(
     name: 'Best Practices',
     score: Math.min(bestPracticesScore, 100),
     weight: 0.15,
-    feedback: bestPracticesScore >= 80
+    feedback: bestPracticesScore >= SCORE_EXCELLENT_THRESHOLD
       ? 'Follows prompt engineering best practices.'
       : 'Apply best practices: define role, add constraints, specify output format.',
   })
@@ -179,7 +190,7 @@ function generateSuggestions(
       description: 'Define a clear role or persona for the AI to adopt.',
       suggestedText: 'You are an expert [role]. ',
       rationale: 'Role definitions help the AI understand the context and expected expertise level.',
-      confidence: 0.9,
+      confidence: HIGH_CONFIDENCE,
       applied: false,
       dismissed: false,
       createdAt: nowIso(),
@@ -196,7 +207,7 @@ function generateSuggestions(
       description: 'Add a clear task description starting with an action verb.',
       suggestedText: 'Task: [Describe the specific task here]\n',
       rationale: 'Clear task definitions improve accuracy and reduce ambiguity.',
-      confidence: 0.85,
+      confidence: MEDIUM_CONFIDENCE,
       applied: false,
       dismissed: false,
       createdAt: nowIso(),
@@ -230,7 +241,7 @@ function generateSuggestions(
       description: 'Define the expected format for the response.',
       suggestedText: '\nOutput Format: [JSON/Markdown/Plain text with specific structure]',
       rationale: 'Specifying output format ensures consistent and usable responses.',
-      confidence: 0.85,
+      confidence: MEDIUM_CONFIDENCE,
       applied: false,
       dismissed: false,
       createdAt: nowIso(),
@@ -247,7 +258,7 @@ function generateSuggestions(
       description: 'Include one or more examples of expected input/output.',
       suggestedText: '\nExample:\nInput: [example input]\nOutput: [expected output]',
       rationale: 'Examples (few-shot learning) significantly improve response quality.',
-      confidence: 0.75,
+      confidence: LOW_CONFIDENCE,
       applied: false,
       dismissed: false,
       createdAt: nowIso(),
@@ -255,7 +266,7 @@ function generateSuggestions(
   }
   
   // Structure improvement suggestion
-  if (structure.wordCount > 100 && !/\n/.test(content)) {
+  if (structure.wordCount > LONG_PROMPT_THRESHOLD && !/\n/.test(content)) {
     suggestions.push({
       id: uid(),
       type: 'structure',

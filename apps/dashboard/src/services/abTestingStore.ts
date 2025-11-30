@@ -18,6 +18,15 @@ const API_BASE = API_BASE_RAW ? API_BASE_RAW.replace(/\/$/, '') : ''
 const ABTESTS_STORAGE_KEY = 'abTests.v1'
 const ASSIGNMENTS_STORAGE_KEY = 'abTestAssignments.v1'
 
+// Configuration constants
+const MAX_ASSIGNMENTS_STORED = 500
+const MIN_SAMPLE_SIZE_FOR_SIGNIFICANCE = 30
+const SIGNIFICANCE_99 = 2.576
+const SIGNIFICANCE_95 = 1.96
+const SIGNIFICANCE_90 = 1.645
+const SIGNIFICANCE_80 = 1.28
+const MIN_SAMPLES_FOR_RECOMMENDATION = 100
+
 // In-memory stores
 let abTests: ABTest[] = []
 let assignments: ABTestAssignment[] = []
@@ -48,8 +57,8 @@ function loadFromStorage(): void {
 
 function saveToStorage(): void {
   localStorage.setItem(ABTESTS_STORAGE_KEY, JSON.stringify(abTests))
-  // Keep only last 500 assignments
-  const trimmedAssignments = assignments.slice(-500)
+  // Keep only last N assignments
+  const trimmedAssignments = assignments.slice(-MAX_ASSIGNMENTS_STORED)
   localStorage.setItem(ASSIGNMENTS_STORAGE_KEY, JSON.stringify(trimmedAssignments))
 }
 
@@ -287,7 +296,7 @@ function calculateSignificance(
   control: ABVariantMetrics,
   treatment: ABVariantMetrics
 ): number {
-  if (control.impressions < 30 || treatment.impressions < 30) {
+  if (control.impressions < MIN_SAMPLE_SIZE_FOR_SIGNIFICANCE || treatment.impressions < MIN_SAMPLE_SIZE_FOR_SIGNIFICANCE) {
     return 0 // Not enough data
   }
   
@@ -305,10 +314,10 @@ function calculateSignificance(
   
   // Convert z-score to approximate significance level
   // This is a simplified calculation
-  if (zScore >= 2.576) return 0.99
-  if (zScore >= 1.96) return 0.95
-  if (zScore >= 1.645) return 0.90
-  if (zScore >= 1.28) return 0.80
+  if (zScore >= SIGNIFICANCE_99) return 0.99
+  if (zScore >= SIGNIFICANCE_95) return 0.95
+  if (zScore >= SIGNIFICANCE_90) return 0.90
+  if (zScore >= SIGNIFICANCE_80) return 0.80
   return 0.5
 }
 
@@ -354,7 +363,7 @@ export function getABTestResults(testId: string): ABTestResult | null {
   
   // Generate recommendation
   let recommendation = ''
-  if (test.currentSampleSize < 100) {
+  if (test.currentSampleSize < MIN_SAMPLES_FOR_RECOMMENDATION) {
     recommendation = 'Continue testing: Not enough data for reliable results.'
   } else if (maxSignificance < 0.95) {
     recommendation =

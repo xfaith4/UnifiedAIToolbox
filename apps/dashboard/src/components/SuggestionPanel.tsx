@@ -209,7 +209,8 @@ export default function SuggestionPanel({
     if (promptContent.length > 20) {
       runAnalysis()
     }
-  }, [promptId])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [promptId, promptContent])
 
   const handleApply = (suggestion: PromptSuggestion) => {
     applySuggestion(promptId, suggestion.id)
