@@ -1839,7 +1839,8 @@ def orchestrate_run(req: OrchestrationRequest):
     background task that executes the external orchestrator (POF.ps1 by default), otherwise
     simulates a completion.
     """
-    run_id = f"{req.prompt_id.replace('.', '_')}.{now_iso().replace(':','-')}"
+    run_base = (req.prompt_id or req.goal or "run").replace(".", "_").replace(" ", "_")
+    run_id = f"{run_base}.{now_iso().replace(':','-')}"
     out_dir = BRIDGE_RUN_DIR / run_id
     log_path = BRIDGE_RUN_DIR / f"{run_id}.log"
     out_dir.mkdir(parents=True, exist_ok=True)
