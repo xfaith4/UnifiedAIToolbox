@@ -104,10 +104,15 @@ BRIDGE_RUN_DIR = BRIDGE_DIR / "runs"
 BRIDGE_RUN_DIR.mkdir(parents=True, exist_ok=True)
 PS_REFINER = BRIDGE_DIR / "OpenAI_Refiner.ps1"
 # Prefer in-repo orchestrator; fallback to external path or env override
-POF_PS1 = os.environ.get("POF_PS1") or str(
-    (ROOT_DIR / "Orchestration" / "AI-Orchestration" / "scripts" / "POF.ps1").resolve()
-)
-ORCH_PS1 = os.environ.get("ORCHESTRATOR_PS1") or POF_PS1
+def _resolve_env_path(env_key: str, default_path: pathlib.Path) -> pathlib.Path:
+    value = os.environ.get(env_key)
+    if value:
+        return pathlib.Path(value).expanduser().resolve()
+    return default_path
+
+DEFAULT_POF = (ROOT_DIR / "Orchestration" / "AI-Orchestration" / "scripts" / "POF.ps1").resolve()
+POF_PS1 = _resolve_env_path("POF_PS1", DEFAULT_POF)
+ORCH_PS1 = _resolve_env_path("ORCHESTRATOR_PS1", POF_PS1)
 CODEX_SWARM_PS1 = os.environ.get("CODEX_SWARM_PS1") or str(
     (ROOT_DIR / "Orchestration" / "AI-Orchestration" / "codex-multiagent-swarm" / "Orchestrate-Codex.ps1").resolve()
 )
@@ -1996,10 +2001,12 @@ def orchestrate_run(req: OrchestrationRequest):
                 args += [
                     "-Goal", str(goal_text),
                     "-Model", manifest.get("model") or DEFAULT_MODEL,
-                    "-Instruction", manifest.get("notes") or "",
-                    "-MaxIterations", str(req.max_iterations or 3),
-                    "-RunId", run_id,
-                    "-OutputRoot", str(BRIDGE_RUN_DIR),
+                ]
+                notes = manifest.get("notes")
+                if notes:
+                    args += ["-Instruction", notes]
+                args += [
+                    "-OutputDir", str(BRIDGE_RUN_DIR),
                 ]
             data.setdefault("events", []).append({
                 "ts": now_iso(),

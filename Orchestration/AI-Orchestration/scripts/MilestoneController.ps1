@@ -145,6 +145,10 @@ function Invoke-Milestone {
         [hashtable]$Context
     )
     
+    if (-not $Milestone.PSObject.Properties.Match("Status")) {
+        $Milestone | Add-Member -NotePropertyName Status -NotePropertyValue "pending" -Force
+    }
+
     Write-Log "Executing milestone: $($Milestone.Name)"
     Write-Log "  Agent: $($Milestone.Agent)"
     Write-Log "  Description: $($Milestone.Description)"
@@ -170,6 +174,12 @@ function Invoke-Milestone {
 function Complete-Orchestration {
     param([hashtable]$Context)
     
+    foreach ($Milestone in $Context.Milestones) {
+        if (-not $Milestone.PSObject.Properties.Match("Status")) {
+            $Milestone | Add-Member -NotePropertyName Status -NotePropertyValue "unknown" -Force
+        }
+    }
+
     $endTime = Get-Date
     $duration = $endTime - $script:StartTime
     

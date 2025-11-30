@@ -324,6 +324,20 @@ PY
       export $(cat .env | grep -v '^#' | xargs)
     fi
     
+    # Build windows path for orchestrator scripts
+    to_windows_path() {
+        local target="$1"
+        if command -v wslpath >/dev/null 2>&1; then
+            wslpath -w "$target"
+        else
+            printf '%s' "$target"
+        fi
+    }
+
+    ORCHESTRATOR_SCRIPT_PATH="${SCRIPT_DIR}/Orchestration/AI-Orchestration/scripts/MilestoneController.ps1"
+    export ORCHESTRATOR_PS1="$(to_windows_path "$ORCHESTRATOR_SCRIPT_PATH")"
+    export POF_PS1="$(to_windows_path "$ORCHESTRATOR_SCRIPT_PATH")"
+
     # Start API server
     echo -e "${GREEN}Starting Prompt API on port $API_PORT...${NC}"
     export PROMPT_API_PORT=$API_PORT

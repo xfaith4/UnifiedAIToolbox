@@ -75,7 +75,7 @@ The Unified AI Toolbox is a comprehensive platform that unifies prompt managemen
 docker compose up -d
 ```
 
-> Running `./launch.sh` now sets `NEXT_PUBLIC_API_BASE` to the prompt API port it selected and runs a post-launch verification script so you see whether the API, dashboard, portal, and orchestrator handshake are healthy.
+> Running `./launch.sh` now sets `NEXT_PUBLIC_API_BASE`, forces the orchestrator script path to the Windows MilestoneController.ps1, and runs a post-launch verification script so you see whether the API, dashboard, portal, and orchestrator handshake are healthy.
 
 ### Access Your Services
 
