@@ -158,10 +158,10 @@
 
 ### Enhanced AI Capabilities (Sprint 4)
 - [ ] Semantic search with vector embeddings
-- [ ] Custom model fine-tuning support
-- [ ] Prompt analytics and insights
-- [ ] A/B testing for prompts
-- [ ] AI-powered prompt suggestions
+- [x] Custom model fine-tuning support
+- [x] Prompt analytics and insights
+- [x] A/B testing for prompts
+- [x] AI-powered prompt suggestions
 
 ### Enterprise Integrations (Future)
 - [ ] SSO/SAML authentication

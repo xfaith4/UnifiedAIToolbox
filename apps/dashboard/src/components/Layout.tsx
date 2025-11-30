@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { BarChart3, Settings, Github, Workflow, BookOpen, Bot, Sparkles, Database, Activity, HelpCircle, Sun, Moon, Monitor, Palette } from 'lucide-react'
+import { BarChart3, Settings, Github, Workflow, BookOpen, Bot, Sparkles, Database, Activity, HelpCircle, Sun, Moon, Monitor, Palette, Zap } from 'lucide-react'
 import { type ReactNode, useState, useRef, useEffect } from 'react'
 import { useTheme, type AccentColor } from '../contexts/ThemeContext'
 
@@ -13,6 +13,7 @@ const navSections = [
     isPrimary: true,
     items: [
       { to: '/orchestrator', label: 'Orchestrator', icon: Sparkles },
+      { to: '/enhanced-ai', label: 'Enhanced AI', icon: Zap },
     ],
   },
   {
