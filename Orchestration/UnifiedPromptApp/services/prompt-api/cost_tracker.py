@@ -148,12 +148,11 @@ class CostTracker:
         provider: Optional[str] = None,
         user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        # Default window is the trailing period_days if explicit dates are not provided.
-        if not start_date and not end_date:
-            end_dt = datetime.datetime.now(datetime.timezone.utc)
-            start_dt = end_dt - datetime.timedelta(days=period_days)
-            start_date = start_dt.isoformat()
-            end_date = end_dt.isoformat()
+        # If no explicit start_date/end_date are provided, treat the window as the full history
+        # (delegate to get_total_cost which accepts None to mean no filtering). Do not automatically
+        # set a trailing window based on period_days to avoid surprising differences between
+        # get_total_cost() and check_budget(). Note: period_days is still included in the response
+        # for informational purposes even when not used for date filtering.
 
         current_cost = self.get_total_cost(start_date, end_date, provider, user_id)
         remaining = max(0.0, budget_amount - current_cost)
