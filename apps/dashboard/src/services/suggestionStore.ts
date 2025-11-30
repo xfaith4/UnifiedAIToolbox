@@ -8,7 +8,6 @@ import type {
   SuggestionRequest,
   SuggestionResponse,
   SuggestionType,
-  SuggestionPriority,
   SuggestionHistoryEntry,
   PromptImprovementStats,
 } from '../types/suggestions'
@@ -22,7 +21,6 @@ const SUGGESTIONS_HISTORY_KEY = 'suggestionHistory.v1'
 // Configuration constants
 const MAX_HISTORY_ENTRIES = 100
 const SCORE_EXCELLENT_THRESHOLD = 80
-const SCORE_GOOD_THRESHOLD = 60
 const MIN_WORD_COUNT = 20
 const MAX_WORD_COUNT = 500
 const LONG_PROMPT_THRESHOLD = 100
@@ -72,8 +70,6 @@ function analyzePromptStructure(content: string): {
   wordCount: number
   variableCount: number
 } {
-  const lowerContent = content.toLowerCase()
-  
   return {
     hasRole: /you are|act as|role:|as a/i.test(content),
     hasTask: /task:|your task|please|help|write|create|generate/i.test(content),
@@ -429,7 +425,7 @@ export async function getAISuggestions(
 /**
  * Mark a suggestion as applied
  */
-export function applySuggestion(promptId: string, suggestionId: string): void {
+export function applySuggestion(promptId: string, _suggestionId: string): void {
   const entry = suggestionHistory.find((h) => h.promptId === promptId)
   if (entry) {
     entry.appliedCount++
@@ -440,7 +436,7 @@ export function applySuggestion(promptId: string, suggestionId: string): void {
 /**
  * Mark a suggestion as dismissed
  */
-export function dismissSuggestion(promptId: string, suggestionId: string): void {
+export function dismissSuggestion(promptId: string, _suggestionId: string): void {
   const entry = suggestionHistory.find((h) => h.promptId === promptId)
   if (entry) {
     entry.dismissedCount++

@@ -8,7 +8,6 @@ import type {
   FineTuneStatus,
   ModelRegistry,
   BaseModelInfo,
-  ModelProvider,
 } from '../types/fineTuning'
 
 const API_BASE_RAW = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000'

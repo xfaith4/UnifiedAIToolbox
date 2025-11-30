@@ -8,7 +8,6 @@ import {
   getBaseModels,
   createFineTuneJob,
   deleteFineTunedModel,
-  updateFineTuneStatus,
   getDatasets,
   createDataset,
 } from '../services/fineTuneStore'
@@ -348,7 +347,7 @@ export default function FineTuneManager() {
   const [models, setModels] = useState<FineTunedModel[]>([])
   const [baseModels, setBaseModels] = useState<BaseModelInfo[]>([])
   const [datasets, setDatasets] = useState<FineTuneDataset[]>([])
-  const [selectedModel, setSelectedModel] = useState<FineTunedModel | null>(null)
+  const [, setSelectedModel] = useState<FineTunedModel | null>(null)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showDatasetModal, setShowDatasetModal] = useState(false)
   const [activeTab, setActiveTab] = useState<'models' | 'datasets'>('models')
