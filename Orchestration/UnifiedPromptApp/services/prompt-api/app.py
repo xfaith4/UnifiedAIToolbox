@@ -1943,7 +1943,11 @@ def orchestrate_run(req: OrchestrationRequest):
 
             # choose orchestrator script based on run_mode (default => POF)
             run_mode = (req.run_mode or "default").lower()
-            ps1 = pathlib.Path(CODEX_SWARM_PS1 if run_mode == "codex-swarm" else ORCH_PS1)
+            ps1_candidate = pathlib.Path(CODEX_SWARM_PS1 if run_mode == "codex-swarm" else ORCH_PS1)
+            try:
+                ps1 = ps1_candidate.resolve(strict=True)
+            except FileNotFoundError:
+                raise FileNotFoundError(f"Orchestrator script not found: {ps1_candidate}")
 
             status_file = out_dir / "agent_status.json"
             final_synthesis = out_dir / "Final_Synthesis.txt"
@@ -1959,8 +1963,6 @@ def orchestrate_run(req: OrchestrationRequest):
             poller = threading.Thread(target=_poll_status, daemon=True)
             poller.start()
 
-            if not ps1.exists():
-                raise FileNotFoundError(f"Orchestrator script not found: {ps1}")
             if not ps_exe:
                 raise RuntimeError("PowerShell executable not found (pwsh or powershell)")
 
