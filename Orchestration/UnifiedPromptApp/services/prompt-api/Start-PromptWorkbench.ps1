@@ -19,7 +19,8 @@ param(
   [string]$PortUi    = "8501",
   [string]$Model     = "gpt-4o-mini",
   [int]$MaxHealthCheckAttempts = 10,
-  [int]$HealthCheckDelaySeconds = 2
+  [int]$HealthCheckDelaySeconds = 2,
+  [switch]$FailOnBackendNotReady
 )
 
 # --- Guardrails --------------------------------------------------------------
@@ -56,7 +57,6 @@ $py  = Join-Path $venvPath "Scripts\python.exe"
 
 # --- Run backend -------------------------------------------------------------
 Write-Host "Starting backend service..." -ForegroundColor Cyan
-$apiCmd = "$py `"$PSScriptRoot\app.py`""
 $backendProcess = Start-Process -FilePath $py -ArgumentList "`"$PSScriptRoot\app.py`"" -WindowStyle Hidden -PassThru
 
 # --- Wait for backend to be ready --------------------------------------------
@@ -70,9 +70,13 @@ while ($attempts -lt $MaxHealthCheckAttempts) {
     try {
         $response = Invoke-WebRequest -Uri $healthUrl -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
         if ($response.StatusCode -eq 200) {
-            $backendReady = $true
-            Write-Host "✅ Backend is ready (attempt $attempts/$MaxHealthCheckAttempts)" -ForegroundColor Green
-            break
+            # Verify response content contains expected health check data
+            $content = $response.Content | ConvertFrom-Json
+            if ($content.ok -eq $true) {
+                $backendReady = $true
+                Write-Host "✅ Backend is ready (attempt $attempts/$MaxHealthCheckAttempts)" -ForegroundColor Green
+                break
+            }
         }
     } catch {
         Write-Host "⏳ Backend not ready yet (attempt $attempts/$MaxHealthCheckAttempts)..." -ForegroundColor Yellow
@@ -81,13 +85,17 @@ while ($attempts -lt $MaxHealthCheckAttempts) {
 }
 
 if (-not $backendReady) {
-    Write-Host "⚠️  Backend not ready after $MaxHealthCheckAttempts attempts. UI may not work correctly." -ForegroundColor Red
+    Write-Host "⚠️  Backend not ready after $MaxHealthCheckAttempts attempts." -ForegroundColor Red
     Write-Host "    Please check the backend logs for errors." -ForegroundColor Red
     Write-Host "    You can try accessing $healthUrl manually to diagnose." -ForegroundColor Yellow
+    
+    if ($FailOnBackendNotReady) {
+        throw "Backend failed to start. Aborting UI launch."
+    }
+    Write-Host "    Continuing with UI launch anyway (use -FailOnBackendNotReady to abort)..." -ForegroundColor Yellow
 }
 
 # --- Run UI ------------------------------------------------------------------
-$uiCmd = "$py -m streamlit run `"$PSScriptRoot\streamlit_app.py`" --server.port $PortUi"
 Start-Process -FilePath $py -ArgumentList "-m streamlit run `"$PSScriptRoot\streamlit_app.py`" --server.port $PortUi"
 
 Write-Host "Backend: http://localhost:$PortApi" -ForegroundColor Green
