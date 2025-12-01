@@ -22,7 +22,7 @@ function Get-ContentHash {
       Stable SHA256 of normalized text.
     #>
     [CmdletBinding()]
-    param([Parameter(Mandatory)][string]$Text)
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$Text)
 
     $norm = ($Text -replace "`r`n", "`n").Trim()
     $sha = New-Object System.Security.Cryptography.SHA256Managed
@@ -49,8 +49,8 @@ function ConvertTo-TemplateText {
         $evaluator = [System.Text.RegularExpressions.MatchEvaluator] {
             param($match)
             $null = $match.Value
-            # Ensure literal replacement; escape $ to $$ to avoid backrefs
-            return ($Vars[$k]).ToString().Replace('$', '$$')
+            # When using a MatchEvaluator, the return value is used literally (no backreference interpretation)
+            return ($Vars[$k]).ToString()
         }
         $result = [regex]::Replace($result, $pattern, $evaluator, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
     }
@@ -103,7 +103,7 @@ function Get-AgentFile {
         try {
             $doc = switch ($ext) {
                 { $_ -in '.yaml', '.yml' } { 
-                    $raw | ConvertFromYaml 
+                    $raw | ConvertFrom-Yaml 
                 }
                 '.json' { 
                     $raw | ConvertFrom-Json 
@@ -194,93 +194,6 @@ function Get-Agent {
     if ($Name) { $agents = $agents | Where-Object { $_.name -match [regex]::Escape($Name) } }
     if ($Capability) { $agents = $agents | Where-Object { (($_.capabilities) -join ',') -match ($Capability -join '|') } }
     $agents
-}
-
-function Get-AgentFile {
-    <#
-    .SYNOPSIS
-      Load agent definitions from JSON or YAML files in the data/agents directory and normalize fields.
-    .DESCRIPTION
-      Searches for JSON and YAML files in the data/agents directory, loads the agent definitions,
-      and normalizes the agent objects to ensure consistent structure.
-    .OUTPUTS
-      [PSObject[]] Array of agent objects with normalized fields
-    .EXAMPLE
-      $agents = Get-AgentFile
-    #>
-    [CmdletBinding()]
-    [OutputType([PSObject[]])]
-    param()
-    
-    $agentList = @()
-    $agentsPath = Join-Path -Path $PSScriptRoot -ChildPath '..\..\data\agents' -Resolve -ErrorAction SilentlyContinue
-    
-    if (-not $agentsPath) {
-        Write-Error "Agents directory not found at: $agentsPath"
-        return $agentList
-    }
-    
-    # Process JSON files
-    Get-ChildItem -Path $agentsPath -Filter '*.json' -File | ForEach-Object {
-        try {
-            $content = Get-Content -Path $_.FullName -Raw -ErrorAction Stop
-            $jsonAgents = $content | ConvertFrom-Json -ErrorAction Stop
-            
-            # Handle both single agent and array of agents
-            if ($jsonAgents -is [array]) {
-                $agentList += $jsonAgents
-            } else {
-                $agentList += $jsonAgents
-            }
-        } catch {
-            Write-Warning "Error processing JSON file $($_.FullName): $_"
-        }
-    }
-    
-    # Process YAML files if the module is available
-    if (Get-Module -ListAvailable -Name 'powershell-yaml') {
-        try {
-            Import-Module 'powershell-yaml' -ErrorAction Stop
-            
-            Get-ChildItem -Path $agentsPath -Filter '*.yaml' -File | ForEach-Object {
-                try {
-                    $yamlContent = Get-Content -Path $_.FullName -Raw -ErrorAction Stop
-                    $yamlAgents = $yamlContent | ConvertFrom-Yaml -ErrorAction Stop
-                    
-                    # Handle both single agent and array of agents
-                    if ($yamlAgents -is [array]) {
-                        $agentList += $yamlAgents
-                    } else {
-                        $agentList += $yamlAgents
-                    }
-                } catch {
-                    Write-Warning "Error processing YAML file $($_.FullName): $_"
-                }
-            }
-        } catch {
-            Write-Warning "powershell-yaml module not available. Skipping YAML agent files: $_"
-        }
-    } else {
-        Write-Warning "powershell-yaml module not found. Install it with: Install-Module -Name powershell-yaml -Scope CurrentUser -Force"
-    }
-    
-    # Normalize agent objects
-    $normalizedAgents = foreach ($agent in $agentList) {
-        # Ensure required properties exist with default values
-        $agent | Add-Member -MemberType NoteProperty -Name 'id' -Value $agent.id -Force -ErrorAction SilentlyContinue
-        $agent | Add-Member -MemberType NoteProperty -Name 'name' -Value $agent.name -Force -ErrorAction SilentlyContinue
-        $agent | Add-Member -MemberType NoteProperty -Name 'description' -Value $agent.description -Force -ErrorAction SilentlyContinue
-        $agent | Add-Member -MemberType NoteProperty -Name 'capabilities' -Value @($agent.capabilities | Where-Object { $_ }) -Force -ErrorAction SilentlyContinue
-        
-        # Set default values if properties are missing
-        if (-not $agent.id) { $agent.id = [System.IO.Path]::GetFileNameWithoutExtension($_.Name) }
-        if (-not $agent.name) { $agent.name = $agent.id }
-        if (-not $agent.capabilities) { $agent.capabilities = @() }
-        
-        $agent
-    }
-    
-    return $normalizedAgents
 }
 
 # ----------------------------------------------------
@@ -413,7 +326,7 @@ function Get-PromptFile {
     
     try {
         $rawContent = Get-Content -LiteralPath $promptFile.FullName -Raw
-        $prompt = $rawContent | ConvertFromYaml
+        $prompt = $rawContent | ConvertFrom-Yaml
         $prompt | Add-Member -NotePropertyName '_Path' -NotePropertyValue $promptFile.FullName -Force
         $prompt | Add-Member -NotePropertyName '_Raw' -NotePropertyValue $rawContent -Force
         
