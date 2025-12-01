@@ -140,35 +140,71 @@ function Split-GoalIntoMilestones {
 }
 
 function Invoke-Milestone {
+    [CmdletBinding()]
     param(
+        [Parameter(Mandatory=$false)]
         [hashtable]$Milestone,
-        [hashtable]$Context
+        
+        [Parameter(Mandatory=$false)]
+        [hashtable]$Context = @{}
     )
     
-    if (-not $Milestone.PSObject.Properties.Match("Status")) {
-        $Milestone | Add-Member -NotePropertyName Status -NotePropertyValue "pending" -Force
-    }
+    try {
+        # Handle null or empty milestone
+        if ($null -eq $Milestone -or $Milestone.Count -eq 0) {
+            Write-Log "Warning: Received empty milestone, creating default milestone" -Level "WARNING"
+            $Milestone = @{
+                Name = "Default Milestone"
+                Description = "Automatically created milestone"
+                Agent = "DefaultAgent"
+            }
+        }
+        
+        # Ensure required properties exist with default values
+        $milestoneObj = [PSCustomObject]@{
+            Name = $Milestone.Name ?? 'Unnamed Milestone'
+            Description = $Milestone.Description ?? 'No description provided'
+            Agent = $Milestone.Agent ?? 'DefaultAgent'
+            Status = if ($Milestone.ContainsKey('Status')) { $Milestone.Status } else { 'pending' }
+        }
 
-    Write-Log "Executing milestone: $($Milestone.Name)"
-    Write-Log "  Agent: $($Milestone.Agent)"
-    Write-Log "  Description: $($Milestone.Description)"
-    
-    if ($DryRun) {
-        Write-Log "  [DRY RUN] Skipping actual execution"
-        $Milestone.Status = "skipped"
-        $Milestone.Output = "[Dry run - no output generated]"
-        return $Milestone
+        Write-Log "Executing milestone: $($milestoneObj.Name)"
+        Write-Log "  Agent: $($milestoneObj.Agent)"
+        Write-Log "  Description: $($milestoneObj.Description)"
+        
+        if ($DryRun) {
+            Write-Log "  [DRY RUN] Skipping actual execution"
+            $milestoneObj | Add-Member -NotePropertyName Output -NotePropertyValue "[Dry run - no output generated]" -Force
+            $milestoneObj.Status = "skipped"
+            return $milestoneObj
+        }
+        
+        # Simulate milestone execution
+        Start-Sleep -Milliseconds 500
+        
+        $milestoneObj.Status = "completed"
+        $milestoneObj | Add-Member -NotePropertyName Output -NotePropertyValue "Milestone '$($milestoneObj.Name)' completed successfully by $($milestoneObj.Agent) agent." -Force
+        $milestoneObj | Add-Member -NotePropertyName CompletedAt -NotePropertyValue (Get-Date -Format "o") -Force
+        
+        Write-Log "  Milestone completed: $($milestoneObj.Name)"
+        return $milestoneObj
     }
-    
-    # Simulate milestone execution
-    Start-Sleep -Milliseconds 500
-    
-    $Milestone.Status = "completed"
-    $Milestone.Output = "Milestone '$($Milestone.Name)' completed successfully by $($Milestone.Agent) agent."
-    $Milestone.CompletedAt = Get-Date -Format "o"
-    
-    Write-Log "  Milestone completed: $($Milestone.Name)"
-    return $Milestone
+    catch {
+        $errorMsg = "Error in Invoke-Milestone: $_"
+        Write-Log $errorMsg -Level "ERROR"
+        
+        # Return a proper error object with fallbacks for all properties
+        $errorObj = [PSCustomObject]@{
+            Name = if ($null -ne $Milestone -and $null -ne $Milestone.Name) { $Milestone.Name } else { "Unknown Milestone" }
+            Description = if ($null -ne $Milestone -and $null -ne $Milestone.Description) { $Milestone.Description } else { "No description available" }
+            Agent = if ($null -ne $Milestone -and $null -ne $Milestone.Agent) { $Milestone.Agent } else { "UnknownAgent" }
+            Status = "failed"
+            Error = $errorMsg
+            Timestamp = Get-Date -Format "o"
+        }
+        
+        return $errorObj
+    }
 }
 
 function Complete-Orchestration {
@@ -207,32 +243,52 @@ function Complete-Orchestration {
 
 # Main execution
 try {
-    # Read goal from file
-    if ($GoalFile -and (Test-Path $GoalFile)) {
-        $goalText = Get-Content -Path $GoalFile -Raw
-    } else {
+    # Read goal from file or use default
+    if ([string]::IsNullOrEmpty($GoalFile)) {
         $goalText = "Execute default orchestration workflow"
-        Write-Log "No goal file provided, using default goal" -Level "WARN"
+        Write-Log "No goal file provided, using default goal" -Level "WARNING"
+    } else {
+        $goalText = Get-Content -Path $GoalFile -Raw -ErrorAction Stop
     }
     
     # Initialize orchestration
     $context = Initialize-Orchestration -GoalText $goalText
     
     # Generate milestones
-    $context.Milestones = Split-GoalIntoMilestones -Goal $goalText
+    $milestones = Split-GoalIntoMilestones -Goal $goalText
     
-    # Execute milestones - use index to update the array in place
-    for ($i = 0; $i -lt $context.Milestones.Count; $i++) {
-        $context.Milestones[$i] = Invoke-Milestone -Milestone $context.Milestones[$i] -Context $context
+    # Make sure we have at least one milestone
+    if ($null -eq $milestones -or $milestones.Count -eq 0) {
+        Write-Log "No milestones were generated. Creating a default milestone." -Level "WARNING"
+        $milestones = @(
+            @{
+                Name = "Default Milestone"
+                Description = "Automatically created milestone"
+                Agent = "DefaultAgent"
+                Status = "pending"
+            }
+        )
     }
     
-    # Complete orchestration
-    $summary = Complete-Orchestration -Context $context
+    # Execute each milestone only once
+    $context.Milestones = @()
+    foreach ($milestone in $milestones) {
+        if ($null -ne $milestone) {
+            $result = Invoke-Milestone -Milestone $milestone -Context $context
+            $context.Milestones += $result
+        }
+    }
     
-    Write-Host ""
-    Write-Host "Orchestration completed successfully!" -ForegroundColor Green
-    Write-Host "Summary: $($summary | ConvertTo-Json -Compress)"
+    # Complete the orchestration
+    $context = Complete-Orchestration -Context $context
     
+    # Output results
+    $outputFile = Join-Path $OutputDir "orchestration_results_$(Get-Date -Format 'yyyyMMdd_HHmmss').json"
+    $context | ConvertTo-Json -Depth 10 | Out-File -FilePath $outputFile -Force
+    
+    Write-Log "Orchestration completed successfully. Results saved to: $outputFile"
+    
+    # Return success exit code
     exit 0
 }
 catch {
