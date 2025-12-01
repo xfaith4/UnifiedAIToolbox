@@ -6,6 +6,12 @@
     "axe/forms": "off",
     "no-inline-styles": "off",
     "compat-api/html": "off",
-    "typescript-config/consistent-casing": "off"
+    "typescript-config/consistent-casing": "off",
+    "axe/name-role-value": [
+      "default",
+      {
+        "button-name": "off"
+      }
+    ]
   }
 }
