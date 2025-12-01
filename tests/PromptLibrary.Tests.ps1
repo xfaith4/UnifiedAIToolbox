@@ -143,7 +143,8 @@ Describe "PromptLibrary Module - Core Functions" {
     
     Context "Test-OrchCli" {
         It "Should return true for existing command" {
-            $result = Test-OrchCli -Command "powershell"
+            # Use pwsh since it's cross-platform and we're running in PowerShell
+            $result = Test-OrchCli -Command "pwsh"
             $result | Should -Be $true
         }
         
@@ -226,7 +227,7 @@ Describe "PromptLibrary Module - Agent Management" {
     
     Context "Get-Agent" {
         It "Should filter agents by ID" {
-            Mock Get-AgentFile {
+            Mock Get-AgentFile -ModuleName PromptLibrary {
                 @(
                     [PSCustomObject]@{ id = "agent1"; name = "Agent 1"; capabilities = @("cap1") }
                     [PSCustomObject]@{ id = "agent2"; name = "Agent 2"; capabilities = @("cap2") }
@@ -239,7 +240,7 @@ Describe "PromptLibrary Module - Agent Management" {
         }
         
         It "Should filter agents by capability" {
-            Mock Get-AgentFile {
+            Mock Get-AgentFile -ModuleName PromptLibrary {
                 @(
                     [PSCustomObject]@{ id = "agent1"; name = "Agent 1"; capabilities = @("testing") }
                     [PSCustomObject]@{ id = "agent2"; name = "Agent 2"; capabilities = @("coding") }
@@ -295,15 +296,15 @@ Describe "PromptLibrary Module - Orchestration" {
     Context "Invoke-Orchestration" {
         BeforeEach {
             # Mock Invoke-Model to avoid actual API calls
-            Mock Invoke-Model {
+            Mock Invoke-Model -ModuleName PromptLibrary {
                 @{
                     text = "Mocked response"
                     raw = @{ model = $Model }
                 }
             }
             
-            # Mock Get-PromptFile
-            Mock Get-PromptFile {
+            # Mock Get-Prompt (not Get-PromptFile) - this is what Invoke-Orchestration uses
+            Mock Get-Prompt -ModuleName PromptLibrary {
                 [PSCustomObject]@{
                     id = "test-prompt"
                     title = "Test Prompt"
@@ -314,7 +315,7 @@ Describe "PromptLibrary Module - Orchestration" {
             }
             
             # Mock Get-Agent
-            Mock Get-Agent {
+            Mock Get-Agent -ModuleName PromptLibrary {
                 [PSCustomObject]@{
                     id = "test-agent"
                     name = "Test Agent"
@@ -338,7 +339,7 @@ Describe "PromptLibrary Module - Orchestration" {
         }
         
         It "Should throw when prompt not found" {
-            Mock Get-PromptFile { $null }
+            Mock Get-Prompt -ModuleName PromptLibrary { $null }
             
             {
                 Invoke-Orchestration `
@@ -350,7 +351,7 @@ Describe "PromptLibrary Module - Orchestration" {
         }
         
         It "Should throw when agent not found" {
-            Mock Get-Agent { $null }
+            Mock Get-Agent -ModuleName PromptLibrary { $null }
             
             {
                 Invoke-Orchestration `
@@ -370,7 +371,7 @@ Describe "PromptLibrary Module - Orchestration" {
                 -ArtifactName "test-render"
             
             # Check that Invoke-Model was called with rendered template
-            Assert-MockCalled Invoke-Model -Times 1
+            Assert-MockCalled Invoke-Model -Times 1 -ModuleName PromptLibrary
         }
     }
 }

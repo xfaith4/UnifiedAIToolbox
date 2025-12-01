@@ -38,7 +38,7 @@ if (-not (Get-Command ConvertFrom-Yaml -ErrorAction SilentlyContinue)) {
     function ConvertFrom-Yaml {
         [CmdletBinding()]
         param(
-            [Parameter(Mandatory)][string]$Yaml
+            [Parameter(Mandatory, ValueFromPipeline, Position = 0)][string]$Yaml
         )
 
         $data = $script:YamlDeserializer.Deserialize([string]$Yaml)
