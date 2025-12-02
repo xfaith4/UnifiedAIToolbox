@@ -16,6 +16,12 @@ import uvicorn # pyright: ignore[reportMissingImports]
 import yaml # pyright: ignore[reportMissingModuleSource]
 import requests # pyright: ignore[reportMissingModuleSource]
 
+# Import migrations module
+try:
+    from migrations import apply_migrations
+except ImportError:
+    apply_migrations = None  # Migrations module not available
+
 # ----------------------------
 # Simple In-Memory Cache
 # ----------------------------
@@ -282,6 +288,13 @@ def init_db():
         """)
         conn.commit()
     _migrate_legacy_task_queue()
+    
+    # Apply database migrations for new features
+    if apply_migrations:
+        try:
+            apply_migrations(DB_PATH)
+        except Exception as e:
+            print(f"Warning: Could not apply migrations: {e}")
 
 def now_iso():
     return (
@@ -2169,7 +2182,169 @@ def get_orchestration_log(run_id: str, max_bytes: int = Query(8000, ge=1, le=200
         }
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to read log: {exc}")
-    depth: Optional[int] = Field(None, description="Clone depth (shallow clone)")
+
+
+# ----------------------------
+# Run Feedback and Learning Endpoints
+# ----------------------------
+class RunFeedbackRequest(BaseModel):
+    """Request model for submitting run feedback (from Supervisor)."""
+    run_id: str
+    quality_score: float = Field(..., ge=0, le=10)
+    feedback: List[str] = Field(default_factory=list)
+    insights: List[str] = Field(default_factory=list)
+    agent_scores: Dict[str, float] = Field(default_factory=dict)
+
+
+class RunFeedbackResponse(BaseModel):
+    """Response model for run feedback."""
+    id: int
+    run_id: str
+    quality_score: float
+    created_at: str
+
+
+@app.post("/orchestrate/run/{run_id}/feedback", response_model=RunFeedbackResponse)
+def submit_run_feedback(run_id: str, feedback: RunFeedbackRequest):
+    """
+    Submit feedback for a completed orchestration run.
+    This is typically called by the Supervisor agent to record quality assessments.
+    """
+    with sqlite3.connect(DB_PATH) as conn:
+        c = conn.cursor()
+        now = now_iso()
+        
+        # Insert feedback
+        c.execute("""
+            INSERT INTO run_feedback 
+            (run_id, quality_score, feedback_json, insights_json, agent_scores_json, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (
+            run_id,
+            feedback.quality_score,
+            json.dumps(feedback.feedback),
+            json.dumps(feedback.insights),
+            json.dumps(feedback.agent_scores),
+            now
+        ))
+        
+        feedback_id = c.lastrowid
+        conn.commit()
+        
+        return RunFeedbackResponse(
+            id=feedback_id,
+            run_id=run_id,
+            quality_score=feedback.quality_score,
+            created_at=now
+        )
+
+
+@app.get("/orchestrate/run/{run_id}/feedback")
+def get_run_feedback(run_id: str):
+    """Get feedback for a specific orchestration run."""
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        
+        c.execute("""
+            SELECT id, run_id, quality_score, feedback_json, insights_json, 
+                   agent_scores_json, created_at
+            FROM run_feedback
+            WHERE run_id = ?
+            ORDER BY created_at DESC
+        """, (run_id,))
+        
+        rows = c.fetchall()
+        
+        feedback_list = []
+        for row in rows:
+            feedback_list.append({
+                "id": row["id"],
+                "run_id": row["run_id"],
+                "quality_score": row["quality_score"],
+                "feedback": json.loads(row["feedback_json"]) if row["feedback_json"] else [],
+                "insights": json.loads(row["insights_json"]) if row["insights_json"] else [],
+                "agent_scores": json.loads(row["agent_scores_json"]) if row["agent_scores_json"] else {},
+                "created_at": row["created_at"]
+            })
+        
+        return {"run_id": run_id, "feedback": feedback_list}
+
+
+@app.get("/orchestrate/feedback/recent")
+def get_recent_feedback(limit: int = Query(10, ge=1, le=100)):
+    """Get recent run feedback across all runs."""
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        
+        c.execute("""
+            SELECT id, run_id, quality_score, feedback_json, insights_json,
+                   agent_scores_json, created_at
+            FROM run_feedback
+            ORDER BY created_at DESC
+            LIMIT ?
+        """, (limit,))
+        
+        rows = c.fetchall()
+        
+        feedback_list = []
+        for row in rows:
+            feedback_list.append({
+                "id": row["id"],
+                "run_id": row["run_id"],
+                "quality_score": row["quality_score"],
+                "feedback": json.loads(row["feedback_json"]) if row["feedback_json"] else [],
+                "insights": json.loads(row["insights_json"]) if row["insights_json"] else [],
+                "agent_scores": json.loads(row["agent_scores_json"]) if row["agent_scores_json"] else {},
+                "created_at": row["created_at"]
+            })
+        
+        return {"feedback": feedback_list}
+
+
+@app.get("/orchestrate/learning/patterns")
+def get_learning_patterns(pattern_type: Optional[str] = None, limit: int = Query(20, ge=1, le=100)):
+    """Get learned patterns from successful runs."""
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        
+        if pattern_type:
+            c.execute("""
+                SELECT id, pattern_type, pattern_data, source_run_ids, quality_score,
+                       usage_count, success_rate, created_at, last_used_at
+                FROM learning_patterns
+                WHERE pattern_type = ?
+                ORDER BY quality_score DESC, usage_count DESC
+                LIMIT ?
+            """, (pattern_type, limit))
+        else:
+            c.execute("""
+                SELECT id, pattern_type, pattern_data, source_run_ids, quality_score,
+                       usage_count, success_rate, created_at, last_used_at
+                FROM learning_patterns
+                ORDER BY quality_score DESC, usage_count DESC
+                LIMIT ?
+            """, (limit,))
+        
+        rows = c.fetchall()
+        
+        patterns = []
+        for row in rows:
+            patterns.append({
+                "id": row["id"],
+                "pattern_type": row["pattern_type"],
+                "pattern_data": json.loads(row["pattern_data"]) if row["pattern_data"] else {},
+                "source_run_ids": json.loads(row["source_run_ids"]) if row["source_run_ids"] else [],
+                "quality_score": row["quality_score"],
+                "usage_count": row["usage_count"],
+                "success_rate": row["success_rate"],
+                "created_at": row["created_at"],
+                "last_used_at": row["last_used_at"]
+            })
+        
+        return {"patterns": patterns}
 
 
 class CloneProgressResponse(BaseModel):
