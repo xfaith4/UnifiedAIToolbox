@@ -1761,6 +1761,27 @@ def check_budget_status(
     return BudgetStatusResponse(**budget_status)
 
 
+@app.get("/admin/costs/by-run")
+def get_costs_by_run(
+    run_id: Optional[str] = Query(None, description="Filter by specific run ID"),
+    start_date: Optional[str] = Query(None, description="Start date (ISO 8601)"),
+    end_date: Optional[str] = Query(None, description="End date (ISO 8601)"),
+    admin_token: Optional[str] = Header(None, alias="X-Admin-Token")
+):
+    """
+    Get cost breakdown by orchestration run.
+    Shows token usage and costs attributed to each run.
+    """
+    if settings.admin_token and admin_token != settings.admin_token:
+        raise HTTPException(status_code=401, detail="Admin token required")
+    
+    return cost_tracker.get_cost_by_run(
+        run_id=run_id,
+        start_date=start_date,
+        end_date=end_date
+    )
+
+
 # ----------------------------
 # GitHub Integration
 # ----------------------------
