@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import {
   analyzePrompt,
+  applySuggestion,
   getImprovementStats,
   clearSuggestionHistory,
 } from '../services/suggestionStore'
@@ -207,6 +208,92 @@ Output Format: Markdown list`,
       expect(analysis.weaknesses).toContain('Missing role definition')
       expect(analysis.weaknesses).toContain('Task not clearly defined')
       expect(analysis.weaknesses).toContain('Prompt may be too brief')
+    })
+  })
+
+  describe('applySuggestion', () => {
+    it('should apply a clarity suggestion by prepending text', async () => {
+      const currentContent = 'Help me write an email.'
+      const suggestion = {
+        id: 'test-suggestion',
+        type: 'clarity' as const,
+        priority: 'high' as const,
+        title: 'Add role definition',
+        description: 'Define a clear role for the AI',
+        suggestedText: 'You are an expert writer.',
+        rationale: 'Role definitions help the AI understand context',
+        confidence: 0.9,
+        applied: false,
+        dismissed: false,
+        createdAt: new Date().toISOString(),
+      }
+
+      const updatedContent = await applySuggestion(
+        'test-prompt',
+        suggestion.id,
+        currentContent,
+        suggestion
+      )
+
+      expect(updatedContent).toContain(suggestion.suggestedText)
+      expect(updatedContent).toContain(currentContent)
+      expect(updatedContent).toBe('You are an expert writer. Help me write an email.')
+    })
+
+    it('should apply a constraints suggestion by appending text', async () => {
+      const currentContent = 'Write a blog post about AI.'
+      const suggestion = {
+        id: 'test-suggestion',
+        type: 'constraints' as const,
+        priority: 'medium' as const,
+        title: 'Add constraints',
+        description: 'Include specific constraints',
+        suggestedText: '\nConstraints:\n- Keep under 500 words\n- Use simple language',
+        rationale: 'Constraints improve output quality',
+        confidence: 0.8,
+        applied: false,
+        dismissed: false,
+        createdAt: new Date().toISOString(),
+      }
+
+      const updatedContent = await applySuggestion(
+        'test-prompt',
+        suggestion.id,
+        currentContent,
+        suggestion
+      )
+
+      expect(updatedContent).toContain(currentContent)
+      expect(updatedContent).toContain(suggestion.suggestedText)
+      expect(updatedContent).toContain('Constraints:')
+    })
+
+    it('should replace original text when provided', async () => {
+      const currentContent = 'Please help me with [task].'
+      const suggestion = {
+        id: 'test-suggestion',
+        type: 'best_practice' as const,
+        priority: 'low' as const,
+        title: 'Use template variables',
+        description: 'Replace brackets with template variables',
+        originalText: '[task]',
+        suggestedText: '{{task}}',
+        rationale: 'Template variables enable reuse',
+        confidence: 0.7,
+        applied: false,
+        dismissed: false,
+        createdAt: new Date().toISOString(),
+      }
+
+      const updatedContent = await applySuggestion(
+        'test-prompt',
+        suggestion.id,
+        currentContent,
+        suggestion
+      )
+
+      expect(updatedContent).toContain('{{task}}')
+      expect(updatedContent).not.toContain('[task]')
     })
   })
 })
