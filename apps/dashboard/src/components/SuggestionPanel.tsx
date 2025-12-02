@@ -230,8 +230,8 @@ export default function SuggestionPanel({
         onApplySuggestion(suggestion)
       }
       
-      // Re-run analysis after a brief delay to allow state to update
-      setTimeout(() => runAnalysis(), 1000)
+      // The parent component will refresh and pass updated promptContent,
+      // which will trigger the useEffect to re-run analysis automatically
     } catch (error) {
       console.error('Failed to apply suggestion:', error)
     }
