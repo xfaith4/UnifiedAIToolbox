@@ -181,8 +181,10 @@ function Start-Frontend {
         
         # Start the Vite development server using npx
         Write-Status "Starting Vite development server..." -Level "Info"
-        $frontendProcess = Start-Process -FilePath "npx" `
-            -ArgumentList "vite", "dev", "--host", "0.0.0.0", "--port", "5173" `
+        $comspec = $env:ComSpec
+        $frontendArgs = "/c", "npm run dev -- --host 0.0.0.0 --port 5173"
+        $frontendProcess = Start-Process -FilePath $comspec `
+            -ArgumentList $frontendArgs `
             -WorkingDirectory $DashboardDir -NoNewWindow -PassThru
         
         # Wait for the server to start
