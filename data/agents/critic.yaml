@@ -62,4 +62,4 @@ prompt: |
 routing_hints:
   preferred_models: [gpt-4o, claude-3-sonnet, gpt-4-turbo]
   max_tokens: 3000
-checksum: 4444444444444444444444444444444444444444444444444444444444444444
+checksum: f4149ec197a0cc3139eab86c8b8fc1dcfdbedf204d4e484d8f21e3a8da2f79e4
