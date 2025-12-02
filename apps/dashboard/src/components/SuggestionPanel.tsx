@@ -212,13 +212,29 @@ export default function SuggestionPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [promptId, promptContent])
 
-  const handleApply = (suggestion: PromptSuggestion) => {
-    applySuggestion(promptId, suggestion.id)
-    if (onApplySuggestion) {
-      onApplySuggestion(suggestion)
+  const handleApply = async (suggestion: PromptSuggestion) => {
+    try {
+      await applySuggestion(promptId, suggestion.id, promptContent, suggestion)
+      
+      // Mark suggestion as applied in local state
+      if (analysis) {
+        setAnalysis({
+          ...analysis,
+          suggestions: analysis.suggestions.map((s) =>
+            s.id === suggestion.id ? { ...s, applied: true } : s
+          ),
+        })
+      }
+      
+      if (onApplySuggestion) {
+        onApplySuggestion(suggestion)
+      }
+      
+      // Re-run analysis with updated content
+      setTimeout(() => runAnalysis(), 500)
+    } catch (error) {
+      console.error('Failed to apply suggestion:', error)
     }
-    // Re-run analysis
-    runAnalysis()
   }
 
   const handleDismiss = (suggestion: PromptSuggestion) => {

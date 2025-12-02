@@ -11,6 +11,7 @@ import type {
   SuggestionHistoryEntry,
   PromptImprovementStats,
 } from '../types/suggestions'
+import { updatePrompt } from './promptStore'
 
 const API_BASE_RAW = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000'
 const API_BASE = API_BASE_RAW ? API_BASE_RAW.replace(/\/$/, '') : ''
@@ -423,14 +424,56 @@ export async function getAISuggestions(
 }
 
 /**
- * Mark a suggestion as applied
+ * Mark a suggestion as applied and update the prompt content
  */
-export function applySuggestion(promptId: string, _suggestionId: string): void {
+export async function applySuggestion(
+  promptId: string,
+  suggestionId: string,
+  currentPromptContent: string,
+  suggestion: PromptSuggestion
+): Promise<string> {
+  // Update history counter
   const entry = suggestionHistory.find((h) => h.promptId === promptId)
   if (entry) {
     entry.appliedCount++
     saveToStorage()
   }
+  
+  // Apply the suggestion to the prompt content
+  let updatedContent = currentPromptContent
+  
+  if (suggestion.suggestedText) {
+    if (suggestion.originalText) {
+      // Replace specific text
+      updatedContent = currentPromptContent.replace(suggestion.originalText, suggestion.suggestedText)
+    } else {
+      // Add suggested text based on suggestion type
+      switch (suggestion.type) {
+        case 'clarity':
+          // Add at the beginning
+          updatedContent = suggestion.suggestedText + currentPromptContent
+          break
+        case 'constraints':
+        case 'output_format':
+        case 'examples':
+          // Add at the end
+          updatedContent = currentPromptContent + '\n' + suggestion.suggestedText
+          break
+        default:
+          // Default: append at the end
+          updatedContent = currentPromptContent + '\n' + suggestion.suggestedText
+      }
+    }
+    
+    // Update the prompt in the library
+    try {
+      await updatePrompt(promptId, { template: updatedContent })
+    } catch (error) {
+      console.error('Failed to update prompt:', error)
+    }
+  }
+  
+  return updatedContent
 }
 
 /**
