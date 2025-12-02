@@ -67,7 +67,8 @@ export default function EnhancedAIPage() {
       .finally(() => {
         setIsLoading(false)
       })
-  }, [refreshKey, selectedPromptId])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshKey])
 
   const selectedPrompt = prompts.find((p) => p.id === selectedPromptId)
   const promptIds = prompts.map((p) => p.id)
