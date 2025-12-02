@@ -57,7 +57,7 @@ export default function EnhancedAIPage() {
     fetchPromptLibrary()
       .then((list) => {
         setPrompts(list)
-        if (list.length > 0 && !selectedPromptId) {
+        if (list.length > 0 && selectedPromptId === '') {
           setSelectedPromptId(list[0].id)
         }
       })

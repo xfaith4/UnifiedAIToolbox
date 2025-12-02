@@ -230,8 +230,8 @@ export default function SuggestionPanel({
         onApplySuggestion(suggestion)
       }
       
-      // Re-run analysis with updated content
-      setTimeout(() => runAnalysis(), 500)
+      // Re-run analysis after a brief delay to allow state to update
+      setTimeout(() => runAnalysis(), 1000)
     } catch (error) {
       console.error('Failed to apply suggestion:', error)
     }

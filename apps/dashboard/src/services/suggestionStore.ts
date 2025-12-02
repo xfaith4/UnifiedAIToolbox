@@ -444,23 +444,23 @@ export async function applySuggestion(
   
   if (suggestion.suggestedText) {
     if (suggestion.originalText) {
-      // Replace specific text
-      updatedContent = currentPromptContent.replace(suggestion.originalText, suggestion.suggestedText)
+      // Replace all occurrences of specific text
+      updatedContent = currentPromptContent.replaceAll(suggestion.originalText, suggestion.suggestedText)
     } else {
       // Add suggested text based on suggestion type
       switch (suggestion.type) {
         case 'clarity':
-          // Add at the beginning
-          updatedContent = suggestion.suggestedText + currentPromptContent
+          // Add at the beginning with proper spacing
+          updatedContent = suggestion.suggestedText + ' ' + currentPromptContent
           break
         case 'constraints':
         case 'output_format':
         case 'examples':
-          // Add at the end
+          // Add at the end with newline
           updatedContent = currentPromptContent + '\n' + suggestion.suggestedText
           break
         default:
-          // Default: append at the end
+          // Default: append at the end with newline
           updatedContent = currentPromptContent + '\n' + suggestion.suggestedText
       }
     }
