@@ -139,6 +139,196 @@ function Split-GoalIntoMilestones {
     return $milestones
 }
 
+function Invoke-OrchestrationLlm {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Model,
+
+        [Parameter(Mandatory = $true)]
+        [string]$SystemPrompt,
+
+        [Parameter(Mandatory = $true)]
+        [string]$UserPrompt
+    )
+
+    $apiKey = $env:OPENAI_API_KEY
+    if (-not $apiKey) {
+        throw "OPENAI_API_KEY environment variable is not set. Cannot call OpenAI."
+    }
+
+    # Build the chat payload
+    $body = @{
+        model    = $Model
+        messages = @(
+            @{ role = "system"; content = $SystemPrompt },
+            @{ role = "user";   content = $UserPrompt }
+        )
+        temperature = 0.2
+    } | ConvertTo-Json -Depth 6
+
+    $headers = @{
+        "Authorization" = "Bearer $apiKey"
+        "Content-Type"  = "application/json"
+    }
+
+    # Fire the request
+    $response = Invoke-RestMethod -Uri "https://api.openai.com/v1/chat/completions" `
+                                  -Method Post `
+                                  -Headers $headers `
+                                  -Body $body
+
+    $assistantContent = $response.choices[0].message.content
+
+    return @{
+        Output      = $assistantContent
+        RawResponse = $response
+    }
+}
+
+function Invoke-MilestoneAgent {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$GoalText,              # Original goal from the Orchestrator UI
+
+        [Parameter(Mandatory = $true)]
+        [pscustomobject]$Milestone,     # One milestone (Name, Description, Agent, Status)
+
+        [Parameter(Mandatory = $true)]
+        [string]$Model,
+
+        [Parameter(Mandatory = $true)]
+        [string]$OutputDir
+    )
+
+    # Map agent names to "roles" / system prompts
+    $agentSystemPrompts = @{
+        "Researcher" = @"
+You are an expert technical researcher.
+Clarify requirements, identify constraints, and surface relevant considerations.
+Focus on router health monitoring and PowerShell-specific concerns.
+"@
+
+        "Engineer" = @"
+You are a senior PowerShell and networking engineer.
+Design and implement robust, production-ready PowerShell code.
+Prefer clear functions, input validation, and inline comments.
+"@
+
+        "Critic" = @"
+You are a rigorous test and review engineer.
+Identify risks, edge cases, and missing coverage.
+Propose concrete test scenarios and improvements.
+"@
+
+        "Synthesizer" = @"
+You are a technical writer and synthesizer.
+Produce clear documentation, examples, and step-by-step guidance.
+Assume the reader is a capable engineer but new to this module.
+"@
+
+        "Commissioner" = @"
+You are a project owner / commissioner.
+Summarize progress, outcomes, and next steps.
+Highlight trade-offs, open questions, and follow-up work.
+"@
+    }
+
+    $agentName = if ($Milestone.Agent) { $Milestone.Agent } else { "Commissioner" }
+
+    $systemPrompt = $agentSystemPrompts[$agentName]
+    if (-not $systemPrompt) {
+        # Fallback if we ever get an unknown agent type
+        $systemPrompt = @"
+You are a helpful senior engineer assisting with this project.
+"@
+    }
+
+    # Build the user-side prompt that the model sees for this phase
+    $userPrompt = @"
+High-level goal:
+$GoalText
+
+You are working on the following milestone in a multi-agent orchestration:
+
+Milestone name: $($Milestone.Name)
+Milestone description: $($Milestone.Description)
+Agent role: $agentName
+
+Your task:
+- Focus only on this milestone.
+- Produce concrete, actionable output that advances this milestone.
+- If relevant, include bullet lists, code blocks, and explicit next steps.
+
+Respond in Markdown.
+"@
+
+    # Call the LLM
+    $llmResult = Invoke-OrchestrationLlm `
+        -Model        $Model `
+        -SystemPrompt $systemPrompt `
+        -UserPrompt   $userPrompt
+
+    $content = $llmResult.Output
+
+    # Persist the milestone output to disk for inspection
+    $safeName = [Regex]::Replace($Milestone.Name, "[^\w\-]+", "_")
+    $fileName = "milestone_{0}.md" -f $safeName
+    $outputPath = Join-Path -Path $OutputDir -ChildPath $fileName
+
+    $content | Out-File -FilePath $outputPath -Encoding UTF8
+
+    return @{
+        Output     = $content
+        OutputPath = $outputPath
+        Raw        = $llmResult.RawResponse
+    }
+}
+
+function Execute-MilestonePipeline {
+    param(
+        [Parameter(Mandatory = $true)]
+        [array]$Milestones,          # Milestone objects from Split-GoalIntoMilestones
+
+        [Parameter(Mandatory = $true)]
+        [string]$GoalText,          # The full goal text
+
+        [Parameter(Mandatory = $true)]
+        [string]$Model,             # e.g. gpt-4o-mini
+
+        [Parameter(Mandatory = $true)]
+        [string]$OutputDir          # Where to write per-milestone outputs
+    )
+
+    $results = @()                 # Collect structured results for JSON summary
+
+    foreach ($milestone in $Milestones) {
+        Write-Log "Executing milestone: $($milestone.Name)"
+        Write-Log "  Agent: $($milestone.Agent)"
+        Write-Log "  Description: $($milestone.Description)"
+
+        # Call the AI agent for this milestone
+        $agentResult = Invoke-MilestoneAgent `
+            -GoalText   $GoalText `
+            -Milestone  $milestone `
+            -Model      $Model `
+            -OutputDir  $OutputDir
+
+        # Record the result in a simple object for the final orchestration_results JSON
+        $results += [pscustomobject]@{
+            Name        = $milestone.Name
+            Agent       = $milestone.Agent
+            Description = $milestone.Description
+            Status      = "completed"
+            OutputPath  = $agentResult.OutputPath
+            Excerpt     = $agentResult.Output.Substring(0, [Math]::Min(280, $agentResult.Output.Length))
+        }
+
+        Write-Log "  Milestone completed: $($milestone.Name)"
+    }
+
+    return ,$results               # Return as array, even for a single milestone
+}
+
 function Invoke-Milestone {
     [CmdletBinding()]
     param(
@@ -270,13 +460,25 @@ try {
         )
     }
     
-    # Execute each milestone only once
-    $context.Milestones = @()
-    foreach ($milestone in $milestones) {
-        if ($null -ne $milestone) {
-            $result = Invoke-Milestone -Milestone $milestone -Context $context
-            $context.Milestones += $result
+    # Execute milestones with AI-backed pipeline (if DryRun, fallback to old behavior)
+    if ($DryRun) {
+        # Use old behavior for DryRun mode
+        $context.Milestones = @()
+        foreach ($milestone in $milestones) {
+            if ($null -ne $milestone) {
+                $result = Invoke-Milestone -Milestone $milestone -Context $context
+                $context.Milestones += $result
+            }
         }
+    } else {
+        # Use new AI-backed pipeline
+        $pipelineResults = Execute-MilestonePipeline `
+            -Milestones $milestones `
+            -GoalText   $goalText `
+            -Model      $Model `
+            -OutputDir  $OutputDir
+        
+        $context.Milestones = $pipelineResults
     }
     
     # Complete the orchestration
