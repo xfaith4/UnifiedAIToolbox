@@ -67,6 +67,9 @@ export default function EnhancedAIPage() {
       .finally(() => {
         setIsLoading(false)
       })
+    // Only refetch when refreshKey changes (after applying suggestions)
+    // selectedPromptId is intentionally excluded to avoid refetching when switching prompts
+    // since selectedPrompt is derived from the prompts array (line 72)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshKey])
 
