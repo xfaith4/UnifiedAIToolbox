@@ -177,6 +177,15 @@ function Invoke-OrchestrationLlm {
                                   -Headers $headers `
                                   -Body $body
 
+    # Validate response structure
+    if (-not $response.choices -or $response.choices.Count -eq 0) {
+        throw "OpenAI API returned no choices in response"
+    }
+    
+    if (-not $response.choices[0].message -or -not $response.choices[0].message.content) {
+        throw "OpenAI API response missing message content"
+    }
+
     $assistantContent = $response.choices[0].message.content
 
     return @{
@@ -314,13 +323,18 @@ function Execute-MilestonePipeline {
             -OutputDir  $OutputDir
 
         # Record the result in a simple object for the final orchestration_results JSON
+        $excerpt = ""
+        if ($agentResult.Output) {
+            $excerpt = $agentResult.Output.Substring(0, [Math]::Min(280, $agentResult.Output.Length))
+        }
+        
         $results += [pscustomobject]@{
             Name        = $milestone.Name
             Agent       = $milestone.Agent
             Description = $milestone.Description
             Status      = "completed"
             OutputPath  = $agentResult.OutputPath
-            Excerpt     = $agentResult.Output.Substring(0, [Math]::Min(280, $agentResult.Output.Length))
+            Excerpt     = $excerpt
         }
 
         Write-Log "  Milestone completed: $($milestone.Name)"
