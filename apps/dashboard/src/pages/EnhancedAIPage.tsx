@@ -51,12 +51,13 @@ export default function EnhancedAIPage() {
   const [prompts, setPrompts] = useState<PromptItem[]>([])
   const [selectedPromptId, setSelectedPromptId] = useState<string>('')
   const [isLoading, setIsLoading] = useState(true)
+  const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
     fetchPromptLibrary()
       .then((list) => {
         setPrompts(list)
-        if (list.length > 0) {
+        if (list.length > 0 && selectedPromptId === '') {
           setSelectedPromptId(list[0].id)
         }
       })
@@ -66,7 +67,7 @@ export default function EnhancedAIPage() {
       .finally(() => {
         setIsLoading(false)
       })
-  }, [])
+  }, [refreshKey, selectedPromptId])
 
   const selectedPrompt = prompts.find((p) => p.id === selectedPromptId)
   const promptIds = prompts.map((p) => p.id)
@@ -135,6 +136,8 @@ export default function EnhancedAIPage() {
                   promptContent={selectedPrompt.template}
                   onApplySuggestion={(suggestion) => {
                     console.log('Applied suggestion:', suggestion)
+                    // Refresh the prompt library to show updated content
+                    setRefreshKey(prev => prev + 1)
                   }}
                 />
               </div>

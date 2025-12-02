@@ -441,3 +441,24 @@ export async function renderPromptViaApi(
 
   return response.json()
 }
+
+/**
+ * Update a specific prompt in the library
+ */
+export async function updatePrompt(promptId: string, updates: Partial<PromptItem>): Promise<void> {
+  const prompts = await fetchPromptLibrary()
+  const index = prompts.findIndex(p => p.id === promptId)
+  
+  if (index === -1) {
+    throw new Error(`Prompt with id ${promptId} not found`)
+  }
+  
+  const updatedPrompt = {
+    ...prompts[index],
+    ...updates,
+    updatedAt: nowIso(),
+  }
+  
+  prompts[index] = normalizePrompt(updatedPrompt)
+  await persistPromptLibrary(prompts)
+}
