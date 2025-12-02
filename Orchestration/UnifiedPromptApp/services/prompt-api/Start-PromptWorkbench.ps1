@@ -5,6 +5,7 @@
   - Creates a Python venv
   - Installs deps
   - Starts FastAPI backend (port 8000)
+  - Waits for backend to be ready via health check
   - Starts Streamlit UI (port 8501)
 
 .NOTES
@@ -16,7 +17,10 @@ param(
   [string]$PythonExe = "python",
   [string]$PortApi   = "8000",
   [string]$PortUi    = "8501",
-  [string]$Model     = "gpt-4o-mini"
+  [string]$Model     = "gpt-4o-mini",
+  [int]$MaxHealthCheckAttempts = 10,
+  [int]$HealthCheckDelaySeconds = 2,
+  [switch]$FailOnBackendNotReady
 )
 
 # --- Guardrails --------------------------------------------------------------
@@ -52,13 +56,46 @@ $py  = Join-Path $venvPath "Scripts\python.exe"
 & $pip install fastapi uvicorn pydantic requests pyyaml streamlit > $null
 
 # --- Run backend -------------------------------------------------------------
-$apiCmd = "$py `"$PSScriptRoot\app.py`""
-Start-Process -FilePath $py -ArgumentList "`"$PSScriptRoot\app.py`"" -WindowStyle Hidden
+Write-Host "Starting backend service..." -ForegroundColor Cyan
+$backendProcess = Start-Process -FilePath $py -ArgumentList "`"$PSScriptRoot\app.py`"" -WindowStyle Hidden -PassThru
 
-Start-Sleep -Seconds 2
+# --- Wait for backend to be ready --------------------------------------------
+Write-Host "Waiting for backend to be ready..." -ForegroundColor Cyan
+$attempts = 0
+$backendReady = $false
+$healthUrl = "http://localhost:$PortApi/health"
+
+while ($attempts -lt $MaxHealthCheckAttempts) {
+    $attempts++
+    try {
+        $response = Invoke-WebRequest -Uri $healthUrl -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
+        if ($response.StatusCode -eq 200) {
+            # Verify response content contains expected health check data
+            $content = $response.Content | ConvertFrom-Json
+            if ($content.ok -eq $true) {
+                $backendReady = $true
+                Write-Host "✅ Backend is ready (attempt $attempts/$MaxHealthCheckAttempts)" -ForegroundColor Green
+                break
+            }
+        }
+    } catch {
+        Write-Host "⏳ Backend not ready yet (attempt $attempts/$MaxHealthCheckAttempts)..." -ForegroundColor Yellow
+        Start-Sleep -Seconds $HealthCheckDelaySeconds
+    }
+}
+
+if (-not $backendReady) {
+    Write-Host "⚠️  Backend not ready after $MaxHealthCheckAttempts attempts." -ForegroundColor Red
+    Write-Host "    Please check the backend logs for errors." -ForegroundColor Red
+    Write-Host "    You can try accessing $healthUrl manually to diagnose." -ForegroundColor Yellow
+    
+    if ($FailOnBackendNotReady) {
+        throw "Backend failed to start. Aborting UI launch."
+    }
+    Write-Host "    Continuing with UI launch anyway (use -FailOnBackendNotReady to abort)..." -ForegroundColor Yellow
+}
 
 # --- Run UI ------------------------------------------------------------------
-$uiCmd = "$py -m streamlit run `"$PSScriptRoot\streamlit_app.py`" --server.port $PortUi"
 Start-Process -FilePath $py -ArgumentList "-m streamlit run `"$PSScriptRoot\streamlit_app.py`" --server.port $PortUi"
 
 Write-Host "Backend: http://localhost:$PortApi" -ForegroundColor Green
