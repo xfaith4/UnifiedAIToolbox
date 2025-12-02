@@ -172,3 +172,96 @@ class CostTracker:
             "status": status,
             "provider": provider,
         }
+
+    def get_cost_by_run(
+        self,
+        run_id: Optional[str] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Get cost breakdown for a specific orchestration run or all runs.
+        
+        Args:
+            run_id: Optional specific run ID to query
+            start_date: Optional start date filter
+            end_date: Optional end date filter
+            
+        Returns:
+            Dictionary with run cost information
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            
+            # Check if run_id column exists in audit table
+            cursor = conn.execute("PRAGMA table_info(audit)")
+            columns = [row[1] for row in cursor.fetchall()]
+            
+            if 'run_id' not in columns:
+                # run_id column doesn't exist yet, return empty results
+                return {
+                    "runs": [],
+                    "total_cost": 0.0,
+                    "note": "Run-based cost tracking not yet enabled (missing run_id in audit table)"
+                }
+            
+            # Build query based on filters
+            query = """
+                SELECT 
+                    run_id,
+                    model,
+                    COUNT(*) as call_count,
+                    SUM(token_prompt) as total_prompt_tokens,
+                    SUM(token_completion) as total_completion_tokens,
+                    MIN(created_at) as first_call,
+                    MAX(created_at) as last_call
+                FROM audit
+                WHERE run_id IS NOT NULL
+            """
+            params = []
+            
+            if run_id:
+                query += " AND run_id = ?"
+                params.append(run_id)
+            
+            if start_date:
+                query += " AND created_at >= ?"
+                params.append(start_date)
+            
+            if end_date:
+                query += " AND created_at <= ?"
+                params.append(end_date)
+            
+            query += " GROUP BY run_id, model ORDER BY last_call DESC"
+            
+            cursor = conn.execute(query, params)
+            rows = cursor.fetchall()
+            
+            runs = []
+            total_cost = 0.0
+            
+            for row in rows:
+                cost = _cost_for_row(
+                    row["model"] or "",
+                    row["total_prompt_tokens"],
+                    row["total_completion_tokens"]
+                )
+                total_cost += cost
+                
+                runs.append({
+                    "run_id": row["run_id"],
+                    "model": row["model"],
+                    "call_count": row["call_count"],
+                    "total_prompt_tokens": row["total_prompt_tokens"] or 0,
+                    "total_completion_tokens": row["total_completion_tokens"] or 0,
+                    "total_tokens": (row["total_prompt_tokens"] or 0) + (row["total_completion_tokens"] or 0),
+                    "cost": round(cost, 6),
+                    "first_call": row["first_call"],
+                    "last_call": row["last_call"]
+                })
+            
+            return {
+                "runs": runs,
+                "total_cost": round(total_cost, 6),
+                "run_count": len(set(r["run_id"] for r in runs))
+            }

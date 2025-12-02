@@ -27,6 +27,9 @@ The Unified AI Toolbox is a comprehensive platform that unifies prompt managemen
 
 ### 🔄 Orchestration & Automation
 
+- **Multi-Agent System**: 6 baseline agents (Supervisor, Researcher, Engineer, Critic, Synthesizer, Commissioner)
+- **Learning Loop**: Run feedback storage and pattern extraction for continuous improvement
+- **Per-Run Cost Tracking**: Detailed token usage and cost attribution for each orchestration
 - **GitHub Integration**: Clone repos, run code analysis, create PRs automatically
 - **Codex Swarm**: Multi-agent code review (security, linting, testing, refactoring)
 - **Workflow Automation**: PowerShell-based orchestration pipeline
@@ -106,6 +109,7 @@ UnifiedAIToolbox/
 ## 📚 Documentation
 
 - **[Project Roadmap](docs/PROJECT_ROADMAP.md)** - Current status, next steps, and future plans
+- **[Orchestrator Enhancements](docs/ORCHESTRATOR_ENHANCEMENTS.md)** - NEW: Agent library, feedback/learning, cost tracking
 - **[Quick Start Guide](docs/help/quick-start.md)** - Get up and running in minutes
 - **[Launch Guide](docs/help/launch-guide.md)** - Detailed deployment instructions
 - **[Architecture Overview](docs/help/architecture.md)** - System design and components
