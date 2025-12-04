@@ -1,14 +1,18 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Launches the PromptWeb interface with advanced port and process management.
+    Launches the React/Vite Dashboard with advanced port and process management.
 .DESCRIPTION
-    This script starts the web interface with the following features:
+    This script starts the dashboard web interface with the following features:
     - Automatically finds an available port if the default is in use
     - Can terminate processes using the target port (with confirmation)
     - Validates all dependencies before starting
     - Provides detailed logging and error handling
     - Supports custom port ranges and timeouts
+.NOTES
+    Component: apps/dashboard (React + Vite + TypeScript)
+    Default Port: 5173
+    Prerequisites: Node.js 18+
 #>
 
 [CmdletBinding()]
@@ -32,7 +36,7 @@ $VerbosePreference = if ($Verbose) { 'Continue' } else { 'SilentlyContinue' }
 # Initialize
 $ErrorActionPreference = 'Stop'
 $projectRoot = $PSScriptRoot
-$promptWebDir = Join-Path $projectRoot 'apps\PromptWeb'
+$dashboardDir = Join-Path $projectRoot 'apps\dashboard'
 $originalPort = $Port
 
 # Check if required commands are available
@@ -170,7 +174,7 @@ if (-not $portAvailable) {
 Write-Host "✅ Port $Port is available" -ForegroundColor Green
 
 # Start the web server
-Push-Location $promptWebDir
+Push-Location $dashboardDir
 
 try {
     # Install dependencies if needed
@@ -191,14 +195,15 @@ try {
         }
     }
 
-    # Set the port and start the server
+    # Set the port and start the server (Vite uses VITE_PORT)
+    $env:VITE_PORT = $Port
     $env:PORT = $Port
     $url = "http://localhost:$Port"
 
     Write-Host "\n" + ("*" * 60) -ForegroundColor Green
-    Write-Host "🚀 Starting PromptWeb" -ForegroundColor Green
+    Write-Host "🚀 Starting Dashboard (React/Vite)" -ForegroundColor Green
     Write-Host "🌐 URL: $url" -ForegroundColor Cyan
-    Write-Host "📁 Directory: $promptWebDir" -ForegroundColor Cyan
+    Write-Host "📁 Directory: $dashboardDir" -ForegroundColor Cyan
     Write-Host ("*" * 60) -ForegroundColor Green
     Write-Host "🛑 Press Ctrl+C to stop the server\n" -ForegroundColor Yellow
 
@@ -209,8 +214,8 @@ try {
         Write-Warning "Could not open browser automatically. Please visit $url"
     }
 
-    # Start the server
-    npm run preview
+    # Start the dev server
+    npm run dev
 
 } catch {
     Write-Error "❌ Failed to start the web server: $_"

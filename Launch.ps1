@@ -216,7 +216,8 @@ function Start-Orchestration {
     
     Write-Status "🚀 Starting AI Orchestration..."
     
-    $orchestrationScript = Join-Path $ProjectRoot "Orchestration\UnifiedPromptApp\services\prompt-api\MilestoneController.ps1"
+    # Use the root-level dispatcher which routes to the correct inner orchestrator
+    $orchestrationScript = Join-Path $ProjectRoot "Orchestration\MilestoneController.ps1"
     if (-not (Test-Path $orchestrationScript)) {
         Write-Status "⚠️  Orchestration script not found at: $orchestrationScript" -Level "Warning"
         return
