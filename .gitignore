@@ -33,6 +33,10 @@ runs/
 .env.local
 .env.*.local
 
+# OAuth and API secrets
+client_secret*.json
+**/client_secret*.json
+
 # Docker volumes and temp files
 docker-compose.override.yml
 *.pid

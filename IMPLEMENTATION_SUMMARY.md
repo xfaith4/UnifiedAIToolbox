@@ -350,9 +350,11 @@ for pattern in patterns["patterns"]:
 - **Status Document**: [docs/ORCHESTRATOR_STATUS.md](docs/ORCHESTRATOR_STATUS.md)
 - **Project Roadmap**: [docs/PROJECT_ROADMAP.md](docs/PROJECT_ROADMAP.md)
 
-### Vision Documents
-- **AI Orchestrator**: `project files/AI Orchestrator.docx`
-- **Architecture**: `project files/Ai Orchestrator – Readme + Architecture + Delivery Checklist.docx`
+### Vision Documents (Archived)
+- **AI Orchestrator**: `archive/2025-12-RepoCleanup/reference-docs/AI Orchestrator.docx`
+- **Architecture**: `archive/2025-12-RepoCleanup/reference-docs/AI-Orchestrator-Architecture.docx` (DOCX)
+- **Architecture**: `archive/2025-12-RepoCleanup/reference-docs/AI-Orchestrator-Architecture.pdf` (PDF)
+- **Architecture**: `archive/2025-12-RepoCleanup/reference-docs/ai-orchestrator-architecture-v1.md` (Markdown)
 
 ### Code
 - **Agent Library**: `data/agents/*.yaml`
