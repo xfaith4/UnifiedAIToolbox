@@ -1,6 +1,6 @@
 # AI Orchestrator - Implementation Status
 
-This document tracks the implementation status of features described in the AI Orchestrator vision document (`project files/AI Orchestrator.docx`) against the current codebase.
+This document tracks the implementation status of features described in the AI Orchestrator vision document (`archive/2025-12-RepoCleanup/reference-docs/AI Orchestrator.docx`) against the current codebase.
 
 **Last Updated**: December 2, 2025
 
@@ -265,8 +265,9 @@ The more advanced features (DAG execution, vector memory, tool bus, multimodal) 
 
 ## References
 
-- **Vision Document**: `project files/AI Orchestrator.docx`
-- **Architecture**: `project files/Ai Orchestrator – Readme + Architecture + Delivery Checklist.docx`
+- **Vision Document**: `archive/2025-12-RepoCleanup/reference-docs/AI Orchestrator.docx`
+- **Architecture**: `archive/2025-12-RepoCleanup/reference-docs/AI-Orchestrator-Architecture.docx` (DOCX)
+- **Architecture**: `archive/2025-12-RepoCleanup/reference-docs/AI-Orchestrator-Architecture.pdf` (PDF)
 - **Enhancements Guide**: `docs/ORCHESTRATOR_ENHANCEMENTS.md`
 - **Project Roadmap**: `docs/PROJECT_ROADMAP.md`
 - **Agent Definitions**: `data/agents/*.yaml`

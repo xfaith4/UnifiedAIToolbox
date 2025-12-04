@@ -351,8 +351,9 @@ All new tables are created in the same SQLite database:
 
 ## 9. Documentation References
 
-- **AI Orchestrator Vision**: `project files/AI Orchestrator.docx` - Complete specification
-- **Current Architecture**: `project files/Ai Orchestrator – Readme + Architecture + Delivery Checklist.docx`
+- **AI Orchestrator Vision**: `archive/2025-12-RepoCleanup/reference-docs/AI Orchestrator.docx` - Complete specification
+- **Current Architecture**: `archive/2025-12-RepoCleanup/reference-docs/AI-Orchestrator-Architecture.docx` (DOCX)
+- **Current Architecture**: `archive/2025-12-RepoCleanup/reference-docs/AI-Orchestrator-Architecture.pdf` (PDF)
 - **Project Roadmap**: `docs/PROJECT_ROADMAP.md`
 - **Agent Library**: `data/agents/*.yaml` - Individual agent definitions
 
