@@ -46,7 +46,7 @@ PS_REFINER = BRIDGE_ROOT / "OpenAI_Refiner.ps1"
 PROMPT_API_URL = os.environ.get("PROMPT_API_URL", "http://localhost:8000")
 SUPERVISOR_QUEUE_DIR = BRIDGE_ROOT / "supervisor_tasks"
 SUPERVISOR_QUEUE_DIR.mkdir(exist_ok=True)
-CODEX_SCRIPT = REPO_ROOT.parent / "AI-Orchestration" / "codex-multiagent-swarm" / "Orchestrate-Codex.ps1"
+CODEX_SCRIPT = REPO_ROOT / "Orchestration" / "AI-Orchestration" / "codex-multiagent-swarm" / "Orchestrate-Codex.ps1"
 CODEX_OUT_DIR = RUNS_DIR / "codex_swarm"
 CODEX_OUT_DIR.mkdir(parents=True, exist_ok=True)
 
