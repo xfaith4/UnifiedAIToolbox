@@ -6,6 +6,9 @@
     MilestoneController.ps1 is the main orchestrator script for the AI-Orchestration module.
     It breaks down high-level goals into milestones and coordinates agent execution.
 
+.PARAMETER Goal
+    Direct goal text to achieve. Takes precedence over GoalFile if both are provided.
+
 .PARAMETER GoalFile
     Path to a text file containing the goal to achieve.
 
@@ -19,6 +22,9 @@
     Enable verbose output for debugging.
 
 .EXAMPLE
+    .\MilestoneController.ps1 -Goal "Build a monitoring dashboard" -Model gpt-4o-mini
+
+.EXAMPLE
     .\MilestoneController.ps1 -GoalFile .\goal.txt -Model gpt-4o-mini
 
 .NOTES
@@ -27,6 +33,9 @@
 
 [CmdletBinding()]
 param(
+    [Parameter(Mandatory = $false)]
+    [string]$Goal,
+
     [Parameter(Mandatory = $false)]
     [string]$GoalFile,
 
@@ -447,12 +456,20 @@ function Complete-Orchestration {
 
 # Main execution
 try {
-    # Read goal from file or use default
-    if ([string]::IsNullOrEmpty($GoalFile)) {
-        $goalText = "Execute default orchestration workflow"
-        Write-Log "No goal file provided, using default goal" -Level "WARNING"
+    # Determine goal text: prioritize -Goal parameter, then -GoalFile, then default
+    if (-not [string]::IsNullOrEmpty($Goal)) {
+        $goalText = $Goal
+        Write-Log "Using goal text from -Goal parameter"
+    } elseif (-not [string]::IsNullOrEmpty($GoalFile)) {
+        if (Test-Path $GoalFile) {
+            $goalText = Get-Content -Path $GoalFile -Raw -ErrorAction Stop
+            Write-Log "Using goal text from file: $GoalFile"
+        } else {
+            throw "Goal file not found: $GoalFile"
+        }
     } else {
-        $goalText = Get-Content -Path $GoalFile -Raw -ErrorAction Stop
+        $goalText = "Execute default orchestration workflow"
+        Write-Log "No goal or goal file provided, using default goal" -Level "WARNING"
     }
     
     # Initialize orchestration
