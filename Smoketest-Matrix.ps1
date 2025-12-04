@@ -21,9 +21,8 @@
 
 [CmdletBinding()]
 param(
-    [switch]$Quick,          # Skip build checks
-    [switch]$SkipIntegration, # Skip integration tests
-    [switch]$Verbose
+    [switch]$Quick,           # Skip build checks
+    [switch]$SkipIntegration  # Skip integration tests
 )
 
 $ErrorActionPreference = 'Continue'
