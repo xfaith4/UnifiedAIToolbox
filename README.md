@@ -119,8 +119,10 @@ UnifiedAIToolbox/
 - **[Architecture Overview](docs/help/architecture.md)** - System design and components
 
 ### CI/CD & Automation
-- **[Workflow Guide](docs/WORKFLOW_GUIDE.md)** - ✨ NEW: Complete guide to GitHub Actions workflows, artifacts, and local testing
-- **[Webhook Setup](docs/WEBHOOK_SETUP.md)** - ✨ NEW: Configure GitHub webhooks for automated orchestration
+- **[Workflow Guide](docs/WORKFLOW_GUIDE.md)** - ✨ Complete guide to GitHub Actions workflows, artifacts, and local testing
+- **[Telemetry & AI Insights](docs/TELEMETRY_AND_AI_INSIGHTS.md)** - 🆕 Usage metrics and AI-powered analysis summaries
+- **[CI/CD Blueprint](templates/ci-cd-blueprint/README.md)** - 🆕 Reusable workflow templates for other repos
+- **[Webhook Setup](docs/WEBHOOK_SETUP.md)** - Configure GitHub webhooks for automated orchestration
 - **[GitHub Integration](docs/GITHUB_INTEGRATION.md)** - Complete guide to GitHub authentication and repo operations
 
 ### Features & Capabilities
