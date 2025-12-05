@@ -58,21 +58,20 @@ jobs:
             -IncludeMetrics:$true
           
           Write-Host "Analysis complete. Report saved to: $reportPath" -ForegroundColor Green
-        
-        # Track telemetry event
-        - name: Track analysis telemetry
-          shell: pwsh
-          run: |
-            $env:PSModulePath = "$PWD/modules" + [IO.Path]::PathSeparator + $env:PSModulePath
-            Import-Module Telemetry -Force
-            
-            Send-TelemetryEvent `
-              -EventType 'RepoAnalysis.Completed' `
-              -Source 'GitHubAction' `
-              -Metadata @{
-                workflow = 'ai-snapshot-weekly'
-                trigger = '${{ github.event_name }}'
-              }
+      
+      - name: Track analysis telemetry
+        shell: pwsh
+        run: |
+          $env:PSModulePath = "$PWD/modules" + [IO.Path]::PathSeparator + $env:PSModulePath
+          Import-Module Telemetry -Force
+          
+          Send-TelemetryEvent `
+            -EventType 'RepoAnalysis.Completed' `
+            -Source 'GitHubAction' `
+            -Metadata @{
+              workflow = 'ai-snapshot-weekly'
+              trigger = '${{ github.event_name }}'
+            }
       
       - name: Generate AI summary
         if: env.OPENAI_API_KEY != ''

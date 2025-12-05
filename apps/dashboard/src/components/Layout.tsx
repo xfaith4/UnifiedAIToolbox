@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { BarChart3, Settings, Github, Workflow, BookOpen, Bot, Sparkles, Database, Activity, HelpCircle, Sun, Moon, Monitor, Palette, Zap, PlayCircle } from 'lucide-react'
+import { BarChart3, Settings, Github, Workflow, BookOpen, Bot, Sparkles, Database, Activity, HelpCircle, Sun, Moon, Monitor, Palette, Zap, PlayCircle, TrendingUp } from 'lucide-react'
 import { type ReactNode, useState, useRef, useEffect } from 'react'
 import { useTheme, type AccentColor } from '../contexts/ThemeContext'
 
@@ -36,7 +36,7 @@ const navSections = [
     items: [
       { to: '/datasets', label: 'Dataset Explorer', icon: Database },
       { to: '/sensors', label: 'Sensor Monitor', icon: Activity },
-      { to: '/telemetry', label: 'Telemetry', icon: BarChart3 },
+      { to: '/telemetry', label: 'Telemetry', icon: TrendingUp },
     ],
   },
   {
