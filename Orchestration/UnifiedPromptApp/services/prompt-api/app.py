@@ -980,6 +980,13 @@ try:
 except ImportError as e:
     print(f"Warning: GitHub integration not available: {e}")
 
+# Include webhook handler router
+try:
+    from webhook_handler import router as webhook_router
+    app.include_router(webhook_router)
+except ImportError as e:
+    print(f"Warning: Webhook handler not available: {e}")
+
 # ----------------------------
 # Authentication Endpoints
 # ----------------------------
