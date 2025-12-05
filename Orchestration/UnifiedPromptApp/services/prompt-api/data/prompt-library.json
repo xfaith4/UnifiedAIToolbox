@@ -628,28 +628,6 @@
     }
   },
   {
-    "id": "meeting.minutes.summarizer.meta",
-    "title": "Meeting Minutes Summarizer Meta",
-    "category": "",
-    "context": "",
-    "description": "",
-    "tags": [],
-    "role": "system",
-    "style": "",
-    "template": "",
-    "variables": [],
-    "fewShot": [],
-    "outputFormat": "",
-    "stop": [],
-    "temperature": 0.2,
-    "top_p": 1,
-    "updatedAt": "2025-11-23T23:40:15",
-    "createdAt": "2025-11-23T23:40:15",
-    "version": null,
-    "outputs": null,
-    "models": null
-  },
-  {
     "id": "meeting.minutes.summarizer.tests",
     "title": "Meeting Minutes Summarizer Tests",
     "category": "",
