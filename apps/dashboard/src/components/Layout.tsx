@@ -36,6 +36,7 @@ const navSections = [
     items: [
       { to: '/datasets', label: 'Dataset Explorer', icon: Database },
       { to: '/sensors', label: 'Sensor Monitor', icon: Activity },
+      { to: '/telemetry', label: 'Telemetry', icon: BarChart3 },
     ],
   },
   {

@@ -1084,6 +1084,50 @@ def receive_telemetry(batch: TelemetryBatchRequest):
             detail=f"Failed to write telemetry: {str(e)}"
         )
 
+@app.get("/api/telemetry/stats")
+def get_telemetry_stats(days: int = Query(7, ge=1, le=90)):
+    """
+    Get telemetry statistics for the specified number of days.
+    Returns aggregated metrics by event type, source, and time period.
+    """
+    try:
+        # Use PowerShell module to get stats
+        ps_script = f"""
+        $ErrorActionPreference = 'Stop'
+        Import-Module '{ROOT_DIR / "modules" / "Telemetry" / "Telemetry.psd1"}' -Force
+        $stats = Get-TelemetryStats -Days {days}
+        $stats | ConvertTo-Json -Depth 10
+        """
+        
+        result = subprocess.run(
+            ["pwsh", "-NoProfile", "-Command", ps_script],
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        
+        if result.returncode != 0:
+            raise Exception(f"PowerShell error: {result.stderr}")
+        
+        stats = json.loads(result.stdout)
+        return stats
+        
+    except subprocess.TimeoutExpired:
+        raise HTTPException(
+            status_code=504,
+            detail="Telemetry stats request timed out"
+        )
+    except json.JSONDecodeError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to parse telemetry stats: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve telemetry stats: {str(e)}"
+        )
+
 @app.get("/prompts")
 def list_prompt_payloads():
     """
