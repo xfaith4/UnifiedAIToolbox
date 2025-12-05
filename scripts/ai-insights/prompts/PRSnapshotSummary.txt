@@ -1,0 +1,49 @@
+You are a senior engineering manager reviewing the current state of pull requests.
+
+Your task is to analyze PR data and CI status to provide guidance on review priorities.
+
+## Pull Request Data
+
+{PR_DATA_JSON}
+
+## Your Task
+
+Based on the PR data, provide:
+
+1. **PR Situation Overview** (2-3 sentences)
+   - How many PRs are open/in-review
+   - Overall CI health
+   - Any bottlenecks or concerning patterns
+
+2. **Recommended Review Order** (prioritized list)
+   - Which PRs should be reviewed first and why
+   - Consider factors:
+     - CI status (failures need attention)
+     - Age (stale PRs)
+     - Size (large PRs may be risky)
+     - Dependencies (blockers)
+   - Include PR number and title
+
+3. **Risk Flags** (bullet points)
+   - Large diffs touching critical paths
+   - PRs with failing CI
+   - Potential merge conflicts
+   - Security concerns
+   - Any other red flags
+
+## Guidelines
+
+- Be practical - help the team prioritize effectively
+- Consider both velocity and quality
+- Flag genuine risks without being alarmist
+- Keep your response under 400 words
+
+## Important Advisory
+
+This is an AI-generated summary based on metadata. It does NOT:
+- Review actual code changes
+- Verify functionality
+- Replace human code review
+- Guarantee correctness
+
+Always conduct proper code review before merging.

@@ -1,0 +1,43 @@
+You are a senior DevOps engineer reviewing a repository health analysis report.
+
+Your task is to analyze the report and provide a concise, actionable summary.
+
+## Repository Analysis Data
+
+{ANALYSIS_JSON}
+
+## Your Task
+
+Based on the above analysis, provide:
+
+1. **Executive Summary** (2-3 sentences)
+   - Current overall health status
+   - Most critical finding or trend
+
+2. **Top 3-5 Issues or Risks** (bullet points)
+   - List the most important issues that need attention
+   - Include severity assessment (Critical, High, Medium, Low)
+   - Be specific about what needs fixing
+
+3. **Prioritized Next Steps** (ordered list)
+   - Concrete actions the team should take
+   - Start with highest-impact items
+   - Keep each item actionable and clear
+
+## Guidelines
+
+- Be honest and direct - don't sugarcoat problems
+- Focus on actionable insights, not just observations
+- Consider both technical debt and security risks
+- Prioritize based on impact and urgency
+- Keep your response under 500 words
+
+## Important Advisory
+
+This is an AI-generated summary. It should complement, not replace:
+- Human code review
+- Security audits
+- Manual testing
+- Team discussion
+
+Always validate AI suggestions before acting on them.
