@@ -180,26 +180,51 @@ function Invoke-OrchestrationLlm {
         "Content-Type"  = "application/json"
     }
 
-    # Fire the request
-    $response = Invoke-RestMethod -Uri "https://api.openai.com/v1/chat/completions" `
-                                  -Method Post `
-                                  -Headers $headers `
-                                  -Body $body
+    try {
+        # Fire the request
+        $response = Invoke-RestMethod -Uri "https://api.openai.com/v1/chat/completions" `
+                                      -Method Post `
+                                      -Headers $headers `
+                                      -Body $body `
+                                      -ErrorAction Stop
 
-    # Validate response structure
-    if (-not $response.choices -or $response.choices.Count -eq 0) {
-        throw "OpenAI API returned no choices in response"
+        # Validate response structure
+        if (-not $response.choices -or $response.choices.Count -eq 0) {
+            throw "OpenAI API returned no choices in response"
+        }
+        
+        if (-not $response.choices[0].message -or -not $response.choices[0].message.content) {
+            throw "OpenAI API response missing message content"
+        }
+
+        $assistantContent = $response.choices[0].message.content
+
+        return @{
+            Output      = $assistantContent
+            RawResponse = $response
+        }
     }
-    
-    if (-not $response.choices[0].message -or -not $response.choices[0].message.content) {
-        throw "OpenAI API response missing message content"
-    }
-
-    $assistantContent = $response.choices[0].message.content
-
-    return @{
-        Output      = $assistantContent
-        RawResponse = $response
+    catch {
+        $outerException = $_
+        $errorMessage = $outerException.Exception.Message
+        $errorDetails = ""
+        
+        # Try to extract more details from the error
+        if ($outerException.ErrorDetails) {
+            try {
+                $errorJson = $outerException.ErrorDetails.Message | ConvertFrom-Json
+                if ($errorJson.error) {
+                    $errorDetails = ": $($errorJson.error.message)"
+                }
+            }
+            catch {
+                # If JSON parsing fails, use the raw error details message
+                $errorDetails = ": $($outerException.ErrorDetails.Message)"
+            }
+        }
+        
+        Write-Log "OpenAI API call failed: $errorMessage$errorDetails" -Level "ERROR"
+        throw "Failed to call OpenAI API: $errorMessage$errorDetails"
     }
 }
 
