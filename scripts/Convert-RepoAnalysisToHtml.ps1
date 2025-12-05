@@ -24,6 +24,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# Load System.Web for HTML encoding
+Add-Type -AssemblyName System.Web
+
 # If no output path specified, use same name as JSON with .html extension
 if (-not $OutputPath) {
     $OutputPath = $JsonPath -replace '\.json$', '.html'
@@ -288,7 +291,9 @@ if ($analysis.summary.recommendations -and $analysis.summary.recommendations.Cou
                 <ul>
 "@
     foreach ($rec in $analysis.summary.recommendations) {
-        $html += "                    <li>$rec</li>`n"
+        # HTML encode the recommendation to prevent XSS
+        $encodedRec = [System.Web.HttpUtility]::HtmlEncode($rec)
+        $html += "                    <li>$encodedRec</li>`n"
     }
     $html += @"
                 </ul>
