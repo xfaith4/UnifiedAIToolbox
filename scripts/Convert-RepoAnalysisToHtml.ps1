@@ -468,8 +468,13 @@ try {
     $telemetryModule = Join-Path $repoRoot 'modules' 'Telemetry' 'Telemetry.psd1'
     
     if (Test-Path $telemetryModule) {
-        Import-Module $telemetryModule -Force -ErrorAction SilentlyContinue
-        $telemetryStats = Get-TelemetryStats -Days 7
+        try {
+            Import-Module $telemetryModule -Force -ErrorAction Stop
+            $telemetryStats = Get-TelemetryStats -Days 7
+        } catch {
+            Write-Verbose "Could not load telemetry module: $_"
+            $telemetryStats = $null
+        }
         
         if ($telemetryStats.total_events -gt 0) {
             $repoAnalysisCount = if ($telemetryStats.by_event_type.ContainsKey('RepoAnalysis.Completed')) { $telemetryStats.by_event_type['RepoAnalysis.Completed'] } else { 0 }

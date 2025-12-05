@@ -90,7 +90,11 @@ if (Test-Path $workflowsDir) {
                 # Install powershell-yaml if not available
                 if (-not (Get-Module -ListAvailable -Name powershell-yaml)) {
                     Write-Host "    Installing powershell-yaml module..." -ForegroundColor Gray
-                    Install-Module powershell-yaml -Scope CurrentUser -Force -AllowClobber
+                    try {
+                        Install-Module powershell-yaml -Scope CurrentUser -Force -AllowClobber -ErrorAction Stop
+                    } catch {
+                        $validationWarnings += "Could not install powershell-yaml module for YAML validation: $_"
+                    }
                 }
                 
                 Import-Module powershell-yaml -ErrorAction SilentlyContinue

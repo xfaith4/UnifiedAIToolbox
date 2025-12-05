@@ -1091,13 +1091,19 @@ def get_telemetry_stats(days: int = Query(7, ge=1, le=90)):
     Returns aggregated metrics by event type, source, and time period.
     """
     try:
+        # Validate days parameter (already validated by Query, but double-check)
+        if not isinstance(days, int) or days < 1 or days > 90:
+            raise HTTPException(status_code=400, detail="Invalid days parameter")
+        
         # Use PowerShell module to get stats
-        ps_script = f"""
+        # Using string format to avoid f-string with user input
+        module_path = str(ROOT_DIR / "modules" / "Telemetry" / "Telemetry.psd1")
+        ps_script = """
         $ErrorActionPreference = 'Stop'
-        Import-Module '{ROOT_DIR / "modules" / "Telemetry" / "Telemetry.psd1"}' -Force
-        $stats = Get-TelemetryStats -Days {days}
+        Import-Module '{0}' -Force
+        $stats = Get-TelemetryStats -Days {1}
         $stats | ConvertTo-Json -Depth 10
-        """
+        """.format(module_path, days)
         
         result = subprocess.run(
             ["pwsh", "-NoProfile", "-Command", ps_script],

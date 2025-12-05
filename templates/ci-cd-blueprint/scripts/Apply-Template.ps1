@@ -43,7 +43,10 @@ param(
     [string]$AnalysisScript = "./scripts/Run-Analysis.ps1",
     
     [Parameter(Mandatory = $false)]
-    [switch]$DryRun
+    [switch]$DryRun,
+    
+    [Parameter(Mandatory = $false)]
+    [switch]$Force
 )
 
 $ErrorActionPreference = 'Stop'
@@ -164,8 +167,8 @@ if (Test-Path $scriptsSourceDir) {
             $targetPath = Join-Path $scriptsTargetDir $relativePath
             $targetDir = Split-Path $targetPath -Parent
             
-            # Ask before overwriting
-            if ((Test-Path $targetPath) -and -not $DryRun) {
+            # Ask before overwriting (unless Force is specified)
+            if ((Test-Path $targetPath) -and -not $DryRun -and -not $Force) {
                 $response = Read-Host "  Script $($script.Name) already exists. Overwrite? (y/N)"
                 if ($response -ne 'y' -and $response -ne 'Y') {
                     Write-Host "  ⊝ Skipped: $($script.Name)" -ForegroundColor Gray

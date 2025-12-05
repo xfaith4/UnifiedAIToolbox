@@ -74,7 +74,7 @@ jobs:
             }
       
       - name: Generate AI summary
-        if: env.OPENAI_API_KEY != ''
+        if: secrets.OPENAI_API_KEY != ''
         shell: pwsh
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -114,7 +114,7 @@ jobs:
           }
       
       - name: Handle AI failure
-        if: failure() && env.OPENAI_API_KEY != ''
+        if: failure() && secrets.OPENAI_API_KEY != ''
         shell: pwsh
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -133,7 +133,7 @@ jobs:
             }
       
       - name: Skip AI summary (no API key)
-        if: env.OPENAI_API_KEY == ''
+        if: secrets.OPENAI_API_KEY == ''
         run: |
           echo "⚠️ No OPENAI_API_KEY configured. Skipping AI summary generation."
           echo "To enable AI summaries, add OPENAI_API_KEY to repository secrets."
@@ -181,7 +181,7 @@ jobs:
           echo "pr_count=$(cat recent-prs.json | jq -s 'length')" >> $GITHUB_OUTPUT
       
       - name: Generate PR snapshot summary
-        if: steps.fetch-prs.outputs.pr_count > 0 && env.OPENAI_API_KEY != ''
+        if: steps.fetch-prs.outputs.pr_count > 0 && secrets.OPENAI_API_KEY != ''
         shell: pwsh
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
