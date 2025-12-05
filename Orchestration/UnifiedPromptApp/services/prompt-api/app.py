@@ -1031,6 +1031,59 @@ else:
 def health():
     return {"ok": True, "time": now_iso()}
 
+# ----------------------------
+# Telemetry Endpoint
+# ----------------------------
+class TelemetryEventModel(BaseModel):
+    timestamp: str
+    eventType: str
+    source: str
+    metadata: Dict[str, Any]
+    schema_version: str = "1.0"
+
+class TelemetryBatchRequest(BaseModel):
+    events: List[TelemetryEventModel]
+
+@app.post("/api/telemetry")
+def receive_telemetry(batch: TelemetryBatchRequest):
+    """
+    Receive telemetry events from dashboard and other clients.
+    Writes events to JSONL file in artifacts/telemetry directory.
+    
+    Note: In high-concurrency scenarios, consider using a message queue
+    or database for better reliability.
+    """
+    try:
+        # Ensure telemetry directory exists
+        telemetry_dir = ROOT_DIR / "artifacts" / "telemetry"
+        telemetry_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Get today's telemetry file
+        date_str = datetime.datetime.utcnow().strftime("%Y-%m-%d")
+        telemetry_file = telemetry_dir / f"telemetry_{date_str}.jsonl"
+        
+        # Write events as JSONL with atomic-like operation
+        # Serialize all events first
+        json_lines = []
+        for event in batch.events:
+            event_dict = event.model_dump()
+            json_lines.append(json.dumps(event_dict) + "\n")
+        
+        # Write all lines in one operation to minimize race window
+        with open(telemetry_file, "a", encoding="utf-8") as f:
+            f.writelines(json_lines)
+        
+        return {
+            "ok": True,
+            "events_received": len(batch.events),
+            "file": str(telemetry_file.name)
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to write telemetry: {str(e)}"
+        )
+
 @app.get("/prompts")
 def list_prompt_payloads():
     """

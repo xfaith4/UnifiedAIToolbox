@@ -1,0 +1,231 @@
+name: Repository Analysis - Scheduled
+
+# ============================================================================
+# TEMPLATE: Generic repository analysis workflow
+# ============================================================================
+# This template provides automated repository health checks with:
+# - Scheduled daily/weekly runs
+# - Manual workflow dispatch
+# - Code quality analysis
+# - Security checks
+# - Artifact storage
+#
+# CUSTOMIZATION REQUIRED:
+# 1. Replace {{PROJECT_NAME}} with your repository/project name
+# 2. Adjust analysis scripts in scripts/ to match your project structure
+# 3. Update artifact retention-days as needed
+# 4. Modify analysis types based on your tech stack
+# ============================================================================
+
+on:
+  schedule:
+    # Daily at 6:00 AM UTC
+    - cron: '0 6 * * *'
+    # Weekly on Monday (optional - comment out to avoid double-run)
+    # - cron: '0 6 * * 1'
+  
+  # Allow manual workflow runs with optional parameters
+  workflow_dispatch:
+    inputs:
+      analysis_type:
+        description: 'Type of analysis to run'
+        required: false
+        default: 'full'
+        type: choice
+        options:
+          - full
+          - quick
+          - security-only
+      
+      include_metrics:
+        description: 'Include detailed metrics'
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  issues: write  # For creating issues if critical problems found
+
+jobs:
+  # ============================================================================
+  # Repository Health Analysis
+  # ============================================================================
+  repo-health-analysis:
+    name: Repository Health Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for comprehensive analysis
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'  # Adjust version as needed
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'  # Adjust version as needed
+      
+      - name: Install PowerShell modules
+        shell: pwsh
+        run: |
+          Set-PSRepository PSGallery -InstallationPolicy Trusted
+          Install-Module powershell-yaml -Scope CurrentUser -Force
+          # Add other PowerShell modules your analysis needs
+      
+      - name: Run repository analysis
+        shell: pwsh
+        run: |
+          Write-Host "Starting repository analysis..." -ForegroundColor Cyan
+          
+          # Create artifacts directory
+          New-Item -ItemType Directory -Force -Path artifacts/repo-analysis
+          
+          # Execute the repo analysis script
+          $timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
+          $reportPath = "artifacts/repo-analysis/{{PROJECT_NAME}}_RepoHealth_$timestamp.json"
+          
+          # CUSTOMIZATION: Replace with your analysis script path
+          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/Run-RepoAnalysis.ps1 `
+            -OutputPath $reportPath `
+            -AnalysisType "${{ github.event.inputs.analysis_type || 'full' }}" `
+            -IncludeMetrics:${{ github.event.inputs.include_metrics || 'true' }}
+          
+          Write-Host "Analysis complete. Report saved to: $reportPath" -ForegroundColor Green
+      
+      - name: Generate HTML report
+        shell: pwsh
+        run: |
+          Write-Host "Generating HTML report..." -ForegroundColor Cyan
+          
+          $jsonReport = Get-ChildItem -Path artifacts/repo-analysis -Filter "*.json" | 
+            Sort-Object LastWriteTime -Descending | 
+            Select-Object -First 1
+          
+          if ($jsonReport) {
+            $htmlPath = $jsonReport.FullName -replace '\.json$', '.html'
+            
+            # CUSTOMIZATION: Replace with your HTML conversion script
+            pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/Convert-RepoAnalysisToHtml.ps1 `
+              -JsonPath $jsonReport.FullName `
+              -OutputPath $htmlPath
+            
+            Write-Host "HTML report generated: $htmlPath" -ForegroundColor Green
+          }
+      
+      - name: Upload analysis reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: repo-analysis-${{ github.run_number }}
+          path: artifacts/repo-analysis/
+          retention-days: 90  # CUSTOMIZATION: Adjust retention as needed
+          if-no-files-found: error
+      
+      - name: Check for critical issues
+        shell: pwsh
+        run: |
+          Write-Host "Checking for critical issues..." -ForegroundColor Cyan
+          
+          $jsonReport = Get-ChildItem -Path artifacts/repo-analysis -Filter "*.json" | 
+            Sort-Object LastWriteTime -Descending | 
+            Select-Object -First 1
+          
+          if ($jsonReport) {
+            $analysis = Get-Content $jsonReport.FullName -Raw | ConvertFrom-Json
+            
+            $criticalIssues = @()
+            
+            # CUSTOMIZATION: Adjust thresholds and checks for your project
+            if ($analysis.security.critical_vulnerabilities -gt 0) {
+              $criticalIssues += "Found $($analysis.security.critical_vulnerabilities) critical vulnerabilities"
+            }
+            
+            if ($analysis.build.failed_builds -gt 0) {
+              $criticalIssues += "Found $($analysis.build.failed_builds) failed builds"
+            }
+            
+            if ($criticalIssues.Count -gt 0) {
+              Write-Warning "Critical issues detected:"
+              foreach ($issue in $criticalIssues) {
+                Write-Warning "  - $issue"
+              }
+              "has_critical_issues=true" >> $env:GITHUB_OUTPUT
+            }
+          }
+        id: check-issues
+
+  # ============================================================================
+  # Code Quality Metrics
+  # ============================================================================
+  code-quality-metrics:
+    name: Code Quality Metrics
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      # CUSTOMIZATION: Install analysis tools for your tech stack
+      - name: Install analysis tools
+        run: |
+          pip install radon pylint bandit
+          # Add other tools: eslint, rubocop, golangci-lint, etc.
+      
+      # CUSTOMIZATION: Add analysis steps for your languages
+      - name: Analyze code quality
+        run: |
+          mkdir -p artifacts/code-metrics
+          
+          # Python example
+          find . -name "*.py" -not -path "./.venv/*" | \
+            xargs radon cc -s -a > artifacts/code-metrics/complexity.txt || true
+          
+          # Add analysis for your tech stack:
+          # - TypeScript/JavaScript: npm run lint
+          # - Go: golangci-lint run
+          # - Java: mvn checkstyle:check
+          # - etc.
+      
+      - name: Upload code metrics
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-quality-metrics-${{ github.run_number }}
+          path: artifacts/code-metrics/
+          retention-days: 90
+          if-no-files-found: warn
+
+  # ============================================================================
+  # Analysis Summary
+  # ============================================================================
+  analysis-summary:
+    name: Analysis Summary
+    runs-on: ubuntu-latest
+    needs: [repo-health-analysis, code-quality-metrics]
+    if: always()
+    
+    steps:
+      - name: Generate summary
+        run: |
+          echo "## 📊 Repository Analysis Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Run Date:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "**Run Number:** ${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Job Status" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Repository Health | ${{ needs.repo-health-analysis.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Code Quality | ${{ needs.code-quality-metrics.result }} |" >> $GITHUB_STEP_SUMMARY
