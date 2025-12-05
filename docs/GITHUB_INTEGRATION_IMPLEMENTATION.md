@@ -8,7 +8,7 @@ The GitHub integration provides a complete API for authenticating with GitHub, q
 
 ## Implementation Date
 
-December 5, 2025
+December 2024
 
 ## Components Implemented
 
@@ -34,6 +34,8 @@ December 5, 2025
 4. **Orchestration Integration**
    - `POST /github/orchestration/run` - Clone repo and queue orchestration
    - `POST /github/orchestration/upload-results` - Upload orchestration results as PR
+
+**Total: 9 endpoints** (removed stub `/repos/pr/create` in favor of proper `/orchestration/upload-results`)
 
 ### 2. Request/Response Models
 

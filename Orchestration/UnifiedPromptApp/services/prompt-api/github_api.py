@@ -404,43 +404,7 @@ def list_issues(
         raise HTTPException(status_code=500, detail=f"Failed to list issues: {str(e)}")
 
 
-@router.post("/repos/pr/create", response_model=CreatePRResponse)
-def create_pull_request(
-    request: CreatePRRequest,
-    authorization: Optional[str] = Header(None)
-):
-    """
-    Create a pull request from orchestration results.
-    
-    Creates a new branch, commits changes, pushes to GitHub, and creates a PR.
-    This is typically used after an orchestration run to submit improvements.
-    """
-    validate_github_available()
-    
-    token = get_github_token(authorization)
-    
-    if not token:
-        raise HTTPException(
-            status_code=401,
-            detail="GitHub token required. Set GITHUB_TOKEN environment variable or provide Authorization header."
-        )
-    
-    try:
-        service = GitHubPRService(github_token=token)
-        
-        # For now, we'll just create the PR without a local repo path
-        # The actual implementation would need the cloned repo path
-        # This is a placeholder that shows the API structure
-        
-        raise HTTPException(
-            status_code=501,
-            detail="PR creation from orchestration results requires a cloned repository. Use POST /github/repos/clone first, then provide the repo_path."
-        )
-    except PRCreationError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"Failed to create pull request: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to create pull request: {str(e)}")
+
 
 
 @router.get("/repos/{owner}/{repo}/branches")
