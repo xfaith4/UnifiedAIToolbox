@@ -89,6 +89,11 @@ class JsonlTelemetrySink : TelemetrySink {
     [int]$BatchSize
     
     JsonlTelemetrySink([string]$outputPath, [int]$batchSize) {
+        # Validate path to prevent directory traversal
+        if ($outputPath -match '\.\.|~') {
+            throw "Invalid output path: path traversal sequences not allowed"
+        }
+        
         $this.OutputPath = $outputPath
         $this.BatchSize = $batchSize
         $this.Buffer = [System.Collections.ArrayList]::new()

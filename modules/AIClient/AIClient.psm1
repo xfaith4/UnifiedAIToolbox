@@ -174,8 +174,9 @@ function Invoke-AICompletion {
             } | ConvertTo-Json -Depth 10
             
             # Make API request
+            # Note: API key should be properly sanitized in Initialize-AIClient
             $headers = @{
-                'Authorization' = "Bearer $($script:AIClientConfig.ApiKey)"
+                'Authorization' = "Bearer $($script:AIClientConfig.ApiKey.Trim())"
                 'Content-Type' = 'application/json'
             }
             

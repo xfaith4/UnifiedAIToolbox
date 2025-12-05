@@ -35,9 +35,9 @@ class TelemetryClient {
       ...config,
     }
 
-    // Flush on page unload
+    // Flush on page unload using synchronous sendBeacon
     if (typeof window !== 'undefined') {
-      window.addEventListener('beforeunload', () => this.flush())
+      window.addEventListener('beforeunload', () => this.flushOnUnload())
     }
 
     // Start periodic flush timer
@@ -102,6 +102,27 @@ class TelemetryClient {
     } catch (error) {
       console.warn('Failed to send telemetry events:', error)
       // Don't re-queue events to avoid infinite loops
+    }
+  }
+
+  /**
+   * Synchronous flush using sendBeacon for page unload
+   */
+  private flushOnUnload(): void {
+    if (this.eventQueue.length === 0) {
+      return
+    }
+
+    const eventsToSend = [...this.eventQueue]
+    this.eventQueue = []
+
+    // Use sendBeacon for reliable delivery on page unload
+    if (navigator.sendBeacon) {
+      const blob = new Blob(
+        [JSON.stringify({ events: eventsToSend })],
+        { type: 'application/json' }
+      )
+      navigator.sendBeacon(this.config.endpoint, blob)
     }
   }
 

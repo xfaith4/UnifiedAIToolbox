@@ -88,6 +88,9 @@ try {
         try {
             $artifactsResponse = Invoke-RestMethod -Uri $artifactsUrl -Headers $headers -Method Get
             
+            # Collect artifacts for batched telemetry
+            $artifactEvents = @()
+            
             foreach ($artifact in $artifactsResponse.artifacts) {
                 $totalArtifacts++
                 $totalSize += $artifact.size_in_bytes
@@ -103,8 +106,8 @@ try {
                 $artifactsByWorkflow[$workflowName].count++
                 $artifactsByWorkflow[$workflowName].size += $artifact.size_in_bytes
                 
-                # Send telemetry for each artifact
-                Send-TelemetryEvent -EventType "Artifact.Published" -Source "GitHubAPI" -Metadata @{
+                # Collect event metadata
+                $artifactEvents += @{
                     artifact_name = $artifact.name
                     artifact_id = $artifact.id
                     workflow_name = $workflowName
@@ -114,7 +117,12 @@ try {
                     created_at = $artifact.created_at
                     expires_at = $artifact.expires_at
                     expired = $artifact.expired
-                } -NoFlush
+                }
+            }
+            
+            # Send artifacts as batched events
+            foreach ($event in $artifactEvents) {
+                Send-TelemetryEvent -EventType "Artifact.Published" -Source "GitHubAPI" -Metadata $event -NoFlush
             }
         } catch {
             Write-Warning "Failed to fetch artifacts for run $($run.id): $_"

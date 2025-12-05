@@ -1049,6 +1049,9 @@ def receive_telemetry(batch: TelemetryBatchRequest):
     """
     Receive telemetry events from dashboard and other clients.
     Writes events to JSONL file in artifacts/telemetry directory.
+    
+    Note: In high-concurrency scenarios, consider using a message queue
+    or database for better reliability.
     """
     try:
         # Ensure telemetry directory exists
@@ -1059,11 +1062,16 @@ def receive_telemetry(batch: TelemetryBatchRequest):
         date_str = datetime.datetime.utcnow().strftime("%Y-%m-%d")
         telemetry_file = telemetry_dir / f"telemetry_{date_str}.jsonl"
         
-        # Write events as JSONL
+        # Write events as JSONL with atomic-like operation
+        # Serialize all events first
+        json_lines = []
+        for event in batch.events:
+            event_dict = event.model_dump()
+            json_lines.append(json.dumps(event_dict) + "\n")
+        
+        # Write all lines in one operation to minimize race window
         with open(telemetry_file, "a", encoding="utf-8") as f:
-            for event in batch.events:
-                event_dict = event.model_dump()
-                f.write(json.dumps(event_dict) + "\n")
+            f.writelines(json_lines)
         
         return {
             "ok": True,

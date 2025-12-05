@@ -94,7 +94,7 @@ jobs:
           pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/Run-RepoAnalysis.ps1 `
             -OutputPath $reportPath `
             -AnalysisType "${{ github.event.inputs.analysis_type || 'full' }}" `
-            -IncludeMetrics:$${{ github.event.inputs.include_metrics || 'true' }}
+            -IncludeMetrics:${{ github.event.inputs.include_metrics || 'true' }}
           
           Write-Host "Analysis complete. Report saved to: $reportPath" -ForegroundColor Green
       
