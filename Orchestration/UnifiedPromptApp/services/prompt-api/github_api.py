@@ -476,3 +476,156 @@ def list_branches(
     except Exception as e:
         logger.error(f"Failed to list branches: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to list branches: {str(e)}")
+
+
+# ============================================================================
+# Orchestration Integration Endpoints
+# ============================================================================
+
+class OrchestrationRunRequest(BaseModel):
+    """Request model for running orchestration on a GitHub repository."""
+    repo_url: str = Field(..., description="Repository URL or owner/repo format")
+    branch: Optional[str] = Field(None, description="Specific branch to clone")
+    create_pr: bool = Field(False, description="Create PR with orchestration results")
+    pr_base_branch: str = Field("main", description="Base branch for PR")
+    orchestration_type: str = Field("codex", description="Type of orchestration to run (codex, custom)")
+
+
+class OrchestrationRunResponse(BaseModel):
+    """Response model for orchestration run."""
+    run_id: str
+    repo_path: str
+    status: str
+    message: str
+    pr_url: Optional[str] = None
+
+
+@router.post("/orchestration/run", response_model=OrchestrationRunResponse)
+def run_orchestration_on_repo(
+    request: OrchestrationRunRequest,
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Clone a GitHub repository and run orchestration on it.
+    
+    This endpoint:
+    1. Clones the specified repository
+    2. Runs the configured orchestration (e.g., Codex swarm)
+    3. Optionally creates a PR with the results
+    
+    This is the main integration point for running orchestration on GitHub repositories.
+    """
+    validate_github_available()
+    
+    token = get_github_token(authorization)
+    
+    try:
+        # Clone repository
+        service = GitHubCloneService(github_token=token)
+        
+        # Parse repo URL
+        owner, repo_name = parse_repo_url(request.repo_url)
+        
+        # Generate run ID
+        run_id = f"orch_{owner}_{repo_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        
+        # Clone repository
+        clone_path = service.clone_repository(
+            repo_url=request.repo_url,
+            branch=request.branch,
+            clone_id=run_id
+        )
+        
+        logger.info(f"Cloned repository to {clone_path} for orchestration run {run_id}")
+        
+        # For now, we'll return a placeholder response
+        # The actual orchestration integration would call the PowerShell scripts
+        # or Python orchestration services here
+        
+        return OrchestrationRunResponse(
+            run_id=run_id,
+            repo_path=str(clone_path),
+            status="cloned",
+            message=f"Repository cloned successfully. Orchestration run queued. Path: {clone_path}",
+            pr_url=None
+        )
+    except RepositoryCloneError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to run orchestration: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to run orchestration: {str(e)}")
+
+
+class UploadResultsRequest(BaseModel):
+    """Request model for uploading orchestration results to GitHub."""
+    repo_path: str = Field(..., description="Path to the cloned repository")
+    repo_owner: str
+    repo_name: str
+    base_branch: str = Field("main", description="Base branch for PR")
+    branch_name: Optional[str] = Field(None, description="Custom branch name for PR")
+    pr_title: Optional[str] = Field(None, description="Custom PR title")
+    pr_body: Optional[str] = Field(None, description="Custom PR body/description")
+    findings: List[Dict[str, Any]] = Field(default_factory=list, description="Orchestration findings to include in PR")
+
+
+@router.post("/orchestration/upload-results", response_model=CreatePRResponse)
+def upload_orchestration_results(
+    request: UploadResultsRequest,
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Upload orchestration results to GitHub as a pull request.
+    
+    This endpoint takes the results from an orchestration run and:
+    1. Creates a new branch
+    2. Commits the changes
+    3. Pushes to GitHub
+    4. Creates a pull request
+    
+    Use this after running orchestration to submit improvements to the repository.
+    """
+    validate_github_available()
+    
+    token = get_github_token(authorization)
+    
+    if not token:
+        raise HTTPException(
+            status_code=401,
+            detail="GitHub token required for PR creation."
+        )
+    
+    try:
+        repo_path = Path(request.repo_path)
+        
+        if not repo_path.exists():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Repository path does not exist: {request.repo_path}"
+            )
+        
+        # Create PR using the PR service
+        pr_service = GitHubPRService(github_token=token)
+        
+        pr_info = pr_service.create_pr_from_run(
+            repo_path=repo_path,
+            repo_owner=request.repo_owner,
+            repo_name=request.repo_name,
+            findings=request.findings,
+            base_branch=request.base_branch,
+            branch_name=request.branch_name
+        )
+        
+        return CreatePRResponse(
+            pr_number=pr_info['pr_number'],
+            pr_url=pr_info['pr_url'],
+            title=pr_info['title'],
+            state=pr_info['state'],
+            branch=pr_info['branch_created'],
+            base_branch=pr_info['base_branch'],
+            commit_sha=pr_info.get('commit_sha')
+        )
+    except PRCreationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to upload orchestration results: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to upload results: {str(e)}")

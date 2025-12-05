@@ -294,5 +294,86 @@ class TestBranches:
         assert "develop" in data["branches"]
 
 
+class TestOrchestrationIntegration:
+    """Tests for orchestration integration endpoints."""
+    
+    @patch('github_api.GITHUB_AVAILABLE', True)
+    @patch('github_api.GitHubCloneService')
+    @patch('github_api.parse_repo_url')
+    def test_run_orchestration_on_repo(self, mock_parse, mock_service_class):
+        """Test running orchestration on a repository."""
+        mock_parse.return_value = ('owner', 'repo')
+        
+        mock_service = Mock()
+        mock_service.clone_repository.return_value = Path('/tmp/clones/orch_owner_repo_12345')
+        mock_service_class.return_value = mock_service
+        
+        response = client.post(
+            "/github/orchestration/run",
+            json={
+                "repo_url": "https://github.com/owner/repo",
+                "create_pr": False
+            }
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert 'run_id' in data
+        assert 'repo_path' in data
+        assert data['status'] == 'cloned'
+        assert 'orch_owner_repo' in data['run_id']
+    
+    @patch('github_api.GITHUB_AVAILABLE', True)
+    @patch('github_api.GitHubPRService')
+    @patch.dict('os.environ', {'GITHUB_TOKEN': 'test_token'})
+    def test_upload_orchestration_results(self, mock_pr_service_class):
+        """Test uploading orchestration results as PR."""
+        # Setup mock
+        mock_pr_service = Mock()
+        mock_pr_service.create_pr_from_run.return_value = {
+            'pr_number': 42,
+            'pr_url': 'https://github.com/owner/repo/pull/42',
+            'title': 'Test PR',
+            'state': 'open',
+            'branch_created': 'codex-improvements-12345',
+            'base_branch': 'main',
+            'commit_sha': 'abc123'
+        }
+        mock_pr_service_class.return_value = mock_pr_service
+        
+        # Create a temporary directory to simulate repo path
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            response = client.post(
+                "/github/orchestration/upload-results",
+                json={
+                    "repo_path": tmpdir,
+                    "repo_owner": "owner",
+                    "repo_name": "repo",
+                    "base_branch": "main",
+                    "findings": []
+                }
+            )
+            
+            assert response.status_code == 200
+            data = response.json()
+            assert data['pr_number'] == 42
+            assert data['pr_url'] == 'https://github.com/owner/repo/pull/42'
+    
+    @patch('github_api.GITHUB_AVAILABLE', True)
+    def test_upload_results_no_token(self):
+        """Test uploading results without token returns error."""
+        response = client.post(
+            "/github/orchestration/upload-results",
+            json={
+                "repo_path": "/tmp/test",
+                "repo_owner": "owner",
+                "repo_name": "repo"
+            }
+        )
+        
+        assert response.status_code == 401
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

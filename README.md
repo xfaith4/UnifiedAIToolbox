@@ -111,7 +111,8 @@ UnifiedAIToolbox/
 ## 📚 Documentation
 
 - **[Project Roadmap](docs/PROJECT_ROADMAP.md)** - Current status, next steps, and future plans
-- **[Orchestration Run Tracking](docs/ORCHESTRATION_RUN_TRACKING.md)** - NEW: Comprehensive run tracking with cost & environmental analytics
+- **[GitHub Integration](docs/GITHUB_INTEGRATION.md)** - NEW: Complete guide to GitHub authentication, repo operations, and orchestration
+- **[Orchestration Run Tracking](docs/ORCHESTRATION_RUN_TRACKING.md)** - Comprehensive run tracking with cost & environmental analytics
 - **[Orchestrator Enhancements](docs/ORCHESTRATOR_ENHANCEMENTS.md)** - Agent library, feedback/learning, cost tracking
 - **[Quick Start Guide](docs/help/quick-start.md)** - Get up and running in minutes
 - **[Launch Guide](docs/help/launch-guide.md)** - Detailed deployment instructions
