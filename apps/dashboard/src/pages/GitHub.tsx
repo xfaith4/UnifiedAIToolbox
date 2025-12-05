@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Search, Filter, RefreshCw, ExternalLink, GitPullRequest, CheckCircle2, XCircle, Clock, AlertCircle, Eye } from 'lucide-react'
+import { trackPageView, trackFilterChange, trackSortChange, trackSearch } from '../services/telemetry'
 
 interface PullRequest {
   number: number
@@ -32,6 +33,14 @@ export default function GitHubPage() {
   const [filterLabel, setFilterLabel] = useState('')
   const [sortBy, setSortBy] = useState<'updated' | 'created'>('updated')
   const [selectedPR, setSelectedPR] = useState<PullRequest | null>(null)
+
+  // Track page view on mount
+  useEffect(() => {
+    trackPageView('GitHubPRs', {
+      initialFilter: filterState,
+      initialSort: sortBy,
+    })
+  }, [])
 
   // Fetch PRs from GitHub API
   useEffect(() => {
@@ -176,7 +185,12 @@ export default function GitHubPage() {
             type="text"
             placeholder="Search PRs by title, author, or number..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => {
+              setSearchQuery(e.target.value)
+              if (e.target.value) {
+                trackSearch(e.target.value)
+              }
+            }}
             className="w-full pl-10 pr-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-blue-500"
           />
         </div>
@@ -184,7 +198,11 @@ export default function GitHubPage() {
         {/* State Filter */}
         <select
           value={filterState}
-          onChange={(e) => setFilterState(e.target.value as any)}
+          onChange={(e) => {
+            const newValue = e.target.value as any
+            setFilterState(newValue)
+            trackFilterChange('state', newValue)
+          }}
           className="px-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-blue-500"
         >
           <option value="all">All States</option>
@@ -195,7 +213,11 @@ export default function GitHubPage() {
         {/* Sort By */}
         <select
           value={sortBy}
-          onChange={(e) => setSortBy(e.target.value as any)}
+          onChange={(e) => {
+            const newValue = e.target.value as any
+            setSortBy(newValue)
+            trackSortChange(newValue)
+          }}
           className="px-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-blue-500"
         >
           <option value="updated">Recently Updated</option>

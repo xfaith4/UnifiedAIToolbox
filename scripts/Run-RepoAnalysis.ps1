@@ -36,6 +36,14 @@ param(
 $ErrorActionPreference = 'Continue'
 $WarningPreference = 'Continue'
 
+# Import Telemetry module
+$telemetryModulePath = Join-Path $PSScriptRoot "../modules/Telemetry/Telemetry.psm1"
+if (Test-Path $telemetryModulePath) {
+    Import-Module $telemetryModulePath -Force
+} else {
+    Write-Warning "Telemetry module not found at $telemetryModulePath - telemetry disabled"
+}
+
 # ANSI colors
 $Colors = @{
     Green  = "`e[32m"
@@ -45,6 +53,19 @@ $Colors = @{
     Cyan   = "`e[36m"
     Reset  = "`e[0m"
 }
+
+# Determine source (GitHub Actions or local)
+$telemetrySource = if ($env:GITHUB_ACTIONS -eq 'true') { "GitHubAction" } else { "CLI" }
+
+# Send telemetry: Analysis started
+Send-TelemetryEvent -EventType "RepoAnalysis.Started" -Source $telemetrySource -Metadata @{
+    analysis_type = $AnalysisType
+    include_metrics = $IncludeMetrics
+    run_id = $env:GITHUB_RUN_ID
+    actor = $env:GITHUB_ACTOR
+} -ErrorAction SilentlyContinue
+
+$analysisStartTime = Get-Date
 
 Write-Host "$($Colors.Cyan)═══════════════════════════════════════════════════════════$($Colors.Reset)"
 Write-Host "$($Colors.Cyan)        Repository Health Analysis$($Colors.Reset)"
@@ -429,10 +450,27 @@ if ($outputDir -and -not (Test-Path $outputDir)) {
 # Save JSON report
 $analysis | ConvertTo-Json -Depth 10 | Out-File $OutputPath -Encoding UTF8
 
+$analysisEndTime = Get-Date
+$analysisDuration = ($analysisEndTime - $analysisStartTime).TotalSeconds
+
 Write-Host ""
 Write-Host "$($Colors.Green)✓ Analysis complete!$($Colors.Reset)"
 Write-Host "Report saved to: $($Colors.Yellow)$OutputPath$($Colors.Reset)"
+Write-Host "Duration: $($Colors.Yellow)$([Math]::Round($analysisDuration, 2))s$($Colors.Reset)"
 Write-Host ""
+
+# Send telemetry: Analysis completed
+Send-TelemetryEvent -EventType "RepoAnalysis.Completed" -Source $telemetrySource -Metadata @{
+    analysis_type = $AnalysisType
+    duration_seconds = [Math]::Round($analysisDuration, 2)
+    health_score = $healthScore
+    health_status = $healthStatus
+    critical_issues = $criticalIssues
+    warnings = $warnings
+    output_file = (Split-Path $OutputPath -Leaf)
+    run_id = $env:GITHUB_RUN_ID
+    success = $true
+} -ErrorAction SilentlyContinue
 
 # Return analysis object for pipeline use
 return $analysis
