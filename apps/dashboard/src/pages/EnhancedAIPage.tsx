@@ -52,8 +52,14 @@ export default function EnhancedAIPage() {
   const [selectedPromptId, setSelectedPromptId] = useState<string>('')
   const [isLoading, setIsLoading] = useState(true)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [isRefreshing, setIsRefreshing] = useState(false)
 
   useEffect(() => {
+    // Set refreshing state when refreshKey changes (but not on initial mount)
+    if (refreshKey > 0) {
+      setIsRefreshing(true)
+    }
+    
     fetchPromptLibrary()
       .then((list) => {
         setPrompts(list)
@@ -66,10 +72,11 @@ export default function EnhancedAIPage() {
       })
       .finally(() => {
         setIsLoading(false)
+        setIsRefreshing(false)
       })
     // Only refetch when refreshKey changes (after applying suggestions)
     // selectedPromptId is intentionally excluded to avoid refetching when switching prompts
-    // since selectedPrompt is derived from the prompts array (line 72)
+    // since selectedPrompt is derived from the prompts array (line 76)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshKey])
 
@@ -126,6 +133,9 @@ export default function EnhancedAIPage() {
                 <div className="p-4 rounded-xl border border-neutral-800 bg-neutral-950">
                   <h3 className="font-semibold mb-2 flex items-center gap-2">
                     <span>📝</span> Prompt Content
+                    {isRefreshing && (
+                      <span className="text-xs text-neutral-500 animate-pulse">Updating...</span>
+                    )}
                   </h3>
                   <div className="text-sm text-neutral-400 mb-2">
                     {selectedPrompt.description || selectedPrompt.context}
@@ -136,6 +146,7 @@ export default function EnhancedAIPage() {
                 </div>
 
                 <SuggestionPanel
+                  key={`${selectedPromptId}-${refreshKey}`}
                   promptId={selectedPromptId}
                   promptContent={selectedPrompt.template}
                   onApplySuggestion={(suggestion) => {
