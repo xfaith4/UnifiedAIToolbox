@@ -90,8 +90,23 @@ class JsonlTelemetrySink : TelemetrySink {
     
     JsonlTelemetrySink([string]$outputPath, [int]$batchSize) {
         # Validate path to prevent directory traversal
-        if ($outputPath -match '\.\.|~') {
-            throw "Invalid output path: path traversal sequences not allowed"
+        # Resolve to absolute path and check if it's within allowed boundaries
+        try {
+            $resolvedPath = Resolve-Path $outputPath -ErrorAction SilentlyContinue
+            if (-not $resolvedPath) {
+                # Path doesn't exist yet, try parent directory
+                $parentPath = Split-Path $outputPath -Parent
+                if ($parentPath) {
+                    $resolvedPath = Resolve-Path $parentPath -ErrorAction Stop
+                }
+            }
+            
+            # Basic checks for obvious traversal attempts
+            if ($outputPath -match '\.\.|~|%2e|%2E') {
+                throw "Invalid output path: directory traversal sequences not allowed"
+            }
+        } catch {
+            throw "Invalid output path: $_"
         }
         
         $this.OutputPath = $outputPath

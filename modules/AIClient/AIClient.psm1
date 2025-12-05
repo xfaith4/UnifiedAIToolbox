@@ -82,6 +82,14 @@ function Initialize-AIClient {
         return
     }
     
+    # Basic API key format validation
+    $ApiKey = $ApiKey.Trim()
+    if ($ApiKey -match '[\r\n\t]' -or $ApiKey.Length -lt 20) {
+        Write-Error "Invalid API key format. API key should not contain whitespace or special characters."
+        $script:AIClientConfig.ApiKey = $null
+        return
+    }
+    
     $script:AIClientConfig.Endpoint = $Endpoint
     $script:AIClientConfig.ApiKey = $ApiKey
     $script:AIClientConfig.Model = $Model

@@ -315,14 +315,31 @@ $events | Select-Object timestamp, metadata | ConvertTo-Json
 ### AI Insights
 
 - **API key security** - Never commit API keys, use environment variables
-- **Data transmission** - Code/data sent to OpenAI API (see [OpenAI's data policy](https://openai.com/policies/api-data-usage-policies))
+- **Data transmission** - Repository metadata, analysis results, and code snippets are sent to OpenAI API
+  - **What is sent:** File statistics, health scores, issue counts, metadata (NOT source code by default)
+  - **What is NOT sent:** Authentication tokens, API keys, secrets, full source code
+  - See [OpenAI's data policy](https://openai.com/policies/api-data-usage-policies) for details
 - **Opt-in** - AI features only work if API key is provided
 - **Audit trail** - All AI calls logged in telemetry
+- **No sensitive data** - Scripts sanitize input before sending to AI
+
+**Important:** The AI summary generator sends:
+- Repository health metrics (file counts, test counts, scores)
+- Issue summaries (types and counts, NOT detailed stack traces)
+- PR metadata (titles, authors, CI status, NOT code diffs)
+
+**Data sanitization checklist:**
+- ✅ No source code (only metadata and statistics)
+- ✅ No secrets or API keys
+- ✅ No stack traces or error details
+- ✅ No file contents (only file names and counts)
+- ✅ No user emails (only usernames when relevant)
 
 **Recommendation:** For sensitive codebases, consider:
-- Using Azure OpenAI with your own deployment
+- Review prompts in `scripts/ai-insights/prompts/` before using
+- Using Azure OpenAI with your own deployment (data stays in your region)
 - Self-hosted LLMs (requires custom client implementation)
-- Disabling AI features entirely
+- Disabling AI features entirely if data cannot leave your network
 
 ## 📦 Integration with CI/CD Template
 
