@@ -308,6 +308,63 @@ def normalize(obj: Any) -> str:
     """Deterministic JSON for hashing & storage."""
     return json.dumps(obj, sort_keys=True, separators=(",", ":"))
 
+def sanitize_run_id(raw: str, max_length: int = 120) -> str:
+    """
+    Sanitize a run ID/goal string to be safe for Windows filesystem paths.
+    
+    Windows filesystem has strict constraints on valid path characters, and certain
+    characters like newlines, colons, and other control characters cause errors when
+    creating directories (e.g., WinError 123).
+    
+    This function:
+    - Treats None as empty string
+    - Strips leading/trailing whitespace including \\r and \\n
+    - Replaces any whitespace (spaces, tabs, newlines) with a single underscore
+    - Replaces invalid Windows path characters (<>:"/\\|?*) with underscores
+    - Collapses multiple consecutive underscores into a single underscore
+    - Strips trailing dots and spaces (Windows doesn't allow these at the end of names)
+    - Defaults to "run" if the result is empty
+    - Enforces a maximum length to avoid excessively long path segments
+    
+    Args:
+        raw: The raw string to sanitize (e.g., a goal or prompt ID)
+        max_length: Maximum length for the sanitized result (default: 120)
+    
+    Returns:
+        A filesystem-safe string suitable for use as a single path component
+    """
+    if raw is None:
+        raw = ""
+    
+    # Strip leading/trailing whitespace including carriage returns and newlines
+    result = raw.strip()
+    
+    # Replace any whitespace character (space, tab, newline, carriage return) with underscore
+    result = re.sub(r'\s+', '_', result)
+    
+    # Define invalid Windows path characters
+    INVALID_PATH_CHARS = '<>:"/\\|?*'
+    
+    # Replace each invalid character with underscore
+    for char in INVALID_PATH_CHARS:
+        result = result.replace(char, '_')
+    
+    # Collapse multiple consecutive underscores into a single underscore
+    result = re.sub(r'_+', '_', result)
+    
+    # Strip trailing dots, spaces, and underscores (Windows doesn't allow dots/spaces at end)
+    result = result.rstrip('_. ')
+    
+    # If the result is empty, default to "run"
+    if not result:
+        result = "run"
+    
+    # Enforce maximum length
+    if len(result) > max_length:
+        result = result[:max_length].rstrip('_. ')
+    
+    return result
+
 def hash_payload(template_id: str, model: str, payload: Dict[str, Any]) -> str:
     h = hashlib.sha256()
     h.update(template_id.encode("utf-8"))
@@ -1991,8 +2048,10 @@ def orchestrate_run(req: OrchestrationRequest):
     background task that executes the external orchestrator (POF.ps1 by default), otherwise
     simulates a completion.
     """
-    run_base = (req.prompt_id or req.goal or "run").replace(".", "_").replace(" ", "_")
-    run_id = f"{run_base}.{now_iso().replace(':','-')}"
+    # Sanitize the raw run base to ensure it's safe for filesystem use on Windows
+    raw_run_base = req.prompt_id or req.goal or "run"
+    safe_run_base = sanitize_run_id(raw_run_base)
+    run_id = f"{safe_run_base}.{now_iso().replace(':','-')}"
     out_dir = BRIDGE_RUN_DIR / run_id
     log_path = BRIDGE_RUN_DIR / f"{run_id}.log"
     out_dir.mkdir(parents=True, exist_ok=True)
