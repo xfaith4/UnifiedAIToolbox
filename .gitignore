@@ -58,3 +58,4 @@ coverage/
 
 # Pester test artifacts
 tmp/
+tests/test-artifacts/

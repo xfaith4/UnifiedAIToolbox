@@ -1084,6 +1084,56 @@ def receive_telemetry(batch: TelemetryBatchRequest):
             detail=f"Failed to write telemetry: {str(e)}"
         )
 
+@app.get("/api/telemetry/stats")
+def get_telemetry_stats(days: int = Query(7, ge=1, le=90)):
+    """
+    Get telemetry statistics for the specified number of days.
+    Returns aggregated metrics by event type, source, and time period.
+    """
+    try:
+        # Validate days parameter (already validated by Query, but double-check)
+        if not isinstance(days, int) or days < 1 or days > 90:
+            raise HTTPException(status_code=400, detail="Invalid days parameter")
+        
+        # Use PowerShell module to get stats
+        # Using string format to avoid f-string with user input
+        module_path = str(ROOT_DIR / "modules" / "Telemetry" / "Telemetry.psd1")
+        ps_script = """
+        $ErrorActionPreference = 'Stop'
+        Import-Module '{0}' -Force
+        $stats = Get-TelemetryStats -Days {1}
+        $stats | ConvertTo-Json -Depth 10
+        """.format(module_path, days)
+        
+        result = subprocess.run(
+            ["pwsh", "-NoProfile", "-Command", ps_script],
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        
+        if result.returncode != 0:
+            raise Exception(f"PowerShell error: {result.stderr}")
+        
+        stats = json.loads(result.stdout)
+        return stats
+        
+    except subprocess.TimeoutExpired:
+        raise HTTPException(
+            status_code=504,
+            detail="Telemetry stats request timed out"
+        )
+    except json.JSONDecodeError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to parse telemetry stats: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve telemetry stats: {str(e)}"
+        )
+
 @app.get("/prompts")
 def list_prompt_payloads():
     """
