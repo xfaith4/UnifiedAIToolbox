@@ -205,19 +205,21 @@ function Invoke-OrchestrationLlm {
         }
     }
     catch {
-        $errorMessage = $_.Exception.Message
+        $outerException = $_
+        $errorMessage = $outerException.Exception.Message
         $errorDetails = ""
         
         # Try to extract more details from the error
-        if ($_.ErrorDetails) {
+        if ($outerException.ErrorDetails) {
             try {
-                $errorJson = $_.ErrorDetails.Message | ConvertFrom-Json
+                $errorJson = $outerException.ErrorDetails.Message | ConvertFrom-Json
                 if ($errorJson.error) {
                     $errorDetails = ": $($errorJson.error.message)"
                 }
             }
             catch {
-                $errorDetails = ": $($_.ErrorDetails.Message)"
+                # If JSON parsing fails, use the raw error details message
+                $errorDetails = ": $($outerException.ErrorDetails.Message)"
             }
         }
         
