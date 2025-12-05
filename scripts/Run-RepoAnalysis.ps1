@@ -101,7 +101,7 @@ function Write-Metric {
         default   { $Colors.Reset }
     }
     
-    Write-Host "  ${color}${symbol}${Colors.Reset} $Name: $Value"
+    Write-Host "  ${color}${symbol}$($Colors.Reset) ${Name}: $Value"
 }
 
 # ============================================================================
@@ -295,14 +295,23 @@ if ($AnalysisType -in @('full', 'security-only')) {
             Where-Object { $_.Name -match $pattern -and $_.FullName -notmatch 'node_modules|\.venv|\.git' }
         
         foreach ($file in $files) {
-            # Check if file is in .gitignore
-            $relativePath = $file.FullName.Replace((Get-Location).Path, '').TrimStart('\', '/')
+            # Get relative path using Resolve-Path for proper handling
+            try {
+                $relativePath = Resolve-Path $file.FullName -Relative
+            } catch {
+                # Fallback if Resolve-Path fails
+                $relativePath = $file.FullName
+            }
             
-            # Simple check - in production, use git check-ignore
+            # Use git check-ignore if git is available, otherwise skip detailed check
             $inGitignore = $false
-            if (Test-Path ".gitignore") {
-                $gitignoreContent = Get-Content ".gitignore"
-                $inGitignore = $gitignoreContent | Where-Object { $relativePath -like $_ }
+            if (Get-Command git -ErrorAction SilentlyContinue) {
+                try {
+                    $gitCheckResult = git check-ignore $relativePath 2>$null
+                    $inGitignore = [bool]$gitCheckResult
+                } catch {
+                    # Git check failed, assume not in gitignore
+                }
             }
             
             if (-not $inGitignore) {

@@ -242,14 +242,21 @@ def execute_orchestration(
         
         # Execute in background (non-blocking)
         # In production, consider using a task queue like Celery or RQ
-        subprocess.Popen(
-            args,
-            cwd=str(REPO_ROOT),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True  # Detach from parent process
-        )
+        # Note: For now, we capture stderr to a log file instead of DEVNULL
+        log_dir = REPO_ROOT / "artifacts" / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_file = log_dir / f"orchestration_{webhook_id}.log"
         
+        with open(log_file, 'w') as log:
+            subprocess.Popen(
+                args,
+                cwd=str(REPO_ROOT),
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                start_new_session=True  # Detach from parent process
+            )
+        
+        logger.info(f"Orchestration logs will be written to: {log_file}")
         return f"{trigger.orchestration_action.value}_{webhook_id}"
         
     except Exception as e:
