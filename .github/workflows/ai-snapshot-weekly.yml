@@ -1,0 +1,319 @@
+name: AI Snapshot - Weekly
+
+# Runs weekly on Monday at 6 AM UTC to generate AI summaries
+on:
+  schedule:
+    # Weekly on Monday at 6:00 AM UTC
+    - cron: '0 6 * * 1'
+  
+  # Allow manual workflow runs
+  workflow_dispatch:
+    inputs:
+      include_pr_snapshot:
+        description: 'Include PR snapshot in report'
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  # ============================================================================
+  # Generate AI Repository Summary
+  # ============================================================================
+  ai-repo-summary:
+    name: AI Repository Summary
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for comprehensive analysis
+      
+      - name: Setup PowerShell modules
+        shell: pwsh
+        run: |
+          Set-PSRepository PSGallery -InstallationPolicy Trusted
+          Install-Module powershell-yaml -Scope CurrentUser -Force
+      
+      - name: Run repository analysis
+        shell: pwsh
+        run: |
+          Write-Host "Running repository analysis..." -ForegroundColor Cyan
+          
+          # Create artifacts directory
+          New-Item -ItemType Directory -Force -Path artifacts/repo-analysis
+          
+          # Execute the repo analysis script
+          $timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
+          $reportPath = "artifacts/repo-analysis/UnifiedAIToolbox_RepoHealth_$timestamp.json"
+          
+          # Run the analysis script
+          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/Run-RepoAnalysis.ps1 `
+            -OutputPath $reportPath `
+            -AnalysisType "full" `
+            -IncludeMetrics:$true
+          
+          Write-Host "Analysis complete. Report saved to: $reportPath" -ForegroundColor Green
+        
+        # Track telemetry event
+        - name: Track analysis telemetry
+          shell: pwsh
+          run: |
+            $env:PSModulePath = "$PWD/modules" + [IO.Path]::PathSeparator + $env:PSModulePath
+            Import-Module Telemetry -Force
+            
+            Send-TelemetryEvent `
+              -EventType 'RepoAnalysis.Completed' `
+              -Source 'GitHubAction' `
+              -Metadata @{
+                workflow = 'ai-snapshot-weekly'
+                trigger = '${{ github.event_name }}'
+              }
+      
+      - name: Generate AI summary
+        if: env.OPENAI_API_KEY != ''
+        shell: pwsh
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          Write-Host "Generating AI summary..." -ForegroundColor Cyan
+          
+          # Find the latest JSON report
+          $jsonReport = Get-ChildItem -Path artifacts/repo-analysis -Filter "*.json" | 
+            Sort-Object LastWriteTime -Descending | 
+            Select-Object -First 1
+          
+          if ($jsonReport) {
+            $summaryPath = Join-Path "artifacts/reports" "RepoAnalysis_Summary_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').md"
+            
+            # Ensure reports directory exists
+            New-Item -ItemType Directory -Force -Path "artifacts/reports" | Out-Null
+            
+            # Generate AI summary
+            pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/ai-insights/Generate-RepoAnalysisSummary.ps1 `
+              -InputPath $jsonReport.FullName `
+              -OutputPath $summaryPath
+            
+            Write-Host "AI summary generated: $summaryPath" -ForegroundColor Green
+            
+            # Track telemetry
+            $env:PSModulePath = "$PWD/modules" + [IO.Path]::PathSeparator + $env:PSModulePath
+            Import-Module Telemetry -Force
+            
+            Send-TelemetryEvent `
+              -EventType 'AI.RepoSummary.Generated' `
+              -Source 'GitHubAction' `
+              -Metadata @{
+                workflow = 'ai-snapshot-weekly'
+              }
+          } else {
+            Write-Warning "No JSON report found to summarize"
+          }
+      
+      - name: Handle AI failure
+        if: failure() && env.OPENAI_API_KEY != ''
+        shell: pwsh
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          Write-Host "AI summary generation failed, tracking telemetry..." -ForegroundColor Yellow
+          
+          $env:PSModulePath = "$PWD/modules" + [IO.Path]::PathSeparator + $env:PSModulePath
+          Import-Module Telemetry -Force
+          
+          Send-TelemetryEvent `
+            -EventType 'AI.RequestFailed' `
+            -Source 'GitHubAction' `
+            -Metadata @{
+              workflow = 'ai-snapshot-weekly'
+              step = 'Generate AI summary'
+            }
+      
+      - name: Skip AI summary (no API key)
+        if: env.OPENAI_API_KEY == ''
+        run: |
+          echo "⚠️ No OPENAI_API_KEY configured. Skipping AI summary generation."
+          echo "To enable AI summaries, add OPENAI_API_KEY to repository secrets."
+      
+      - name: Upload analysis artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-repo-snapshot-${{ github.run_number }}
+          path: |
+            artifacts/repo-analysis/
+            artifacts/reports/
+          retention-days: 90
+          if-no-files-found: warn
+
+  # ============================================================================
+  # Generate AI PR Snapshot (Optional)
+  # ============================================================================
+  ai-pr-snapshot:
+    name: AI PR Snapshot
+    runs-on: ubuntu-latest
+    if: github.event.inputs.include_pr_snapshot != 'false'
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Fetch recent PRs
+        id: fetch-prs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Get recent merged PRs from the last 7 days
+          gh pr list \
+            --state merged \
+            --limit 20 \
+            --json number,title,author,mergedAt,url \
+            --jq '.[] | select(.mergedAt | fromdateiso8601 > (now - 604800))' \
+            > recent-prs.json
+          
+          echo "pr_count=$(cat recent-prs.json | jq -s 'length')" >> $GITHUB_OUTPUT
+      
+      - name: Generate PR snapshot summary
+        if: steps.fetch-prs.outputs.pr_count > 0 && env.OPENAI_API_KEY != ''
+        shell: pwsh
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          Write-Host "Generating PR snapshot summary..." -ForegroundColor Cyan
+          
+          # Ensure reports directory exists
+          New-Item -ItemType Directory -Force -Path "artifacts/reports" | Out-Null
+          
+          # Import AI client
+          $env:PSModulePath = "$PWD/modules" + [IO.Path]::PathSeparator + $env:PSModulePath
+          Import-Module AIClient -Force
+          Import-Module Telemetry -Force
+          
+          Initialize-AIClient
+          
+          # Read PR data
+          $prData = Get-Content "recent-prs.json" | ConvertFrom-Json
+          
+          # Build prompt
+          $prSummary = $prData | ForEach-Object {
+            "- PR #$($_.number): $($_.title) by @$($_.author.login)"
+          } | Out-String
+          
+          $prompt = @"
+          Analyze these recent merged pull requests from the last 7 days:
+          
+          $prSummary
+          
+          Provide:
+          1. A brief executive summary of the week's changes
+          2. Key themes or focus areas
+          3. Notable improvements or fixes
+          4. Any patterns or concerns
+          
+          Keep it concise and actionable.
+          "@
+          
+          $result = Invoke-AICompletion -Prompt $prompt -SystemPrompt "You are a technical PM analyzing development activity."
+          
+          if ($result.success) {
+            $summaryPath = "artifacts/reports/PRSnapshot_Summary_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').md"
+            
+            $markdown = @"
+          # PR Activity Summary
+          
+          > **Generated:** $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')
+          > **Model:** $($result.model)
+          > **PRs Analyzed:** $($prData.Count)
+          
+          ## ⚠️ Advisory
+          This summary is AI-generated. Always validate with human review.
+          
+          ## Summary
+          
+          $($result.content)
+          
+          ## Recent PRs
+          
+          $prSummary
+          
+          ---
+          *Generated by AI Snapshot Workflow*
+          "@
+            
+            $markdown | Out-File $summaryPath -Encoding UTF8
+            Write-Host "PR snapshot saved to: $summaryPath" -ForegroundColor Green
+            
+            # Track telemetry
+            Send-TelemetryEvent `
+              -EventType 'AI.PRSummary.Generated' `
+              -Source 'GitHubAction' `
+              -Metadata @{
+                workflow = 'ai-snapshot-weekly'
+                pr_count = $prData.Count
+              }
+          } else {
+            Write-Warning "Failed to generate PR summary: $($result.error)"
+            
+            Send-TelemetryEvent `
+              -EventType 'AI.RequestFailed' `
+              -Source 'GitHubAction' `
+              -Metadata @{
+                workflow = 'ai-snapshot-weekly'
+                step = 'Generate PR snapshot'
+                error = $result.error
+              }
+          }
+      
+      - name: Upload PR snapshot
+        if: steps.fetch-prs.outputs.pr_count > 0
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-pr-snapshot-${{ github.run_number }}
+          path: artifacts/reports/
+          retention-days: 90
+          if-no-files-found: warn
+
+  # ============================================================================
+  # Summary
+  # ============================================================================
+  summary:
+    name: Workflow Summary
+    runs-on: ubuntu-latest
+    needs: [ai-repo-summary, ai-pr-snapshot]
+    if: always()
+    
+    steps:
+      - name: Generate summary
+        run: |
+          echo "## 🤖 AI Snapshot Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Run Date:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "**Run Number:** ${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Trigger:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Job Status" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Repository Summary | ${{ needs.ai-repo-summary.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| PR Snapshot | ${{ needs.ai-pr-snapshot.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 Artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "AI-generated summaries are available in the workflow artifacts:" >> $GITHUB_STEP_SUMMARY
+          echo "- Repository analysis summary (if AI key configured)" >> $GITHUB_STEP_SUMMARY
+          echo "- PR activity snapshot (if AI key configured)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ env.OPENAI_API_KEY }}" == "" ]; then
+            echo "⚠️ **Note:** No OPENAI_API_KEY configured. AI summaries were skipped." >> $GITHUB_STEP_SUMMARY
+            echo "Add OPENAI_API_KEY to repository secrets to enable AI insights." >> $GITHUB_STEP_SUMMARY
+          fi

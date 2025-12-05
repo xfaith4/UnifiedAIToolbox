@@ -1,3 +1,0 @@
-{"source":"E2ETest","timestamp":"2025-12-05T06:10:18.9378120Z","metadata":{"test_run":"smoketest","timestamp_test":"2025-12-05T06:10:18.9291466+00:00"},"schema_version":"1.0","eventType":"RepoAnalysis.Started"}
-{"source":"E2ETest","timestamp":"2025-12-05T06:10:19.0822360Z","metadata":{"duration_seconds":42,"health_score":85},"schema_version":"1.0","eventType":"RepoAnalysis.Completed"}
-{"source":"E2ETest","timestamp":"2025-12-05T06:10:19.1165061Z","metadata":{"page":"home"},"schema_version":"1.0","eventType":"PRDashboard.View"}

@@ -462,6 +462,56 @@ if ($analysis.build) {
 "@
 }
 
+# Add Telemetry Overview Section
+try {
+    $repoRoot = Split-Path -Parent $PSScriptRoot
+    $telemetryModule = Join-Path $repoRoot 'modules' 'Telemetry' 'Telemetry.psd1'
+    
+    if (Test-Path $telemetryModule) {
+        Import-Module $telemetryModule -Force -ErrorAction SilentlyContinue
+        $telemetryStats = Get-TelemetryStats -Days 7
+        
+        if ($telemetryStats.total_events -gt 0) {
+            $repoAnalysisCount = if ($telemetryStats.by_event_type.ContainsKey('RepoAnalysis.Completed')) { $telemetryStats.by_event_type['RepoAnalysis.Completed'] } else { 0 }
+            $prDashboardViews = if ($telemetryStats.by_event_type.ContainsKey('PRDashboard.View')) { $telemetryStats.by_event_type['PRDashboard.View'] } else { 0 }
+            $aiFailures = if ($telemetryStats.by_event_type.ContainsKey('AI.RequestFailed')) { $telemetryStats.by_event_type['AI.RequestFailed'] } else { 0 }
+            
+            $telemetryHtml = @"
+            <div class="section" style="background: #f0f9ff; border-left: 4px solid #3b82f6;">
+                <h2>📊 Telemetry Overview (Last 7 Days)</h2>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <div class="info-label">Total Events</div>
+                        <div class="info-value">$($telemetryStats.total_events)</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">Repository Analyses</div>
+                        <div class="info-value">$repoAnalysisCount</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">PR Dashboard Views</div>
+                        <div class="info-value">$prDashboardViews</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">
+                            <span class="status-icon $(if ($aiFailures -eq 0) { "status-success" } else { "status-warning" })"></span>AI Failures
+                        </div>
+                        <div class="info-value">$aiFailures</div>
+                    </div>
+                </div>
+                <p style="margin-top: 15px; font-size: 0.9em; color: #6b7280;">
+                    📈 View detailed metrics and charts in the <a href="/telemetry" style="color: #3b82f6; text-decoration: none;">Telemetry Dashboard</a>
+                </p>
+            </div>
+"@
+            $html += $telemetryHtml
+        }
+    }
+} catch {
+    # Silently skip telemetry section if there's an error
+    Write-Verbose "Could not load telemetry data: $_"
+}
+
 $html += @"
         </div>
         
