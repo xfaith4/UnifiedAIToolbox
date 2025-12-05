@@ -54,6 +54,14 @@ The Unified AI Toolbox is a comprehensive platform that unifies prompt managemen
 - **PR Review Dashboard**: Collaborative pull request review with CI status tracking
 - **Scheduled Analysis**: Automated daily repository health checks and code quality metrics
 
+### 🔔 Monitoring & Alerts
+
+- **Telemetry System**: JSONL-based event tracking with pluggable sinks
+- **Alert Rules**: Threshold-based, pattern-based, and custom alert conditions
+- **Alert Monitoring**: Real-time alerting for failures, performance issues, and anomalies
+- **Unified CLI**: Single entry point (`tools/utb.ps1`) for all toolbox operations
+- **Template Versioning**: Semantic versioning and changelog support for CI/CD templates
+
 ## 🚀 Quick Start
 
 ### Prerequisites
@@ -122,6 +130,8 @@ UnifiedAIToolbox/
 - **[Workflow Guide](docs/WORKFLOW_GUIDE.md)** - ✨ Complete guide to GitHub Actions workflows, artifacts, and local testing
 - **[Telemetry & AI Insights](docs/TELEMETRY_AND_AI_INSIGHTS.md)** - 🆕 Usage metrics and AI-powered analysis summaries
 - **[CI/CD Blueprint](templates/ci-cd-blueprint/README.md)** - 🆕 Reusable workflow templates for other repos
+- **[Unified CLI Guide](docs/UNIFIED_CLI.md)** - 🆕 Single command-line interface for all toolbox operations
+- **[Alerting System](docs/ALERTING_SYSTEM.md)** - 🆕 Configure and monitor alerts for telemetry events
 - **[Webhook Setup](docs/WEBHOOK_SETUP.md)** - Configure GitHub webhooks for automated orchestration
 - **[GitHub Integration](docs/GITHUB_INTEGRATION.md)** - Complete guide to GitHub authentication and repo operations
 
