@@ -11,9 +11,16 @@
 $ErrorActionPreference = 'Stop'
 
 # Module-level state
+# Determine default output path more reliably
+$defaultOutputPath = if ($PSScriptRoot) {
+    Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) 'artifacts' 'alerts'
+} else {
+    Join-Path (Get-Location).Path 'artifacts' 'alerts'
+}
+
 $script:AlertingConfig = @{
     Enabled = $true
-    OutputPath = "$PSScriptRoot/../../artifacts/alerts"
+    OutputPath = $defaultOutputPath
     AlertRules = @()
     CheckInterval = 60  # seconds
     MaxFileSize = 10MB

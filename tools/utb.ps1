@@ -47,6 +47,7 @@ $ErrorActionPreference = 'Stop'
 
 # Configuration
 $Script:ToolVersion = "1.0.0"
+$Script:RepositoryUrl = "https://github.com/xfaith4/UnifiedAIToolbox"
 $Script:RepoRoot = Split-Path -Parent $PSScriptRoot
 $Script:ModulesPath = Join-Path $RepoRoot 'modules'
 $Script:ScriptsPath = Join-Path $RepoRoot 'scripts'
@@ -122,7 +123,7 @@ function Show-Help {
 function Show-Version {
     Write-Banner "Unified AI Toolbox"
     Write-Host "  Version: $Script:ToolVersion" -ForegroundColor Cyan
-    Write-Host "  Repository: https://github.com/xfaith4/UnifiedAIToolbox" -ForegroundColor Gray
+    Write-Host "  Repository: $Script:RepositoryUrl" -ForegroundColor Gray
     Write-Host ""
 }
 

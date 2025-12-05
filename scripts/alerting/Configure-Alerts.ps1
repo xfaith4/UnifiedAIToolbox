@@ -32,10 +32,26 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-# Import required modules
-$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+# Determine repository root more reliably
+if ($PSScriptRoot) {
+    $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+} else {
+    $repoRoot = (Get-Location).Path
+}
+
 $alertingModule = Join-Path $repoRoot 'modules' 'Alerting' 'Alerting.psd1'
 $telemetryModule = Join-Path $repoRoot 'modules' 'Telemetry' 'Telemetry.psd1'
+
+# Verify modules exist before importing
+if (-not (Test-Path $alertingModule)) {
+    Write-Error "Alerting module not found at: $alertingModule"
+    exit 1
+}
+
+if (-not (Test-Path $telemetryModule)) {
+    Write-Error "Telemetry module not found at: $telemetryModule"
+    exit 1
+}
 
 Import-Module $alertingModule -Force
 Import-Module $telemetryModule -Force

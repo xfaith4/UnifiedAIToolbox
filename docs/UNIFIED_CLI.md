@@ -195,6 +195,7 @@ utb alerts setup
 **Bash/Zsh:**
 ```bash
 # Add to your .bashrc or .zshrc
+# Replace /path/to/UnifiedAIToolbox with your actual repository path
 alias utb='pwsh /path/to/UnifiedAIToolbox/tools/utb.ps1'
 
 # Usage

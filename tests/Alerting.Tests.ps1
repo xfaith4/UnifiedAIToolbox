@@ -11,8 +11,10 @@ $ErrorActionPreference = 'Stop'
 # Import Pester if available
 $pesterInstalled = Get-Module -ListAvailable -Name Pester
 if (-not $pesterInstalled) {
-    Write-Host "Installing Pester module..." -ForegroundColor Yellow
-    Install-Module -Name Pester -Force -Scope CurrentUser -SkipPublisherCheck
+    Write-Host "Pester module not found. Install it to run tests:" -ForegroundColor Yellow
+    Write-Host "  Install-Module -Name Pester -Force -Scope CurrentUser -SkipPublisherCheck" -ForegroundColor Gray
+    Write-Error "Pester module is required to run tests"
+    exit 1
 }
 
 Import-Module Pester -Force

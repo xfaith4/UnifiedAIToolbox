@@ -78,7 +78,7 @@ function Set-TemplateVersion {
     )
     
     $versionFile = Join-Path $Path 'VERSION'
-    Set-Content -Path $versionFile -Value "$Version`n" -NoNewline
+    Set-Content -Path $versionFile -Value $Version
     Write-Host "✅ Updated VERSION file to: $Version" -ForegroundColor Green
 }
 
