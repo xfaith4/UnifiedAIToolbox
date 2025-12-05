@@ -1,0 +1,11 @@
+{
+  "api_cost_per_1k_tokens_usd": 0.02,
+  "cpu_cost_per_hour_usd": 0.10,
+  "gpu_cost_per_hour_usd": 1.50,
+  "avg_cpu_power_watts": 50,
+  "avg_gpu_power_watts": 200,
+  "water_intensity_l_per_kwh": 0.5,
+  "human_hourly_rate_usd": 60,
+  "baseline_hours_per_unit": 2,
+  "storage_cost_per_gb_month_usd": 0.023
+}
