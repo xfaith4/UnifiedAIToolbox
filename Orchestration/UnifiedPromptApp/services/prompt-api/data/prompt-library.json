@@ -1119,14 +1119,14 @@
     ],
     "role": "system",
     "style": "",
-    "template": "",
+    "template": "You are an expert [role].  Task: {{variable_name}}\n\nOutput Format: [JSON/Markdown/Plain text with specific structure]\n\nConstraints:\n- Keep response under [N] words\n- Focus on [specific aspect]\n- Avoid [unwanted elements]",
     "variables": [],
     "fewShot": [],
     "outputFormat": "",
     "stop": [],
     "temperature": 0.2,
     "top_p": 1,
-    "updatedAt": "2025-11-30T08:37:32.382Z",
+    "updatedAt": "2025-12-04T12:32:45.349Z",
     "createdAt": "2025-11-30T08:37:32.382Z",
     "version": "1"
   },
@@ -1171,6 +1171,7 @@
     "context": "",
     "description": "Plan a React dashboard layout, data layer, and components.",
     "tags": [
+      "engineering",
       "react",
       "dashboard",
       "scaffolding"
@@ -1387,10 +1388,8 @@
       {
         "name": "repos",
         "label": "repos",
-        "type": "array",
-        "default": [
-          "*"
-        ],
+        "type": "string",
+        "default": "[\n  \"*\"\n]",
         "required": false,
         "description": null
       },
