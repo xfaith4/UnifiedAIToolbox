@@ -11,13 +11,10 @@ const {
   loadRun,
   listRuns
 } = require('./run-tracker');
-
-const fs = require('fs');
-const path = require('path');
+const { loadCostConfig } = require('./config-loader');
 
 // Load cost config
-const configPath = path.join(__dirname, '..', '..', '..', 'config', 'costs.example.json');
-const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+const config = loadCostConfig();
 
 console.log('Testing Run Tracker Module...\n');
 

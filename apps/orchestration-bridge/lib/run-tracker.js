@@ -12,6 +12,9 @@ const fs = require('fs');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 
+// Constants
+const MS_TO_KWH_DIVISOR = 3600000; // Conversion from watt-milliseconds to kWh
+
 /**
  * Get current ISO timestamp
  * @returns {string} ISO 8601 timestamp
@@ -104,7 +107,7 @@ function computeCosts(resources, config) {
   const avg_power_watts = 
     (config.avg_cpu_power_watts || 0) + 
     (config.avg_gpu_power_watts || 0);
-  const energy_kwh = (avg_power_watts * duration_seconds) / 3600000;
+  const energy_kwh = (avg_power_watts * duration_seconds) / MS_TO_KWH_DIVISOR;
   
   // Water usage based on energy consumption
   const water_liters = energy_kwh * (config.water_intensity_l_per_kwh || 0);

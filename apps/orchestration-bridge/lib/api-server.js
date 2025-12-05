@@ -9,8 +9,6 @@
 
 const express = require('express');
 const cors = require('cors');
-const path = require('path');
-const fs = require('fs');
 const {
   saveRun,
   computeCosts,
@@ -19,28 +17,10 @@ const {
   listRuns,
   ensureRunsDir
 } = require('./run-tracker');
+const { loadCostConfig } = require('./config-loader');
 
 // Load cost configuration
-const CONFIG_PATH = path.join(__dirname, '..', '..', '..', 'config', 'costs.example.json');
-let costConfig = {};
-
-try {
-  if (fs.existsSync(CONFIG_PATH)) {
-    costConfig = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
-  }
-} catch (err) {
-  console.warn('Failed to load cost config, using defaults:', err.message);
-  costConfig = {
-    api_cost_per_1k_tokens_usd: 0.02,
-    cpu_cost_per_hour_usd: 0.10,
-    gpu_cost_per_hour_usd: 1.50,
-    avg_cpu_power_watts: 50,
-    avg_gpu_power_watts: 200,
-    water_intensity_l_per_kwh: 0.5,
-    human_hourly_rate_usd: 60,
-    baseline_hours_per_unit: 2
-  };
-}
+const costConfig = loadCostConfig();
 
 function createRunsAPI(app) {
   // Enable CORS for dashboard
