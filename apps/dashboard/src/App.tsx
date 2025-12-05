@@ -12,6 +12,8 @@ import SensorsPage from './pages/SensorsPage'
 import SettingsPage from './pages/Settings'
 import HelpPage from './pages/HelpPage'
 import EnhancedAIPage from './pages/EnhancedAIPage'
+import RunsPage from './pages/RunsPage'
+import RunDetailPage from './pages/RunDetailPage'
 
 export default function App() {
   return (
@@ -28,6 +30,8 @@ export default function App() {
         <Route path="/datasets" element={<DatasetsPage />} />
         <Route path="/sensors" element={<SensorsPage />} />
         <Route path="/enhanced-ai" element={<EnhancedAIPage />} />
+        <Route path="/runs" element={<RunsPage />} />
+        <Route path="/runs/:id" element={<RunDetailPage />} />
         <Route path="/help" element={<HelpPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<div className="p-6">Not found</div>} />
