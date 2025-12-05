@@ -49,7 +49,10 @@ The Unified AI Toolbox is a comprehensive platform that unifies prompt managemen
 - **Authentication**: JWT-based auth with role-based access control
 - **Security Scanning**: Integrated CodeQL for vulnerability detection
 - **Audit Logging**: Comprehensive activity tracking
-- **CI/CD Pipeline**: Automated testing and deployment workflows
+- **CI/CD Pipeline**: Comprehensive GitHub Actions workflows with automated testing, building, and artifact management
+- **Webhook Integration**: GitHub webhook support for automated orchestration triggers
+- **PR Review Dashboard**: Collaborative pull request review with CI status tracking
+- **Scheduled Analysis**: Automated daily repository health checks and code quality metrics
 
 ## 🚀 Quick Start
 
@@ -110,15 +113,24 @@ UnifiedAIToolbox/
 
 ## 📚 Documentation
 
-- **[Project Roadmap](docs/PROJECT_ROADMAP.md)** - Current status, next steps, and future plans
-- **[GitHub Integration](docs/GITHUB_INTEGRATION.md)** - NEW: Complete guide to GitHub authentication, repo operations, and orchestration
-- **[Orchestration Run Tracking](docs/ORCHESTRATION_RUN_TRACKING.md)** - Comprehensive run tracking with cost & environmental analytics
-- **[Orchestrator Enhancements](docs/ORCHESTRATOR_ENHANCEMENTS.md)** - Agent library, feedback/learning, cost tracking
+### Getting Started
 - **[Quick Start Guide](docs/help/quick-start.md)** - Get up and running in minutes
 - **[Launch Guide](docs/help/launch-guide.md)** - Detailed deployment instructions
 - **[Architecture Overview](docs/help/architecture.md)** - System design and components
-- **[API Reference](docs/help/api-reference.md)** - REST API documentation
+
+### CI/CD & Automation
+- **[Workflow Guide](docs/WORKFLOW_GUIDE.md)** - ✨ NEW: Complete guide to GitHub Actions workflows, artifacts, and local testing
+- **[Webhook Setup](docs/WEBHOOK_SETUP.md)** - ✨ NEW: Configure GitHub webhooks for automated orchestration
+- **[GitHub Integration](docs/GITHUB_INTEGRATION.md)** - Complete guide to GitHub authentication and repo operations
+
+### Features & Capabilities
+- **[Project Roadmap](docs/PROJECT_ROADMAP.md)** - Current status, next steps, and future plans
+- **[Orchestration Run Tracking](docs/ORCHESTRATION_RUN_TRACKING.md)** - Comprehensive run tracking with cost & environmental analytics
+- **[Orchestrator Enhancements](docs/ORCHESTRATOR_ENHANCEMENTS.md)** - Agent library, feedback/learning, cost tracking
 - **[Prompt Refiner Guide](docs/help/prompt-refiner.md)** - Prompt optimization workflows
+
+### Reference
+- **[API Reference](docs/help/api-reference.md)** - REST API documentation
 - **[Deployment Guide](docs/help/deployment.md)** - Production deployment checklist
 
 ## 🛠️ Development
@@ -174,6 +186,76 @@ cd services/prompt-api && pytest
 cd apps/dashboard && npm test
 ```
 
+## 🔄 CI/CD & Automation
+
+### GitHub Actions Workflows
+
+The project includes comprehensive CI/CD workflows:
+
+**Continuous Integration (`ci-comprehensive.yml`):**
+- Runs on every push and pull request
+- Tests PowerShell, Python, TypeScript, and C# code
+- Builds dashboard, web app, and desktop applications
+- Uploads build artifacts (30-day retention)
+- Runs smoke tests and generates CI summary
+
+**Scheduled Repository Analysis (`repo-analysis-scheduled.yml`):**
+- Runs daily at 6 AM UTC
+- Analyzes repository health, code quality, and prompt library
+- Generates JSON and HTML reports
+- Uploads analysis artifacts (90-day retention)
+
+### Webhook Integration
+
+Set up GitHub webhooks to trigger automated orchestration:
+
+```bash
+# Configure webhook secret
+export GITHUB_WEBHOOK_SECRET=your-secure-secret
+
+# Webhook endpoint
+POST https://your-api-domain.com/webhooks/github
+```
+
+Webhooks automatically trigger:
+- Repository analysis on push
+- Code review on PR open/update
+- Security scans on new PRs
+
+See [Webhook Setup Guide](docs/WEBHOOK_SETUP.md) for detailed configuration.
+
+### Artifact Management
+
+Build artifacts are automatically collected and organized:
+
+```bash
+# Collect artifacts locally
+pwsh scripts/Collect-BuildArtifacts.ps1 -Clean -Manifest
+
+# Run repository analysis
+pwsh scripts/Run-RepoAnalysis.ps1 -AnalysisType full
+
+# Generate HTML report
+pwsh scripts/Convert-RepoAnalysisToHtml.ps1 -JsonPath artifacts/repo-analysis/report.json
+```
+
+Artifacts are stored in standardized directories:
+- `artifacts/builds/` - Build outputs (dashboard, webapp, desktop)
+- `artifacts/reports/` - Analysis and health reports
+- `artifacts/logs/` - Build and runtime logs
+- `artifacts/packages/` - Packaged artifacts (databases, etc.)
+
+See [Workflow Guide](docs/WORKFLOW_GUIDE.md) for comprehensive documentation.
+
+### PR Review Dashboard
+
+Access the collaborative PR review dashboard at `/github` in the web dashboard:
+- View all open/closed pull requests
+- Check CI status for each PR
+- Filter by state, label, or author
+- Sort by recent updates or creation date
+- View PR statistics and metrics
+
 ## 🔧 Configuration
 
 Create a `.env` file in the root directory:
@@ -196,6 +278,10 @@ PROMPT_API_DB_PATH=./services/prompt-api/workbench.db
 
 # Authentication
 JWT_SECRET_KEY=your-secret-key-here
+
+# GitHub Integration (optional)
+GITHUB_TOKEN=your-github-personal-access-token
+GITHUB_WEBHOOK_SECRET=your-webhook-secret
 ```
 
 The Next.js portal uses `NEXT_PUBLIC_API_BASE` (default `http://localhost:8000`) to reach the prompt API so orchestrations run against the backend instead of the simulation fallback.
