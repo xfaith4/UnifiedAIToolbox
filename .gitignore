@@ -24,6 +24,10 @@ runs/
 *.db
 *.log
 
+# Artifacts directory (build outputs, reports, collected artifacts)
+artifacts/
+!artifacts/README.md
+
 # Binary executables
 *.exe
 *.dll
