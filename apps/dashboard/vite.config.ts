@@ -11,11 +11,12 @@ export default defineConfig({
         configure: (proxy, _options) => {
           // Mock telemetry endpoints when backend is unavailable
           proxy.on('error', (err, req, res) => {
-            if (req.url?.includes('/api/telemetry')) {
+            if (req.url?.includes('/api/telemetry') && !res.headersSent) {
               res.writeHead(200, { 'Content-Type': 'application/json' })
               
               // Generate mock telemetry data
-              const days = parseInt(new URL(req.url, 'http://localhost').searchParams.get('days') || '7')
+              const daysParam = new URL(req.url, 'http://localhost').searchParams.get('days')
+              const days = Math.max(1, Math.min(365, parseInt(daysParam || '7', 10) || 7))
               const mockData = {
                 total_events: 0,
                 period_days: days,
