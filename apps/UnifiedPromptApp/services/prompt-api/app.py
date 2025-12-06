@@ -456,15 +456,66 @@ def cache_put(cache_key: str, template_id: str, model: str, input_json: str, out
         (cache_key, template_id, model, input_json, json.dumps(output), now_iso()))
         conn.commit()
 
-def audit_log(template_id: str, model: str, input_json: str, output: Optional[Dict[str, Any]], cached: bool, status: str, token_prompt: Optional[int], token_completion: Optional[int]) -> int:
+def audit_log(
+    template_id: str, 
+    model: str, 
+    input_json: str, 
+    output: Optional[Dict[str, Any]], 
+    cached: bool, 
+    status: str, 
+    token_prompt: Optional[int], 
+    token_completion: Optional[int],
+    run_id: Optional[str] = None,
+    agent_name: Optional[str] = None
+) -> int:
+    """
+    Log API call to audit table and optionally record environmental metrics.
+    
+    Args:
+        template_id: Template/prompt ID
+        model: Model name
+        input_json: JSON serialized input
+        output: Output dictionary
+        cached: Whether result was cached
+        status: Status string
+        token_prompt: Input/prompt tokens
+        token_completion: Output/completion tokens
+        run_id: Optional orchestration run ID
+        agent_name: Optional agent name
+        
+    Returns:
+        Audit log entry ID
+    """
+    timestamp = now_iso()
+    
     with sqlite3.connect(DB_PATH) as conn:
         c = conn.cursor()
         c.execute("""
         INSERT INTO audit(template_id, model, input_json, output_json, cached, status, created_at, token_prompt, token_completion)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (template_id, model, input_json, json.dumps(output) if output else None, 1 if cached else 0, status, now_iso(), token_prompt, token_completion))
+        """, (template_id, model, input_json, json.dumps(output) if output else None, 1 if cached else 0, status, timestamp, token_prompt, token_completion))
+        audit_id = c.lastrowid
         conn.commit()
-        return c.lastrowid
+    
+    # Record environmental metrics if tokens available and not cached (to avoid double-counting)
+    if token_prompt is not None and token_completion is not None and not cached:
+        try:
+            # Import is at module level at top of file
+            import cost_metrics
+            cost_metrics.record_call_metrics(
+                db_path=DB_PATH,
+                model=model,
+                tokens_input=token_prompt,
+                tokens_output=token_completion,
+                run_id=run_id,
+                agent_name=agent_name,
+                timestamp=timestamp
+            )
+        except Exception as e:
+            # Don't fail the audit log if metrics recording fails
+            print(f"Warning: Failed to record cost metrics: {e}")
+    
+    return audit_id
 
 def read_templates() -> Dict[str, Dict[str, Any]]:
     templates = {}
@@ -1846,7 +1897,10 @@ def generate(req: RequestPayload):
     input_json = normalize(payload_for_hash)
 
     if cached_output:
-        audit_id = audit_log(req.template_id, model, input_json, cached_output, True, "ok", None, None)
+        audit_id = audit_log(
+            req.template_id, model, input_json, cached_output, True, "ok", None, None,
+            run_id=None, agent_name=None
+        )
         return GenerateResponse(
             cached=True,
             cache_key=cache_key,
@@ -1864,7 +1918,8 @@ def generate(req: RequestPayload):
         cache_put(cache_key, req.template_id, model, input_json, output)
         audit_id = audit_log(
             req.template_id, model, input_json, output, False, "ok",
-            usage.get("prompt_tokens"), usage.get("completion_tokens")
+            usage.get("prompt_tokens"), usage.get("completion_tokens"),
+            run_id=None, agent_name=None
         )
         return GenerateResponse(
             cached=False,
@@ -1875,7 +1930,10 @@ def generate(req: RequestPayload):
             audit_id=audit_id
         )
     except HTTPException as e:
-        audit_id = audit_log(req.template_id, model, input_json, None, False, f"error:{e.detail}", None, None)
+        audit_id = audit_log(
+            req.template_id, model, input_json, None, False, f"error:{e.detail}", None, None,
+            run_id=None, agent_name=None
+        )
         raise e
 
 
@@ -2014,6 +2072,117 @@ def get_costs_by_run(
         run_id=run_id,
         start_date=start_date,
         end_date=end_date
+    )
+
+
+# ----------------------------
+# Environmental Impact Metrics Endpoints
+# ----------------------------
+from routes_cost_metrics import (
+    get_metrics_summary, get_runs_metrics, get_models_metrics, get_prometheus_metrics,
+    MetricsSummaryResponse, RunMetricsResponse, ModelMetricsResponse
+)
+
+
+@app.get("/metrics/cost/summary", response_model=MetricsSummaryResponse)
+def metrics_cost_summary(
+    start_date: Optional[str] = Query(None, description="Start date (ISO 8601)"),
+    end_date: Optional[str] = Query(None, description="End date (ISO 8601)"),
+    project: Optional[str] = Query(None, description="Filter by project name"),
+    app: Optional[str] = Query(None, description="Filter by app name"),
+    admin_token: Optional[str] = Header(None, alias="X-Admin-Token")
+):
+    """
+    Get comprehensive summary of cost and environmental impact metrics.
+    
+    Returns:
+    - Total cost, energy (kWh), and water usage (liters)
+    - Top models and agents by cost
+    - Daily timeseries data
+    """
+    return get_metrics_summary(
+        db_path=DB_PATH,
+        start_date=start_date,
+        end_date=end_date,
+        project=project,
+        app=app,
+        admin_token=admin_token,
+        settings=settings
+    )
+
+
+@app.get("/metrics/cost/runs", response_model=RunMetricsResponse)
+def metrics_cost_runs(
+    page: int = Query(1, ge=1, description="Page number"),
+    per_page: int = Query(20, ge=1, le=100, description="Items per page"),
+    model: Optional[str] = Query(None, description="Filter by model"),
+    agent: Optional[str] = Query(None, description="Filter by agent"),
+    app: Optional[str] = Query(None, description="Filter by app"),
+    start_date: Optional[str] = Query(None, description="Start date (ISO 8601)"),
+    end_date: Optional[str] = Query(None, description="End date (ISO 8601)"),
+    admin_token: Optional[str] = Header(None, alias="X-Admin-Token")
+):
+    """
+    Get paginated list of orchestration runs with cost and environmental metrics.
+    
+    Supports filtering by:
+    - Model name
+    - Agent name
+    - App name
+    - Date range
+    """
+    return get_runs_metrics(
+        db_path=DB_PATH,
+        page=page,
+        per_page=per_page,
+        model=model,
+        agent=agent,
+        app=app,
+        start_date=start_date,
+        end_date=end_date,
+        admin_token=admin_token,
+        settings=settings
+    )
+
+
+@app.get("/metrics/cost/models", response_model=ModelMetricsResponse)
+def metrics_cost_models(
+    start_date: Optional[str] = Query(None, description="Start date (ISO 8601)"),
+    end_date: Optional[str] = Query(None, description="End date (ISO 8601)"),
+    admin_token: Optional[str] = Header(None, alias="X-Admin-Token")
+):
+    """
+    Get aggregated cost and environmental metrics by model.
+    
+    Returns per-model aggregates including:
+    - Total tokens, cost, energy, and water
+    - Average cost per call
+    - Number of calls and runs
+    """
+    return get_models_metrics(
+        db_path=DB_PATH,
+        start_date=start_date,
+        end_date=end_date,
+        admin_token=admin_token,
+        settings=settings
+    )
+
+
+@app.get("/metrics/cost/prometheus", response_class=Response)
+def metrics_cost_prometheus():
+    """
+    Export metrics in Prometheus text format for scraping.
+    
+    Metrics include:
+    - unified_ai_cost_usd_total
+    - unified_ai_energy_kwh_total
+    - unified_ai_water_liters_total
+    - unified_ai_tokens_total
+    """
+    metrics_text = get_prometheus_metrics(DB_PATH)
+    return Response(
+        content=metrics_text,
+        media_type="text/plain; version=0.0.4"
     )
 
 
