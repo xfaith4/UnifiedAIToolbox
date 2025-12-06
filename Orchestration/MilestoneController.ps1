@@ -9,7 +9,7 @@ param(
 # Resolve repo root and inner orchestrator path
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
-$innerScript = Join-Path -Path $PSScriptRoot -ChildPath 'AI-Orchestration\Scripts\MilestoneController.ps1'
+$innerScript = Join-Path -Path $PSScriptRoot -ChildPath 'scripts\MilestoneController.ps1'
 
 if (-not (Test-Path -LiteralPath $innerScript)) {
     Write-Error "Inner orchestrator script not found at '$innerScript'."

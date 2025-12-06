@@ -178,9 +178,11 @@ Test-DirectoryExists 'apps\PromptRefiner' 'PromptRefiner app'
 Test-DirectoryExists 'apps\orchestration-bridge' 'orchestration-bridge app'
 
 Write-Host "`n📁 Orchestration Components:" -ForegroundColor White
-Test-DirectoryExists 'Orchestration\UnifiedPromptApp\services\prompt-api' 'prompt-api service'
-Test-DirectoryExists 'Orchestration\AI-Orchestration' 'AI-Orchestration'
-Test-DirectoryExists 'Orchestration\AI-Orchestration\codex-multiagent-swarm' 'codex-multiagent-swarm'
+Test-DirectoryExists 'apps\UnifiedPromptApp\services\prompt-api' 'prompt-api service'
+Test-DirectoryExists 'Orchestration\engine' 'Orchestration engine'
+Test-DirectoryExists 'Orchestration\engine\codex-multiagent-swarm' 'codex-multiagent-swarm'
+Test-DirectoryExists 'Orchestration\milestone-dashboard' 'milestone-dashboard'
+Test-DirectoryExists 'Orchestration\scripts' 'orchestration scripts'
 
 Write-Host "`n📄 Launch Scripts:" -ForegroundColor White
 Test-FileExists 'Launch.ps1' 'Launch.ps1'

@@ -113,6 +113,8 @@ function Get-ObjectPairs {
 }
 
 # Recursively normalize JSON-shaped objects into Hashtable/arrays/scalars
+# NOTE: Returns hashtables for objects, proper PowerShell arrays for collections, and scalars as-is
+# This ensures compatibility with functions expecting [hashtable] parameters like Assert-ToolArgs
 function Convert-ToHashtable {
     [CmdletBinding()]
     param(
@@ -124,14 +126,17 @@ function Convert-ToHashtable {
     if ($null -eq $Input) { return $null }
     if ($Input -is [hashtable]) { return $Input }
 
+    # Convert collections to PowerShell arrays (not ArrayList) to avoid type mismatch errors
+    # when the result is passed to functions expecting hashtables
     if ($Input -is [System.Collections.IEnumerable] -and -not ($Input -is [string])) {
-        $list = New-Object System.Collections.ArrayList
+        $list = @()
         foreach ($item in $Input) {
-            [void]$list.Add((Convert-ToHashtable -Input $item))
+            $list += Convert-ToHashtable -Input $item
         }
         return ,$list
     }
 
+    # Convert PSCustomObject to hashtable for consistent parameter passing
     if ($Input -is [pscustomobject]) {
         $ht = @{}
         foreach ($prop in $Input.PSObject.Properties) {
@@ -146,6 +151,8 @@ function Convert-ToHashtable {
 }
 
 # Assert tool args include required keys (fail loud & early)
+# NOTE: This function requires $Args to be a [hashtable] type.
+# Callers must normalize their input using Convert-ToHashtable before passing to this function.
 function Assert-ToolArgs {
     [CmdletBinding()]
     param(
@@ -277,14 +284,18 @@ function Invoke-Tool {
     param(
         [Parameter(Mandatory)][string]$Name,
 
-        # Accept -Args/-Arguments; may be PSCustomObject or Hashtable
+        # Accept -Args/-Arguments; may be PSCustomObject, Hashtable, or null
+        # NOTE: This parameter accepts flexible input types from JSON deserialization.
+        # It will be normalized to a hashtable by Convert-ToHashtable before use.
+        # Expected shape after normalization: @{ key1 = value1; key2 = value2; ... }
         [Alias('Arguments')]
         [object]$Args,
 
         [Parameter(Mandatory)][string]$OutDir
     )
 
-    # Normalize to Hashtable/arrays/scalars
+    # Normalize to Hashtable/arrays/scalars to ensure type consistency
+    # This prevents "Cannot convert ArrayList to Hashtable" errors
     $Args = Convert-ToHashtable -Input $Args
 
     switch -Regex ($Name) {
