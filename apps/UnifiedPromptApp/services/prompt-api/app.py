@@ -1,5 +1,5 @@
 ### BEGIN FILE: app.py
-import os, json, hashlib, sqlite3, datetime, textwrap, pathlib, sys, subprocess, re, uuid, time, threading, shutil
+import os, json, hashlib, sqlite3, datetime, textwrap, pathlib, sys, subprocess, re, uuid, time, threading, shutil, logging
 from typing import cast
 import openai
 from dataclasses import dataclass
@@ -15,6 +15,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 import uvicorn # pyright: ignore[reportMissingImports]
 import yaml # pyright: ignore[reportMissingModuleSource]
 import requests # pyright: ignore[reportMissingModuleSource]
+
+# Configure logging at module level
+logger = logging.getLogger(__name__)
 
 # Import migrations module
 try:
@@ -1264,51 +1267,184 @@ def receive_telemetry(batch: TelemetryBatchRequest):
 def get_telemetry_stats(days: int = Query(7, ge=1, le=90)):
     """
     Get telemetry statistics for the specified number of days.
-    Returns aggregated metrics by event type, source, and time period.
+    Returns aggregated metrics from cost, quality, and run data.
+    
+    Compatible with migrations 4-6 (cost metrics, run aggregates, quality tracking).
+    Returns sane defaults when no data exists.
     """
     try:
-        # Validate days parameter (already validated by Query, but double-check)
-        if not isinstance(days, int) or days < 1 or days > 90:
-            raise HTTPException(status_code=400, detail="Invalid days parameter")
+        # Calculate date range
+        end_date = datetime.datetime.now(datetime.timezone.utc)
+        start_date = end_date - datetime.timedelta(days=days)
         
-        # Use PowerShell module to get stats
-        # Using string format to avoid f-string with user input
-        module_path = str(ROOT_DIR / "modules" / "Telemetry" / "Telemetry.psd1")
-        ps_script = """
-        $ErrorActionPreference = 'Stop'
-        Import-Module '{0}' -Force
-        $stats = Get-TelemetryStats -Days {1}
-        $stats | ConvertTo-Json -Depth 10
-        """.format(module_path, days)
+        # Initialize response with safe defaults
+        stats = {
+            "total_events": 0,
+            "period_days": days,
+            "start_date": start_date.isoformat().replace("+00:00", "Z"),
+            "end_date": end_date.isoformat().replace("+00:00", "Z"),
+            "by_event_type": {},
+            "by_source": {},
+            "by_day": {}
+        }
         
-        result = subprocess.run(
-            ["pwsh", "-NoProfile", "-Command", ps_script],
-            capture_output=True,
-            text=True,
-            timeout=30
-        )
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            # Check if new tables exist (from migrations 4-6)
+            cursor.execute("""
+                SELECT name FROM sqlite_master 
+                WHERE type='table' AND name IN (
+                    'orchestration_cost_metrics',
+                    'orchestration_run_aggregates', 
+                    'run_quality_metrics'
+                )
+            """)
+            available_tables = {row[0] for row in cursor.fetchall()}
+            
+            # Query run aggregates if table exists (migration 5)
+            if 'orchestration_run_aggregates' in available_tables:
+                try:
+                    cursor.execute("""
+                        SELECT 
+                            COUNT(*) as run_count,
+                            SUM(total_cost_usd) as total_cost,
+                            SUM(total_tokens_input + total_tokens_output) as total_tokens,
+                            COUNT(DISTINCT run_id) as unique_runs
+                        FROM orchestration_run_aggregates
+                        WHERE datetime(created_at) >= datetime(?)
+                          AND datetime(created_at) <= datetime(?)
+                    """, (start_date.isoformat(), end_date.isoformat()))
+                    
+                    row = cursor.fetchone()
+                    if row and row['run_count'] > 0:
+                        stats['total_events'] = row['run_count'] or 0
+                        stats['by_event_type']['OrchestrationRun.Completed'] = row['run_count'] or 0
+                        
+                        # Add cost summary to metadata (not breaking schema)
+                        if row['total_cost'] is not None:
+                            stats['by_event_type']['OrchestrationRun.TotalCost'] = float(row['total_cost'])
+                
+                except sqlite3.OperationalError as e:
+                    logger.warning(f"Failed to query run_aggregates: {e}")
+            
+            # Query quality metrics if table exists (migration 6)
+            if 'run_quality_metrics' in available_tables:
+                try:
+                    cursor.execute("""
+                        SELECT 
+                            COUNT(*) as total_runs,
+                            SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as successful_runs,
+                            AVG(quality_score) as avg_quality
+                        FROM run_quality_metrics
+                        WHERE datetime(created_at) >= datetime(?)
+                          AND datetime(created_at) <= datetime(?)
+                    """, (start_date.isoformat(), end_date.isoformat()))
+                    
+                    row = cursor.fetchone()
+                    if row and row['total_runs'] > 0:
+                        stats['by_event_type']['QualityMetrics.Total'] = row['total_runs'] or 0
+                        stats['by_event_type']['QualityMetrics.Successful'] = row['successful_runs'] or 0
+                        
+                        failed_runs = (row['total_runs'] or 0) - (row['successful_runs'] or 0)
+                        if failed_runs > 0:
+                            stats['by_event_type']['QualityMetrics.Failed'] = failed_runs
+                
+                except sqlite3.OperationalError as e:
+                    logger.warning(f"Failed to query quality_metrics: {e}")
+            
+            # Query cost metrics for daily breakdown if table exists (migration 4)
+            if 'orchestration_cost_metrics' in available_tables:
+                try:
+                    cursor.execute("""
+                        SELECT 
+                            DATE(timestamp) as day,
+                            COUNT(*) as call_count,
+                            SUM(cost_usd) as daily_cost
+                        FROM orchestration_cost_metrics
+                        WHERE datetime(timestamp) >= datetime(?)
+                          AND datetime(timestamp) <= datetime(?)
+                        GROUP BY DATE(timestamp)
+                        ORDER BY day ASC
+                    """, (start_date.isoformat(), end_date.isoformat()))
+                    
+                    for row in cursor.fetchall():
+                        day = row['day']
+                        count = row['call_count'] or 0
+                        if day:
+                            stats['by_day'][day] = count
+                            stats['total_events'] += count
+                
+                except sqlite3.OperationalError as e:
+                    logger.warning(f"Failed to query cost_metrics: {e}")
+            
+            # Fallback: Try reading JSONL telemetry files if no database data
+            if stats['total_events'] == 0:
+                try:
+                    telemetry_dir = ROOT_DIR / "artifacts" / "telemetry"
+                    if telemetry_dir.exists():
+                        # Read JSONL files for the date range
+                        for jsonl_file in telemetry_dir.glob("telemetry_*.jsonl"):
+                            try:
+                                with open(jsonl_file, 'r', encoding='utf-8') as f:
+                                    for line in f:
+                                        if not line.strip():
+                                            continue
+                                        try:
+                                            event = json.loads(line)
+                                            event_time = datetime.datetime.fromisoformat(
+                                                event.get('timestamp', '').replace('Z', '+00:00')
+                                            )
+                                            
+                                            if start_date <= event_time <= end_date:
+                                                stats['total_events'] += 1
+                                                
+                                                # Count by event type
+                                                event_type = event.get('eventType', 'Unknown')
+                                                stats['by_event_type'][event_type] = \
+                                                    stats['by_event_type'].get(event_type, 0) + 1
+                                                
+                                                # Count by source
+                                                source = event.get('source', 'Unknown')
+                                                stats['by_source'][source] = \
+                                                    stats['by_source'].get(source, 0) + 1
+                                                
+                                                # Count by day
+                                                day = event_time.strftime('%Y-%m-%d')
+                                                stats['by_day'][day] = stats['by_day'].get(day, 0) + 1
+                                        
+                                        except (json.JSONDecodeError, ValueError, KeyError) as e:
+                                            # Skip malformed events
+                                            logger.debug(f"Skipping malformed event: {e}")
+                                            continue
+                            
+                            except Exception as e:
+                                logger.warning(f"Failed to read telemetry file {jsonl_file}: {e}")
+                                continue
+                
+                except Exception as e:
+                    logger.warning(f"Failed to read JSONL telemetry files: {e}")
         
-        if result.returncode != 0:
-            raise Exception(f"PowerShell error: {result.stderr}")
+        # Ensure all values are JSON-safe (no None, Decimal, etc.)
+        stats['total_events'] = int(stats['total_events'] or 0)
         
-        stats = json.loads(result.stdout)
         return stats
         
-    except subprocess.TimeoutExpired:
-        raise HTTPException(
-            status_code=504,
-            detail="Telemetry stats request timed out"
-        )
-    except json.JSONDecodeError as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to parse telemetry stats: {str(e)}"
-        )
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to retrieve telemetry stats: {str(e)}"
-        )
+        # Log the error for debugging
+        logger.error(f"Telemetry stats endpoint error: {e}", exc_info=True)
+        
+        # Return safe fallback response instead of raising
+        return {
+            "total_events": 0,
+            "period_days": days,
+            "start_date": (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=days)).isoformat().replace("+00:00", "Z"),
+            "end_date": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
+            "by_event_type": {},
+            "by_source": {},
+            "by_day": {}
+        }
 
 @app.get("/prompts")
 def list_prompt_payloads():
