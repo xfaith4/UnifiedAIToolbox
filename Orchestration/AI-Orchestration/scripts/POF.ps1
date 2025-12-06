@@ -81,16 +81,20 @@ function Write-AgentStatus {
     $statusPath = Join-Path $OutDir "agent_status.json"
     $timestamp = Get-Date -Format "o"
 
-    $statusObj = [PSCustomObject]@{
+    # Build complete hashtable first for better performance
+    $statusHash = @{
         agent     = $Agent
         status    = $Status
         timestamp = $timestamp
     }
     
-    # Add any extra data fields
+    # Add any extra data fields to the hashtable
     foreach ($key in $ExtraData.Keys) {
-        $statusObj | Add-Member -NotePropertyName $key -NotePropertyValue $ExtraData[$key] -Force
+        $statusHash[$key] = $ExtraData[$key]
     }
+    
+    # Convert to PSCustomObject once
+    $statusObj = [PSCustomObject]$statusHash
 
     # Append to status log as JSON lines with error handling
     try {

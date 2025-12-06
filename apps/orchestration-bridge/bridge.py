@@ -48,6 +48,9 @@ def safe_json_load(file_path: Path, default: Any = None, context: str = "") -> A
     Returns:
         Parsed JSON data or default value on error
     """
+    content = None
+    file_size = None
+    
     try:
         if not file_path.exists():
             raise FileNotFoundError(f"JSON file not found: {file_path}")
@@ -69,10 +72,10 @@ def safe_json_load(file_path: Path, default: Any = None, context: str = "") -> A
         return json.loads(content)
     
     except json.JSONDecodeError as e:
-        content_preview = content[:200] if 'content' in locals() else "<unable to read>"
+        content_preview = content[:200] if content else "<unable to read>"
         error_msg = (
             f"Invalid JSON in file: {file_path}\n"
-            f"  Size: {file_size if 'file_size' in locals() else 'unknown'} bytes\n"
+            f"  Size: {file_size if file_size is not None else 'unknown'} bytes\n"
             f"  Error: {e.msg} at line {e.lineno}, column {e.colno}\n"
             f"  Content preview: {content_preview}..."
         )
