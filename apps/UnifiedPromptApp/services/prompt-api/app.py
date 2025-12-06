@@ -2168,6 +2168,139 @@ def metrics_cost_models(
     )
 
 
+# Quality Metrics Endpoints
+from routes_quality_metrics import (
+    record_quality_rating, record_automated_test, get_run_quality,
+    get_quality_summary as get_quality_summary_route, get_cost_quality_efficiency as get_efficiency_route,
+    get_runs_with_quality,
+    QualityRatingRequest, AutomatedTestRequest, QualityMetricsResponse,
+    QualitySummaryResponse, CostQualityEfficiencyResponse
+)
+
+
+@app.post("/metrics/quality/runs/{run_id}/rating")
+def quality_rating(
+    run_id: str,
+    rating: QualityRatingRequest,
+    admin_token: Optional[str] = Header(None, alias="X-Admin-Token")
+):
+    """
+    Submit a human quality rating for a run.
+    
+    Records success status, quality score, notes, and whether manual fixes were needed.
+    This endpoint is designed for web UI integration to capture human feedback.
+    """
+    return record_quality_rating(
+        db_path=DB_PATH,
+        run_id=run_id,
+        rating=rating,
+        admin_token=admin_token,
+        settings=settings
+    )
+
+
+@app.post("/metrics/quality/runs/{run_id}/automated")
+def automated_test(
+    run_id: str,
+    test_result: AutomatedTestRequest,
+    admin_token: Optional[str] = Header(None, alias="X-Admin-Token")
+):
+    """
+    Record automated test results for a run.
+    
+    Captures boolean success status and numeric test scores from automated test suites.
+    Use this when runs are part of a test suite that can programmatically assess quality.
+    """
+    return record_automated_test(
+        db_path=DB_PATH,
+        run_id=run_id,
+        test_result=test_result,
+        admin_token=admin_token,
+        settings=settings
+    )
+
+
+@app.get("/metrics/quality/runs/{run_id}", response_model=QualityMetricsResponse)
+def quality_metrics_for_run(run_id: str):
+    """
+    Get quality metrics for a specific run.
+    
+    Returns all quality data including success status, scores, and ratings.
+    """
+    result = get_run_quality(db_path=DB_PATH, run_id=run_id)
+    if not result:
+        raise HTTPException(status_code=404, detail=f"Quality metrics not found for run {run_id}")
+    return result
+
+
+@app.get("/metrics/quality/summary", response_model=QualitySummaryResponse)
+def quality_summary(
+    strategy: Optional[str] = Query(None, description="Filter by strategy"),
+    min_quality_score: Optional[float] = Query(None, ge=0.0, le=1.0, description="Minimum quality score"),
+    success_only: bool = Query(False, description="Only include successful runs")
+):
+    """
+    Get summary statistics for quality metrics.
+    
+    Returns:
+    - Overall success rate and average quality
+    - Breakdown by strategy
+    - Breakdown by model
+    - Number of runs requiring manual fixes
+    """
+    return get_quality_summary_route(
+        db_path=DB_PATH,
+        strategy=strategy,
+        min_quality_score=min_quality_score,
+        success_only=success_only
+    )
+
+
+@app.get("/metrics/quality/efficiency", response_model=CostQualityEfficiencyResponse)
+def cost_quality_efficiency(
+    quality_threshold: float = Query(0.7, ge=0.0, le=1.0, description="Quality threshold for 'high-quality' runs")
+):
+    """
+    Get cost efficiency metrics based on quality outcomes.
+    
+    Computes:
+    - Cost per successful run
+    - Cost per high-quality run (quality >= threshold)
+    - Quality-adjusted cost index (lower is better)
+    
+    This endpoint helps identify which strategies and models provide
+    the best value by balancing cost with outcome quality.
+    """
+    return get_efficiency_route(
+        db_path=DB_PATH,
+        quality_threshold=quality_threshold
+    )
+
+
+@app.get("/metrics/quality/runs")
+def runs_with_quality(
+    page: int = Query(1, ge=1, description="Page number"),
+    per_page: int = Query(20, ge=1, le=100, description="Items per page"),
+    strategy: Optional[str] = Query(None, description="Filter by strategy"),
+    min_quality: Optional[float] = Query(None, ge=0.0, le=1.0, description="Minimum quality score"),
+    success_only: bool = Query(False, description="Only successful runs")
+):
+    """
+    Get paginated list of runs with both cost and quality metrics.
+    
+    Joins cost data with quality data to provide a complete view of run efficiency.
+    Includes computed cost_efficiency metric (cost / quality).
+    """
+    return get_runs_with_quality(
+        db_path=DB_PATH,
+        page=page,
+        per_page=per_page,
+        strategy=strategy,
+        min_quality=min_quality,
+        success_only=success_only
+    )
+
+
 @app.get("/metrics/cost/prometheus", response_class=Response)
 def metrics_cost_prometheus():
     """
