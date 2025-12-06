@@ -2618,7 +2618,7 @@ def orchestrate_run(req: OrchestrationRequest):
                 if orchestration_summary.exists():
                     try:
                         summary_data = safe_json_load(orchestration_summary, context=f"final_synthesis:{run_id}")
-                        if summary_data:
+                        if summary_data is not None:
                             # Format the summary as readable text
                             summary_lines = [
                                 f"Goal: {summary_data.get('Goal', 'N/A')}",

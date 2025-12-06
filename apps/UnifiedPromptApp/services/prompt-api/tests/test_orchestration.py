@@ -217,3 +217,6 @@ class TestOrchestrateRun:
         assert summary_path.exists()
         assert summary_path.parent == run_dir
         assert summary_path.parent != app.BRIDGE_RUN_DIR
+        
+        # Clean up the created file
+        summary_path.unlink(missing_ok=True)
