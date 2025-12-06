@@ -77,7 +77,7 @@ function Write-Log {
 }
 
 function Write-AgentStatus {
-    param([string]$Agent, [string]$Status)
+    param([string]$Agent, [string]$Status, [hashtable]$ExtraData = @{})
     $statusPath = Join-Path $OutDir "agent_status.json"
     $timestamp = Get-Date -Format "o"
 
@@ -86,14 +86,35 @@ function Write-AgentStatus {
         status    = $Status
         timestamp = $timestamp
     }
+    
+    # Add any extra data fields
+    foreach ($key in $ExtraData.Keys) {
+        $statusObj | Add-Member -NotePropertyName $key -NotePropertyValue $ExtraData[$key] -Force
+    }
 
-    # Append to status log as JSON lines
-    $statusObj | ConvertTo-Json -Compress | Add-Content -Path $statusPath
+    # Append to status log as JSON lines with error handling
+    try {
+        $jsonLine = $statusObj | ConvertTo-Json -Compress -ErrorAction Stop
+        
+        # Validate the JSON is not empty
+        if ([string]::IsNullOrWhiteSpace($jsonLine)) {
+            throw "Generated JSON line is empty or whitespace"
+        }
+        
+        Add-Content -Path $statusPath -Value $jsonLine -ErrorAction Stop
+    }
+    catch {
+        # If JSON writing fails, log to a separate error file
+        $errorLogPath = Join-Path $OutDir "status_write_errors.log"
+        $errorMsg = "Failed to write agent status for '$Agent' (status: $Status): $_"
+        Add-Content -Path $errorLogPath -Value "$(Get-Date -Format 'o'): $errorMsg"
+        Write-Host "⚠️ $errorMsg" -ForegroundColor Yellow
+    }
 }
 
 # --- SINGLE CALL WRAPPER ----------------------------------------------------
 function Invoke-OpenAIRequest {
-    param([array]$Messages)
+    param([array]$Messages, [string]$AgentName = "API")
 
     $DynamicTokens = [Math]::Min(8192,
         [Math]::Max($Config.DefaultMaxTokens, ($Messages | ConvertTo-Json -Depth 10).Length / 4))
@@ -112,13 +133,40 @@ function Invoke-OpenAIRequest {
 
     try {
         $Response = Invoke-RestMethod -Uri $Config.OpenAIEndpoint -Method Post -Headers $Headers -Body $Body -ErrorAction Stop
+        
+        # Log raw response for debugging
+        $rawResponsePath = Join-Path $OutDir "${AgentName}_raw_response.json"
+        $Response | ConvertTo-Json -Depth 10 | Out-File -FilePath $rawResponsePath -Encoding UTF8
+        
+        # Validate response structure
+        if (-not $Response.choices -or $Response.choices.Count -eq 0) {
+            throw "OpenAI API returned no choices in response"
+        }
+        
         $Choice = $Response.choices[0].message
-        if (-not $Choice -or -not $Choice.content) { throw "Empty or invalid OpenAI response." }
-        Write-Log -Agent "API" -Content "✅ OpenAI call succeeded. Tokens used: $($Response.usage.total_tokens)"
+        if (-not $Choice -or -not $Choice.content) {
+            throw "Empty or invalid OpenAI response (missing message.content)"
+        }
+        
+        Write-Log -Agent $AgentName -Content "✅ OpenAI call succeeded. Tokens used: $($Response.usage.total_tokens)"
         return $Choice.content
     }
     catch {
-        Write-Log -Agent "API" -Content "❌ OpenAI call failed: $_"
+        $errorMsg = $_.Exception.Message
+        $errorDetails = if ($_.ErrorDetails) { $_.ErrorDetails.Message } else { "" }
+        
+        # Enhanced error logging
+        $errorLogPath = Join-Path $OutDir "${AgentName}_api_error.log"
+        $errorReport = @"
+OpenAI API Error for agent: $AgentName
+Timestamp: $(Get-Date -Format "o")
+Error: $errorMsg
+Error Details: $errorDetails
+Stack Trace: $($_.ScriptStackTrace)
+"@
+        $errorReport | Out-File -FilePath $errorLogPath -Encoding UTF8
+        
+        Write-Log -Agent $AgentName -Content "❌ OpenAI call failed: $errorMsg"
         return $null
     }
 }
@@ -194,6 +242,18 @@ try {
             try {
                 $Response = Invoke-RestMethod -Uri $Config.OpenAIEndpoint -Method Post -Headers $Headers -Body $Body -ErrorAction Stop
 
+                # Log raw response for debugging JSON parsing issues
+                $rawResponsePath = Join-Path $OutDir "$($Agent.name)_raw_response.json"
+                $Response | ConvertTo-Json -Depth 10 | Out-File -FilePath $rawResponsePath -Encoding UTF8
+
+                # Validate response structure before accessing
+                if (-not $Response.choices -or $Response.choices.Count -eq 0) {
+                    throw "OpenAI API returned no choices in response"
+                }
+                if (-not $Response.choices[0].message -or -not $Response.choices[0].message.content) {
+                    throw "OpenAI API response missing message content"
+                }
+
                 # Write status: complete
                 $statusObj = [PSCustomObject]@{
                     agent     = $Agent.name
@@ -210,19 +270,45 @@ try {
                 }
             }
             catch {
-                # Write status: error
+                # Enhanced error logging with details
+                $errorMsg = $_.Exception.Message
+                $errorDetails = if ($_.ErrorDetails) { $_.ErrorDetails.Message } else { "" }
+                
+                # Write status: error with details (using centralized function for consistency)
+                $statusPath = Join-Path $OutDir "agent_status.json"
                 $statusObj = [PSCustomObject]@{
-                    agent     = $Agent.name
-                    status    = "error"
-                    timestamp = (Get-Date -Format "o")
+                    agent       = $Agent.name
+                    status      = "error"
+                    timestamp   = (Get-Date -Format "o")
+                    error       = $errorMsg
+                    error_detail = $errorDetails
                 }
-                $statusObj | ConvertTo-Json -Compress | Add-Content -Path $statusPath
+                try {
+                    $statusObj | ConvertTo-Json -Compress | Add-Content -Path $statusPath
+                }
+                catch {
+                    # Fallback if status writing fails
+                    $errorLogPath = Join-Path $OutDir "status_write_errors.log"
+                    Add-Content -Path $errorLogPath -Value "$(Get-Date -Format 'o'): Failed to write error status: $_"
+                }
+
+                # Log detailed error to separate file
+                $errorLogPath = Join-Path $OutDir "$($Agent.name)_error.log"
+                $errorReport = @"
+Error in agent: $($Agent.name)
+Timestamp: $(Get-Date -Format "o")
+Error: $errorMsg
+Error Details: $errorDetails
+Stack Trace: $($_.ScriptStackTrace)
+"@
+                $errorReport | Out-File -FilePath $errorLogPath -Encoding UTF8
 
                 [PSCustomObject]@{
                     Agent  = $Agent.name
                     Output = $null
                     Tokens = 0
                     Ok     = $false
+                    Error  = $errorMsg
                 }
             }
 
@@ -254,7 +340,7 @@ try {
                     @{ role = "user"; content = $Context }
                 )
 
-                $Output = Invoke-OpenAIRequest -Messages $Messages
+                $Output = Invoke-OpenAIRequest -Messages $Messages -AgentName $C.name
                 if (-not $Output) {
                     Write-AgentStatus -Agent $C.name -Status "error"
                     continue
