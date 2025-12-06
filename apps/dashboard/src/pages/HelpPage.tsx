@@ -1,6 +1,8 @@
 import React from 'react'
 import { BookOpen, ExternalLink, FileText, Rocket, Settings, Shield } from 'lucide-react'
 
+const GITHUB_REPO_URL = 'https://github.com/xfaith4/UnifiedAIToolbox'
+
 interface DocSection {
   title: string
   description: string
@@ -69,13 +71,13 @@ const docSections: DocSection[] = [
 export default function HelpPage() {
   const openDocumentation = (file: string) => {
     // Open the documentation file from GitHub
-    const docsUrl = `https://github.com/xfaith4/UnifiedAIToolbox/blob/main/docs/help/${file}`
+    const docsUrl = `${GITHUB_REPO_URL}/blob/main/docs/help/${file}`
     window.open(docsUrl, '_blank')
   }
 
   const openDocsFolder = () => {
     // Open the GitHub docs folder
-    window.open('https://github.com/xfaith4/UnifiedAIToolbox/tree/main/docs/help', '_blank')
+    window.open(`${GITHUB_REPO_URL}/tree/main/docs/help`, '_blank')
   }
 
   return (
@@ -100,7 +102,7 @@ export default function HelpPage() {
       {/* Quick Links */}
       <div className="grid gap-4 md:grid-cols-3">
         <a
-          href="https://github.com/xfaith4/UnifiedAIToolbox"
+          href={GITHUB_REPO_URL}
           target="_blank"
           rel="noopener noreferrer"
           className="block rounded-xl border border-slate-700 bg-slate-800/50 p-6 transition-all hover:border-blue-500 hover:bg-slate-800"
@@ -132,7 +134,7 @@ export default function HelpPage() {
         </button>
 
         <a
-          href="https://github.com/xfaith4/UnifiedAIToolbox/issues"
+          href={`${GITHUB_REPO_URL}/issues`}
           target="_blank"
           rel="noopener noreferrer"
           className="block rounded-xl border border-slate-700 bg-slate-800/50 p-6 transition-all hover:border-green-500 hover:bg-slate-800"
@@ -196,7 +198,7 @@ export default function HelpPage() {
         <h2 className="mb-4 text-xl font-semibold text-slate-100">Additional Resources</h2>
         <div className="space-y-3">
           <a
-            href="https://github.com/xfaith4/UnifiedAIToolbox/blob/main/docs/help/index.md"
+            href={`${GITHUB_REPO_URL}/blob/main/docs/help/index.md`}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-2 text-blue-400 hover:text-blue-300"
@@ -205,7 +207,7 @@ export default function HelpPage() {
             <span>Full Documentation Index</span>
           </a>
           <a
-            href="https://github.com/xfaith4/UnifiedAIToolbox/discussions"
+            href={`${GITHUB_REPO_URL}/discussions`}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-2 text-blue-400 hover:text-blue-300"
@@ -214,7 +216,7 @@ export default function HelpPage() {
             <span>Community Discussions</span>
           </a>
           <a
-            href="https://github.com/xfaith4/UnifiedAIToolbox/blob/main/CONTRIBUTING.md"
+            href={`${GITHUB_REPO_URL}/blob/main/CONTRIBUTING.md`}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-2 text-blue-400 hover:text-blue-300"
