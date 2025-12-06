@@ -188,6 +188,16 @@ function Invoke-OrchestrationLlm {
                                       -Body $body `
                                       -ErrorAction Stop
 
+        # Log raw response for debugging JSON parsing issues
+        $rawResponsePath = Join-Path $OutputDir "raw_llm_response_$(Get-Date -Format 'yyyyMMdd_HHmmss').json"
+        try {
+            $response | ConvertTo-Json -Depth 10 | Out-File -FilePath $rawResponsePath -Encoding UTF8
+            Write-Log "Saved raw LLM response to: $rawResponsePath"
+        }
+        catch {
+            Write-Log "Warning: Could not save raw response: $_" -Level "WARN"
+        }
+
         # Validate response structure
         if (-not $response.choices -or $response.choices.Count -eq 0) {
             throw "OpenAI API returned no choices in response"
@@ -221,6 +231,24 @@ function Invoke-OrchestrationLlm {
                 # If JSON parsing fails, use the raw error details message
                 $errorDetails = ": $($outerException.ErrorDetails.Message)"
             }
+        }
+        
+        # Log detailed error information
+        $errorLogPath = Join-Path $OutputDir "llm_error_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+        $errorReport = @"
+OpenAI API Error
+Timestamp: $(Get-Date -Format "o")
+Model: $Model
+Error: $errorMessage
+Error Details: $errorDetails
+Stack Trace: $($outerException.ScriptStackTrace)
+"@
+        try {
+            $errorReport | Out-File -FilePath $errorLogPath -Encoding UTF8
+            Write-Log "Error details saved to: $errorLogPath" -Level "ERROR"
+        }
+        catch {
+            Write-Log "Warning: Could not save error log: $_" -Level "WARN"
         }
         
         Write-Log "OpenAI API call failed: $errorMessage$errorDetails" -Level "ERROR"
