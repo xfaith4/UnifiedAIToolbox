@@ -131,7 +131,7 @@ fi
 if [ "$FRONTEND_ONLY" != true ]; then
     echo -e "${CYAN}Starting Prompt API (FastAPI)...${NC}"
     (
-        cd "${SCRIPT_DIR}/Orchestration/UnifiedPromptApp/services/prompt-api" || exit 1
+        cd "${SCRIPT_DIR}/apps/UnifiedPromptApp/services/prompt-api" || exit 1
         if [ ! -d ".venv" ]; then
             python3 -m venv .venv || python -m venv .venv
         fi
@@ -145,7 +145,7 @@ if [ "$FRONTEND_ONLY" != true ]; then
         # Export orchestrator paths for Windows PowerShell execution
         ORCH_PS1_WIN="$(python3 - <<'PY'
 import pathlib, os
-root = pathlib.Path(__file__).resolve().parents[3]
+root = pathlib.Path(__file__).resolve().parents[4]
 path = (root / "Orchestration" / "MilestoneController.ps1").resolve()
 print(str(path))
 PY
