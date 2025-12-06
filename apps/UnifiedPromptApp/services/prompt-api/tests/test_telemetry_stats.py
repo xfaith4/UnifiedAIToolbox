@@ -12,8 +12,13 @@ import pytest
 import sqlite3
 import datetime
 import json
+import os
 from pathlib import Path
 from fastapi.testclient import TestClient
+
+# Import app module at module level
+from app import app
+from migrations import apply_migrations
 
 
 def test_telemetry_stats_no_data(test_client, test_db):
@@ -321,28 +326,15 @@ def test_telemetry_stats_fallback_on_error(test_client, tmp_path):
 
 
 @pytest.fixture
-def test_client(test_db):
+def test_client(test_db, monkeypatch):
     """Create a test client with a test database."""
-    import sys
-    from pathlib import Path
-    
-    # Add parent directory to path
-    parent_dir = Path(__file__).parent.parent
-    if str(parent_dir) not in sys.path:
-        sys.path.insert(0, str(parent_dir))
-    
-    # Import app after setting up path
-    from app import app, DB_PATH
-    
-    # Override DB_PATH to use test database
+    # Use monkeypatch to override DB_PATH instead of modifying module globals
     import app as app_module
-    app_module.DB_PATH = test_db
+    monkeypatch.setattr(app_module, 'DB_PATH', test_db)
     
-    # Initialize test database
-    from migrations import apply_migrations
+    # Initialize test database with migrations
     apply_migrations(Path(test_db))
     
-    from fastapi.testclient import TestClient
     return TestClient(app)
 
 

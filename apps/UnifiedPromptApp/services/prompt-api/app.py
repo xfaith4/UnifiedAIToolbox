@@ -1,5 +1,5 @@
 ### BEGIN FILE: app.py
-import os, json, hashlib, sqlite3, datetime, textwrap, pathlib, sys, subprocess, re, uuid, time, threading, shutil
+import os, json, hashlib, sqlite3, datetime, textwrap, pathlib, sys, subprocess, re, uuid, time, threading, shutil, logging
 from typing import cast
 import openai
 from dataclasses import dataclass
@@ -15,6 +15,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 import uvicorn # pyright: ignore[reportMissingImports]
 import yaml # pyright: ignore[reportMissingModuleSource]
 import requests # pyright: ignore[reportMissingModuleSource]
+
+# Configure logging at module level
+logger = logging.getLogger(__name__)
 
 # Import migrations module
 try:
@@ -1270,9 +1273,6 @@ def get_telemetry_stats(days: int = Query(7, ge=1, le=90)):
     Returns sane defaults when no data exists.
     """
     try:
-        import logging
-        logger = logging.getLogger(__name__)
-        
         # Calculate date range
         end_date = datetime.datetime.now(datetime.timezone.utc)
         start_date = end_date - datetime.timedelta(days=days)
@@ -1429,28 +1429,10 @@ def get_telemetry_stats(days: int = Query(7, ge=1, le=90)):
         # Ensure all values are JSON-safe (no None, Decimal, etc.)
         stats['total_events'] = int(stats['total_events'] or 0)
         
-        # Convert any Decimal or other non-JSON types in nested dicts
-        for key in stats['by_event_type']:
-            val = stats['by_event_type'][key]
-            if isinstance(val, (int, float)):
-                stats['by_event_type'][key] = float(val) if isinstance(val, float) else int(val)
-        
-        for key in stats['by_source']:
-            val = stats['by_source'][key]
-            if isinstance(val, (int, float)):
-                stats['by_source'][key] = int(val)
-        
-        for key in stats['by_day']:
-            val = stats['by_day'][key]
-            if isinstance(val, (int, float)):
-                stats['by_day'][key] = int(val)
-        
         return stats
         
     except Exception as e:
         # Log the error for debugging
-        import logging
-        logger = logging.getLogger(__name__)
         logger.error(f"Telemetry stats endpoint error: {e}", exc_info=True)
         
         # Return safe fallback response instead of raising
