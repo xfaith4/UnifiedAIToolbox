@@ -68,8 +68,8 @@ const docSections: DocSection[] = [
 
 export default function HelpPage() {
   const openDocumentation = (file: string) => {
-    // Try to open the documentation file
-    const docsUrl = `/docs/help/${file}`
+    // Open the documentation file from GitHub
+    const docsUrl = `https://github.com/xfaith4/UnifiedAIToolbox/blob/main/docs/help/${file}`
     window.open(docsUrl, '_blank')
   }
 
@@ -228,10 +228,10 @@ export default function HelpPage() {
       {/* Footer Note */}
       <div className="rounded-lg border border-slate-700 bg-slate-800/20 p-4 text-sm text-slate-400">
         <p>
-          <strong className="text-slate-300">Note:</strong> Some documentation links open files
+          <strong className="text-slate-300">Note:</strong> Documentation links open files
           from the <code className="rounded bg-slate-700 px-1.5 py-0.5">docs/help/</code>{' '}
-          directory. If the links don't work, you can access the documentation files directly in
-          your local repository or on GitHub.
+          directory on GitHub. You can also access the documentation files directly in
+          your local repository at the project root.
         </p>
       </div>
     </div>
