@@ -35,6 +35,66 @@ if str(REGISTRY_SRC) not in sys.path:
 
 from prompt_registry import PromptSpec, find_prompt_by_id, list_prompts  # noqa: E402
 
+
+def safe_json_load(file_path: Path, default: Any = None, context: str = "") -> Any:
+    """
+    Safely load JSON from a file with enhanced error reporting.
+    
+    Args:
+        file_path: Path to the JSON file
+        default: Default value to return on error (None by default)
+        context: Context string for error messages
+    
+    Returns:
+        Parsed JSON data or default value on error
+    """
+    try:
+        if not file_path.exists():
+            raise FileNotFoundError(f"JSON file not found: {file_path}")
+        
+        file_size = file_path.stat().st_size
+        if file_size == 0:
+            error_msg = f"Empty JSON file (0 bytes): {file_path}"
+            if context:
+                error_msg = f"[{context}] {error_msg}"
+            raise ValueError(error_msg)
+        
+        content = file_path.read_text(encoding="utf-8")
+        if not content.strip():
+            error_msg = f"JSON file contains only whitespace: {file_path}"
+            if context:
+                error_msg = f"[{context}] {error_msg}"
+            raise ValueError(error_msg)
+        
+        return json.loads(content)
+    
+    except json.JSONDecodeError as e:
+        content_preview = content[:200] if 'content' in locals() else "<unable to read>"
+        error_msg = (
+            f"Invalid JSON in file: {file_path}\n"
+            f"  Size: {file_size if 'file_size' in locals() else 'unknown'} bytes\n"
+            f"  Error: {e.msg} at line {e.lineno}, column {e.colno}\n"
+            f"  Content preview: {content_preview}..."
+        )
+        if context:
+            error_msg = f"[{context}] {error_msg}"
+        
+        if default is not None:
+            print(f"WARNING: {error_msg}\nReturning default value.", file=sys.stderr)
+            return default
+        raise ValueError(error_msg)
+    
+    except Exception as e:
+        error_msg = f"Failed to load JSON from {file_path}: {type(e).__name__}: {e}"
+        if context:
+            error_msg = f"[{context}] {error_msg}"
+        
+        if default is not None:
+            print(f"WARNING: {error_msg}\nReturning default value.", file=sys.stderr)
+            return default
+        raise ValueError(error_msg)
+
+
 RUNS_DIR = BRIDGE_ROOT / "runs"
 RUNS_DIR.mkdir(exist_ok=True)
 RUNBOOK_DIR = BRIDGE_ROOT / "runbooks"
@@ -76,8 +136,9 @@ def _load_state() -> Dict[str, Dict[str, str]]:
     if not STATE_PATH.exists():
         return {}
     try:
-        return json.loads(STATE_PATH.read_text(encoding="utf-8"))
-    except Exception:
+        return safe_json_load(STATE_PATH, default={}, context="bridge_state")
+    except Exception as e:
+        print(f"[bridge] Failed to load state: {e}", file=sys.stderr)
         return {}
 
 
@@ -388,7 +449,7 @@ def _write_supervisor_task(payload: dict) -> Path:
 
 def cmd_ingest_supervisor(args: argparse.Namespace) -> int:
     try:
-        manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
+        manifest = safe_json_load(Path(args.manifest), context="supervisor_manifest")
     except Exception as exc:
         print(f"[bridge] failed to read manifest: {exc}")
         return 1
@@ -422,7 +483,7 @@ def _get_task_queue() -> List[Tuple[dict, Path]]:
     queue: List[Tuple[dict, Path]] = []
     for path in SUPERVISOR_QUEUE_DIR.glob("*.json"):
         try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
+            payload = safe_json_load(path, context=f"task_queue:{path.name}")
             queue.append((payload, path))
         except Exception as exc:
             print(f"[bridge] failed to read local task {path}: {exc}")
@@ -483,7 +544,7 @@ def _execute_run_manifest(manifest_path: Path) -> bool:
     Returns True if execution completed successfully, False otherwise.
     """
     try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest = safe_json_load(manifest_path, context=f"run_manifest:{manifest_path.name}")
         
         # Update status to running
         manifest["status"] = "running"
@@ -562,18 +623,22 @@ def _execute_run_manifest(manifest_path: Path) -> bool:
         
     except Exception as exc:
         try:
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest = safe_json_load(manifest_path, default={}, context=f"run_error:{manifest_path.name}")
             manifest["status"] = f"error:{exc}"
             manifest["completed_at"] = _now_iso()
+            manifest["error_detail"] = str(exc)
+            manifest["last_step"] = "orchestrator execution"
             manifest.setdefault("events", []).append({
                 "ts": manifest["completed_at"],
                 "type": "error",
-                "message": str(exc)
+                "message": str(exc),
+                "error_detail": str(exc),
+                "traceback": str(type(exc).__name__)
             })
             manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-        except Exception:
-            pass
-        print(f"[bridge] execution failed: {exc}")
+        except Exception as e:
+            print(f"[bridge] Failed to write error state to manifest: {e}", file=sys.stderr)
+        print(f"[bridge] execution failed: {exc}", file=sys.stderr)
         return False
 
 

@@ -56,6 +56,71 @@ def simple_cache(ttl: int = CACHE_TTL):
     return decorator
 
 # ----------------------------
+# Safe JSON Loading Utilities
+# ----------------------------
+def safe_json_load(file_path: pathlib.Path, default: Any = None, context: str = "") -> Any:
+    """
+    Safely load JSON from a file with enhanced error reporting.
+    
+    Args:
+        file_path: Path to the JSON file
+        default: Default value to return on error (None by default)
+        context: Context string for error messages (e.g., "agent_status", "run_manifest")
+    
+    Returns:
+        Parsed JSON data or default value on error
+    
+    Raises:
+        ValueError: If file is empty or contains invalid JSON (with detailed error message)
+    """
+    try:
+        if not file_path.exists():
+            raise FileNotFoundError(f"JSON file not found: {file_path}")
+        
+        file_size = file_path.stat().st_size
+        if file_size == 0:
+            error_msg = f"Empty JSON file (0 bytes): {file_path}"
+            if context:
+                error_msg = f"[{context}] {error_msg}"
+            raise ValueError(error_msg)
+        
+        content = file_path.read_text(encoding="utf-8")
+        if not content.strip():
+            error_msg = f"JSON file contains only whitespace: {file_path}"
+            if context:
+                error_msg = f"[{context}] {error_msg}"
+            raise ValueError(error_msg)
+        
+        return json.loads(content)
+    
+    except json.JSONDecodeError as e:
+        # Enhanced error message with file details and content preview
+        content_preview = content[:200] if 'content' in locals() else "<unable to read>"
+        error_msg = (
+            f"Invalid JSON in file: {file_path}\n"
+            f"  Size: {file_size if 'file_size' in locals() else 'unknown'} bytes\n"
+            f"  Error: {e.msg} at line {e.lineno}, column {e.colno}\n"
+            f"  Content preview: {content_preview}..."
+        )
+        if context:
+            error_msg = f"[{context}] {error_msg}"
+        
+        if default is not None:
+            print(f"WARNING: {error_msg}\nReturning default value.", file=sys.stderr)
+            return default
+        raise ValueError(error_msg)
+    
+    except Exception as e:
+        error_msg = f"Failed to load JSON from {file_path}: {type(e).__name__}: {e}"
+        if context:
+            error_msg = f"[{context}] {error_msg}"
+        
+        if default is not None:
+            print(f"WARNING: {error_msg}\nReturning default value.", file=sys.stderr)
+            return default
+        raise ValueError(error_msg)
+
+# ----------------------------
 # Configuration
 # ----------------------------
 BASE_DIR = pathlib.Path(__file__).parent.resolve()
@@ -2084,11 +2149,11 @@ def orchestrate_run(req: OrchestrationRequest):
 
     def _update_manifest(update_fn):
         try:
-            data = json.loads(path.read_text())
+            data = safe_json_load(path, default={}, context=f"update_manifest:{run_id}")
             data = update_fn(data) or data
             path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[orchestrate] Failed to update manifest {path}: {e}", file=sys.stderr)
 
     def _append_events(events: List[Dict[str, Any]]):
         def _inner(data):
@@ -2109,7 +2174,8 @@ def orchestrate_run(req: OrchestrationRequest):
             return processed
         try:
             lines = status_file.read_text(encoding="utf-8").splitlines()
-        except Exception:
+        except Exception as e:
+            print(f"[orchestrate] Failed to read status file {status_file}: {e}", file=sys.stderr)
             return processed
         if processed >= len(lines):
             return processed
@@ -2117,7 +2183,9 @@ def orchestrate_run(req: OrchestrationRequest):
         processed = len(lines)
         entries = []
         events = []
-        for line in new_lines:
+        for line_num, line in enumerate(new_lines, start=processed+1):
+            if not line.strip():  # Skip empty lines
+                continue
             try:
                 rec = json.loads(line)
                 entries.append(rec)
@@ -2128,7 +2196,11 @@ def orchestrate_run(req: OrchestrationRequest):
                         "message": rec.get("status") or "",
                     }
                 )
-            except Exception:
+            except json.JSONDecodeError as e:
+                print(f"[orchestrate] Invalid JSON in {status_file} at line {line_num}: {e.msg} - Content: {line[:100]}", file=sys.stderr)
+                continue
+            except Exception as e:
+                print(f"[orchestrate] Error processing line {line_num} in {status_file}: {e}", file=sys.stderr)
                 continue
         if entries:
             _append_scratchpad(entries)
@@ -2138,7 +2210,7 @@ def orchestrate_run(req: OrchestrationRequest):
 
     def _execute(path: pathlib.Path, manifest: Dict[str, Any]):
         try:
-            data = json.loads(path.read_text())
+            data = safe_json_load(path, context=f"execute_start:{run_id}")
             data["status"] = "running"
             data["started_at"] = now_iso()
             data.setdefault("events", []).append({"ts": data["started_at"], "type": "status", "message": "running"})
@@ -2229,25 +2301,29 @@ def orchestrate_run(req: OrchestrationRequest):
                 try:
                     final_text = final_synthesis.read_text(encoding="utf-8")
                     _update_manifest(lambda d: {**d, "final_synthesis": final_text})
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"[orchestrate] Failed to read final synthesis: {e}", file=sys.stderr)
 
-            data = json.loads(path.read_text())
+            data = safe_json_load(path, context=f"execute_complete:{run_id}")
             data["status"] = "completed"
             data["completed_at"] = now_iso()
             data.setdefault("events", []).append({"ts": data["completed_at"], "type": "status", "message": "completed"})
             path.write_text(json.dumps(data, indent=2), encoding="utf-8")
         except Exception as exc:
+            error_detail = f"orchestrator failed: {exc}"
+            print(f"[orchestrate] {error_detail}", file=sys.stderr)
             try:
                 _append_events(
-                    [{"ts": now_iso(), "type": "error", "message": f"orchestrator failed: {exc}"}]
+                    [{"ts": now_iso(), "type": "error", "message": error_detail, "error_detail": str(exc), "traceback": str(type(exc).__name__)}]
                 )
-                data = json.loads(path.read_text())
-                data["status"] = f"error:{exc}"
+                data = safe_json_load(path, default={}, context=f"execute_error:{run_id}")
+                data["status"] = f"error:Expecting value..."
                 data["completed_at"] = now_iso()
+                data["error_detail"] = str(exc)
+                data["last_step"] = "orchestrator execution"
                 path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[orchestrate] Failed to write error state to manifest: {e}", file=sys.stderr)
 
     threading.Thread(target=_execute, args=(path, manifest), daemon=True).start()
 
@@ -2344,7 +2420,7 @@ def get_orchestration_run(run_id: str):
     if not path.exists():
         raise HTTPException(status_code=404, detail="Run not found")
     try:
-        data = json.loads(path.read_text())
+        data = safe_json_load(path, context=f"get_run:{run_id}")
         data["run_id"] = data.get("run_id") or run_id
         log_path = BRIDGE_RUN_DIR / f"{run_id}.log"
         if log_path.exists():
@@ -2352,6 +2428,9 @@ def get_orchestration_run(run_id: str):
             data["log_path"] = str(log_path)
             data["log_excerpt"] = log_text[-4000:] if len(log_text) > 4000 else log_text
         return data
+    except ValueError as exc:
+        # Enhanced error for JSON parsing issues
+        raise HTTPException(status_code=500, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to read run: {exc}")
 
