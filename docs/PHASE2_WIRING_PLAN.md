@@ -156,7 +156,7 @@ python bridge.py generate-manifest --prompt-id example.prompt
 #### 8. Orchestration/MilestoneController.ps1 (Orchestrator Dispatcher)
 ```powershell
 # Location: Orchestration (root level - dispatcher only)
-# Dispatches to: Orchestration/AI-Orchestration/scripts/MilestoneController.ps1
+# Dispatches to: Orchestration/scripts/MilestoneController.ps1
 
 # Run
 pwsh -File Orchestration/MilestoneController.ps1 [args]
@@ -165,13 +165,13 @@ pwsh -File Orchestration/MilestoneController.ps1 [args]
 pwsh -File Orchestration/MilestoneController.ps1 -Goal "Analyze project" -Model "gpt-4"
 ```
 
-#### 9. Orchestration/AI-Orchestration/codex-multiagent-swarm (Code Review)
+#### 9. Orchestration/engine/codex-multiagent-swarm (Code Review)
 ```powershell
-# Location: Orchestration/AI-Orchestration/codex-multiagent-swarm
+# Location: Orchestration/engine/codex-multiagent-swarm
 # Prerequisites: PowerShell 7.4+, API keys
 
 # Run
-cd Orchestration/AI-Orchestration/codex-multiagent-swarm
+cd Orchestration/engine/codex-multiagent-swarm
 pwsh -File Orchestrate-Codex.ps1 [options]
 ```
 
@@ -223,8 +223,8 @@ $dashboardDir = Join-Path $projectRoot 'apps\dashboard'
 
 **Issue**: Line 219 references `$ApiDir\MilestoneController.ps1` which may not be the correct active orchestrator
 
-**Current Path**: `Orchestration\UnifiedPromptApp\services\prompt-api\MilestoneController.ps1`
-**Should Be**: `Orchestration\AI-Orchestration\scripts\MilestoneController.ps1` (via the dispatcher)
+**Current Path**: `apps\UnifiedPromptApp\services\prompt-api\MilestoneController.ps1`
+**Should Be**: `Orchestration\scripts\MilestoneController.ps1` (via the dispatcher)
 
 **Recommended Fix**:
 ```powershell
@@ -300,7 +300,7 @@ Either enhance Smoketest.ps1 OR create Smoketest-Matrix.ps1 with:
 CODEX_SCRIPT = REPO_ROOT.parent / "AI-Orchestration" / "codex-multiagent-swarm" / "Orchestrate-Codex.ps1"
 
 # Should be:
-CODEX_SCRIPT = REPO_ROOT / "Orchestration" / "AI-Orchestration" / "codex-multiagent-swarm" / "Orchestrate-Codex.ps1"
+CODEX_SCRIPT = REPO_ROOT / "Orchestration" / "engine" / "codex-multiagent-swarm" / "Orchestrate-Codex.ps1"
 ```
 
 **Reason**: CODEX_SCRIPT is looking one level above REPO_ROOT, should be within the repo structure.
@@ -381,7 +381,7 @@ Each script sources these defaults but allows environment override.
 
 ## GeminiAIOrchestrator Directory
 
-**Status**: Empty directory at `Orchestration/AI-Orchestration/GeminiAIOrchestrator`
+**Status**: Empty directory at `Orchestration/engine/GeminiAIOrchestrator`
 
 **Options**:
 1. **If archived/unused**: Move to `archive/2025-12-RepoCleanup/GeminiAIOrchestrator`
@@ -396,7 +396,7 @@ This directory is reserved for future Gemini AI integration.
 
 **Status**: Planned / Not Yet Implemented
 
-See main orchestration at: Orchestration/AI-Orchestration/scripts/MilestoneController.ps1
+See main orchestration at: Orchestration/scripts/MilestoneController.ps1
 ```
 
 ## Summary of Changes
@@ -410,7 +410,7 @@ See main orchestration at: Orchestration/AI-Orchestration/scripts/MilestoneContr
 ### Files to Create
 1. `docs/WiringMatrix.md` - Complete component documentation (Phase 4)
 2. `Smoketest-Matrix.ps1` - Comprehensive smoke testing (Phase 3)
-3. `Orchestration/AI-Orchestration/GeminiAIOrchestrator/README.md` - Status doc
+3. `Orchestration/engine/GeminiAIOrchestrator/README.md` - Status doc
 
 ### Optional Enhancements
 1. `.env.defaults` - Centralized port configuration
