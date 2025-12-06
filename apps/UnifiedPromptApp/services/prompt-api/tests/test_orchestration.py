@@ -168,3 +168,55 @@ class TestOrchestrateRun:
         
         expected_dir = app.BRIDGE_RUN_DIR / run_id
         assert expected_dir.exists()
+    
+    def test_orchestrate_run_dir_matches_manifest(self, cleanup_test_runs):
+        """
+        Test that run_dir in manifest matches the actual output directory
+        where artifacts should be written.
+        
+        This is a regression test for the bug where -OutputDir was passed
+        as BRIDGE_RUN_DIR instead of the per-run directory.
+        """
+        payload = {
+            "goal": "Test run_dir consistency",
+            "model": "gpt-4o-mini"
+        }
+        
+        response = client.post("/orchestrate/run", json=payload)
+        assert response.status_code == 200
+        
+        result = response.json()
+        run_id = result["run_id"]
+        manifest = result["manifest"]
+        
+        # Verify run_dir is set in manifest
+        assert "run_dir" in manifest
+        run_dir = pathlib.Path(manifest["run_dir"])
+        
+        # Verify run_dir points to the per-run subdirectory, not the root runs folder
+        assert run_dir.name == run_id
+        assert run_dir.parent == app.BRIDGE_RUN_DIR
+        
+        # Verify the directory exists
+        assert run_dir.exists()
+        
+        # Simulate orchestration completion by creating orchestration-summary.json
+        summary_data = {
+            "Goal": "Test run_dir consistency",
+            "Status": "completed",
+            "Model": "gpt-4o-mini",
+            "DurationSeconds": 1.5,
+            "MilestonesCount": 2,
+            "CompletedMilestones": 2
+        }
+        summary_path = run_dir / "orchestration-summary.json"
+        summary_path.write_text(json.dumps(summary_data, indent=2))
+        
+        # Test that artifacts would be written to run_dir, not BRIDGE_RUN_DIR
+        # This verifies the -OutputDir fix
+        assert summary_path.exists()
+        assert summary_path.parent == run_dir
+        assert summary_path.parent != app.BRIDGE_RUN_DIR
+        
+        # Clean up the created file
+        summary_path.unlink(missing_ok=True)

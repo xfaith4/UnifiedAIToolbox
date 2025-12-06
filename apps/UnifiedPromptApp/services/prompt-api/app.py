@@ -2586,7 +2586,7 @@ def orchestrate_run(req: OrchestrationRequest):
                 if notes:
                     args += ["-Instruction", notes]
                 args += [
-                    "-OutputDir", str(BRIDGE_RUN_DIR),
+                    "-OutputDir", str(out_dir),
                 ]
             data.setdefault("events", []).append({
                 "ts": now_iso(),
@@ -2602,12 +2602,41 @@ def orchestrate_run(req: OrchestrationRequest):
             poller.join(timeout=2.0)
             processed_status = _ingest_status_file(status_file, processed_status)
 
+            # Try to populate final_synthesis from various sources
+            final_synthesis_text = None
+            
+            # First try Final_Synthesis.txt (legacy location)
             if final_synthesis.exists():
                 try:
-                    final_text = final_synthesis.read_text(encoding="utf-8")
-                    _update_manifest(lambda d: {**d, "final_synthesis": final_text})
+                    final_synthesis_text = final_synthesis.read_text(encoding="utf-8")
                 except Exception as e:
-                    print(f"[orchestrate] Failed to read final synthesis: {e}", file=sys.stderr)
+                    print(f"[orchestrate] Failed to read Final_Synthesis.txt: {e}", file=sys.stderr)
+            
+            # If not found, try orchestration-summary.json from run_dir
+            if not final_synthesis_text:
+                orchestration_summary = out_dir / "orchestration-summary.json"
+                if orchestration_summary.exists():
+                    try:
+                        summary_data = safe_json_load(orchestration_summary, context=f"final_synthesis:{run_id}")
+                        if summary_data is not None:
+                            # Format the summary as readable text
+                            summary_lines = [
+                                f"Goal: {summary_data.get('Goal', 'N/A')}",
+                                f"Status: {summary_data.get('Status', 'N/A')}",
+                                f"Model: {summary_data.get('Model', 'N/A')}",
+                                f"Duration: {summary_data.get('DurationSeconds', 'N/A')} seconds",
+                                f"Milestones: {summary_data.get('CompletedMilestones', 0)}/{summary_data.get('MilestonesCount', 0)} completed",
+                            ]
+                            final_synthesis_text = "\n".join(summary_lines)
+                    except Exception as e:
+                        print(f"[orchestrate] Failed to read orchestration-summary.json: {e}", file=sys.stderr)
+            
+            # Update manifest with final synthesis if found
+            if final_synthesis_text:
+                try:
+                    _update_manifest(lambda d: {**d, "final_synthesis": final_synthesis_text})
+                except Exception as e:
+                    print(f"[orchestrate] Failed to update manifest with final synthesis: {e}", file=sys.stderr)
 
             data = safe_json_load(path, context=f"execute_complete:{run_id}")
             data["status"] = "completed"
