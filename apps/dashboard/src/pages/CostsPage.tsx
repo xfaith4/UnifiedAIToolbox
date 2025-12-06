@@ -4,9 +4,10 @@
 import React, { useState } from 'react';
 import CostTracker from '../components/CostTracker';
 import EnvironmentalMetrics from '../components/EnvironmentalMetrics';
+import QualityMetrics from '../components/QualityMetrics';
 
 const CostsPage: React.FC = () => {
-  const [view, setView] = useState<'legacy' | 'environmental'>('environmental');
+  const [view, setView] = useState<'environmental' | 'quality' | 'legacy'>('environmental');
   
   return (
     <div className="container mx-auto px-4 py-8">
@@ -14,10 +15,10 @@ const CostsPage: React.FC = () => {
         <div className="flex justify-between items-start">
           <div>
             <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-              AI Cost & Environmental Impact
+              AI Cost, Quality & Environmental Impact
             </h1>
             <p className="mt-2 text-gray-600 dark:text-gray-400">
-              Monitor costs, energy usage, and water consumption for AI operations
+              Monitor costs, quality outcomes, energy usage, and water consumption for AI operations
             </p>
           </div>
           
@@ -32,6 +33,16 @@ const CostsPage: React.FC = () => {
               }`}
             >
               Environmental
+            </button>
+            <button
+              onClick={() => setView('quality')}
+              className={`px-4 py-2 rounded-md font-medium transition-colors ${
+                view === 'quality'
+                  ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 shadow'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+              }`}
+            >
+              Quality
             </button>
             <button
               onClick={() => setView('legacy')}
@@ -49,6 +60,10 @@ const CostsPage: React.FC = () => {
       
       {view === 'environmental' ? (
         <EnvironmentalMetrics 
+          apiBaseUrl={import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}
+        />
+      ) : view === 'quality' ? (
+        <QualityMetrics
           apiBaseUrl={import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}
         />
       ) : (

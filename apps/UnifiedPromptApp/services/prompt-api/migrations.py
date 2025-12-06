@@ -36,6 +36,7 @@ def apply_migrations(db_path: pathlib.Path) -> None:
             (3, _migration_003_run_metadata, "Add orchestration run metadata table"),
             (4, _migration_004_cost_metrics, "Add detailed cost and environmental impact metrics table"),
             (5, _migration_005_run_aggregates, "Add orchestration run aggregates summary table"),
+            (6, _migration_006_quality_metrics, "Add quality and outcome tracking table"),
         ]
         
         for version, migration_func, description in migrations:
@@ -269,6 +270,60 @@ def _migration_005_run_aggregates(cursor: sqlite3.Cursor) -> None:
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_run_aggregates_project 
         ON orchestration_run_aggregates(project_name)
+    """)
+
+
+def _migration_006_quality_metrics(cursor: sqlite3.Cursor) -> None:
+    """
+    Migration 006: Add quality and outcome tracking table.
+    
+    Stores per-run outcome and quality data:
+    - Success/failure status
+    - Quality scores (numeric)
+    - Human ratings and notes
+    - Automated test results
+    - Time to result metrics
+    - Manual fix requirements
+    - Strategy information
+    """
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS run_quality_metrics (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT UNIQUE NOT NULL,
+            strategy TEXT,
+            success INTEGER NOT NULL DEFAULT 0,
+            quality_score REAL,
+            notes TEXT,
+            time_to_result_ms INTEGER,
+            needs_manual_fix INTEGER NOT NULL DEFAULT 0,
+            rating_source TEXT,
+            automated_test_passed INTEGER,
+            automated_test_score REAL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (run_id) REFERENCES orchestrator_runs(id)
+        )
+    """)
+    
+    # Indexes for efficient queries
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_quality_metrics_run_id 
+        ON run_quality_metrics(run_id)
+    """)
+    
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_quality_metrics_success 
+        ON run_quality_metrics(success)
+    """)
+    
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_quality_metrics_strategy 
+        ON run_quality_metrics(strategy)
+    """)
+    
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_quality_metrics_quality_score 
+        ON run_quality_metrics(quality_score)
     """)
 
 

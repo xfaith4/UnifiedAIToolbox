@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { runsService } from '../services/runsService';
 import type { Run } from '../types/runs';
+import QualityRatingForm from '../components/QualityRatingForm';
 
 export default function RunDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -300,6 +301,16 @@ export default function RunDetailPage() {
           )}
         </div>
       )}
+
+      {/* Quality Rating */}
+      <QualityRatingForm
+        runId={run.id}
+        apiBaseUrl={import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}
+        onSuccess={() => {
+          // Optionally reload the run to show updated quality data
+          if (id) loadRun(id);
+        }}
+      />
     </div>
   );
 }

@@ -26,6 +26,10 @@ class MetricsSummaryResponse(BaseModel):
     top_models: List[Dict[str, Any]] = Field(default_factory=list)
     top_agents: List[Dict[str, Any]] = Field(default_factory=list)
     daily_timeseries: List[Dict[str, Any]] = Field(default_factory=list)
+    # Quality-based cost metrics
+    cost_per_successful_run: Optional[float] = None
+    cost_per_high_quality_run: Optional[float] = None
+    quality_adjusted_cost_index: Optional[float] = None
 
 
 class RunMetricsResponse(BaseModel):
@@ -224,6 +228,49 @@ def get_metrics_summary(
         # Reverse to get chronological order
         daily.reverse()
         
+        # Get quality-based cost metrics if quality table exists
+        cost_per_successful = None
+        cost_per_high_quality = None
+        quality_adjusted_index = None
+        
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='run_quality_metrics'"
+        )
+        if cursor.fetchone():
+            # Calculate quality-based cost efficiency
+            cursor.execute(f"""
+                SELECT
+                    SUM(CASE WHEN q.success = 1 THEN a.total_cost_usd ELSE 0 END) as cost_of_successful,
+                    SUM(CASE WHEN q.success = 1 THEN 1 ELSE 0 END) as successful_runs,
+                    SUM(CASE WHEN q.quality_score >= 0.7 THEN a.total_cost_usd ELSE 0 END) as cost_of_high_quality,
+                    SUM(CASE WHEN q.quality_score >= 0.7 THEN 1 ELSE 0 END) as high_quality_runs,
+                    AVG(q.quality_score) as avg_quality,
+                    COUNT(*) as total_quality_runs
+                FROM orchestration_cost_metrics m
+                LEFT JOIN orchestration_run_aggregates a ON m.run_id = a.run_id
+                LEFT JOIN run_quality_metrics q ON m.run_id = q.run_id
+                WHERE {where_sql} AND q.run_id IS NOT NULL
+            """, params)
+            
+            quality_row = cursor.fetchone()
+            if quality_row:
+                successful_runs = quality_row['successful_runs'] or 0
+                high_quality_runs = quality_row['high_quality_runs'] or 0
+                total_quality_runs = quality_row['total_quality_runs'] or 0
+                avg_quality = quality_row['avg_quality'] or 0
+                
+                if successful_runs > 0:
+                    cost_per_successful = round(quality_row['cost_of_successful'] / successful_runs, 6)
+                
+                if high_quality_runs > 0:
+                    cost_per_high_quality = round(quality_row['cost_of_high_quality'] / high_quality_runs, 6)
+                
+                # Quality-adjusted cost index: total_cost / (avg_quality * success_rate)
+                if avg_quality > 0 and total_quality_runs > 0:
+                    success_rate = successful_runs / total_quality_runs
+                    if success_rate > 0:
+                        quality_adjusted_index = round(summary['total_cost_usd'] / (avg_quality * success_rate), 2)
+        
         return MetricsSummaryResponse(
             total_cost_usd=summary['total_cost_usd'],
             total_kwh=summary['total_kwh'],
@@ -235,7 +282,10 @@ def get_metrics_summary(
             end_date=end_date,
             top_models=top_models,
             top_agents=top_agents,
-            daily_timeseries=daily
+            daily_timeseries=daily,
+            cost_per_successful_run=cost_per_successful,
+            cost_per_high_quality_run=cost_per_high_quality,
+            quality_adjusted_cost_index=quality_adjusted_index
         )
 
 
@@ -330,19 +380,41 @@ def get_runs_metrics(
         """, params)
         total_count = cursor.fetchone()['count']
         
-        # Get paginated results
+        # Get paginated results with optional quality data
         offset = (page - 1) * per_page
-        cursor.execute(f"""
-            SELECT *
-            FROM orchestration_run_aggregates
-            WHERE {where_sql}
-            ORDER BY created_at DESC
-            LIMIT ? OFFSET ?
-        """, params + [per_page, offset])
+        
+        # Check if quality table exists to join
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='run_quality_metrics'"
+        )
+        has_quality_table = cursor.fetchone() is not None
+        
+        if has_quality_table:
+            cursor.execute(f"""
+                SELECT
+                    a.*,
+                    q.success as quality_success,
+                    q.quality_score,
+                    q.strategy,
+                    q.needs_manual_fix
+                FROM orchestration_run_aggregates a
+                LEFT JOIN run_quality_metrics q ON a.run_id = q.run_id
+                WHERE {where_sql}
+                ORDER BY a.created_at DESC
+                LIMIT ? OFFSET ?
+            """, params + [per_page, offset])
+        else:
+            cursor.execute(f"""
+                SELECT *
+                FROM orchestration_run_aggregates
+                WHERE {where_sql}
+                ORDER BY created_at DESC
+                LIMIT ? OFFSET ?
+            """, params + [per_page, offset])
         
         runs = []
         for row in cursor.fetchall():
-            runs.append({
+            run_data = {
                 'run_id': row['run_id'],
                 'run_goal': row['run_goal'],
                 'total_tokens_input': row['total_tokens_input'],
@@ -359,7 +431,22 @@ def get_runs_metrics(
                 'started_at': row['started_at'],
                 'completed_at': row['completed_at'],
                 'created_at': row['created_at']
-            })
+            }
+            
+            # Add quality data if available
+            if has_quality_table:
+                run_data['quality_success'] = bool(row['quality_success']) if row['quality_success'] is not None else None
+                run_data['quality_score'] = row['quality_score']
+                run_data['strategy'] = row['strategy']
+                run_data['needs_manual_fix'] = bool(row['needs_manual_fix']) if row['needs_manual_fix'] is not None else None
+                
+                # Compute cost efficiency if quality score exists
+                if row['quality_score'] and row['quality_score'] > 0:
+                    run_data['cost_efficiency'] = round(row['total_cost_usd'] / row['quality_score'], 6)
+                else:
+                    run_data['cost_efficiency'] = None
+            
+            runs.append(run_data)
         
         return RunMetricsResponse(
             runs=runs,

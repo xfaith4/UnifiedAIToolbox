@@ -29,8 +29,10 @@ The Unified AI Toolbox is a comprehensive platform that unifies prompt managemen
 
 - **Multi-Agent System**: 6 baseline agents (Supervisor, Researcher, Engineer, Critic, Synthesizer, Commissioner)
 - **Run Tracking & Analytics**: Comprehensive tracking of orchestration runs with cost analysis, resource monitoring, and environmental impact calculations
+- **Quality & Outcome Tracking**: Track success rates, quality scores, and cost efficiency with human ratings and automated test integration
 - **Cost Transparency**: Track API, compute, storage costs with human-equivalent comparisons
 - **Environmental Metrics**: Monitor energy consumption (kWh) and water usage (L)
+- **Cost-Quality Analysis**: Compute cost per successful run, cost per high-quality run, and quality-adjusted cost index
 - **Learning Loop**: Run feedback storage and pattern extraction for continuous improvement
 - **GitHub Integration**: Clone repos, run code analysis, create PRs automatically
 - **Codex Swarm**: Multi-agent code review (security, linting, testing, refactoring)
@@ -138,6 +140,7 @@ UnifiedAIToolbox/
 ### Features & Capabilities
 - **[Project Roadmap](docs/PROJECT_ROADMAP.md)** - Current status, next steps, and future plans
 - **[Orchestration Run Tracking](docs/ORCHESTRATION_RUN_TRACKING.md)** - Comprehensive run tracking with cost & environmental analytics
+- **[Quality & Outcome Tracking](docs/QUALITY_TRACKING.md)** - 🆕 Track success rates, quality scores, and cost efficiency
 - **[Orchestrator Enhancements](docs/ORCHESTRATOR_ENHANCEMENTS.md)** - Agent library, feedback/learning, cost tracking
 - **[Prompt Refiner Guide](docs/help/prompt-refiner.md)** - Prompt optimization workflows
 
