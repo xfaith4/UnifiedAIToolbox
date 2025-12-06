@@ -1,3 +1,4 @@
+'use client';
 
 import * as React from 'react';
 import Box from '@mui/material/Box';
@@ -14,10 +15,26 @@ import ListItemIcon from '@mui/material/ListItemIcon';
 import ListItemText from '@mui/material/ListItemText';
 import InboxIcon from '@mui/icons-material/MoveToInbox';
 import MailIcon from '@mui/icons-material/Mail';
+import { useRouter } from 'next/navigation';
 
 const drawerWidth = 240;
 
+const mainNavItems = [
+  { text: 'Dashboard', path: '/' },
+  { text: 'Agents', path: '/agents' },
+  { text: 'Prompts', path: '/prompts' },
+  { text: 'Orchestration', path: '/orchestrator' },
+];
+
+const secondaryNavItems = [
+  { text: 'Code Review', path: '/code-review' },
+  { text: 'Project Planning', path: '/project-planning' },
+  { text: 'Settings', path: '/settings' },
+];
+
 export default function Sidebar({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
+
   return (
     <Box sx={{ display: 'flex' }}>
       <CssBaseline />
@@ -46,26 +63,26 @@ export default function Sidebar({ children }: { children: React.ReactNode }) {
         <Toolbar />
         <Divider />
         <List>
-          {['Dashboard', 'Agents', 'Prompts', 'Orchestration'].map((text, index) => (
-            <ListItem key={text} disablePadding>
-              <ListItemButton>
+          {mainNavItems.map((item, index) => (
+            <ListItem key={item.text} disablePadding>
+              <ListItemButton onClick={() => router.push(item.path)}>
                 <ListItemIcon>
                   {index % 2 === 0 ? <InboxIcon /> : <MailIcon />}
                 </ListItemIcon>
-                <ListItemText primary={text} />
+                <ListItemText primary={item.text} />
               </ListItemButton>
             </ListItem>
           ))}
         </List>
         <Divider />
         <List>
-          {['Code Review', 'Project Planning', 'Settings'].map((text, index) => (
-            <ListItem key={text} disablePadding>
-              <ListItemButton>
+          {secondaryNavItems.map((item, index) => (
+            <ListItem key={item.text} disablePadding>
+              <ListItemButton onClick={() => router.push(item.path)}>
                 <ListItemIcon>
                   {index % 2 === 0 ? <InboxIcon /> : <MailIcon />}
                 </ListItemIcon>
-                <ListItemText primary={text} />
+                <ListItemText primary={item.text} />
               </ListItemButton>
             </ListItem>
           ))}
