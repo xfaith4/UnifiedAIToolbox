@@ -1,0 +1,75 @@
+{
+  "version": "1.0",
+  "description": "Model pricing and environmental impact intensity factors",
+  "models": {
+    "gpt-4o-mini": {
+      "input_price_per_million": 0.15,
+      "output_price_per_million": 0.60,
+      "kwh_per_million_tokens": 0.5,
+      "liters_per_million_tokens": 5.0,
+      "provider": "openai"
+    },
+    "gpt-4o": {
+      "input_price_per_million": 2.50,
+      "output_price_per_million": 10.00,
+      "kwh_per_million_tokens": 1.5,
+      "liters_per_million_tokens": 15.0,
+      "provider": "openai"
+    },
+    "gpt-4": {
+      "input_price_per_million": 30.00,
+      "output_price_per_million": 60.00,
+      "kwh_per_million_tokens": 2.0,
+      "liters_per_million_tokens": 20.0,
+      "provider": "openai"
+    },
+    "gpt-4-turbo": {
+      "input_price_per_million": 10.00,
+      "output_price_per_million": 30.00,
+      "kwh_per_million_tokens": 1.8,
+      "liters_per_million_tokens": 18.0,
+      "provider": "openai"
+    },
+    "gpt-3.5-turbo": {
+      "input_price_per_million": 0.50,
+      "output_price_per_million": 1.50,
+      "kwh_per_million_tokens": 0.3,
+      "liters_per_million_tokens": 3.0,
+      "provider": "openai"
+    },
+    "claude-3-5-sonnet-20241022": {
+      "input_price_per_million": 3.00,
+      "output_price_per_million": 15.00,
+      "kwh_per_million_tokens": 1.2,
+      "liters_per_million_tokens": 12.0,
+      "provider": "anthropic"
+    },
+    "claude-3-opus-20240229": {
+      "input_price_per_million": 15.00,
+      "output_price_per_million": 75.00,
+      "kwh_per_million_tokens": 2.5,
+      "liters_per_million_tokens": 25.0,
+      "provider": "anthropic"
+    },
+    "claude-3-sonnet-20240229": {
+      "input_price_per_million": 3.00,
+      "output_price_per_million": 15.00,
+      "kwh_per_million_tokens": 1.2,
+      "liters_per_million_tokens": 12.0,
+      "provider": "anthropic"
+    },
+    "claude-3-haiku-20240307": {
+      "input_price_per_million": 0.25,
+      "output_price_per_million": 1.25,
+      "kwh_per_million_tokens": 0.4,
+      "liters_per_million_tokens": 4.0,
+      "provider": "anthropic"
+    }
+  },
+  "notes": {
+    "pricing": "Prices in USD per million tokens. Source: Provider pricing pages as of Dec 2024",
+    "energy": "Energy intensity (kWh per million tokens) based on estimated datacenter consumption",
+    "water": "Water usage (liters per million tokens) for datacenter cooling. Estimates vary by location and efficiency",
+    "disclaimer": "Environmental impact estimates are approximations. Actual values depend on datacenter location, efficiency, and renewable energy usage"
+  }
+}

@@ -34,6 +34,8 @@ def apply_migrations(db_path: pathlib.Path) -> None:
             (1, _migration_001_run_feedback, "Add run feedback and learning tables"),
             (2, _migration_002_audit_run_id, "Add run_id to audit table for cost attribution"),
             (3, _migration_003_run_metadata, "Add orchestration run metadata table"),
+            (4, _migration_004_cost_metrics, "Add detailed cost and environmental impact metrics table"),
+            (5, _migration_005_run_aggregates, "Add orchestration run aggregates summary table"),
         ]
         
         for version, migration_func, description in migrations:
@@ -166,6 +168,107 @@ def _migration_003_run_metadata(cursor: sqlite3.Cursor) -> None:
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_runs_run_mode 
         ON orchestrator_runs(run_mode)
+    """)
+
+
+def _migration_004_cost_metrics(cursor: sqlite3.Cursor) -> None:
+    """
+    Migration 004: Add detailed cost and environmental impact metrics table.
+    
+    Stores per-call metrics including:
+    - Token counts (input/output)
+    - Cost in USD
+    - Energy consumption (kWh)
+    - Water usage (liters)
+    - Model and agent attribution
+    """
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS orchestration_cost_metrics (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT,
+            timestamp TEXT NOT NULL,
+            model_name TEXT NOT NULL,
+            agent_name TEXT,
+            tokens_input INTEGER,
+            tokens_output INTEGER,
+            cost_usd REAL,
+            kwh_estimated REAL,
+            water_liters_estimated REAL,
+            project_name TEXT,
+            app_name TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (run_id) REFERENCES orchestrator_runs(id)
+        )
+    """)
+    
+    # Indexes for efficient queries
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_cost_metrics_run_id 
+        ON orchestration_cost_metrics(run_id)
+    """)
+    
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_cost_metrics_timestamp 
+        ON orchestration_cost_metrics(timestamp DESC)
+    """)
+    
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_cost_metrics_model 
+        ON orchestration_cost_metrics(model_name)
+    """)
+    
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_cost_metrics_agent 
+        ON orchestration_cost_metrics(agent_name)
+    """)
+
+
+def _migration_005_run_aggregates(cursor: sqlite3.Cursor) -> None:
+    """
+    Migration 005: Add orchestration run aggregates summary table.
+    
+    Stores aggregated metrics per run for quick summary queries:
+    - Total tokens processed
+    - Total cost, energy, and water usage
+    - Run metadata
+    """
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS orchestration_run_aggregates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT UNIQUE NOT NULL,
+            total_tokens_input INTEGER DEFAULT 0,
+            total_tokens_output INTEGER DEFAULT 0,
+            total_cost_usd REAL DEFAULT 0.0,
+            total_kwh REAL DEFAULT 0.0,
+            total_water_liters REAL DEFAULT 0.0,
+            call_count INTEGER DEFAULT 0,
+            unique_models_json TEXT,
+            unique_agents_json TEXT,
+            project_name TEXT,
+            app_name TEXT,
+            run_goal TEXT,
+            started_at TEXT,
+            completed_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (run_id) REFERENCES orchestrator_runs(id)
+        )
+    """)
+    
+    # Indexes for queries
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_run_aggregates_run_id 
+        ON orchestration_run_aggregates(run_id)
+    """)
+    
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_run_aggregates_created_at 
+        ON orchestration_run_aggregates(created_at DESC)
+    """)
+    
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_run_aggregates_project 
+        ON orchestration_run_aggregates(project_name)
     """)
 
 
