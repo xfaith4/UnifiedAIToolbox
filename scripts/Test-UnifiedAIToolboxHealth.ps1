@@ -60,11 +60,12 @@ foreach ($rel in $expectedAppRoots) {
 # --- Check 2: Core orchestration bits ---
 
 $corePaths = @(
-    "Orchestration\MilestoneController.ps1",
-    "Orchestration\UnifiedPromptApp",
-    "Orchestration\AI-Orchestration",
-    "Orchestration\AI-Orchestration\codex-multiagent-swarm",
-    "Orchestration\AI-Orchestration\GeminiAIOrchestrator"
+    "Orchestration\engine",
+    "Orchestration\scripts",
+    "Orchestration\milestone-dashboard",
+    "Orchestration\engine\codex-multiagent-swarm",
+    "Orchestration\engine\GeminiAIOrchestrator",
+    "apps\UnifiedPromptApp"
 )
 
 foreach ($rel in $corePaths) {

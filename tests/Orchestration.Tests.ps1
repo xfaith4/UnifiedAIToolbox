@@ -16,9 +16,9 @@ BeforeAll {
     
     $testsDir = Split-Path -Parent $scriptPath
     $script:RepoRoot = Split-Path -Parent $testsDir
-    $script:OrchestrationRoot = Join-Path $script:RepoRoot 'Orchestration' 'AI-Orchestration'
+    $script:OrchestrationRoot = Join-Path $script:RepoRoot 'Orchestration'
     $script:MilestoneScript = Join-Path $script:OrchestrationRoot 'scripts' 'MilestoneController.ps1'
-    $script:CodexSwarmScript = Join-Path $script:OrchestrationRoot 'codex-multiagent-swarm' 'Orchestrate-Codex.ps1'
+    $script:CodexSwarmScript = Join-Path $script:OrchestrationRoot 'engine' 'codex-multiagent-swarm' 'Orchestrate-Codex.ps1'
     
     # Create temp test directory
     $script:TestOutputDir = Join-Path $TestDrive 'orchestration-test'

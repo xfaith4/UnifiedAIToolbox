@@ -17,7 +17,7 @@ BeforeAll {
     
     $testsDir = Split-Path -Parent $scriptPath
     $script:RepoRoot = Split-Path -Parent $testsDir
-    $script:OrchestrationRoot = Join-Path $script:RepoRoot 'Orchestration' 'AI-Orchestration'
+    $script:OrchestrationRoot = Join-Path $script:RepoRoot 'Orchestration'
     $script:MilestoneScript = Join-Path $script:OrchestrationRoot 'scripts' 'MilestoneController.ps1'
     
     # Create temp test directory

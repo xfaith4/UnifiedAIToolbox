@@ -1,9 +1,0 @@
-{
-  "FamilyTree": {
-    "root": "G:\\Storage\\BenStuff\\Development\\familyTreeModern-5",
-    "db": "{root}\\FamilyTree.sqlite",
-    "template": "{root}\\FamilyTree_Template.html",
-    "index": "{root}\\index.html",
-    "media": "{root}\\Media"
-  }
-}

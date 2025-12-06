@@ -13,13 +13,13 @@ jobs:
           node-version: 20
       - name: Install Dependencies
         run: |
-          cd MilestoneDashboard
+          cd Orchestration/milestone-dashboard
           npm install --legacy-peer-deps
       - name: Run Tests
         run: |
-          cd MilestoneDashboard
+          cd Orchestration/milestone-dashboard
           npm test
       - name: Build Dashboard
         run: |
-          cd MilestoneDashboard
+          cd Orchestration/milestone-dashboard
           npm run build

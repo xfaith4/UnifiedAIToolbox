@@ -151,7 +151,7 @@ class TestExecuteRunManifest:
         """Test that executed mode logs which PowerShell was used."""
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create the script path structure
-            script_dir = Path(tmpdir) / "Orchestration" / "AI-Orchestration" / "scripts"
+            script_dir = Path(tmpdir) / "Orchestration" / "scripts"
             script_dir.mkdir(parents=True)
             script_path = script_dir / "POF.ps1"
             script_path.write_text("# dummy script", encoding="utf-8")

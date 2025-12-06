@@ -126,8 +126,8 @@ finally {
 Write-Host "`n=== Test 5: Enhanced Error Handling in Scripts ===" -ForegroundColor Cyan
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$pofScript = Join-Path $repoRoot "Orchestration\AI-Orchestration\scripts\POF.ps1"
-$milestoneScript = Join-Path $repoRoot "Orchestration\AI-Orchestration\scripts\MilestoneController.ps1"
+$pofScript = Join-Path $repoRoot "Orchestration\scripts\POF.ps1"
+$milestoneScript = Join-Path $repoRoot "Orchestration\scripts\MilestoneController.ps1"
 
 if (Test-Path $pofScript) {
     $pofContent = Get-Content -Path $pofScript -Raw

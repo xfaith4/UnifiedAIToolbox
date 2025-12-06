@@ -109,7 +109,7 @@ PS_REFINER = BRIDGE_ROOT / "OpenAI_Refiner.ps1"
 PROMPT_API_URL = os.environ.get("PROMPT_API_URL", "http://localhost:8000")
 SUPERVISOR_QUEUE_DIR = BRIDGE_ROOT / "supervisor_tasks"
 SUPERVISOR_QUEUE_DIR.mkdir(exist_ok=True)
-CODEX_SCRIPT = REPO_ROOT / "Orchestration" / "AI-Orchestration" / "codex-multiagent-swarm" / "Orchestrate-Codex.ps1"
+CODEX_SCRIPT = REPO_ROOT / "Orchestration" / "engine" / "codex-multiagent-swarm" / "Orchestrate-Codex.ps1"
 CODEX_OUT_DIR = RUNS_DIR / "codex_swarm"
 CODEX_OUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -560,7 +560,7 @@ def _execute_run_manifest(manifest_path: Path) -> bool:
         manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
         
         # Resolve orchestrator script path
-        orch_script = REPO_ROOT / "Orchestration" / "AI-Orchestration" / "scripts" / "POF.ps1"
+        orch_script = REPO_ROOT / "Orchestration" / "scripts" / "POF.ps1"
         log_path = manifest_path.with_suffix(".log")
         
         # Find available PowerShell executable (pwsh preferred, powershell fallback on Windows)

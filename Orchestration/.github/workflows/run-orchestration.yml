@@ -19,14 +19,14 @@ jobs:
       - name: 🧹 Normalize line endings
         run: git config --global core.autocrlf false
 
-      - name: 🚀 Initialize AI-Orchestration environment
+      - name: 🚀 Initialize Orchestration environment
         shell: pwsh
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           Write-Host "------------------------------------------------------------"
           Write-Host "🚀 Initializing environment..." -ForegroundColor Cyan
-          .\scripts\Init-OrchestrationEnv.ps1
+          .\Orchestration\scripts\Init-OrchestrationEnv.ps1
           Write-Host "✅ Environment initialized." -ForegroundColor Green
           Write-Host "------------------------------------------------------------"
 
@@ -36,7 +36,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           Write-Host "⚙️ Launching POF.ps1 orchestrator..." -ForegroundColor Yellow
-          .\scripts\POF.ps1
+          .\Orchestration\scripts\POF.ps1
           Write-Host "✅ Orchestration complete." -ForegroundColor Green
 
       - name: 📊 Update Orchestration Metrics
@@ -46,7 +46,7 @@ jobs:
         run: |
           Write-Host "------------------------------------------------------------"
           Write-Host "📊 Updating dashboard metrics..." -ForegroundColor Cyan
-          Import-Module .\scripts\Update-OrchestrationMetrics.psm1 -Force
+          Import-Module .\Orchestration\scripts\Update-OrchestrationMetrics.psm1 -Force
           Update-OrchestrationMetrics -BaseDir "$PWD"
           Write-Host "✅ Metrics updated successfully." -ForegroundColor Green
           Write-Host "------------------------------------------------------------"
@@ -60,7 +60,7 @@ jobs:
           git config user.email "actions@github.com"
 
           # Stage only relevant JSON files (avoid empty commits)
-          git add "MilestoneDashboard/public/data/*.json" 2>$null
+          git add "Orchestration\milestone-dashboard\public\data\*.json" 2>$null
 
           if (git diff --cached --quiet) {
             Write-Host "✅ No changes detected; skipping commit." -ForegroundColor Yellow
