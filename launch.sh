@@ -131,7 +131,7 @@ fi
 if [ "$FRONTEND_ONLY" != true ]; then
     echo -e "${CYAN}Starting Prompt API (FastAPI)...${NC}"
     (
-        cd "${SCRIPT_DIR}/Orchestration/UnifiedPromptApp/services/prompt-api" || exit 1
+        cd "${SCRIPT_DIR}/apps/UnifiedPromptApp/services/prompt-api" || exit 1
         if [ ! -d ".venv" ]; then
             python3 -m venv .venv || python -m venv .venv
         fi
