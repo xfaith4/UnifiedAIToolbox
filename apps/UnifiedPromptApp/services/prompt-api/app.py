@@ -1896,7 +1896,10 @@ def generate(req: RequestPayload):
     input_json = normalize(payload_for_hash)
 
     if cached_output:
-        audit_id = audit_log(req.template_id, model, input_json, cached_output, True, "ok", None, None)
+        audit_id = audit_log(
+            req.template_id, model, input_json, cached_output, True, "ok", None, None,
+            run_id=None, agent_name=None
+        )
         return GenerateResponse(
             cached=True,
             cache_key=cache_key,
@@ -1914,7 +1917,8 @@ def generate(req: RequestPayload):
         cache_put(cache_key, req.template_id, model, input_json, output)
         audit_id = audit_log(
             req.template_id, model, input_json, output, False, "ok",
-            usage.get("prompt_tokens"), usage.get("completion_tokens")
+            usage.get("prompt_tokens"), usage.get("completion_tokens"),
+            run_id=None, agent_name=None
         )
         return GenerateResponse(
             cached=False,
@@ -1925,7 +1929,10 @@ def generate(req: RequestPayload):
             audit_id=audit_id
         )
     except HTTPException as e:
-        audit_id = audit_log(req.template_id, model, input_json, None, False, f"error:{e.detail}", None, None)
+        audit_id = audit_log(
+            req.template_id, model, input_json, None, False, f"error:{e.detail}", None, None,
+            run_id=None, agent_name=None
+        )
         raise e
 
 
