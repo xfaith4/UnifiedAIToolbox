@@ -300,14 +300,25 @@ def get_runs_metrics(
             where_clauses.append("app_name = ?")
             params.append(app)
         
-        # For model/agent filters, need to check JSON arrays
+        # For model/agent filters, check if value exists in JSON array
+        # Using json_each for safer JSON array querying
         if model:
-            where_clauses.append("unique_models_json LIKE ?")
-            params.append(f'%"{model}"%')
+            where_clauses.append("""
+                EXISTS (
+                    SELECT 1 FROM json_each(unique_models_json)
+                    WHERE json_each.value = ?
+                )
+            """)
+            params.append(model)
         
         if agent:
-            where_clauses.append("unique_agents_json LIKE ?")
-            params.append(f'%"{agent}"%')
+            where_clauses.append("""
+                EXISTS (
+                    SELECT 1 FROM json_each(unique_agents_json)
+                    WHERE json_each.value = ?
+                )
+            """)
+            params.append(agent)
         
         where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
         

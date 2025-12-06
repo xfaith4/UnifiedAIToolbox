@@ -160,8 +160,9 @@ const EnvironmentalMetrics: React.FC<EnvironmentalMetricsProps> = ({
     return `${kwh.toFixed(3)} kWh`;
   };
 
+  const WATER_DECIMAL_PLACES = 2;
   const formatWater = (liters: number) => {
-    return `${liters.toFixed(2)} L`;
+    return `${liters.toFixed(WATER_DECIMAL_PLACES)} L`;
   };
 
   if (loading && !summary) {

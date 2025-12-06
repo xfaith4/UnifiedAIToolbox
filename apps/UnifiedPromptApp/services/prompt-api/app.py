@@ -500,8 +500,9 @@ def audit_log(
     # Record environmental metrics if tokens available and not cached (to avoid double-counting)
     if token_prompt is not None and token_completion is not None and not cached:
         try:
-            from cost_metrics import record_call_metrics
-            record_call_metrics(
+            # Import is at module level at top of file
+            import cost_metrics
+            cost_metrics.record_call_metrics(
                 db_path=DB_PATH,
                 model=model,
                 tokens_input=token_prompt,
