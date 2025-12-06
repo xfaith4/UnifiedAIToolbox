@@ -68,7 +68,7 @@ Write-TestResult -TestName "Diagnostics documentation exists" -Passed (Test-Path
 
 # Test 4: Create temporary test files and run scan
 Write-Host "`n=== Test 4: Scan Script Functional Tests ===" -ForegroundColor Cyan
-$tempBase = if ($env:TEMP) { $env:TEMP } else { "/tmp" }
+$tempBase = [System.IO.Path]::GetTempPath()
 $tempDir = Join-Path $tempBase "test-json-scan-$(Get-Date -Format 'yyyyMMddHHmmss')"
 New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
 

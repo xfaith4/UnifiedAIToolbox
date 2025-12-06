@@ -52,6 +52,7 @@ Write-Host ""
 $emptyFiles = @()
 $invalidFiles = @()
 $validFiles = 0
+$fixedFiles = 0
 
 # Scan all JSON files recursively
 Get-ChildItem -Path $RunRoot -Recurse -Filter '*.json' | ForEach-Object {
@@ -75,6 +76,7 @@ Get-ChildItem -Path $RunRoot -Recurse -Filter '*.json' | ForEach-Object {
                 
                 Set-Content -Path $file.FullName -Value $minimalJson -Encoding UTF8
                 Write-Host "  ✓ Fixed: Initialized with minimal JSON structure" -ForegroundColor Green
+                $script:fixedFiles++
             }
             catch {
                 Write-Host "  ✗ Failed to fix: $_" -ForegroundColor Yellow
@@ -103,6 +105,7 @@ Get-ChildItem -Path $RunRoot -Recurse -Filter '*.json' | ForEach-Object {
                     
                     Set-Content -Path $file.FullName -Value $minimalJson -Encoding UTF8
                     Write-Host "  ✓ Fixed: Initialized with minimal JSON structure" -ForegroundColor Green
+                    $script:fixedFiles++
                 }
                 catch {
                     Write-Host "  ✗ Failed to fix: $_" -ForegroundColor Yellow
@@ -167,6 +170,24 @@ if ($invalidFiles.Count -gt 0) {
 if (-not $Fix) {
     Write-Host ""
     Write-Host "Tip: Run with -Fix switch to attempt automatic repair of empty files" -ForegroundColor Cyan
+    exit 1
+}
+
+# If Fix was used, check if all fixable issues were resolved
+if ($Fix) {
+    Write-Host ""
+    Write-Host "Fixed $fixedFiles file(s)" -ForegroundColor Cyan
+    
+    # Exit 0 if all empty files were fixed and no invalid JSON remains
+    # (invalid JSON cannot be auto-fixed, only empty files can)
+    if ($fixedFiles -eq $emptyFiles.Count -and $invalidFiles.Count -eq 0) {
+        Write-Host "✓ All fixable issues resolved!" -ForegroundColor Green
+        exit 0
+    }
+    else {
+        Write-Host "⚠️ Some issues remain that require manual intervention" -ForegroundColor Yellow
+        exit 1
+    }
 }
 
 exit 1
