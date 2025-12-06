@@ -210,7 +210,7 @@ const QualityMetrics: React.FC<QualityMetricsProps> = ({
             {summary.runs_needing_manual_fix}
           </p>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            {formatPercent(summary.runs_needing_manual_fix / summary.total_runs || 0)} of runs
+            {formatPercent(summary.total_runs > 0 ? summary.runs_needing_manual_fix / summary.total_runs : 0)} of runs
           </p>
         </div>
 

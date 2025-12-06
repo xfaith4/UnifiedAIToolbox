@@ -69,19 +69,23 @@ const QualityRatingForm: React.FC<QualityRatingFormProps> = ({
 
       setSubmitSuccess(true);
       
-      // Reset form
-      setTimeout(() => {
+      // Call success callback immediately
+      if (onSuccess) {
+        onSuccess();
+      }
+      
+      // Reset form after brief success message
+      const resetTimeout = setTimeout(() => {
         setSuccess(null);
         setQualityScore(0.7);
         setStrategy('');
         setNotes('');
         setNeedsManualFix(false);
         setSubmitSuccess(false);
-        
-        if (onSuccess) {
-          onSuccess();
-        }
       }, 2000);
+      
+      // Cleanup timeout on unmount
+      return () => clearTimeout(resetTimeout);
 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to submit rating');

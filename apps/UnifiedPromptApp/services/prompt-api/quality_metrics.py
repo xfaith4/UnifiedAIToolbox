@@ -13,7 +13,8 @@ from typing import Optional, Dict, Any, List
 
 def now_iso() -> str:
     """Return current UTC timestamp in ISO format."""
-    return datetime.utcnow().isoformat() + "Z"
+    from datetime import timezone
+    return datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
 
 
 def record_quality_metrics(
@@ -61,6 +62,9 @@ def record_quality_metrics(
         
         now = now_iso()
         
+        # Convert boolean to int for SQLite, handling None case
+        test_passed_int = None if automated_test_passed is None else (1 if automated_test_passed else 0)
+        
         cursor.execute("""
             INSERT INTO run_quality_metrics (
                 run_id, strategy, success, quality_score, notes,
@@ -82,8 +86,7 @@ def record_quality_metrics(
         """, (
             run_id, strategy, 1 if success else 0, quality_score, notes,
             time_to_result_ms, 1 if needs_manual_fix else 0, rating_source,
-            1 if automated_test_passed else 0 if automated_test_passed is not None else None,
-            automated_test_score, now, now
+            test_passed_int, automated_test_score, now, now
         ))
         
         conn.commit()

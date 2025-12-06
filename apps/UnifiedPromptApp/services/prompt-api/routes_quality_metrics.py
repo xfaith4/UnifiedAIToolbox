@@ -353,8 +353,9 @@ def get_runs_with_quality(
             cost = row['total_cost_usd']
             
             # Calculate cost efficiency (lower is better)
+            # Only compute if quality score is meaningful (>= 0.1 to avoid extreme values)
             cost_efficiency = None
-            if quality_score and quality_score > 0:
+            if quality_score and quality_score >= 0.1:
                 cost_efficiency = round(cost / quality_score, 6)
             
             runs.append({
