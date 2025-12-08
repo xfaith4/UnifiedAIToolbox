@@ -11,7 +11,7 @@
     ],
     "role": "system",
     "style": "",
-    "template": "Task: [Describe the specific task here]\n Follow the dataset, output, and language contracts defined in this file.",
+    "template": "You are an expert [role].  Follow the dataset, output, and language contracts defined in this file.",
     "variables": [
       {
         "name": "role",
@@ -35,7 +35,7 @@
     "stop": [],
     "temperature": 0.2,
     "top_p": 1,
-    "updatedAt": "2025-12-05T23:18:45.714Z",
+    "updatedAt": "2025-12-06T19:35:27.074Z",
     "createdAt": "2025-11-23T23:40:15",
     "version": "1.0.0",
     "outputs": {
