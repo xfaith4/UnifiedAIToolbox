@@ -166,7 +166,7 @@ The toolbox can automatically generate AI-powered insights on a weekly schedule.
 
 2. **Via File System**:
    ```
-   artifacts/reports/RepoAnalysis_Summary_*.md
+   artifacts/reports/repo-analysis/RepoAnalysis_Summary_*.md
    artifacts/reports/PRSnapshot_Summary_*.md
    ```
 

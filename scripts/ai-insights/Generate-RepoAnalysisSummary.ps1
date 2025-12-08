@@ -83,7 +83,7 @@ if (-not (Test-Path $JsonPath)) {
 # Set output path if not specified
 if (-not $OutputPath) {
     $timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
-    $outputDir = Join-Path $PSScriptRoot "../../artifacts/reports"
+    $outputDir = Join-Path $PSScriptRoot "../../artifacts/reports/repo-analysis"
     New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
     $OutputPath = Join-Path $outputDir "RepoAnalysis_Summary_$timestamp.md"
 }

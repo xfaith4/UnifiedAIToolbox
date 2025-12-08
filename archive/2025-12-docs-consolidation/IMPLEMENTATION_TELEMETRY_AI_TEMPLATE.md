@@ -234,7 +234,7 @@ $env:OPENAI_API_KEY = "sk-..."
 # Generate summary
 pwsh scripts/ai-insights/Generate-RepoAnalysisSummary.ps1
 
-# Output: artifacts/reports/RepoAnalysis_Summary_*.md
+# Output: artifacts/reports/repo-analysis/RepoAnalysis_Summary_*.md
 ```
 
 ### CI/CD Template
@@ -282,7 +282,7 @@ Potential future additions:
 ### AI Insights
 1. Set API key: `$env:OPENAI_API_KEY = "sk-..."`
 2. Generate summary: `pwsh scripts/ai-insights/Generate-RepoAnalysisSummary.ps1`
-3. Review output: `artifacts/reports/RepoAnalysis_Summary_*.md`
+3. Review output: `artifacts/reports/repo-analysis/RepoAnalysis_Summary_*.md`
 4. Verify no sensitive data in prompts
 
 ### CI/CD Template

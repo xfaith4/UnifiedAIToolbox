@@ -181,7 +181,7 @@ pwsh scripts/ai-insights/Generate-RepoAnalysisSummary.ps1
 
 This creates a markdown summary at:
 ```
-artifacts/reports/RepoAnalysis_Summary_2024-12-05_12-34-56.md
+artifacts/reports/repo-analysis/RepoAnalysis_Summary_2024-12-05_12-34-56.md
 ```
 
 The summary includes:
