@@ -518,11 +518,11 @@ See `CONTRIBUTING.md` for detailed contribution guidelines.
 ### Documentation
 - `README.md` - Project overview and quick start
 - `CONTRIBUTING.md` - Contribution guidelines
-- `IMPLEMENTATION_SUMMARY.md` - Implementation details
+- `IMPLEMENTATION.md` - Complete implementation history and phases
+- `CLEANUP_HISTORY.md` - Repository cleanup summary
 - `docs/` directory - Additional documentation
 
 ### Planning and Status
-- `CLEANUP_EXECUTIVE_SUMMARY.md` - Repository cleanup summary
 - `docs/ORCHESTRATOR_STATUS.md` - Orchestrator status
 - `docs/ORCHESTRATOR_ENHANCEMENTS.md` - Enhancement plans
 - `docs/PROJECT_ROADMAP.md` - Project roadmap
