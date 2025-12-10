@@ -180,7 +180,7 @@ Test-DirectoryExists 'apps\orchestration-bridge' 'orchestration-bridge app'
 Write-Host "`n📁 Orchestration Components:" -ForegroundColor White
 Test-DirectoryExists 'apps\UnifiedPromptApp\services\prompt-api' 'prompt-api service'
 Test-DirectoryExists 'Orchestration\engine' 'Orchestration engine'
-Test-DirectoryExists 'Orchestration\engine\codex-multiagent-swarm' 'codex-multiagent-swarm'
+Test-DirectoryExists 'apps\orchestration-bridge\codex' 'codex executor'
 Test-DirectoryExists 'Orchestration\milestone-dashboard' 'milestone-dashboard'
 Test-DirectoryExists 'Orchestration\scripts' 'orchestration scripts'
 
@@ -196,7 +196,7 @@ Test-FileExists 'apps\dashboard\src\main.tsx' 'dashboard entry point'
 Test-FileExists 'apps\unifiedtoolbox.webapp\package.json' 'webapp package.json'
 Test-FileExists 'apps\OrchestrationDesktop\OrchestrationDesktop.csproj' 'OrchestrationDesktop project'
 Test-FileExists 'apps\PromptRefiner\OpenAI_Refiner.ps1' 'PromptRefiner script'
-Test-FileExists 'Orchestration\UnifiedPromptApp\services\prompt-api\app.py' 'prompt-api entry'
+Test-FileExists 'apps\UnifiedPromptApp\services\prompt-api\app.py' 'prompt-api entry'
 Test-FileExists 'Orchestration\MilestoneController.ps1' 'MilestoneController dispatcher'
 
 # ----------------------------------------------------------------------------

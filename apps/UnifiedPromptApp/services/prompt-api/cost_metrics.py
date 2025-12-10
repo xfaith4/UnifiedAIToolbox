@@ -8,14 +8,14 @@ including cost (USD), energy (kWh), and water usage (liters).
 import sqlite3
 import json
 import pathlib
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 from model_costs import calculate_impact, ModelImpact
 
 
 def now_iso() -> str:
     """Return current UTC timestamp in ISO format."""
-    return datetime.utcnow().isoformat() + "Z"
+    return datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
 
 
 def record_call_metrics(
