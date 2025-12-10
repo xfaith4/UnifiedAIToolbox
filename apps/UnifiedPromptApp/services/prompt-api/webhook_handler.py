@@ -12,7 +12,7 @@ import logging
 import os
 import subprocess
 import pathlib
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List
 from enum import Enum
 
@@ -312,7 +312,7 @@ async def handle_github_webhook(
     
     # Parse webhook payload
     webhook_payload = parse_webhook_payload(x_github_event or "unknown", payload_json)
-    webhook_id = x_github_delivery or datetime.utcnow().strftime("%Y%m%d%H%M%S")
+    webhook_id = x_github_delivery or datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
     
     logger.info(
         f"Received GitHub webhook: event={x_github_event}, "
@@ -399,7 +399,7 @@ async def test_webhook(
         }
     )
     
-    webhook_id = f"test_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+    webhook_id = f"test_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
     
     # Determine which orchestrations would be triggered
     triggered_orchestrations = []

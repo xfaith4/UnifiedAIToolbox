@@ -1238,7 +1238,7 @@ def receive_telemetry(batch: TelemetryBatchRequest):
         telemetry_dir.mkdir(parents=True, exist_ok=True)
         
         # Get today's telemetry file
-        date_str = datetime.datetime.utcnow().strftime("%Y-%m-%d")
+        date_str = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
         telemetry_file = telemetry_dir / f"telemetry_{date_str}.jsonl"
         
         # Write events as JSONL with atomic-like operation
