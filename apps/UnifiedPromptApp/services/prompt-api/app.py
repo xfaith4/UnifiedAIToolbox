@@ -1589,7 +1589,7 @@ def search_prompts(
                             tags_list = json.loads(row["tags"])
                         except (json.JSONDecodeError, TypeError) as e:
                             # If tags are malformed, use empty list - non-critical for search results
-                            logging.debug(f"Failed to parse tags for prompt {row.get('id', 'unknown')}: {e}")
+                            logger.debug(f"Failed to parse tags for prompt {row.get('id', 'unknown')}: {e}")
                     results.append(
                         PromptSearchResult(
                             id=row["id"],

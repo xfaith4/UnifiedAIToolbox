@@ -26,6 +26,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
 
+# Configure logging
+logger = logging.getLogger(__name__)
+
 # Resolve repository roots
 BRIDGE_ROOT = Path(__file__).resolve().parent
 REPO_ROOT = BRIDGE_ROOT.parents[1]
@@ -756,7 +759,7 @@ def cmd_run_supervisor(args: argparse.Namespace) -> int:
                 except Exception as update_exc:
                     # Silent failure is acceptable here - we're already handling an error
                     # and don't want to mask the original exception with a status update failure
-                    logging.debug(f"Failed to update task status for {task_id}: {update_exc}")
+                    logger.debug(f"Failed to update task status for {task_id}: {update_exc}")
             continue
 
     return 0
