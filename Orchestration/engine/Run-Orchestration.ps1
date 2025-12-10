@@ -398,14 +398,22 @@ function Invoke-Agent {
                 if ($Step.tool) {
                     $toolArgs = if ($Step.tool.args) { $Step.tool.args } else { @{} }
                     $artifacts = Invoke-Tool -Name $Step.tool.name -Args $toolArgs -OutDir $stepDir
+                    $prose = "Code Generator executed tool: $($Step.tool.name)"
                 } else {
-                    # Stub: produce a patch.json as placeholder
-                    $patch = @{ changes = @("// TODO: real patch ops here") }
+                    # Stub implementation: produces a placeholder patch when no tool is bound.
+                    # This is intentional for testing/demonstration. Production workflows should
+                    # bind a real code generation tool via the 'tool' property.
+                    Write-Warning "Code Generator step $($Step.id) has no tool binding. Producing placeholder patch."
+                    $patch = @{ 
+                        status = "placeholder"
+                        message = "No code generation tool bound to this step. Configure a tool in the plan JSON."
+                        changes = @()
+                    }
                     $out = Join-Path $stepDir 'patch.json'
                     Write-JsonFile -Object $patch -Path $out
                     $artifacts += @{ name="patch"; type="json"; uri=$out }
+                    $prose = "Code Generator produced placeholder (no tool bound)."
                 }
-                $prose = "Code Generator completed."
             }
 
             'Implementer' {

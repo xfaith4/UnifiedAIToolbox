@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import requests
 import shutil
@@ -24,6 +25,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 # Resolve repository roots
 BRIDGE_ROOT = Path(__file__).resolve().parent
@@ -752,8 +756,10 @@ def cmd_run_supervisor(args: argparse.Namespace) -> int:
                         json={"status": "failed", "notes": str(exc)},
                         timeout=10,
                     )
-                except Exception:
-                    pass
+                except Exception as update_exc:
+                    # Silent failure is acceptable here - we're already handling an error
+                    # and don't want to mask the original exception with a status update failure
+                    logger.debug(f"Failed to update task status for {task_id}: {update_exc}")
             continue
 
     return 0
