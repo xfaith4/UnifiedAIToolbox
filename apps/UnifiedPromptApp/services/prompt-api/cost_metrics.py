@@ -15,7 +15,7 @@ from model_costs import calculate_impact, ModelImpact
 
 def now_iso() -> str:
     """Return current UTC timestamp in ISO format."""
-    return datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+    return datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.%fZ')
 
 
 def record_call_metrics(
