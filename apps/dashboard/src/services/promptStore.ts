@@ -334,11 +334,10 @@ export async function fetchPromptLibrary(): Promise<PromptItem[]> {
     return merged
   } catch (error) {
     // Only log error once instead of continuously
-    if (error instanceof Error && error.name !== 'AbortError') {
-      console.warn('Falling back to local prompt store:', error)
-    } else if (error instanceof Error && error.name === 'AbortError') {
-      console.warn('Falling back to local prompt store: Request timeout')
-    }
+    const errorMessage = error instanceof Error && error.name === 'AbortError' 
+      ? 'Request timeout' 
+      : error
+    console.warn('Falling back to local prompt store:', errorMessage)
     return mergePrompts(BASE_PROMPTS, STARTER_PROMPTS, local)
   }
 }

@@ -25,6 +25,14 @@ async function fetchWithTimeout(url: string, options: Record<string, unknown> = 
   }
 }
 
+// Helper function to handle network errors
+function handleNetworkError(error: unknown): never {
+  if (error instanceof TypeError || (error instanceof Error && error.message === 'Request timeout')) {
+    throw new Error('Backend API is not available')
+  }
+  throw error
+}
+
 export async function createRunApi(run: OrchestrationRun): Promise<OrchestrationRun> {
   if (!PROMPT_API_BASE) {
     throw new Error('API base not configured')
@@ -49,10 +57,7 @@ export async function createRunApi(run: OrchestrationRun): Promise<Orchestration
     }
   } catch (error) {
     // Network error or timeout - provide more context
-    if (error instanceof TypeError) {
-      throw new Error('Backend API is not available')
-    }
-    throw error
+    handleNetworkError(error)
   }
 }
 
@@ -73,10 +78,7 @@ export async function fetchRunsApi(): Promise<OrchestrationRun[]> {
     }))
   } catch (error) {
     // Network error or timeout - silently fail for polling
-    if (error instanceof TypeError || (error instanceof Error && error.message === 'Request timeout')) {
-      throw new Error('Backend API is not available')
-    }
-    throw error
+    handleNetworkError(error)
   }
 }
 
@@ -94,10 +96,7 @@ export async function fetchRunApi(run_id: string): Promise<OrchestrationRun> {
     return payload as OrchestrationRun
   } catch (error) {
     // Network error or timeout
-    if (error instanceof TypeError || (error instanceof Error && error.message === 'Request timeout')) {
-      throw new Error('Backend API is not available')
-    }
-    throw error
+    handleNetworkError(error)
   }
 }
 
@@ -115,9 +114,6 @@ export async function fetchRunLogApi(run_id: string, maxBytes = 8000): Promise<{
     return { log: payload.log as string, bytes: payload.bytes as number }
   } catch (error) {
     // Network error or timeout
-    if (error instanceof TypeError || (error instanceof Error && error.message === 'Request timeout')) {
-      throw new Error('Backend API is not available')
-    }
-    throw error
+    handleNetworkError(error)
   }
 }

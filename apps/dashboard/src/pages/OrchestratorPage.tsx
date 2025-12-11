@@ -6,6 +6,20 @@ import { listAgents, upsertAgent, type AgentDefinition } from '../services/agent
 import { createRunApi, fetchRunApi, fetchRunsApi, fetchRunLogApi } from '../services/orchestratorApi'
 import { Sparkles, Plus, X, Check, Lightbulb, Users } from 'lucide-react'
 
+// Constants for polling and exponential backoff
+const POLL_BASE_INTERVAL = 4000 // 4 seconds
+const POLL_MAX_INTERVAL = 30000 // 30 seconds
+const BACKOFF_MULTIPLIER = 1.5
+const MAX_BACKOFF_STEPS = 5
+
+// Helper function to calculate next poll interval with exponential backoff
+function calculateBackoffInterval(consecutiveErrors: number): number {
+  return Math.min(
+    POLL_BASE_INTERVAL * Math.pow(BACKOFF_MULTIPLIER, Math.min(consecutiveErrors, MAX_BACKOFF_STEPS)),
+    POLL_MAX_INTERVAL
+  )
+}
+
 export default function OrchestratorPage() {
   const [runs, setRuns] = useState<OrchestrationRun[]>([])
   const [prompts, setPrompts] = useState<PromptItem[]>([])
@@ -77,19 +91,13 @@ export default function OrchestratorPage() {
       }
       
       // Calculate next poll interval with exponential backoff
-      // Base interval: 4s, max interval: 30s
-      const baseInterval = 4000
-      const maxInterval = 30000
-      const nextInterval = Math.min(
-        baseInterval * Math.pow(1.5, Math.min(consecutiveErrors, 5)),
-        maxInterval
-      )
+      const nextInterval = calculateBackoffInterval(consecutiveErrors)
       
       timeoutId = window.setTimeout(poll, nextInterval)
     }
     
     // Start polling
-    timeoutId = window.setTimeout(poll, 4000)
+    timeoutId = window.setTimeout(poll, POLL_BASE_INTERVAL)
     
     return () => {
       if (timeoutId !== undefined) {
@@ -287,18 +295,13 @@ export default function OrchestratorPage() {
       }
       
       // Calculate next poll interval with exponential backoff
-      const baseInterval = 4000
-      const maxInterval = 30000
-      const nextInterval = Math.min(
-        baseInterval * Math.pow(1.5, Math.min(consecutiveErrors, 5)),
-        maxInterval
-      )
+      const nextInterval = calculateBackoffInterval(consecutiveErrors)
       
       timeoutId = window.setTimeout(pollLogs, nextInterval)
     }
     
     // Start polling
-    timeoutId = window.setTimeout(pollLogs, 4000)
+    timeoutId = window.setTimeout(pollLogs, POLL_BASE_INTERVAL)
     
     return () => {
       if (timeoutId !== undefined) {
