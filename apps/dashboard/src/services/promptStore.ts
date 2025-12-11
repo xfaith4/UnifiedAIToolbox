@@ -311,9 +311,16 @@ export async function fetchPromptLibrary(): Promise<PromptItem[]> {
   }
 
   try {
+    // Add timeout to prevent hanging requests
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 5000)
+    
     const response = await fetch(`${API_BASE}/prompts`, {
       headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
     })
+    clearTimeout(timeoutId)
+    
     if (!response.ok) {
       throw new Error(`API responded with ${response.status}`)
     }
@@ -326,7 +333,12 @@ export async function fetchPromptLibrary(): Promise<PromptItem[]> {
     saveLocal(merged)
     return merged
   } catch (error) {
-    console.warn('Falling back to local prompt store:', error)
+    // Only log error once instead of continuously
+    if (error instanceof Error && error.name !== 'AbortError') {
+      console.warn('Falling back to local prompt store:', error)
+    } else if (error instanceof Error && error.name === 'AbortError') {
+      console.warn('Falling back to local prompt store: Request timeout')
+    }
     return mergePrompts(BASE_PROMPTS, STARTER_PROMPTS, local)
   }
 }

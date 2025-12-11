@@ -54,16 +54,48 @@ export default function OrchestratorPage() {
     }
     void loadAll()
 
-    const id = window.setInterval(() => {
+    // Implement exponential backoff for polling
+    let consecutiveErrors = 0
+    let timeoutId: number | undefined
+    
+    const poll = async () => {
       if (PROMPT_API_BASE) {
-        fetchRunsApi()
-          .then(setRuns)
-          .catch(() => setRuns(listRuns()))
+        try {
+          const apiRuns = await fetchRunsApi()
+          setRuns(apiRuns)
+          consecutiveErrors = 0 // Reset error count on success
+        } catch (error) {
+          setRuns(listRuns())
+          consecutiveErrors++
+          // Log only the first error to avoid console spam
+          if (consecutiveErrors === 1) {
+            console.warn('Backend API unavailable, falling back to local storage')
+          }
+        }
       } else {
         setRuns(listRuns())
       }
-    }, 4000)
-    return () => window.clearInterval(id)
+      
+      // Calculate next poll interval with exponential backoff
+      // Base interval: 4s, max interval: 30s
+      const baseInterval = 4000
+      const maxInterval = 30000
+      const nextInterval = Math.min(
+        baseInterval * Math.pow(1.5, Math.min(consecutiveErrors, 5)),
+        maxInterval
+      )
+      
+      timeoutId = window.setTimeout(poll, nextInterval)
+    }
+    
+    // Start polling
+    timeoutId = window.setTimeout(poll, 4000)
+    
+    return () => {
+      if (timeoutId !== undefined) {
+        window.clearTimeout(timeoutId)
+      }
+    }
   }, [])
 
   const handlePromptSelect = (promptId: string) => {
@@ -241,11 +273,37 @@ export default function OrchestratorPage() {
 
   useEffect(() => {
     if (!logRun || !PROMPT_API_BASE) return
-    const id = window.setInterval(() => {
-      void fetchLogBundle(logRun, true)
-    }, 4000)
+    
+    let consecutiveErrors = 0
+    let timeoutId: number | undefined
+    
+    const pollLogs = async () => {
+      try {
+        await fetchLogBundle(logRun, true)
+        consecutiveErrors = 0 // Reset on success
+      } catch {
+        consecutiveErrors++
+        // Silently handle errors for log polling
+      }
+      
+      // Calculate next poll interval with exponential backoff
+      const baseInterval = 4000
+      const maxInterval = 30000
+      const nextInterval = Math.min(
+        baseInterval * Math.pow(1.5, Math.min(consecutiveErrors, 5)),
+        maxInterval
+      )
+      
+      timeoutId = window.setTimeout(pollLogs, nextInterval)
+    }
+    
+    // Start polling
+    timeoutId = window.setTimeout(pollLogs, 4000)
+    
     return () => {
-      window.clearInterval(id)
+      if (timeoutId !== undefined) {
+        window.clearTimeout(timeoutId)
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [logRun?.run_id])
