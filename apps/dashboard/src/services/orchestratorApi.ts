@@ -5,7 +5,7 @@ import type { OrchestrationRun } from './orchestratorStore'
 const FETCH_TIMEOUT = 5000
 
 // Helper function to fetch with timeout
-async function fetchWithTimeout(url: string, options: RequestInit = {}): Promise<Response> {
+async function fetchWithTimeout(url: string, options: Record<string, unknown> = {}): Promise<Response> {
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT)
   

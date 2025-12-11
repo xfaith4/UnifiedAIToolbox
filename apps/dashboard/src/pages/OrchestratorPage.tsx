@@ -64,7 +64,7 @@ export default function OrchestratorPage() {
           const apiRuns = await fetchRunsApi()
           setRuns(apiRuns)
           consecutiveErrors = 0 // Reset error count on success
-        } catch (error) {
+        } catch {
           setRuns(listRuns())
           consecutiveErrors++
           // Log only the first error to avoid console spam
