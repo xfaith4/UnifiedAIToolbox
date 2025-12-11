@@ -46,7 +46,10 @@ param(
     [string]$OutputDir = ".",
 
     [Parameter(Mandatory = $false)]
-    [switch]$DryRun
+    [switch]$DryRun,
+
+    [Parameter(Mandatory = $false)]
+    [string]$LogLevel = "Info"
 )
 
 # Script configuration
@@ -80,10 +83,10 @@ function Initialize-Orchestration {
     Write-Log "Log file: $script:LogFile"
     
     return @{
-        Goal = $GoalText
-        Model = $Model
-        StartTime = $script:StartTime
-        Status = "initialized"
+        Goal       = $GoalText
+        Model      = $Model
+        StartTime  = $script:StartTime
+        Status     = "initialized"
         Milestones = @()
     }
 }
@@ -100,47 +103,47 @@ function Split-GoalIntoMilestones {
     
     if ($goalLower -match "research|analyze|investigate") {
         $milestones += @{
-            Name = "Research Phase"
+            Name        = "Research Phase"
             Description = "Gather and analyze relevant information"
-            Agent = "Researcher"
-            Status = "pending"
+            Agent       = "Researcher"
+            Status      = "pending"
         }
     }
     
     if ($goalLower -match "implement|build|create|code|develop") {
         $milestones += @{
-            Name = "Implementation Phase"
+            Name        = "Implementation Phase"
             Description = "Build the solution based on research findings"
-            Agent = "Engineer"
-            Status = "pending"
+            Agent       = "Engineer"
+            Status      = "pending"
         }
     }
     
     if ($goalLower -match "test|validate|verify|review") {
         $milestones += @{
-            Name = "Validation Phase"
+            Name        = "Validation Phase"
             Description = "Test and validate the implementation"
-            Agent = "Critic"
-            Status = "pending"
+            Agent       = "Critic"
+            Status      = "pending"
         }
     }
     
     if ($goalLower -match "document|report|summarize") {
         $milestones += @{
-            Name = "Documentation Phase"
+            Name        = "Documentation Phase"
             Description = "Create documentation and reports"
-            Agent = "Synthesizer"
-            Status = "pending"
+            Agent       = "Synthesizer"
+            Status      = "pending"
         }
     }
     
     # Default milestone if no specific patterns matched
     if ($milestones.Count -eq 0) {
         $milestones += @{
-            Name = "Execution Phase"
+            Name        = "Execution Phase"
             Description = "Execute the goal"
-            Agent = "Commissioner"
-            Status = "pending"
+            Agent       = "Commissioner"
+            Status      = "pending"
         }
     }
     
@@ -167,10 +170,10 @@ function Invoke-OrchestrationLlm {
 
     # Build the chat payload
     $body = @{
-        model    = $Model
-        messages = @(
+        model       = $Model
+        messages    = @(
             @{ role = "system"; content = $SystemPrompt },
-            @{ role = "user";   content = $UserPrompt }
+            @{ role = "user"; content = $UserPrompt }
         )
         temperature = 0.2
     } | ConvertTo-Json -Depth 6
@@ -183,10 +186,10 @@ function Invoke-OrchestrationLlm {
     try {
         # Fire the request
         $response = Invoke-RestMethod -Uri "https://api.openai.com/v1/chat/completions" `
-                                      -Method Post `
-                                      -Headers $headers `
-                                      -Body $body `
-                                      -ErrorAction Stop
+            -Method Post `
+            -Headers $headers `
+            -Body $body `
+            -ErrorAction Stop
 
         # Log raw response for debugging JSON parsing issues
         $rawResponsePath = Join-Path $OutputDir "raw_llm_response_$(Get-Date -Format 'yyyyMMdd_HHmmss').json"
@@ -273,25 +276,25 @@ function Invoke-MilestoneAgent {
 
     # Map agent names to "roles" / system prompts
     $agentSystemPrompts = @{
-        "Researcher" = @"
+        "Researcher"   = @"
 You are an expert technical researcher.
 Clarify requirements, identify constraints, and surface relevant considerations.
 Focus on router health monitoring and PowerShell-specific concerns.
 "@
 
-        "Engineer" = @"
+        "Engineer"     = @"
 You are a senior PowerShell and networking engineer.
 Design and implement robust, production-ready PowerShell code.
 Prefer clear functions, input validation, and inline comments.
 "@
 
-        "Critic" = @"
+        "Critic"       = @"
 You are a rigorous test and review engineer.
 Identify risks, edge cases, and missing coverage.
 Propose concrete test scenarios and improvements.
 "@
 
-        "Synthesizer" = @"
+        "Synthesizer"  = @"
 You are a technical writer and synthesizer.
 Produce clear documentation, examples, and step-by-step guidance.
 Assume the reader is a capable engineer but new to this module.
@@ -402,7 +405,7 @@ function Execute-MilestonePipeline {
         Write-Log "  Milestone completed: $($milestone.Name)"
     }
 
-    return ,$results               # Return as array, even for a single milestone
+    return , $results               # Return as array, even for a single milestone
 }
 
 function Invoke-Milestone {
@@ -453,14 +456,14 @@ function Complete-Orchestration {
     
     # Generate summary
     $summary = @{
-        Goal = $Context.Goal
-        Model = $Context.Model
-        StartTime = $Context.StartTime.ToString("o")
-        EndTime = $endTime.ToString("o")
-        DurationSeconds = [math]::Round($duration.TotalSeconds, 2)
-        MilestonesCount = $Context.Milestones.Count
+        Goal                = $Context.Goal
+        Model               = $Context.Model
+        StartTime           = $Context.StartTime.ToString("o")
+        EndTime             = $endTime.ToString("o")
+        DurationSeconds     = [math]::Round($duration.TotalSeconds, 2)
+        MilestonesCount     = $Context.Milestones.Count
         CompletedMilestones = ($Context.Milestones | Where-Object { $_.Status -eq "completed" }).Count
-        Status = "completed"
+        Status              = "completed"
     }
     
     # Save summary
@@ -477,14 +480,17 @@ try {
     if (-not [string]::IsNullOrEmpty($Goal)) {
         $goalText = $Goal
         Write-Log "Using goal text from -Goal parameter"
-    } elseif (-not [string]::IsNullOrEmpty($GoalFile)) {
+    }
+    elseif (-not [string]::IsNullOrEmpty($GoalFile)) {
         if (Test-Path $GoalFile) {
             $goalText = Get-Content -Path $GoalFile -Raw -ErrorAction Stop
             Write-Log "Using goal text from file: $GoalFile"
-        } else {
+        }
+        else {
             throw "Goal file not found: $GoalFile"
         }
-    } else {
+    }
+    else {
         $goalText = "Execute default orchestration workflow"
         Write-Log "No goal or goal file provided, using default goal" -Level "WARN"
     }
@@ -505,7 +511,8 @@ try {
                 $context.Milestones += $result
             }
         }
-    } else {
+    }
+    else {
         # Use new AI-backed pipeline
         $pipelineResults = Execute-MilestonePipeline `
             -Milestones $milestones `

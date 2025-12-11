@@ -1,14 +1,26 @@
 ### BEGIN FILE: Orchestration\MilestoneController.ps1
 [CmdletBinding()]
 param(
-    # Forward any arguments from the caller into the inner script
-    [Parameter(ValueFromRemainingArguments = $true)]
-    [object[]]$ArgsFromCaller
+    [Parameter(Mandatory = $false)]
+    [string]$Goal,
+
+    [Parameter(Mandatory = $false)]
+    [string]$GoalFile,
+
+    [Parameter(Mandatory = $false)]
+    [string]$Model = "gpt-4o-mini",
+
+    [Parameter(Mandatory = $false)]
+    [string]$OutputDir = ".",
+
+    [Parameter(Mandatory = $false)]
+    [switch]$DryRun,
+
+    [Parameter(Mandatory = $false)]
+    [string]$LogLevel = "Info"
 )
 
 # Resolve repo root and inner orchestrator path
-$repoRoot = Split-Path -Parent $PSScriptRoot
-
 $innerScript = Join-Path -Path $PSScriptRoot -ChildPath 'scripts\MilestoneController.ps1'
 
 if (-not (Test-Path -LiteralPath $innerScript)) {
@@ -18,8 +30,13 @@ if (-not (Test-Path -LiteralPath $innerScript)) {
 
 Write-Verbose "Dispatching to inner orchestrator: $innerScript"
 
-# Invoke the real orchestrator with any original arguments
-& $innerScript @ArgsFromCaller
+# invoke the inner script with explicit arguments
+& $innerScript -Goal $Goal `
+    -GoalFile $GoalFile `
+    -Model $Model `
+    -OutputDir $OutputDir `
+    -DryRun:$DryRun `
+    -LogLevel $LogLevel
 
 # Preserve exit code for the caller (Python / uvicorn side)
 exit $LASTEXITCODE
