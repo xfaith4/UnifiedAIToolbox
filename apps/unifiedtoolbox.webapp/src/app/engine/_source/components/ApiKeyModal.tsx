@@ -16,14 +16,12 @@ const ApiKeyModal: React.FC = () => {
               <h3 className="font-semibold text-lg text-white">How to fix this:</h3>
               <ol className="list-decimal list-inside text-gray-300 space-y-2">
                 <li>Create a file named <code className="bg-gray-700 text-indigo-300 px-1.5 py-0.5 rounded">.env</code> in the root directory of this project.</li>
-                <li>Add your API key to this file on a single line:</li>
               </ol>
-              <pre className="bg-black/50 text-green-300 p-3 rounded-md overflow-x-auto text-sm">
-                <code>API_KEY=AIzaSy...your...api...key...here</code>
-              </pre>
-              <p className="text-gray-400 text-sm">
-                After saving the <code className="bg-gray-700 text-indigo-300 px-1 py-0.5 rounded">.env</code> file, you will need to **reload this page** for the changes to take effect.
-              </p>
+              <p className="mb-2">2. Add your API key to this file on a single line:</p>
+              <div className="bg-gray-900 p-2 rounded mb-4 font-mono text-xs overflow-x-auto">
+                <code>NEXT_PUBLIC_API_KEY=AIzaSy...your...api...key...here</code>
+              </div>
+              <p className="text-xs text-gray-400">After saving the <span className="font-mono bg-gray-700 px-1 rounded">.env</span> file, you will need to **reload this page** for the changes to take effect.</p>
             </div>
           </div>
         </div>

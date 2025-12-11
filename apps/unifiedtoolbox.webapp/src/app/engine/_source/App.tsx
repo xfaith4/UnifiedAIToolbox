@@ -16,7 +16,7 @@ import useOrchestrator from './hooks/useOrchestrator';
 import type { Task } from './types';
 
 const App: React.FC = () => {
-  const { 
+  const {
     session: liveSession,
     history,
     isOrchestrating,
@@ -41,7 +41,7 @@ const App: React.FC = () => {
   useEffect(() => {
     // Check if the API key is missing from the environment.
     // This provides guidance for users running the app locally.
-    if (!process.env.API_KEY) {
+    if (!process.env.NEXT_PUBLIC_API_KEY && !process.env.API_KEY) {
       setIsApiKeyMissing(true);
     }
   }, []);
@@ -50,7 +50,7 @@ const App: React.FC = () => {
     if (activeView === 'live') return liveSession;
     return history.find(s => s.id === activeView) || null;
   }, [activeView, liveSession, history]);
-  
+
   // Fix: The "Export" button is now enabled for any completed session,
   // including historical ones, not just the "live" completed session.
   const isExportAvailable = useMemo(() => {
@@ -61,15 +61,15 @@ const App: React.FC = () => {
     // For the live view, it's exportable only when the orchestration is complete.
     return isComplete;
   }, [activeView, history, isComplete]);
-  
+
   const totalCost = useMemo(() => {
-      if (!displayedSession) return null;
-      if (displayedSession.totalCost) return displayedSession.totalCost;
-      
-      const planningCost = displayedSession.planningCost || 0;
-      const tasksCost = displayedSession.tasks.reduce((sum, task) => sum + (task.cost || 0), 0);
-      const runningTotal = planningCost + tasksCost;
-      return runningTotal > 0 ? runningTotal : null;
+    if (!displayedSession) return null;
+    if (displayedSession.totalCost) return displayedSession.totalCost;
+
+    const planningCost = displayedSession.planningCost || 0;
+    const tasksCost = displayedSession.tasks.reduce((sum, task) => sum + (task.cost || 0), 0);
+    const runningTotal = planningCost + tasksCost;
+    return runningTotal > 0 ? runningTotal : null;
   }, [displayedSession]);
 
   const tasks = displayedSession?.tasks || [];
@@ -77,12 +77,12 @@ const App: React.FC = () => {
 
   const handleGoalSubmit = (goal: string, fileContent: string | null) => {
     if (activeView !== 'live') {
-        setActiveView('live');
+      setActiveView('live');
     }
     startOrchestration(goal, fileContent);
     setSelectedTaskId(null);
   };
-  
+
   const handleSelectTask = (task: Task) => {
     setSelectedTaskId(task.id);
   };
@@ -90,17 +90,17 @@ const App: React.FC = () => {
   const handleClearSelection = () => {
     setSelectedTaskId(null);
   };
-  
+
   const handleSelectSession = (sessionId: string) => {
-      setActiveView(sessionId);
-      setShowHistory(false);
-      setSelectedTaskId(null);
+    setActiveView(sessionId);
+    setShowHistory(false);
+    setSelectedTaskId(null);
   };
-  
+
   const handleGoLive = () => {
-      setActiveView('live');
-      setShowHistory(false);
-      setSelectedTaskId(null);
+    setActiveView('live');
+    setShowHistory(false);
+    setSelectedTaskId(null);
   };
 
   // Add a listener to warn users before closing the tab during an active run.
@@ -116,7 +116,7 @@ const App: React.FC = () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
   }, [isOrchestrating]);
-  
+
   return (
     <div className="bg-gray-900 text-gray-200 font-sans h-screen flex flex-col">
       {isApiKeyMissing && <ApiKeyModal />}
@@ -130,13 +130,13 @@ const App: React.FC = () => {
         totalCost={totalCost}
       />
       <main className="flex-1 flex flex-col overflow-hidden">
-        <GoalInput 
-            onGoalSubmit={handleGoalSubmit} 
-            isOrchestrating={isOrchestrating}
-            onCancelOrchestration={cancelOrchestration}
+        <GoalInput
+          onGoalSubmit={handleGoalSubmit}
+          isOrchestrating={isOrchestrating}
+          onCancelOrchestration={cancelOrchestration}
         />
         <div className="flex-1 flex overflow-hidden">
-          <div className="flex-1 flex flex-col">
+          <div className="flex-1 flex flex-col min-w-0">
             <TaskGraph
               tasks={tasks}
               onSelectTask={handleSelectTask}
@@ -150,32 +150,32 @@ const App: React.FC = () => {
           />
         </div>
       </main>
-      
+
       {/* Modals and Panels */}
       <DefinitionsPanel isOpen={showDefinitions} onClose={() => setShowDefinitions(false)} />
-      <SessionHistoryPanel 
-        isOpen={showHistory} 
-        onClose={() => setShowHistory(false)} 
+      <SessionHistoryPanel
+        isOpen={showHistory}
+        onClose={() => setShowHistory(false)}
         sessions={history}
         onSelectSession={handleSelectSession}
         onGoLive={handleGoLive}
         onClearHistory={clearHistory}
         currentSessionId={activeView}
       />
-      
+
       <ExportModal
-          isOpen={showExport}
-          onClose={() => setShowExport(false)}
-          tasks={displayedSession?.tasks ?? []}
+        isOpen={showExport}
+        onClose={() => setShowExport(false)}
+        tasks={displayedSession?.tasks ?? []}
       />
-      
+
       <FeedbackModal
         isOpen={showFeedback}
         onClose={() => setShowFeedback(false)}
         session={displayedSession}
         onRunFeedback={runFeedback}
       />
-      
+
       <SettingsModal
         isOpen={showSettings}
         onClose={() => setShowSettings(false)}

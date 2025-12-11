@@ -32,14 +32,16 @@ const useOrchestrator = () => {
   const [session, setSession] = useState<Session | null>(null);
   const [history, setHistory] = useState<Session[]>(() => {
     // Load history from localStorage on initial load
-    try {
-      const storedHistory = window.localStorage.getItem(STORAGE_KEY);
-      if (storedHistory) {
-        return JSON.parse(storedHistory);
+    if (typeof window !== 'undefined') {
+      try {
+        const storedHistory = window.localStorage.getItem(STORAGE_KEY);
+        if (storedHistory) {
+          return JSON.parse(storedHistory);
+        }
+      } catch (error) {
+        console.error("Failed to load session history from localStorage:", error);
+        window.localStorage.removeItem(STORAGE_KEY);
       }
-    } catch (error) {
-      console.error("Failed to load session history from localStorage:", error);
-      window.localStorage.removeItem(STORAGE_KEY);
     }
     return [];
   });
@@ -137,7 +139,7 @@ const useOrchestrator = () => {
     setTasks(initialTasks); // Set initial tasks if any
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_API_KEY || process.env.API_KEY });
 
       const planPrompt = `
         As a Supervisor AI, create a detailed, parallelizable plan to achieve the following goal: "${goal}".
@@ -192,7 +194,7 @@ const useOrchestrator = () => {
     appendToTaskLog(task.id, `Agent ${task.agent.role} is working...`);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_API_KEY || process.env.API_KEY });
       let newArtifact: Artifact | null = null;
       let taskCost = 0;
       let inputTokens = 0;
@@ -373,7 +375,7 @@ const useOrchestrator = () => {
   }, []);
 
   const runFeedback = useCallback(async (session: Session, feedback: string): Promise<string> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_API_KEY || process.env.API_KEY });
     const context = session.tasks.map(t => `Task: ${t.name}, Agent: ${t.agent.role}, Status: ${t.status}`).join('\n');
 
     const feedbackPrompt = `

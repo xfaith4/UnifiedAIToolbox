@@ -1,12 +1,7 @@
 import React, { useState, useMemo } from 'react';
+import JSZip from 'jszip';
 import type { Task, Artifact } from '../types';
 import { CloseIcon, DownloadIcon, PaperclipIcon, LoadingIcon } from './icons';
-
-declare global {
-  interface Window {
-    JSZip: any;
-  }
-}
 
 interface ExportModalProps {
   isOpen: boolean;
@@ -16,22 +11,22 @@ interface ExportModalProps {
 
 const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, tasks }) => {
   const [isZipping, setIsZipping] = useState(false);
-  
+
   const uniqueArtifacts = useMemo(() => {
     // Defensively handle potentially malformed task data from sources like localStorage.
     if (!Array.isArray(tasks)) {
-        return [];
+      return [];
     }
-    const allArtifacts = tasks.flatMap(task => 
-        (task && Array.isArray(task.artifacts)) ? task.artifacts : []
+    const allArtifacts = tasks.flatMap(task =>
+      (task && Array.isArray(task.artifacts)) ? task.artifacts : []
     );
-    
+
     const artifactMap = new Map<string, Artifact>();
     for (const artifact of allArtifacts) {
-        // Ensure artifact is a valid object with a name before adding it.
-        if (artifact && artifact.name) {
-            artifactMap.set(artifact.name, artifact);
-        }
+      // Ensure artifact is a valid object with a name before adding it.
+      if (artifact && artifact.name) {
+        artifactMap.set(artifact.name, artifact);
+      }
     }
     return Array.from(artifactMap.values());
   }, [tasks]);
@@ -41,16 +36,10 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, tasks }) => 
   const handleDownloadZip = async () => {
     if (isZipping) return;
     setIsZipping(true);
-    
+
     try {
-      const JSZip = window.JSZip;
-      if (!JSZip) {
-        alert('Error: JSZip library not found. Cannot create zip file.');
-        return;
-      }
-      
       const zip = new JSZip();
-      
+
       uniqueArtifacts.forEach(artifact => {
         if (artifact.type === 'IMAGE') {
           zip.file(artifact.name, artifact.content, { base64: true });
@@ -58,9 +47,9 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, tasks }) => 
           zip.file(artifact.name, artifact.content);
         }
       });
-      
+
       const blob = await zip.generateAsync({ type: 'blob' });
-      
+
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
       link.download = 'orchestrator-project.zip';
@@ -93,7 +82,7 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, tasks }) => 
             <CloseIcon className="w-6 h-6" />
           </button>
         </div>
-        
+
         <div className="p-6 max-h-[70vh] overflow-y-auto">
           <div className="bg-gray-700/50 p-4 rounded-lg">
             <h3 className="flex items-center text-lg font-semibold mb-3">
@@ -118,7 +107,7 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, tasks }) => 
           <button onClick={onClose} className="px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded-lg transition-colors">
             Close
           </button>
-          <button 
+          <button
             onClick={handleDownloadZip}
             disabled={isZipping || uniqueArtifacts.length === 0}
             className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg flex items-center transition-colors disabled:bg-indigo-400 disabled:cursor-wait"
