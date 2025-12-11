@@ -27,14 +27,14 @@
 
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [string]$Goal = "Run a complete analysis of the current project state",
     
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [ValidateSet("gpt-4o-mini", "gpt-4", "gpt-3.5-turbo")]
     [string]$Model = "gpt-4o-mini",
     
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [ValidateSet("Info", "Debug", "Warning", "Error")]
     [string]$LogLevel = "Info"
 )
@@ -44,7 +44,7 @@ $ErrorActionPreference = "Stop"
 
 # Configuration
 $Script:ProjectRoot = $PSScriptRoot
-$DashboardDir = Join-Path $ProjectRoot "apps\dashboard"
+$DashboardDir = Join-Path $ProjectRoot "apps\unifiedtoolbox.webapp"
 $ApiDir = Join-Path $ProjectRoot "Orchestration\UnifiedPromptApp\services\prompt-api"
 $OutputDir = Join-Path $ProjectRoot "apps\orchestration-bridge\runs"
 $LogDir = Join-Path $ProjectRoot "logs"
@@ -53,9 +53,9 @@ $LogDir = Join-Path $ProjectRoot "logs"
 $null = New-Item -ItemType Directory -Force -Path $OutputDir, $LogDir
 function Write-Status {
     param(
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [string]$Message,
-        [Parameter(Mandatory=$false)]
+        [Parameter(Mandatory = $false)]
         [ValidateSet("Info", "Success", "Warning", "Error", "Debug")]
         [string]$Level = "Info"
     )
@@ -64,9 +64,9 @@ function Write-Status {
     $color = switch ($Level) {
         "Success" { "Green" }
         "Warning" { "Yellow" }
-        "Error"   { "Red" }
-        "Debug"   { "Gray" }
-        default   { "Cyan" }
+        "Error" { "Red" }
+        "Debug" { "Gray" }
+        default { "Cyan" }
     }
     
     Write-Host "[$timestamp] " -NoNewline -ForegroundColor Gray
@@ -126,12 +126,14 @@ function Start-Backend {
                 Write-Status "   - Health:   http://localhost:8000/health" -Level "Info"
                 return $backendProcess
             }
-        } catch {
+        }
+        catch {
             Write-Status "⚠️  Could not verify backend API health: $_" -Level "Warning"
             Write-Status "The backend may still be starting up. Trying to continue..." -Level "Warning"
             return $backendProcess
         }
-    } catch {
+    }
+    catch {
         Write-Status "❌ Error starting backend: $_" -Level "Error"
         return $null
     }
@@ -146,7 +148,8 @@ function Start-Frontend {
         $nodeVersion = node --version
         $npmVersion = npm --version
         Write-Status "✅ Using Node.js $nodeVersion and npm $npmVersion" -Level "Success"
-    } catch {
+    }
+    catch {
         Write-Status "❌ Node.js is not properly installed or not in PATH" -Level "Error"
         Write-Status "Please install Node.js from https://nodejs.org/ and try again" -Level "Error"
         return $null
@@ -182,7 +185,7 @@ function Start-Frontend {
         # Start the Vite development server using npx
         Write-Status "Starting Vite development server..." -Level "Info"
         $comspec = $env:ComSpec
-        $frontendArgs = "/c", "npm run dev -- --host 0.0.0.0 --port 5173"
+        $frontendArgs = "/c", "npm run dev -- -p 5173"
         $frontendProcess = Start-Process -FilePath $comspec `
             -ArgumentList $frontendArgs `
             -WorkingDirectory $DashboardDir -NoNewWindow -PassThru
@@ -194,13 +197,15 @@ function Start-Frontend {
         try {
             Start-Process "http://localhost:5173"
             Write-Status "✅ Dashboard should open in your default browser at http://localhost:5173" -Level "Success"
-        } catch {
+        }
+        catch {
             Write-Status "⚠️  Could not open browser automatically. Please navigate to http://localhost:5173" -Level "Warning"
         }
         
         Pop-Location
         return $frontendProcess
-    } catch {
+    }
+    catch {
         Write-Status "❌ Error starting frontend: $_" -Level "Error"
         Pop-Location -ErrorAction SilentlyContinue
         return $null
@@ -237,11 +242,11 @@ function Start-Orchestration {
     )
     
     $processInfo = @{
-        FilePath = "pwsh.exe"
-        ArgumentList = $arguments
+        FilePath         = "pwsh.exe"
+        ArgumentList     = $arguments
         WorkingDirectory = $ProjectRoot
-        NoNewWindow = $false
-        Wait = $true
+        NoNewWindow      = $false
+        Wait             = $true
     }
     
     $orchestrationProcess = Start-Process @processInfo -PassThru
@@ -251,7 +256,8 @@ function Start-Orchestration {
         if (Test-Path $outputFile) {
             Write-Status "📄 Results saved to: $outputFile" -Level "Info"
         }
-    } else {
+    }
+    else {
         Write-Status "❌ Orchestration failed with exit code $($orchestrationProcess.ExitCode)" -Level "Error"
     }
 }
@@ -262,7 +268,7 @@ function Find-Backend {
     foreach ($file in $possibleFiles) {
         Write-Status "Looking for $file..." -Level "Debug"
         $found = Get-ChildItem -Path $ProjectRoot -Filter $file -Recurse -File -ErrorAction SilentlyContinue |
-                 Where-Object { $_.FullName -like "*prompt-api*" -or $_.FullName -like "*backend*" -or $_.FullName -like "*api*" }
+        Where-Object { $_.FullName -like "*prompt-api*" -or $_.FullName -like "*backend*" -or $_.FullName -like "*api*" }
         
         if ($found) {
             $dir = $found.Directory.FullName
@@ -286,15 +292,15 @@ try {
     Write-Host "`n=== 🚀 Unified AI Toolbox Launcher ===" -ForegroundColor Cyan
     Write-Host "Starting all services and dashboard...`n" -ForegroundColor White
     
-# In the main execution block, update the backend startup section:
-$backendProcess = Start-Backend
-if (-not $backendProcess) {
-    Write-Status "⚠️  Backend API could not be started. Some features may not be available." -Level "Warning"
-    Write-Status "You may need to start the backend manually." -Level "Warning"
-}
+    # In the main execution block, update the backend startup section:
+    $backendProcess = Start-Backend
+    if (-not $backendProcess) {
+        Write-Status "⚠️  Backend API could not be started. Some features may not be available." -Level "Warning"
+        Write-Status "You may need to start the backend manually." -Level "Warning"
+    }
 
-# Continue with frontend and other services
-$frontendProcess = Start-Frontend
+    # Continue with frontend and other services
+    $frontendProcess = Start-Frontend
     
     # Start orchestration
     Start-Orchestration -Goal $Goal -Model $Model -LogLevel $LogLevel
@@ -313,11 +319,13 @@ $frontendProcess = Start-Frontend
         Start-Sleep -Seconds 60
     }
     
-} catch {
+}
+catch {
     Write-Status "❌ Error: $_" -Level "Error"
     Write-Status $_.ScriptStackTrace -Level "Error"
     exit 1
-} finally {
+}
+finally {
     # Cleanup on Ctrl+C
     Write-Host "`n🛑 Stopping services..." -ForegroundColor Yellow
     

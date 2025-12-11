@@ -20,6 +20,20 @@ param(
     [string]$LogLevel = "Info"
 )
 
+### BEGIN: OutputDirDefaults
+# If the caller did NOT explicitly pass -OutputDir, default it to a stable
+# RunArtifacts folder rooted at the orchestration script directory.
+if (-not $PSBoundParameters.ContainsKey('OutputDir')) {
+    $OutputDir = Join-Path -Path $PSScriptRoot -ChildPath 'RunArtifacts'
+}
+
+# Ensure the output directory exists so the inner orchestrator can safely
+# write logs, summaries, and raw LLM responses under it.
+if (-not (Test-Path -Path $OutputDir -PathType Container)) {
+    $null = New-Item -Path $OutputDir -ItemType Directory -Force
+}
+### END: OutputDirDefaults
+
 # Resolve repo root and inner orchestrator path
 $innerScript = Join-Path -Path $PSScriptRoot -ChildPath 'scripts\MilestoneController.ps1'
 

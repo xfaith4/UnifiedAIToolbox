@@ -32,6 +32,8 @@ const navSections: NavSection[] = [
     title: 'Integration Tools',
     items: [
       { href: '/orchestrator', label: 'Orchestrator', icon: Users },
+      { href: '/milestones', label: 'Milestones', icon: BarChart3 },
+      { href: '/engine', label: 'Engine', icon: Workflow },
       { href: '/genesys', label: 'Genesys', icon: Workflow },
       { href: '/github', label: 'GitHub', icon: Github },
     ],
@@ -102,9 +104,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 
             <aside
               id="sidebar-nav"
-              className={`fixed inset-y-0 left-0 z-40 w-64 border-r border-slate-800 bg-slate-900 p-4 transition-transform duration-200 ease-out md:static md:z-auto md:w-full md:translate-x-0 ${
-                sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-              }`}
+              className={`fixed inset-y-0 left-0 z-40 w-64 border-r border-slate-800 bg-slate-900 p-4 transition-transform duration-200 ease-out md:static md:z-auto md:w-full md:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+                }`}
             >
               <div className="mb-6 hidden items-center gap-2 md:flex">
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-purple-600">

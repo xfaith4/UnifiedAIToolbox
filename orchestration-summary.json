@@ -1,10 +1,10 @@
 {
   "MilestonesCount": 1,
-  "EndTime": "2025-12-10T21:53:00.8120817-05:00",
-  "DurationSeconds": 0.11,
-  "Status": "completed",
-  "CompletedMilestones": 0,
+  "EndTime": "2025-12-11T03:48:55.0024362-05:00",
   "Model": "gpt-4o-mini",
-  "Goal": "Test Run",
-  "StartTime": "2025-12-10T21:53:00.7041751-05:00"
+  "Status": "completed",
+  "Goal": "Test",
+  "StartTime": "2025-12-11T03:48:37.9325198-05:00",
+  "CompletedMilestones": 1,
+  "DurationSeconds": 17.07
 }

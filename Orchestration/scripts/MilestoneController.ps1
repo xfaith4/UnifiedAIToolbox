@@ -465,7 +465,33 @@ function Complete-Orchestration {
         CompletedMilestones = ($Context.Milestones | Where-Object { $_.Status -eq "completed" }).Count
         Status              = "completed"
     }
+    ### BEGIN: RawLLMResponseStorage
+
+    # Base directory for orchestration artifacts (rooted at the script location)
+    $orchestrationRoot = Join-Path -Path $PSScriptRoot -ChildPath 'RunArtifacts'
+
+    # Subfolder just for raw LLM responses
+    $llmResponseDir = Join-Path -Path $orchestrationRoot -ChildPath 'LLMResponses'
+
+    # Ensure the directory exists before we try to write into it
+    if (-not (Test-Path -Path $llmResponseDir -PathType Container)) {
+        $null = New-Item -Path $llmResponseDir -ItemType Directory -Force
+    }
+
+    # Build a timestamped file name for this run
+    $timestamp = Get-Date
+    $fileName = 'raw_llm_response_{0:yyyyMMdd_HHmmss}.json' -f $timestamp
+    $rawOutputPath = Join-Path -Path $llmResponseDir -ChildPath $fileName
+
+    # Actually write the raw LLM response to disk as JSON
     
+    $llmResponse | ConvertTo-Json -Depth 10 |
+    Set-Content -Path $rawOutputPath -Encoding UTF8
+
+    Write-Host "[INFO] Saved raw LLM response to: $rawOutputPath"
+
+    ### END: RawLLMResponseStorage
+
     # Save summary
     $summaryPath = Join-Path $OutputDir "orchestration-summary.json"
     $summary | ConvertTo-Json -Depth 10 | Set-Content -Path $summaryPath

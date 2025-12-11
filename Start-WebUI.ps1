@@ -17,16 +17,16 @@
 
 [CmdletBinding()]
 param (
-    [Parameter(HelpMessage="Starting port number")]
+    [Parameter(HelpMessage = "Starting port number")]
     [int]$Port = 8000,
 
-    [Parameter(HelpMessage="Maximum port number to try")]
+    [Parameter(HelpMessage = "Maximum port number to try")]
     [int]$MaxPort = 8100,
 
-    [Parameter(HelpMessage="Skip the build step")]
+    [Parameter(HelpMessage = "Skip the build step")]
     [switch]$SkipBuild = $false,
 
-    [Parameter(HelpMessage="Automatically terminate processes using the port")]
+    [Parameter(HelpMessage = "Automatically terminate processes using the port")]
     [switch]$Force
 )
 
@@ -36,7 +36,7 @@ $VerbosePreference = if ($Verbose) { 'Continue' } else { 'SilentlyContinue' }
 # Initialize
 $ErrorActionPreference = 'Stop'
 $projectRoot = $PSScriptRoot
-$dashboardDir = Join-Path $projectRoot 'apps\dashboard'
+$dashboardDir = Join-Path $projectRoot 'apps\unifiedtoolbox.webapp'
 $originalPort = $Port
 
 # Check if required commands are available
@@ -53,7 +53,8 @@ function Test-PortAvailable {
         $listener.Start()
         $listener.Stop()
         return $true
-    } catch {
+    }
+    catch {
         return $false
     }
 }
@@ -63,8 +64,9 @@ function Get-ProcessUsingPort {
     param([int]$Port)
     try {
         return Get-NetTCPConnection -LocalPort $Port -ErrorAction SilentlyContinue |
-               Select-Object -ExpandProperty OwningProcess -First 1
-    } catch {
+        Select-Object -ExpandProperty OwningProcess -First 1
+    }
+    catch {
         return $null
     }
 }
@@ -77,7 +79,8 @@ foreach ($module in $requiredModules) {
         try {
             Install-Module -Name $module -Force -Scope CurrentUser -AllowClobber
             Import-Module $module -Force
-        } catch {
+        }
+        catch {
             Write-Error "Failed to install/import required module $module. Error: $_"
             exit 1
         }
@@ -97,7 +100,8 @@ try {
     }
 
     Write-Verbose "✅ Node.js version $nodeVersion detected"
-} catch {
+}
+catch {
     Write-Error "❌ Node.js check failed: $_"
     Write-Host "Please install Node.js 18 or later from https://nodejs.org/" -ForegroundColor Yellow
     exit 1
@@ -112,7 +116,8 @@ function Test-PortInUse {
         $listener.Stop()
         $listener = $null
         return $false
-    } catch {
+    }
+    catch {
         return $true
     }
 }
@@ -143,10 +148,12 @@ if (-not $portAvailable) {
             if ($portAvailable) {
                 Write-Host "✅ Successfully terminated process" -ForegroundColor Green
             }
-        } catch {
+        }
+        catch {
             Write-Warning "Failed to terminate process: $_"
         }
-    } else {
+    }
+    else {
         # Try to find an alternative port
         $originalPort = $Port
         $Port++
@@ -210,20 +217,23 @@ try {
     # Try to open the browser
     try {
         Start-Process $url
-    } catch {
+    }
+    catch {
         Write-Warning "Could not open browser automatically. Please visit $url"
     }
 
     # Start the dev server
     npm run dev
 
-} catch {
+}
+catch {
     Write-Error "❌ Failed to start the web server: $_"
     Write-Host "Troubleshooting tips:" -ForegroundColor Yellow
     Write-Host "1. Make sure no other server is running on port $Port"
     Write-Host "2. Try running with -Verbose for more details"
     Write-Host "3. Check the Node.js and npm versions"
     exit 1
-} finally {
+}
+finally {
     Pop-Location
 }
