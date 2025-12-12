@@ -34,7 +34,6 @@ const navSections: NavSection[] = [
       { href: '/orchestrator', label: 'Orchestrator', icon: Users },
       { href: '/milestones', label: 'Milestones', icon: BarChart3 },
       { href: '/engine', label: 'Engine', icon: Workflow },
-      { href: '/genesys', label: 'Genesys', icon: Workflow },
       { href: '/github', label: 'GitHub', icon: Github },
     ],
   },

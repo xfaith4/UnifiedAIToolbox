@@ -20,8 +20,8 @@ NC='\033[0m' # No Color
 
 # Default ports (align with existing services)
 API_PORT="${API_PORT:-8000}"
-FRONTEND_PORT="${FRONTEND_PORT:-5173}"
 WEB_PORT="${WEB_PORT:-3000}"
+FRONTEND_PORT="${FRONTEND_PORT:-${WEB_PORT}}"
 
 # Flags
 SKIP_CHECKS=false
@@ -44,8 +44,8 @@ Options:
 
 Environment:
   API_PORT          Port for the orchestrator API (default: 8000)
-  FRONTEND_PORT     Port for the frontend UI (default: 5173)
-  WEB_PORT          Port for the static web assets (default: 3000)
+  WEB_PORT          Port for the Next.js portal (default: 3000)
+  FRONTEND_PORT     Legacy alias for WEB_PORT (kept for compatibility)
 
 AI diagnostics (optional, for orchestration verification):
   AI_LAUNCH_DIAGNOSTICS=1          Enable OpenAI-based diagnostics on failure
@@ -157,21 +157,6 @@ PY
     ) &
     API_PID=$!
     echo -e "${GREEN}Prompt API starting with PID ${API_PID}${NC}"
-fi
-
-# Start Vite dashboard
-if [ "$BACKEND_ONLY" != true ]; then
-    echo -e "${CYAN}Starting dashboard (Vite)...${NC}"
-    (
-        cd "${SCRIPT_DIR}/apps/dashboard" || exit 1
-        if [ ! -d "node_modules" ]; then
-            npm install >/dev/null 2>&1 || echo -e "${YELLOW}npm install (dashboard) reported issues; continuing...${NC}"
-        fi
-        VITE_PORT="$FRONTEND_PORT" VITE_API_URL="http://localhost:${API_PORT}" VITE_API_BASE="http://localhost:${API_PORT}" \
-            npm run dev -- --host 0.0.0.0 --port "$FRONTEND_PORT"
-    ) &
-    DASHBOARD_PID=$!
-    echo -e "${GREEN}Dashboard starting with PID ${DASHBOARD_PID}${NC}"
 fi
 
 # Start Next.js portal
@@ -309,13 +294,13 @@ VERIFY_EXIT=0
 while :; do
     echo -e "${CYAN}Running post-launch verification (attempt ${attempt}/${AI_LAUNCH_MAX_RETRIES})...${NC}"
     VERIFY_SCRIPT="${SCRIPT_DIR}/scripts/verify-launch.py"
-    VERIFY_ARGS=("--api-port" "${API_PORT}" "--frontend-port" "${FRONTEND_PORT}" "--web-port" "${WEB_PORT}")
+    DEFAULT_VERIFY_ARGS=("--api-port" "${API_PORT}" "--frontend-port" "${FRONTEND_PORT}" "--web-port" "${WEB_PORT}" "--skip-frontend")
+    VERIFY_ARGS=("${DEFAULT_VERIFY_ARGS[@]}")
     if [ "$BACKEND_ONLY" = true ]; then
-        VERIFY_ARGS=("--api-port" "${API_PORT}" "--skip-frontend" "--skip-web")
+        VERIFY_ARGS=("--api-port" "${API_PORT}" "--frontend-port" "${FRONTEND_PORT}" "--web-port" "${WEB_PORT}" "--skip-frontend" "--skip-web")
     elif [ "$FRONTEND_ONLY" = true ]; then
-        # Frontend-only mode: assume API already running with its own health,
-        # and just exercise the web surfaces as configured.
-        VERIFY_ARGS=("--frontend-port" "${FRONTEND_PORT}" "--web-port" "${WEB_PORT}" "--skip-api")
+        # Frontend-only mode: assume API already running separately and only validate the web portal.
+        VERIFY_ARGS=("--frontend-port" "${FRONTEND_PORT}" "--web-port" "${WEB_PORT}" "--skip-api" "--skip-frontend")
     fi
 
     VERIFY_OUTPUT="$(python3 "${VERIFY_SCRIPT}" "${VERIFY_ARGS[@]}" 2>&1)"
@@ -401,9 +386,9 @@ fi
 
 if [ "$OPEN_BROWSER" = true ] && [ "$BACKEND_ONLY" != true ]; then
     if command -v xdg-open >/dev/null 2>&1; then
-        xdg-open "http://localhost:${FRONTEND_PORT}" >/dev/null 2>&1 &
+        xdg-open "http://localhost:${WEB_PORT}" >/dev/null 2>&1 &
     elif command -v open >/dev/null 2>&1; then
-        open "http://localhost:${FRONTEND_PORT}" >/dev/null 2>&1 &
+        open "http://localhost:${WEB_PORT}" >/dev/null 2>&1 &
     fi
 fi
 

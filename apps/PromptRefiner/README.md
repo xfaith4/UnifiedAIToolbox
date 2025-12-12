@@ -144,7 +144,7 @@ OpenAI_SessionSummary.xlsx
 Example Excel Output:
 
 Date SessionFolder Model IterationsRun PromptTokens CompletionTokens TotalTokens CostUSD
-2025-07-27 15:30 20250727_153045_GenesysLogin_GUI gpt-4.1-mini 5 1200 3300 4500 0.024
+2025-07-27 15:30 20250727_153045_UserAuth_GUI gpt-4.1-mini 5 1200 3300 4500 0.024
 2025-07-27 16:10 20250727_161012_PythonHello gpt-4.1-mini 1 300 200 500 0.003
 
 **Roadmap**

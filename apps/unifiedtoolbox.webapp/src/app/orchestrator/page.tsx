@@ -31,6 +31,14 @@ const DEFAULT_ORCHESTRATOR_AGENTS: OrchestratorAgent[] = [
   { name: 'Commissioner', role: 'system', description: 'Evaluates and makes final decisions' },
 ]
 
+const CARD_SHELL =
+  'rounded-3xl border border-slate-800 bg-slate-900/60 shadow-[0_25px_45px_rgba(2,6,23,0.75)]'
+const CARD_PADDING = 'p-5'
+const HIGHLIGHT_CARD =
+  'rounded-3xl border border-blue-500/40 bg-gradient-to-br from-blue-900/70 to-slate-950/80 shadow-[0_30px_55px_rgba(15,23,42,0.7)] p-6'
+const MODAL_PANEL = 'w-full max-w-3xl rounded-3xl border border-slate-800 bg-slate-900/90 shadow-2xl'
+const OVERLAY = 'fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4'
+
 export default function OrchestratorPage() {
   // Libraries
   const [agents, setAgents] = useState<AgentInstruction[]>([])
@@ -355,7 +363,7 @@ export default function OrchestratorPage() {
       {legacyMode ? (
         /* Legacy Single-Agent Mode */
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_1fr_1fr]">
-          <div className="space-y-4 rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
+          <div className={`space-y-4 ${CARD_SHELL} ${CARD_PADDING}`}>
             <h2 className="font-semibold">1. Select Components</h2>
             <div>
               <label className="text-sm font-medium text-slate-300">Agent</label>
@@ -383,7 +391,7 @@ export default function OrchestratorPage() {
             </div>
           </div>
 
-          <div className="space-y-4 rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
+          <div className={`space-y-4 ${CARD_SHELL} ${CARD_PADDING}`}>
             <h2 className="font-semibold">2. Provide Inputs</h2>
             {(selectedPrompt?.variables ?? []).length === 0 && (
               <p className="text-sm text-slate-400">This prompt has no variables.</p>
@@ -408,7 +416,7 @@ export default function OrchestratorPage() {
             </button>
           </div>
 
-          <div className="space-y-4 rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
+          <div className={`space-y-4 ${CARD_SHELL} ${CARD_PADDING}`}>
             <h2 className="font-semibold">3. View Results</h2>
             {runs.length === 0 && (
               <p className="text-sm text-slate-400">No runs yet. Configure and run an orchestration.</p>
@@ -433,10 +441,7 @@ export default function OrchestratorPage() {
       ) : (
         /* Multi-Agent Orchestration Mode */
         <>
-          <form
-            onSubmit={handleMultiAgentRun}
-            className="space-y-4 rounded-xl border-2 border-blue-500/30 bg-slate-900/60 p-6 shadow-lg"
-          >
+          <form onSubmit={handleMultiAgentRun} className={`space-y-4 ${HIGHLIGHT_CARD}`}>
             {/* Goal Input */}
             <div className="space-y-2">
               <label className="text-base font-semibold text-slate-200 flex items-center gap-2">
@@ -595,7 +600,7 @@ export default function OrchestratorPage() {
           {/* Recent Orchestrations */}
           <div className="space-y-2">
             <h2 className="text-lg font-semibold text-slate-200">Recent Orchestrations</h2>
-            <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900/60 shadow">
+            <div className={`${CARD_SHELL} overflow-hidden`}>
               <table className="min-w-full text-sm">
                 <thead className="bg-slate-800/70 text-slate-200">
                   <tr>
@@ -667,8 +672,8 @@ export default function OrchestratorPage() {
 
       {/* Ad-hoc Agent Creator Modal */}
       {showAgentCreator && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4">
-          <div className="w-full max-w-2xl rounded-xl border border-slate-800 bg-slate-900 shadow-xl">
+        <div className={OVERLAY}>
+          <div className={MODAL_PANEL}>
             <div className="flex items-center justify-between border-b border-slate-800 px-6 py-4">
               <h3 className="text-lg font-semibold text-slate-100 flex items-center gap-2">
                 <svg className="h-5 w-5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -685,7 +690,7 @@ export default function OrchestratorPage() {
                 </svg>
               </button>
             </div>
-            <div className="p-6 space-y-4">
+            <div className="space-y-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-300">Agent Name</label>
                 <input
@@ -750,8 +755,8 @@ export default function OrchestratorPage() {
 
       {/* Log Viewer Modal */}
       {logRun && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4">
-          <div className="w-full max-w-4xl rounded-xl border border-slate-800 bg-slate-900 shadow-xl max-h-[90vh] flex flex-col">
+        <div className={OVERLAY}>
+          <div className={`${MODAL_PANEL} max-w-4xl max-h-[90vh] flex flex-col`}>
             <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
               <div className="text-sm font-semibold text-slate-100 flex flex-col gap-1">
                 <span>Run: {logRun.goal || logRun.promptId || logRun.id}</span>

@@ -106,10 +106,12 @@ docker compose up -d
 ```
 UnifiedAIToolbox/
 ├── apps/
-│   ├── dashboard/              # React/Vite web dashboard
-│   ├── unifiedtoolbox.webapp/  # Next.js web portal
-│   ├── OrchestrationDesktop/   # WPF desktop application
-│   └── PromptRefiner/          # Prompt refinement tools
+│   ├── OrchestrationDesktop/             # WPF desktop application
+│   ├── OrchestrationDesktopLauncher/     # Desktop launcher utility
+│   ├── PromptRefiner/                    # Prompt refinement tools
+│   ├── UnifiedPromptApp/                 # Prompt API service & utilities
+│   ├── orchestration-bridge/             # Python bridge for external agents
+│   └── unifiedtoolbox.webapp/            # Next.js web portal
 ├── modules/
 │   └── PromptLibrary/          # PowerShell prompt management
 ├── data/
@@ -150,25 +152,25 @@ UnifiedAIToolbox/
 
 ## 🛠️ Development
 
-### Quick Launch (API + Dashboard)
+### Quick Launch (API + Portal)
 
 ```bash
-./launch.sh                # preflight checks, installs deps, starts API and dashboard, opens browser
-./launch.sh --no-open      # skip opening the browser
-./launch.sh --frontend-only  # just the Vite dashboard
+./launch.sh                # runs the FastAPI backend and the Next.js portal
+./launch.sh --no-open      # skip opening the browser after services start
+./launch.sh --frontend-only  # launch only the web portal (Next.js)
 ```
 > Requires Node.js 18+ and Python 3.12.1+ (checked automatically).
 
 ### Build the Project
 
-**Web Dashboard:**
+**Unified Web Portal (Next.js):**
 
 ```bash
-cd apps/dashboard
+cd apps/unifiedtoolbox.webapp
 npm install
 npm run dev         # Development server
 npm run build       # Production build
-npm test           # Run tests
+npm test            # Runs lint checks
 ```
 
 **Desktop App:**
@@ -183,7 +185,7 @@ dotnet run
 **API Service:**
 
 ```bash
-cd services/prompt-api
+cd apps/UnifiedPromptApp/services/prompt-api
 python -m pip install -r requirements.txt
 python app.py
 ```
@@ -195,10 +197,10 @@ python app.py
 pwsh tests/Schema.Tests.ps1
 
 # Python API tests
-cd services/prompt-api && pytest
+cd apps/UnifiedPromptApp/services/prompt-api && pytest
 
 # JavaScript/TypeScript tests
-cd apps/dashboard && npm test
+cd apps/unifiedtoolbox.webapp && npm test
 ```
 
 ## 🔄 CI/CD & Automation

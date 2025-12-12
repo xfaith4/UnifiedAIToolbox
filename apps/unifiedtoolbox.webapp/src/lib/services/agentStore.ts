@@ -38,16 +38,48 @@ export function normalizeAgent(agent: Partial<AgentInstruction>): AgentInstructi
   }
 }
 
-export async function fetchAgentLibrary(): Promise<AgentInstruction[]> {
-  if (typeof localStorage === 'undefined') return []
-  const raw = localStorage.getItem(AGENT_STORAGE_KEY)
-  if (!raw) return []
+async function fetchDefaultAgents(): Promise<AgentInstruction[]> {
+  if (typeof fetch === 'undefined') return []
   try {
-    const data = JSON.parse(raw) as Partial<AgentInstruction>[]
-    return Array.isArray(data) ? data.map(normalizeAgent) : []
+    const resp = await fetch('/api/agents')
+    if (!resp.ok) return []
+    const payload = (await resp.json()) as Partial<AgentInstruction>[]
+    if (!Array.isArray(payload)) return []
+    return payload.map(normalizeAgent)
   } catch {
     return []
   }
+}
+
+function saveToLocalStorage(agents: AgentInstruction[]) {
+  if (typeof localStorage === 'undefined') return
+  localStorage.setItem(AGENT_STORAGE_KEY, JSON.stringify(agents))
+}
+
+async function loadFromLocalStorage(): Promise<AgentInstruction[] | null> {
+  if (typeof localStorage === 'undefined') return null
+  const raw = localStorage.getItem(AGENT_STORAGE_KEY)
+  if (!raw) return null
+  try {
+    const data = JSON.parse(raw) as Partial<AgentInstruction>[]
+    if (!Array.isArray(data)) return null
+    return data.map(normalizeAgent)
+  } catch {
+    return null
+  }
+}
+
+export async function fetchAgentLibrary(): Promise<AgentInstruction[]> {
+  const local = await loadFromLocalStorage()
+  if (local && local.length > 0) {
+    return local
+  }
+
+  const defaults = await fetchDefaultAgents()
+  if (defaults.length > 0) {
+    saveToLocalStorage(defaults)
+  }
+  return defaults
 }
 
 export async function persistAgentLibrary(agents: AgentInstruction[]): Promise<void> {

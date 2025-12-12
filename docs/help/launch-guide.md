@@ -62,9 +62,9 @@ cp .env.example .env
 docker compose up -d
 ```
 
-#### 3. Quick Launch (API + Dashboard)
+#### 3. Quick Launch (API + Portal)
 ```bash
-./launch.sh          # from repo root; installs deps, starts API + dashboard
+./launch.sh          # from repo root; installs deps, starts API + portal
 ./launch.sh --help   # view options (ports, skip install, no-open)
 ```
 
@@ -81,7 +81,7 @@ docker compose up -d
 
 **Manual Start:**
 ```bash
-cd services/prompt-api
+cd apps/UnifiedPromptApp/services/prompt-api
 python3 -m venv .venv-linux
 source .venv-linux/bin/activate  # On Windows: .venv\Scripts\activate
 pip install -r requirements.txt
@@ -90,23 +90,10 @@ python app.py
 
 ### Frontend Services
 
-#### Dashboard (React + Vite)
-- **Port:** 5173 (default)
-- **Technology:** React 18, Vite, TypeScript
-- **Purpose:** Primary UI for prompt library and orchestration
-- **URL:** http://localhost:5173
-
-**Manual Start:**
-```bash
-cd apps/dashboard
-npm install
-npm run dev
-```
-
 #### Unified Web Portal (Next.js)
 - **Port:** 3000 (default)
 - **Technology:** Next.js 16, React 19
-- **Purpose:** Primary unified web interface
+- **Purpose:** Unified web interface for prompt management, orchestration, and automation
 - **URL:** http://localhost:3000
 
 **Manual Start:**
@@ -215,7 +202,7 @@ npm --version
 pip3 --version
 
 # Try manual start to see detailed errors
-cd services/prompt-api
+cd apps/UnifiedPromptApp/services/prompt-api
 python3 app.py
 ```
 
@@ -237,9 +224,6 @@ After launching, verify services are running:
 # Check Prompt API health
 curl http://localhost:8000/health
 
-# Check Dashboard (should return HTML)
-curl http://localhost:5173
-
 # Check Web Portal (should return HTML)
 curl http://localhost:3000
 ```
@@ -260,12 +244,11 @@ PROMPT_API_ADMIN_TOKEN=your-admin-token
 
 # Port Configuration
 API_PORT=8000
-FRONTEND_PORT=5173
 WEB_PORT=3000
 WORKBENCH_PORT=8501
 
 # Database
-PROMPT_API_DB_PATH=./services/prompt-api/workbench.db
+PROMPT_API_DB_PATH=./apps/UnifiedPromptApp/services/prompt-api/workbench.db
 ```
 
 ### Custom Data Directory
@@ -298,7 +281,7 @@ Press `Ctrl+C` in the PowerShell window.
 2. **Explore the API:** http://localhost:8000/docs
 3. **Read the Documentation:** See README.md for detailed usage
 4. **Configure AI Models:** Set your OpenAI API key in .env
-5. **Import Prompts:** Use the dashboard to import prompt libraries
+5. **Import Prompts:** Use the portal to import prompt libraries
 
 ## Support
 

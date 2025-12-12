@@ -1,6 +1,7 @@
 'use client'
 
 import type { PromptItem } from '@/lib/types/prompts'
+import { getStarterPromptsWithTimestamps } from '@/lib/data/starterPrompts'
 
 const PROMPT_STORAGE_KEY = 'ai-toolbox-prompt-library'
 
@@ -41,13 +42,33 @@ export function normalizePrompt(prompt: Partial<PromptItem>): PromptItem {
 
 export async function fetchPromptLibrary(): Promise<PromptItem[]> {
   if (typeof localStorage === 'undefined') return []
+
   const raw = localStorage.getItem(PROMPT_STORAGE_KEY)
-  if (!raw) return []
+
+  // If no prompts exist, initialize with starter prompts
+  if (!raw) {
+    const starterPrompts = getStarterPromptsWithTimestamps()
+    await persistPromptLibrary(starterPrompts)
+    return starterPrompts
+  }
+
   try {
     const data = JSON.parse(raw) as Partial<PromptItem>[]
-    return Array.isArray(data) ? data.map(normalizePrompt) : []
+    const prompts = Array.isArray(data) ? data.map(normalizePrompt) : []
+
+    // If library is empty, add starter prompts
+    if (prompts.length === 0) {
+      const starterPrompts = getStarterPromptsWithTimestamps()
+      await persistPromptLibrary(starterPrompts)
+      return starterPrompts
+    }
+
+    return prompts
   } catch {
-    return []
+    // On error, return starter prompts
+    const starterPrompts = getStarterPromptsWithTimestamps()
+    await persistPromptLibrary(starterPrompts)
+    return starterPrompts
   }
 }
 
