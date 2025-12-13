@@ -109,6 +109,35 @@ docker compose up -d
 
 **📖 Need more details?** See the [Launch Guide](docs/help/launch-guide.md) for comprehensive setup instructions.
 
+### 🔧 Orchestration Configuration (Frontend ↔ Backend)
+
+The Unified AI Toolbox features seamless integration between the Next.js web portal and the Prompt API backend for orchestration. This connection is now **pre-configured** and requires no manual setup for local development.
+
+**What's Configured:**
+
+- ✅ `.env.local` in `apps/unifiedtoolbox.webapp` with `NEXT_PUBLIC_API_BASE=http://localhost:8000`
+- ✅ Docker Compose sets `NEXT_PUBLIC_API_BASE=http://prompt-api:8000` for container networking
+- ✅ API health checks and connection validation built into the UI
+- ✅ Automatic fallback to simulation mode if backend is unavailable
+
+**Verify Configuration:**
+
+```bash
+python3 test-orchestration-config.py
+```
+
+This script validates that all environment variables and configuration files are properly set up.
+
+**Troubleshooting:**
+
+If the orchestrator page shows a red "Cannot connect to Prompt API" banner:
+
+1. Verify the backend is running: `curl http://localhost:8000/health`
+2. Check `.env.local` in `apps/unifiedtoolbox.webapp` contains `NEXT_PUBLIC_API_BASE=http://localhost:8000`
+3. Restart the Next.js dev server after changing `.env.local`
+
+For more details, see [apps/unifiedtoolbox.webapp/README.md](apps/unifiedtoolbox.webapp/README.md).
+
 ## 📁 Project Structure
 
 ```
