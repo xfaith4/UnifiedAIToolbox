@@ -8,6 +8,9 @@ const DEFAULT_API_BASE = 'http://localhost:8000'
 const API_BASE_RAW = API_BASE_FROM_ENV || DEFAULT_API_BASE
 const API_BASE = API_BASE_RAW.replace(/\/$/, '')
 
+// Configuration
+const API_HEALTH_CHECK_TIMEOUT_MS = 5000 // 5 seconds
+
 export const ORCHESTRATOR_API_BASE = API_BASE
 export const ORCHESTRATOR_API_USING_DEFAULT_BASE = API_BASE_FROM_ENV === ''
 
@@ -27,7 +30,7 @@ export async function validateApiConnection(): Promise<{ ok: boolean; error?: st
   try {
     // Create AbortController for timeout (compatible with Node 18+)
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 5000) // 5 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), API_HEALTH_CHECK_TIMEOUT_MS)
     
     const res = await fetch(`${API_BASE}/health`, {
       method: 'GET',
