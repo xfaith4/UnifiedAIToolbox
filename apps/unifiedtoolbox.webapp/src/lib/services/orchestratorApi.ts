@@ -25,10 +25,16 @@ if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
  */
 export async function validateApiConnection(): Promise<{ ok: boolean; error?: string }> {
   try {
+    // Create AbortController for timeout (compatible with Node 18+)
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 5000) // 5 second timeout
+    
     const res = await fetch(`${API_BASE}/health`, {
       method: 'GET',
-      signal: AbortSignal.timeout(5000), // 5 second timeout
+      signal: controller.signal,
     })
+    
+    clearTimeout(timeoutId)
     
     if (!res.ok) {
       return { ok: false, error: `API health check failed with status ${res.status}` }

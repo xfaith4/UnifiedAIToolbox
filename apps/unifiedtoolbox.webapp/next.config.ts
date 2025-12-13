@@ -10,21 +10,6 @@ const nextConfig = {
     // Pin the workspace root to this app to silence cross-repo lockfile warnings.
     root: __dirname,
   },
-  
-  // Proxy API requests to the backend to avoid CORS issues
-  async rewrites() {
-    return [
-      {
-        source: '/api/backend/:path*',
-        destination: `${apiBase}/:path*`,
-      },
-    ];
-  },
-  
-  // Environment variables available to the browser
-  env: {
-    NEXT_PUBLIC_API_BASE: apiBase,
-  },
 } satisfies NextConfig & { turbopack?: { root?: string } };
 
 export default nextConfig;
