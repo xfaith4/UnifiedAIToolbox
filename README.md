@@ -75,10 +75,16 @@ The Unified AI Toolbox is a comprehensive platform that unifies prompt managemen
 
 ### Launch in 30 Seconds
 
-**Windows:**
+**Windows (PowerShell):**
 
 ```powershell
-./launch.sh   # run via Git Bash or WSL
+.\Start-Toolbox.ps1   # Interactive menu to launch services
+```
+
+**Windows (Bash/WSL):**
+
+```bash
+./launch.sh   # Automated launch with verification
 ```
 
 **Linux/Mac:**
@@ -93,7 +99,9 @@ The Unified AI Toolbox is a comprehensive platform that unifies prompt managemen
 docker compose up -d
 ```
 
-> Running `./launch.sh` now sets `NEXT_PUBLIC_API_BASE`, forces the orchestrator script path to the Windows MilestoneController.ps1, and runs a post-launch verification script so you see whether the API, dashboard, portal, and orchestrator handshake are healthy.
+> Running `./launch.sh` sets `NEXT_PUBLIC_API_BASE`, forces the orchestrator script path to the Windows MilestoneController.ps1, and runs a post-launch verification script so you see whether the API, dashboard, portal, and orchestrator handshake are healthy.
+>
+> The new `Start-Toolbox.ps1` provides an interactive menu to launch individual services or the full stack.
 
 ### Access Your Services
 
@@ -126,11 +134,13 @@ UnifiedAIToolbox/
 ## 📚 Documentation
 
 ### Getting Started
+
 - **[Quick Start Guide](docs/help/quick-start.md)** - Get up and running in minutes
 - **[Launch Guide](docs/help/launch-guide.md)** - Detailed deployment instructions
 - **[Architecture Overview](docs/help/architecture.md)** - System design and components
 
 ### CI/CD & Automation
+
 - **[Workflow Guide](docs/WORKFLOW_GUIDE.md)** - ✨ Complete guide to GitHub Actions workflows, artifacts, and local testing
 - **[Telemetry & AI Insights](docs/TELEMETRY_AND_AI_INSIGHTS.md)** - 🆕 Usage metrics and AI-powered analysis summaries
 - **[CI/CD Blueprint](templates/ci-cd-blueprint/README.md)** - 🆕 Reusable workflow templates for other repos
@@ -140,6 +150,7 @@ UnifiedAIToolbox/
 - **[GitHub Integration](docs/GITHUB_INTEGRATION.md)** - Complete guide to GitHub authentication and repo operations
 
 ### Features & Capabilities
+
 - **[Project Roadmap](docs/PROJECT_ROADMAP.md)** - Current status, next steps, and future plans
 - **[Orchestration Run Tracking](docs/ORCHESTRATION_RUN_TRACKING.md)** - Comprehensive run tracking with cost & environmental analytics
 - **[Quality & Outcome Tracking](docs/QUALITY_TRACKING.md)** - 🆕 Track success rates, quality scores, and cost efficiency
@@ -147,6 +158,7 @@ UnifiedAIToolbox/
 - **[Prompt Refiner Guide](docs/help/prompt-refiner.md)** - Prompt optimization workflows
 
 ### Reference
+
 - **[API Reference](docs/help/api-reference.md)** - REST API documentation
 - **[Deployment Guide](docs/help/deployment.md)** - Production deployment checklist
 
@@ -159,6 +171,7 @@ UnifiedAIToolbox/
 ./launch.sh --no-open      # skip opening the browser after services start
 ./launch.sh --frontend-only  # launch only the web portal (Next.js)
 ```
+
 > Requires Node.js 18+ and Python 3.12.1+ (checked automatically).
 
 ### Build the Project
@@ -210,6 +223,7 @@ cd apps/unifiedtoolbox.webapp && npm test
 The project includes comprehensive CI/CD workflows:
 
 **Continuous Integration (`ci-comprehensive.yml`):**
+
 - Runs on every push and pull request
 - Tests PowerShell, Python, TypeScript, and C# code
 - Builds dashboard, web app, and desktop applications
@@ -217,6 +231,7 @@ The project includes comprehensive CI/CD workflows:
 - Runs smoke tests and generates CI summary
 
 **Scheduled Repository Analysis (`repo-analysis-scheduled.yml`):**
+
 - Runs daily at 6 AM UTC
 - Analyzes repository health, code quality, and prompt library
 - Generates JSON and HTML reports
@@ -235,6 +250,7 @@ POST https://your-api-domain.com/webhooks/github
 ```
 
 Webhooks automatically trigger:
+
 - Repository analysis on push
 - Code review on PR open/update
 - Security scans on new PRs
@@ -257,6 +273,7 @@ pwsh scripts/Convert-RepoAnalysisToHtml.ps1 -JsonPath artifacts/repo-analysis/re
 ```
 
 Artifacts are stored in standardized directories:
+
 - `artifacts/builds/` - Build outputs (dashboard, webapp, desktop)
 - `artifacts/reports/` - Analysis and health reports
 - `artifacts/logs/` - Build and runtime logs
@@ -267,6 +284,7 @@ See [Workflow Guide](docs/WORKFLOW_GUIDE.md) for comprehensive documentation.
 ### PR Review Dashboard
 
 Access the collaborative PR review dashboard at `/github` in the web dashboard:
+
 - View all open/closed pull requests
 - Check CI status for each PR
 - Filter by state, label, or author
