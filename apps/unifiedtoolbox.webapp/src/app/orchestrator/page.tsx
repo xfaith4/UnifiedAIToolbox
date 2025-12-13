@@ -12,6 +12,7 @@ import {
   fetchOrchestrationRuns,
   fetchOrchestrationRun,
   fetchOrchestrationRunLog,
+  validateApiConnection,
   ORCHESTRATOR_API_BASE,
   ORCHESTRATOR_API_USING_DEFAULT_BASE,
 } from '@/lib/services/orchestratorApi'
@@ -76,6 +77,23 @@ export default function OrchestratorPage() {
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null)
   const [selectedPromptId, setSelectedPromptId] = useState<string | null>(null)
   const [inputs, setInputs] = useState<Record<string, string>>({})
+  
+  // Connection state
+  const [apiConnected, setApiConnected] = useState<boolean | null>(null) // null = checking, true = connected, false = disconnected
+  const [apiError, setApiError] = useState<string>('')
+
+  // Check API connection on mount
+  useEffect(() => {
+    async function checkConnection() {
+      const result = await validateApiConnection()
+      setApiConnected(result.ok)
+      if (!result.ok) {
+        setApiError(result.error || 'Unknown error')
+        console.error('[Orchestrator] API connection failed:', result.error)
+      }
+    }
+    void checkConnection()
+  }, [])
 
   // Load libraries on mount
   useEffect(() => {
@@ -355,9 +373,61 @@ export default function OrchestratorPage() {
       </div>
 
       {ORCHESTRATOR_API_USING_DEFAULT_BASE && (
-        <p className="text-xs text-amber-400">
-          Defaulting to <span className="font-mono">{ORCHESTRATOR_API_BASE}</span> because <code>NEXT_PUBLIC_API_BASE</code> is unset; configure the variable to point to your running prompt API so orchestrations execute against the backend.
-        </p>
+        <div className="rounded-lg border border-amber-700 bg-amber-900/20 px-4 py-3 text-sm text-amber-300">
+          <div className="flex items-start gap-2">
+            <svg className="h-5 w-5 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <div>
+              <div className="font-semibold">Using default API configuration</div>
+              <div className="mt-1 text-xs">
+                Currently defaulting to <code className="rounded bg-amber-950 px-1 py-0.5 font-mono">{ORCHESTRATOR_API_BASE}</code> because <code className="rounded bg-amber-950 px-1 py-0.5 font-mono">NEXT_PUBLIC_API_BASE</code> is unset.
+                <br />
+                To configure a different API endpoint, create a <code className="rounded bg-amber-950 px-1 py-0.5 font-mono">.env.local</code> file in the webapp directory with:
+                <pre className="mt-2 rounded bg-amber-950 px-2 py-1 font-mono text-[11px]">NEXT_PUBLIC_API_BASE=http://localhost:8000</pre>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {apiConnected === false && (
+        <div className="rounded-lg border border-red-700 bg-red-900/20 px-4 py-3 text-sm text-red-300">
+          <div className="flex items-start gap-2">
+            <svg className="h-5 w-5 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div>
+              <div className="font-semibold">Cannot connect to Prompt API</div>
+              <div className="mt-1 text-xs">
+                {apiError}
+                <br />
+                <strong>Troubleshooting:</strong>
+                <ul className="mt-1 ml-4 list-disc space-y-1">
+                  <li>Verify the Prompt API is running: <code className="rounded bg-red-950 px-1 py-0.5 font-mono">curl {ORCHESTRATOR_API_BASE}/health</code></li>
+                  <li>Check that the API URL is correct in <code className="rounded bg-red-950 px-1 py-0.5 font-mono">.env.local</code></li>
+                  <li>For Docker: Ensure both services are on the same network</li>
+                </ul>
+                <div className="mt-2">
+                  <strong>Note:</strong> Orchestrations will run in simulation mode until the API connection is restored.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {apiConnected === true && !ORCHESTRATOR_API_USING_DEFAULT_BASE && (
+        <div className="rounded-lg border border-green-700 bg-green-900/20 px-4 py-3 text-sm text-green-300">
+          <div className="flex items-center gap-2">
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div>
+              <span className="font-semibold">Connected to Prompt API</span> at <code className="rounded bg-green-950 px-1 py-0.5 font-mono">{ORCHESTRATOR_API_BASE}</code>
+            </div>
+          </div>
+        </div>
       )}
 
       {legacyMode ? (

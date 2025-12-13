@@ -47,6 +47,10 @@ services:
       - "${WEB_PORT:-3000}:3000"
     environment:
       - PORT=3000
+      - NEXT_PUBLIC_API_BASE=http://prompt-api:8000
+    depends_on:
+      prompt-api:
+        condition: service_healthy
     restart: unless-stopped
 
 networks:
