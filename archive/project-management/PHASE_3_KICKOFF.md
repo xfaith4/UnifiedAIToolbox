@@ -25,7 +25,7 @@ docs/phase3/
 ├── README.md (8.5KB) - Phase 3 documentation overview
 ├── adr/ - Architecture Decision Records
 │   ├── TEMPLATE.md - ADR template
-│   └── 001-multi-tenancy-approach.md (6.5KB)
+│   └── 001-multi-tenancy.md (6.5KB)
 ├── specs/ - Technical Specifications
 │   └── MULTI_TENANCY_SPEC.md (18KB)
 ├── guides/ - Developer Guides
