@@ -212,6 +212,7 @@ function Invoke-Orchestration {
     )
 
     $refinementRecord = $null
+    $refineTitle = $null
     if (-not $PromptObject -and -not $PromptId -and $SimpleRequest) {
         $refineTitle = if ($SimpleRequest.Length -gt 60) { $SimpleRequest.Substring(0, 60) } else { $SimpleRequest }
         $refinementRecord = New-RefinedPrompt -UserPrompt $SimpleRequest `
@@ -228,7 +229,7 @@ function Invoke-Orchestration {
         $checksumSource = if ($refinementRecord.RefinedPrompt) { $refinementRecord.RefinedPrompt } else { $SimpleRequest }
         $prompt = [pscustomobject]@{
             id            = $PromptId
-            title         = $refinementRecord.PromptId
+            title         = if ($refineTitle) { $refineTitle } else { $refinementRecord.PromptId }
             user_template = $SimpleRequest
             system        = $refinementRecord.RefinedPrompt
             tags          = @('orchestration', 'auto-refined')
@@ -246,15 +247,15 @@ function Invoke-Orchestration {
         $prompt | Add-Member -NotePropertyName tags -NotePropertyValue @() -Force
     }
 
-    $template = if ($prompt.PSObject.Properties.Match('user_template')) { $prompt.user_template } else { $null }
-    if ([string]::IsNullOrWhiteSpace($template) -and $prompt.blocks) {
-        $template = $prompt.blocks.user_template
-        if ([string]::IsNullOrWhiteSpace($template)) {
-            $template = $prompt.blocks.instructions
+    $template = if ($refinementRecord -and $SimpleRequest) { $SimpleRequest } else { $null }
+    if ([string]::IsNullOrWhiteSpace($template)) {
+        $template = if ($prompt.PSObject.Properties.Match('user_template')) { $prompt.user_template } else { $null }
+        if ([string]::IsNullOrWhiteSpace($template) -and $prompt.blocks) {
+            $template = $prompt.blocks.user_template
+            if ([string]::IsNullOrWhiteSpace($template)) {
+                $template = $prompt.blocks.instructions
+            }
         }
-    }
-    if ($refinementRecord -and $SimpleRequest) {
-        $template = $SimpleRequest
     }
 
     if ([string]::IsNullOrWhiteSpace($template)) {
@@ -263,16 +264,16 @@ function Invoke-Orchestration {
 
     $prompt | Add-Member -NotePropertyName user_template -NotePropertyValue $template -Force
 
-    $systemText = if ($prompt.PSObject.Properties.Match('system')) { $prompt.system } else { $null }
-    if ([string]::IsNullOrWhiteSpace($systemText) -and $prompt.blocks) {
-        $systemText = $prompt.blocks.system
-    }
-
+    $systemText = if ($refinementRecord -and $refinementRecord.RefinedPrompt) { $refinementRecord.RefinedPrompt } else { $null }
     if ([string]::IsNullOrWhiteSpace($systemText)) {
-        $systemText = "You are an orchestration agent."
-    }
-    if ($refinementRecord -and $refinementRecord.RefinedPrompt) {
-        $systemText = $refinementRecord.RefinedPrompt
+        $systemText = if ($prompt.PSObject.Properties.Match('system')) { $prompt.system } else { $null }
+        if ([string]::IsNullOrWhiteSpace($systemText) -and $prompt.blocks) {
+            $systemText = $prompt.blocks.system
+        }
+
+        if ([string]::IsNullOrWhiteSpace($systemText)) {
+            $systemText = "You are an orchestration agent."
+        }
     }
 
     $prompt | Add-Member -NotePropertyName system -NotePropertyValue $systemText -Force
