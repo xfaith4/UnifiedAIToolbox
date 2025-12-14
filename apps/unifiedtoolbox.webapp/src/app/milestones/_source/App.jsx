@@ -466,7 +466,7 @@ function buildInsights(runs, stats, previousStats) {
       return { run, ratio: scoreValue / Math.max(costValue, 0.01) };
     })
     .filter((entry) => entry !== null)
-    .sort((a, b) => (b!.ratio ?? 0) - (a!.ratio ?? 0));
+    .sort((a, b) => (b?.ratio ?? 0) - (a?.ratio ?? 0));
   const bestEfficiency = efficiencyCandidates[0];
 
   if (bestEfficiency) {
