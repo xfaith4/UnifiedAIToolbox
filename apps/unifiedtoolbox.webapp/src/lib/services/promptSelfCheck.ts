@@ -2,6 +2,7 @@
 
 import { normalizePrompt } from '@/lib/services/promptStore'
 import { evaluatePromptQuality, generateRefinementDraft } from '@/lib/utils/promptQuality'
+import { containsSecretIndicators, extractSummaryFromChange } from '@/lib/utils/promptRefiner'
 
 export function runPromptLibrarySelfChecks() {
   if (process.env.NODE_ENV === 'production') return
@@ -19,6 +20,9 @@ export function runPromptLibrarySelfChecks() {
     }
     const restored = { ...legacyPrompt, history: [historyEntry] }
     if (restored.history.length !== 1) throw new Error('History save/restore mismatch')
+    if (!containsSecretIndicators('api_key=123')) throw new Error('Secret detector regression')
+    const summary = extractSummaryFromChange('line1\nline2')
+    if (summary.length !== 2) throw new Error('Summary extractor broken')
   } catch (error) {
     // eslint-disable-next-line no-console
     console.error('Prompt library self-check failed', error)

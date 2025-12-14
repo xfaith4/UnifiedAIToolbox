@@ -1,12 +1,17 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { PromptHistoryEntry, PromptItem } from '@/lib/types/prompts'
+import type {
+  PromptHistoryEntry,
+  PromptItem,
+  PromptQualitySubscores,
+} from '@/lib/types/prompts'
 import { computeDiff, computeHash, type DiffLine } from '@/lib/utils/textHelpers'
 import {
   evaluatePromptQuality,
   generateRefinementDraft,
 } from '@/lib/utils/promptQuality'
+import { containsSecretIndicators } from '@/lib/utils/promptRefiner'
 import {
   fetchPromptLibrary,
   normalizePrompt,
@@ -331,6 +336,17 @@ function PromptEditor({
   const [historySelection, setHistorySelection] = useState<string | null>(null)
   const [canonicalHash, setCanonicalHash] = useState('')
   const [renderedHash, setRenderedHash] = useState('')
+  const [refinerMode, setRefinerMode] = useState<'local' | 'ai'>('local')
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiError, setAiError] = useState<string | null>(null)
+  const [aiCritique, setAiCritique] = useState<string[]>([])
+  const [aiSummary, setAiSummary] = useState<string[]>([])
+  const [aiTokens, setAiTokens] = useState<{ prompt?: number; completion?: number; total?: number } | null>(null)
+  const [aiCost, setAiCost] = useState<number | null>(null)
+  const [aiDelta, setAiDelta] = useState<number | null>(null)
+  const [aiRubric, setAiRubric] = useState<PromptQualitySubscores | null>(null)
+  const [aiSecretConsent, setAiSecretConsent] = useState(false)
+  const [keyVersion, setKeyVersion] = useState(0)
 
   useEffect(() => {
     setPrompt(value)
@@ -339,6 +355,38 @@ function PromptEditor({
   useEffect(() => {
     setHistorySelection(value.history?.[0]?.versionId ?? null)
   }, [value.history])
+
+  const secretDetected = useMemo(() => containsSecretIndicators(prompt.template), [prompt.template])
+
+  useEffect(() => {
+    if (!secretDetected) {
+      setAiSecretConsent(false)
+    }
+  }, [secretDetected])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const handler = () => setKeyVersion((prev) => prev + 1)
+    window.addEventListener('storage', handler)
+    window.addEventListener('ai-toolbox-api-key-change', handler)
+    return () => {
+      window.removeEventListener('storage', handler)
+      window.removeEventListener('ai-toolbox-api-key-change', handler)
+    }
+  }, [])
+
+  const getStoredApiKey = () => {
+    if (typeof window === 'undefined') return null
+    return localStorage.getItem('ai-toolbox-api-key')
+  }
+
+  const aiAvailable = Boolean(getStoredApiKey() || process.env.NEXT_PUBLIC_OPENAI_API_KEY)
+
+  useEffect(() => {
+    if (!aiAvailable && refinerMode === 'ai') {
+      setRefinerMode('local')
+    }
+  }, [aiAvailable, refinerMode])
 
   const renderedPrompt = useMemo(
     () => [prompt.context, prompt.template].filter(Boolean).join('\n\n'),
@@ -439,7 +487,7 @@ function PromptEditor({
     onPersist(updated)
   }
 
-  function handleGenerateImprovements() {
+  function handleGenerateLocalImprovements() {
     const draft = generateRefinementDraft(prompt.template, prompt.context)
     const updated = {
       ...prompt,
@@ -451,6 +499,82 @@ function PromptEditor({
     }
     setPrompt(updated)
     onPersist(updated)
+    setAiError(null)
+    setAiCritique([])
+    setAiSummary([])
+    setAiTokens(null)
+    setAiCost(null)
+    setAiDelta(null)
+    setAiRubric(null)
+  }
+
+  async function handleGenerateAIImprovements() {
+    setAiLoading(true)
+    setAiError(null)
+    if (!aiAvailable) {
+      setAiError('AI refinement is not configured.')
+      setAiLoading(false)
+      return
+    }
+    if (secretDetected && !aiSecretConsent) {
+      setAiError('Confirm secret sharing before using AI refinements.')
+      setAiLoading(false)
+      return
+    }
+    const storedKey = getStoredApiKey()
+
+    try {
+      const response = await fetch('/api/prompt/refine', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: prompt.title,
+          category: prompt.category,
+          context: prompt.context,
+          template: prompt.template,
+          goals: prompt.description,
+          constraints: prompt.context,
+          outputFormat: prompt.outputFormat,
+          apiKey: storedKey ?? undefined,
+        }),
+      })
+      if (!response.ok) {
+        const detail = await response.text()
+        throw new Error(detail || 'AI refinement failed.')
+      }
+      const payload = await response.json()
+      const aiDraft = (payload.refinedTemplate ?? prompt.template).trim()
+      const updated = {
+        ...prompt,
+        refine: {
+          ...prompt.refine,
+          draftText: aiDraft,
+          lastRefinedAt: new Date().toISOString(),
+        },
+      }
+      setPrompt(updated)
+      onPersist(updated)
+      setAiCritique(payload.critiqueBullets ?? [])
+      setAiSummary(payload.changeSummary ?? [])
+      setAiTokens(payload.tokens ?? null)
+      setAiCost(payload.cost ?? null)
+      setAiDelta(typeof payload.qualityScoreDelta === 'number' ? payload.qualityScoreDelta : null)
+      setAiRubric(payload.rubricBreakdown ?? null)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'AI refinement failed.'
+      setAiError(message)
+      handleGenerateLocalImprovements()
+    } finally {
+      setAiLoading(false)
+    }
+  }
+
+  function handleGenerateImprovements() {
+    if (refinerMode === 'ai') {
+      void handleGenerateAIImprovements()
+    } else {
+      handleGenerateLocalImprovements()
+    }
   }
 
   function handleApplyDraft() {
@@ -609,27 +733,90 @@ function PromptEditor({
       </div>
 
       <div className="space-y-4 rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <div className="text-xs uppercase tracking-wide text-slate-400">Prompt Refiner</div>
             <div className="text-3xl font-semibold text-white">{quality?.overallScore.toFixed(1) ?? '—'}</div>
             <div className="text-xs text-slate-500">
               {quality?.lastRatedAt ? `Rated ${formatDate(quality.lastRatedAt)}` : 'Not rated yet'}
             </div>
+            {aiDelta !== null && (
+              <div
+                className={`text-xs ${
+                  aiDelta >= 0 ? 'text-emerald-300' : 'text-rose-300'
+                }`}
+              >
+                AI score delta: {aiDelta >= 0 ? '+' : ''}
+                {aiDelta?.toFixed(1)}
+              </div>
+            )}
           </div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500"
-              onClick={handleEvaluate}
-            >
-              Evaluate
-            </button>
-            <button
-              className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300"
-              onClick={() => setDraftDiffVisible((prev) => !prev)}
-            >
-              {draftDiffVisible ? 'Hide draft diff' : 'Show draft diff'}
-            </button>
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2 text-xs text-slate-400">
+              <span className="uppercase tracking-wide">Refiner mode</span>
+              <div
+                className="flex overflow-hidden rounded-full border border-slate-700 bg-slate-900/50 text-[11px]"
+                title="AI refinement sends prompt text to OpenAI. Do not include secrets unless you explicitly consent."
+              >
+                <button
+                  className={`px-3 py-1 transition ${
+                    refinerMode === 'local'
+                      ? 'bg-blue-500 text-white'
+                      : 'bg-transparent text-slate-300 hover:bg-slate-800'
+                  }`}
+                  onClick={() => setRefinerMode('local')}
+                >
+                  Local
+                </button>
+                <button
+                  className={`px-3 py-1 transition ${
+                    refinerMode === 'ai'
+                      ? 'bg-blue-500 text-white'
+                      : 'bg-transparent text-slate-300 hover:bg-slate-800'
+                  }`}
+                  onClick={() => {
+                    if (!aiAvailable) {
+                      setAiError('AI refinement requires an API key.')
+                      return
+                    }
+                    setRefinerMode('ai')
+                  }}
+                >
+                  AI
+                </button>
+              </div>
+              <span className="text-[11px]" title="AI mode uses OpenAI to enhance prompts with a Critic -> Engineer -> Commissioner workflow">
+                ⓘ
+              </span>
+            </div>
+            {secretDetected && refinerMode === 'ai' && (
+              <label className="text-[11px] text-amber-200 flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border border-slate-500 bg-slate-900/70 text-blue-400 focus:ring-blue-400"
+                  checked={aiSecretConsent}
+                  onChange={(e) => setAiSecretConsent(e.target.checked)}
+                />
+                Potential secret detected (API_KEY/password/token). Confirm before sending to AI.
+              </label>
+            )}
+            <div className="flex flex-wrap gap-2">
+              <button
+                className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-slate-700"
+                onClick={handleEvaluate}
+              >
+                Evaluate
+              </button>
+              <button
+                className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300"
+                onClick={() => setDraftDiffVisible((prev) => !prev)}
+              >
+                {draftDiffVisible ? 'Hide draft diff' : 'Show draft diff'}
+              </button>
+            </div>
+            <div className="min-h-[1rem] text-[11px] text-rose-300">
+              {aiError || (refinerMode === 'ai' && !aiAvailable ? 'AI key is not configured yet.' : '')}
+            </div>
           </div>
         </div>
         <div className="grid gap-3 md:grid-cols-2">
@@ -678,14 +865,28 @@ function PromptEditor({
         <div className="space-y-3 rounded-xl border border-slate-800 bg-slate-900/60 p-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-sm font-semibold text-white">Refinement draft</h3>
-            <div className="flex gap-2 text-xs text-slate-400">
-              <span>Last revision: {prompt.refine?.lastRefinedAt ? formatDate(prompt.refine.lastRefinedAt) : 'N/A'}</span>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+              <span>
+                Last revision: {prompt.refine?.lastRefinedAt ? formatDate(prompt.refine.lastRefinedAt) : 'N/A'}
+              </span>
               <button
-                className="rounded-full border border-slate-700 px-2 py-0.5"
+                className="rounded-full border border-slate-700 px-2 py-0.5 text-[11px]"
                 onClick={handleGenerateImprovements}
+                disabled={
+                  refinerMode === 'ai'
+                    ? aiLoading ||
+                      !aiAvailable ||
+                      (secretDetected && !aiSecretConsent)
+                    : aiLoading
+                }
               >
-                Generate improvements
+                {refinerMode === 'ai'
+                  ? aiLoading
+                    ? 'Generating improvements…'
+                    : 'Generate improvements (AI)'
+                  : 'Generate improvements'}
               </button>
+              {aiLoading && <span className="text-[11px] text-slate-500">AI refining…</span>}
             </div>
           </div>
           <textarea
@@ -719,6 +920,49 @@ function PromptEditor({
             onChange={(value) => handleNotesChange(value)}
             placeholder="Capture reasoning behind this draft"
           />
+          {refinerMode === 'ai' && (
+            <div className="space-y-2 rounded-2xl border border-slate-800 bg-slate-950/40 p-3 text-xs text-slate-200">
+              <div className="flex items-center justify-between text-[11px] text-slate-400">
+                <span>AI Critique</span>
+                {aiTokens && (
+                  <span>
+                    Tokens: {aiTokens.total ?? '—'} (prompt {aiTokens.prompt ?? '—'},{' '}
+                    completion {aiTokens.completion ?? '—'})
+                  </span>
+                )}
+              </div>
+              <ul className="list-disc space-y-1 pl-4 text-[11px]">
+                {aiCritique.length > 0 ? (
+                  aiCritique.map((item, index) => (
+                    <li key={`critique-${index}`}>{item}</li>
+                  ))
+                ) : (
+                  <li className="text-slate-500">No critique yet. Run AI refinement to generate insights.</li>
+                )}
+              </ul>
+              <div className="text-[11px] text-slate-400">Change summary</div>
+              <ul className="list-disc space-y-1 pl-4 text-[11px]">
+                {aiSummary.length > 0 ? (
+                  aiSummary.map((item, index) => (
+                    <li key={`summary-${index}`}>{item}</li>
+                  ))
+                ) : (
+                  <li className="text-slate-500">Awaiting AI draft.</li>
+                )}
+              </ul>
+              {aiRubric && (
+                <div className="text-[11px] text-slate-400">
+                  Rubric: clarity {aiRubric.clarity.toFixed(1)}, constraints{' '}
+                  {aiRubric.constraints.toFixed(1)}, output format {aiRubric.outputFormat.toFixed(1)},
+                  examples {aiRubric.examples.toFixed(1)}, safety {aiRubric.safety.toFixed(1)},
+                  reusability {aiRubric.reusability.toFixed(1)}
+                </div>
+              )}
+              {aiCost !== null && (
+                <div className="text-[11px] text-emerald-200">Estimated cost: ${aiCost.toFixed(5)}</div>
+              )}
+            </div>
+          )}
           {draftDiffVisible && <DiffTable lines={diffLines} />}
         </div>
 

@@ -2893,7 +2893,7 @@ def get_orchestration_run(run_id: str):
     if not path.exists():
         raise HTTPException(status_code=404, detail="Run not found")
     try:
-        data = safe_json_load(path, context=f"get_run:{run_id}")
+        data = safe_json_load(path, default={}, context=f"get_run:{run_id}")
         data["run_id"] = data.get("run_id") or run_id
         log_path = BRIDGE_RUN_DIR / f"{run_id}.log"
         if log_path.exists():

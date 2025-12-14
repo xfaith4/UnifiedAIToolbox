@@ -10,6 +10,7 @@ export default function SettingsPage() {
 
   const handleSave = () => {
     localStorage.setItem('ai-toolbox-api-key', apiKey)
+    window.dispatchEvent(new Event('ai-toolbox-api-key-change'))
     setIsSaved(true)
     // Reset the saved message after a few seconds
     setTimeout(() => setIsSaved(false), 3000)

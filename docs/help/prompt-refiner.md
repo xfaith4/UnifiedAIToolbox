@@ -383,3 +383,9 @@ To extend or modify the Prompt Refiner functionality:
 - [PromptLibrary Module Documentation](../../modules/PromptLibrary/README.md)
 - [Quick Start Guide](quick-start.md)
 - [OpenAI API Documentation](https://platform.openai.com/docs/api-reference)
+
+## Web UX Enhancements
+
+- The Prompt Library page now includes a dedicated **Prompt Refiner** view with Local and AI modes so you can stay offline or optionally tap OpenAI for extra guidance.
+- Enable AI mode by defining `NEXT_PUBLIC_OPENAI_API_KEY` (and `OPENAI_API_KEY` if you want the server route to call OpenAI). The UI warns when it detects patterns such as `API_KEY`, `password`, or `token` and requires you to confirm before sending that content.
+- AI refinements call `/api/prompt/refine` which runs Critic → Engineer → Commissioner steps, surfaces critique/change summary lists, token estimates, and a rubric delta. Failures automatically fallback to the bundled local heuristics with a status message.
