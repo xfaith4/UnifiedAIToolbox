@@ -213,12 +213,14 @@ function Invoke-Orchestration {
 
     $refinementRecord = $null
     $refineTitle = $null
+    $refineTags = @('orchestration', 'auto-refined')
+    $titleMaxLength = 60
     if (-not $PromptObject -and -not $PromptId -and $SimpleRequest) {
-        $refineTitle = if ($SimpleRequest.Length -gt 60) { $SimpleRequest.Substring(0, 60) } else { $SimpleRequest }
+        $refineTitle = if ($SimpleRequest.Length -gt $titleMaxLength) { $SimpleRequest.Substring(0, $titleMaxLength) } else { $SimpleRequest }
         $refinementRecord = New-RefinedPrompt -UserPrompt $SimpleRequest `
                                               -Title $refineTitle `
                                               -Category 'orchestration' `
-                                              -Tags @('orchestration', 'auto-refined') `
+                                              -Tags $refineTags `
                                               -RefinementIterations 1 `
                                               -SkipValidation
         $PromptId = $refinementRecord.PromptId
@@ -232,7 +234,7 @@ function Invoke-Orchestration {
             title         = if ($refineTitle) { $refineTitle } else { $refinementRecord.PromptId }
             user_template = $SimpleRequest
             system        = $refinementRecord.RefinedPrompt
-            tags          = @('orchestration', 'auto-refined')
+            tags          = $refineTags
             checksum      = Get-ContentHash -Text $checksumSource
         }
     }
