@@ -204,13 +204,57 @@ function Invoke-Orchestration {
     param(
         [string]$PromptId,
         [pscustomobject]$PromptObject,
+        [string]$SimpleRequest,
         [Parameter(Mandatory)][string]$AgentId,
         [Parameter(Mandatory)][hashtable]$Inputs,
         [Parameter(Mandatory)][string]$Model,
         [string]$ArtifactName = ("art_" + (Get-Date -Format 'yyyyMMdd_HHmmss'))
     )
 
+    $refinementRecord = $null
+    $refineTitle = $null
+    $refineTags = @('orchestration', 'auto-refined')
+    $titleMaxLength = 60
+    if (-not $PromptObject -and -not $PromptId -and $SimpleRequest) {
+        if ($SimpleRequest.Length -gt $titleMaxLength) {
+            $truncated = $SimpleRequest.Substring(0, $titleMaxLength)
+            $lastSpace = $truncated.LastIndexOf(' ')
+            if ($lastSpace -gt 0) {
+                $truncated = $truncated.Substring(0, $lastSpace)
+            }
+            elseif ($lastSpace -eq 0) {
+                $truncated = $truncated.TrimStart()
+            }
+            $refineTitle = ($truncated.TrimEnd()) + "..."
+        }
+        else {
+            $refineTitle = $SimpleRequest
+        }
+        $refinementRecord = New-RefinedPrompt -UserPrompt $SimpleRequest `
+                                              -Title $refineTitle `
+                                              -Category 'orchestration' `
+                                              -Tags $refineTags `
+                                              -RefinementIterations 1 `
+                                              -SkipValidation
+        $PromptId = $refinementRecord.PromptId
+    }
+
     $prompt = if ($PromptObject) { $PromptObject } elseif ($PromptId) { Get-Prompt -Id $PromptId | Select-Object -First 1 }
+    if (-not $prompt -and $refinementRecord) {
+        # Prefer checksums that reflect the refined system instructions when available
+        $checksumSource = $SimpleRequest
+        if ($refinementRecord.RefinedPrompt) {
+            $checksumSource = $refinementRecord.RefinedPrompt
+        }
+        $prompt = [pscustomobject]@{
+            id            = $PromptId
+            title         = if ($refineTitle) { $refineTitle } else { $refinementRecord.PromptId }
+            user_template = $SimpleRequest
+            system        = $refinementRecord.RefinedPrompt
+            tags          = $refineTags
+            checksum      = Get-ContentHash -Text $checksumSource
+        }
+    }
     if (-not $prompt) {
         throw ("Prompt {0} not found." -f ($PromptId ?? '<unspecified>'))
     }
@@ -222,11 +266,15 @@ function Invoke-Orchestration {
         $prompt | Add-Member -NotePropertyName tags -NotePropertyValue @() -Force
     }
 
-    $template = if ($prompt.PSObject.Properties.Match('user_template')) { $prompt.user_template } else { $null }
-    if ([string]::IsNullOrWhiteSpace($template) -and $prompt.blocks) {
-        $template = $prompt.blocks.user_template
-        if ([string]::IsNullOrWhiteSpace($template)) {
-            $template = $prompt.blocks.instructions
+    # Keep the original request as the user template while the refined text feeds the system prompt
+    $template = if ($refinementRecord) { $SimpleRequest } else { $null }
+    if ([string]::IsNullOrWhiteSpace($template)) {
+        $template = if ($prompt.PSObject.Properties.Match('user_template')) { $prompt.user_template } else { $null }
+        if ([string]::IsNullOrWhiteSpace($template) -and $prompt.blocks) {
+            $template = $prompt.blocks.user_template
+            if ([string]::IsNullOrWhiteSpace($template)) {
+                $template = $prompt.blocks.instructions
+            }
         }
     }
 
@@ -236,13 +284,16 @@ function Invoke-Orchestration {
 
     $prompt | Add-Member -NotePropertyName user_template -NotePropertyValue $template -Force
 
-    $systemText = if ($prompt.PSObject.Properties.Match('system')) { $prompt.system } else { $null }
-    if ([string]::IsNullOrWhiteSpace($systemText) -and $prompt.blocks) {
-        $systemText = $prompt.blocks.system
-    }
-
+    $systemText = if ($refinementRecord -and $refinementRecord.RefinedPrompt) { $refinementRecord.RefinedPrompt } else { $null }
     if ([string]::IsNullOrWhiteSpace($systemText)) {
-        $systemText = "You are an orchestration agent."
+        $systemText = if ($prompt.PSObject.Properties.Match('system')) { $prompt.system } else { $null }
+        if ([string]::IsNullOrWhiteSpace($systemText) -and $prompt.blocks) {
+            $systemText = $prompt.blocks.system
+        }
+
+        if ([string]::IsNullOrWhiteSpace($systemText)) {
+            $systemText = "You are an orchestration agent."
+        }
     }
 
     $prompt | Add-Member -NotePropertyName system -NotePropertyValue $systemText -Force

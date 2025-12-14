@@ -373,6 +373,51 @@ Describe "PromptLibrary Module - Orchestration" {
             # Check that Invoke-Model was called with rendered template
             Assert-MockCalled Invoke-Model -Times 1 -ModuleName PromptLibrary
         }
+
+        It "Should refine simple requests before orchestration and save to prompt library" {
+            $simpleRequest = "Draft a deployment runbook"
+            $refinedSystem = "Use structured steps for deployment validation"
+            $script:capturedSystem = $null
+
+            Mock New-RefinedPrompt -ModuleName PromptLibrary {
+                [pscustomobject]@{
+                    PromptId      = "pr_auto_refined"
+                    RefinedPrompt = $refinedSystem
+                    FilePath      = "C:/tmp/pr_auto_refined.yaml"
+                }
+            }
+
+            Mock Get-Prompt -ModuleName PromptLibrary {
+                [pscustomobject]@{
+                    id            = "pr_auto_refined"
+                    title         = "Auto refined prompt"
+                    user_template = $simpleRequest
+                    system        = ""
+                    tags          = @()
+                    checksum      = "xyz"
+                }
+            }
+
+            Mock Invoke-Model -ModuleName PromptLibrary {
+                param($Provider, $Model, $System, $User)
+                $script:capturedSystem = $System
+                @{
+                    text = "Mocked response"
+                    raw  = @{ model = $Model }
+                }
+            }
+
+            $result = Invoke-Orchestration `
+                -SimpleRequest $simpleRequest `
+                -AgentId "test-agent" `
+                -Inputs @{ environment = "prod" } `
+                -Model "gpt-4o-mini" `
+                -ArtifactName "auto-refined-test"
+
+            Assert-MockCalled New-RefinedPrompt -ModuleName PromptLibrary -Times 1 -ParameterFilter { $UserPrompt -eq $simpleRequest }
+            $script:capturedSystem | Should -Match $refinedSystem
+            $result.ArtifactPath | Should -Not -BeNullOrEmpty
+        }
     }
 }
 
