@@ -47,7 +47,7 @@ CREATE POLICY tenant_isolation ON prompts
    - Secondary: URL path prefix (`/t/{tenant}/...`)  
    - Fallback: `X-Tenant-ID` header for automation use-cases
 2. **Propagation**  
-   - FastAPI middleware extracts tenant slug → resolves to tenant UUID → sets `app.current_tenant` per DB connection
+   - FastAPI middleware extracts tenant slug -> resolves to tenant UUID -> sets `app.current_tenant` per DB connection
    - Background jobs (Celery) receive `tenant_id` in payload and set the same DB session variable
 3. **Defaults**  
    - `DEFAULT_TENANT_SLUG` used only for local dev or migration backfills; disabled in production.
@@ -85,7 +85,7 @@ CREATE POLICY tenant_isolation ON prompts
 
 ---
 
-## Migration Strategy (SQLite → PostgreSQL)
+## Migration Strategy (SQLite -> PostgreSQL)
 1. Add nullable `tenant_id` columns via Alembic; backfill `DEFAULT_TENANT_SLUG`.
 2. Migrate data from SQLite into PostgreSQL with the new tenant columns populated.
 3. Make `tenant_id` non-nullable and create indexes.
@@ -112,14 +112,13 @@ CREATE POLICY tenant_isolation ON prompts
 ---
 
 ## Risks & Mitigations
-- **RLS misconfiguration** → Add negative tests and peer review for every policy.
-- **Default tenant misuse** → Disable default tenant in production; alert if used.
-- **Quota bypass** → Enforce limits server-side (not only UI) and log overruns.
-- **Cross-tenant admin actions** → Require explicit `platform_admin` role and audit events.
+- **RLS misconfiguration** -> Add negative tests and peer review for every policy.
+- **Default tenant misuse** -> Disable default tenant in production; alert if used.
+- **Quota bypass** -> Enforce limits server-side (not only UI) and log overruns.
+- **Cross-tenant admin actions** -> Require explicit `platform_admin` role and audit events.
 
 ---
 
 ## Open Questions
 - Do we allow temporary cross-tenant support roles? (Proposed: gated via time-bound tokens)
 - Should we introduce per-tenant encryption keys in Phase 3 or defer to Phase 4?
-

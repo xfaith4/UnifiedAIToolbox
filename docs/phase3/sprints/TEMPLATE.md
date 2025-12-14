@@ -19,7 +19,7 @@
 ## Backlog Items
 | ID | Title | Owner | Status |
 |----|-------|-------|--------|
-|    |       |       |        |
+| TBD | Backlog item | Owner | Planned |
 
 ## Milestones
 - Day 1: Kickoff & environment validation
@@ -40,4 +40,3 @@
 
 ## Notes
 - 
-
