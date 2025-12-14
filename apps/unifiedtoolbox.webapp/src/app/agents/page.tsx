@@ -1,12 +1,15 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import {
   fetchAgentLibrary,
   normalizeAgent,
   persistAgentLibrary,
+  loadPromptOverrides,
+  persistPromptOverride,
 } from '@/lib/services/agentStore'
 import type { AgentInstruction, AgentStatus } from '@/lib/types/agents'
+import { computeDiff, computeHash, type DiffLine } from '@/lib/utils/textHelpers'
 
 const statusLabels: Record<AgentStatus, string> = {
   draft: 'Draft',
@@ -23,6 +26,27 @@ function stringToList(value: string) {
     .split('\n')
     .map((line) => line.trim())
     .filter(Boolean)
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function highlightText(text: string, query: string): ReactNode {
+  if (!query) {
+    return text
+  }
+  const regex = new RegExp(`(${escapeRegExp(query)})`, 'gi')
+  const pieces = text.split(regex)
+  return pieces.map((piece, index) =>
+    piece.toLowerCase() === query.toLowerCase() ? (
+      <mark key={`highlight-${index}`} className="bg-yellow-400/40 text-yellow-200">
+        {piece}
+      </mark>
+    ) : (
+      <span key={`highlight-${index}`}>{piece}</span>
+    )
+  )
 }
 
 export default function AgentsPage() {
@@ -266,6 +290,49 @@ function AgentDetailForm({
     }))
   }
 
+  const canonicalPrompt = agent.prompt ?? ''
+  const [overridePrompt, setOverridePrompt] = useState<string | null>(null)
+  const [draftPrompt, setDraftPrompt] = useState(canonicalPrompt)
+  const [editingPrompt, setEditingPrompt] = useState(false)
+  const [expanded, setExpanded] = useState(false)
+  const [showDiff, setShowDiff] = useState(false)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [copyStatus, setCopyStatus] = useState('')
+  const [canonicalHash, setCanonicalHash] = useState('')
+  const [renderedHash, setRenderedHash] = useState('')
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const overrides = loadPromptOverrides()
+    setOverridePrompt(overrides[agent.id] ?? null)
+  }, [agent.id])
+
+  const finalPrompt = overridePrompt ?? canonicalPrompt
+
+  useEffect(() => {
+    if (!editingPrompt) {
+      setDraftPrompt(finalPrompt)
+    }
+  }, [finalPrompt, editingPrompt])
+
+  useEffect(() => {
+    let active = true
+    computeHash(canonicalPrompt).then((hash) => active && setCanonicalHash(hash))
+    computeHash(finalPrompt).then((hash) => active && setRenderedHash(hash))
+    return () => {
+      active = false
+    }
+  }, [canonicalPrompt, finalPrompt])
+
+  const diffLines = useMemo(() => computeDiff(canonicalPrompt, finalPrompt), [
+    canonicalPrompt,
+    finalPrompt,
+  ])
+
+  const promptSource = overridePrompt ? 'Override' : 'Library'
+  const promptAvailable = Boolean(canonicalPrompt)
+  const renderablePrompt = finalPrompt
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -387,6 +454,163 @@ function AgentDetailForm({
         value={agent.notes ?? ''}
         onChange={(value) => update('notes', value)}
       />
+
+      <div className="rounded-2xl border border-slate-800 bg-slate-950/40 px-4 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Prompt</p>
+            <p className="text-sm text-slate-300">
+              This is the exact instruction block provided to the model for this agent.
+            </p>
+          </div>
+          <span
+            className="rounded-full border border-slate-700 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-400"
+            title="Indicates whether the library prompt or a user override is active."
+          >
+            Source: {promptSource}
+          </span>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-400">
+          <button
+            type="button"
+            className="rounded-lg border border-slate-700 bg-slate-800/70 px-3 py-1.5 text-xs hover:bg-slate-700/80"
+            onClick={async () => {
+              if (!renderablePrompt || typeof navigator === 'undefined') return
+              try {
+                await navigator.clipboard.writeText(renderablePrompt)
+                setCopyStatus('Copied!')
+                setTimeout(() => setCopyStatus(''), 2000)
+              } catch {
+                setCopyStatus('Copy failed')
+              }
+            }}
+          >
+            Copy Prompt
+          </button>
+          {copyStatus && <span>{copyStatus}</span>}
+          <button
+            type="button"
+            className="rounded-lg border border-slate-700 bg-slate-800/70 px-3 py-1.5 text-xs hover:bg-slate-700/80"
+            onClick={() => setExpanded((prev) => !prev)}
+          >
+            {expanded ? 'Collapse' : 'Expand'}
+          </button>
+          <button
+            type="button"
+            className="rounded-lg border border-slate-700 bg-slate-800/70 px-3 py-1.5 text-xs hover:bg-slate-700/80"
+            onClick={() => setShowDiff((prev) => !prev)}
+          >
+            {showDiff ? 'Hide Diff' : 'Show Diff'}
+          </button>
+          <button
+            type="button"
+            className="rounded-lg border border-slate-700 bg-slate-800/70 px-3 py-1.5 text-xs hover:bg-slate-700/80"
+            onClick={() => setEditingPrompt((prev) => !prev)}
+          >
+            {editingPrompt ? 'Cancel Edit' : 'Edit Prompt'}
+          </button>
+          {editingPrompt && (
+            <>
+              <button
+                type="button"
+                className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500"
+                onClick={() => {
+                  persistPromptOverride(agent.id, draftPrompt || '')
+                  setOverridePrompt(draftPrompt || '')
+                  setEditingPrompt(false)
+                }}
+              >
+                Save Override
+              </button>
+              <button
+                type="button"
+                className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs hover:bg-slate-700/80"
+                onClick={() => {
+                  persistPromptOverride(agent.id, null)
+                  setOverridePrompt(null)
+                  setDraftPrompt(canonicalPrompt)
+                  setEditingPrompt(false)
+                }}
+              >
+                Reset to Library
+              </button>
+            </>
+          )}
+        </div>
+        <div className="mt-3 flex flex-wrap gap-3 text-xs text-slate-400">
+          <span title="SHA-256 of the canonical library prompt">
+            Canonical hash: <code className="text-slate-200">{canonicalHash || '–'}</code>
+          </span>
+          <span title="SHA-256 of the rendered prompt (after overrides)">
+            Rendered hash: <code className="text-slate-200">{renderedHash || '–'}</code>
+          </span>
+        </div>
+        <div className="mt-3 space-y-2">
+          <input
+            type="search"
+            placeholder="Find text in prompt…"
+            className="w-full rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-1.5 text-xs focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            aria-label="Search within prompt text"
+          />
+          {!promptAvailable && (
+            <p className="text-xs text-rose-400">
+              Prompt not present in library data for this agent.
+            </p>
+          )}
+          {promptAvailable && (
+            <pre
+              className={`relative mt-1 rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-3 text-xs leading-relaxed text-slate-200 ${
+                expanded ? 'max-h-[none]' : 'max-h-40 overflow-auto'
+              }`}
+            >
+              {editingPrompt ? (
+                <textarea
+                  className="min-h-[170px] w-full rounded-xl border border-slate-700 bg-slate-900/80 p-2 text-xs font-mono leading-relaxed text-slate-100 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={draftPrompt}
+                  onChange={(event) => setDraftPrompt(event.target.value)}
+                />
+              ) : (
+                <span className="whitespace-pre-wrap break-words">
+                  {highlightText(renderablePrompt, searchTerm)}
+                </span>
+              )}
+            </pre>
+          )}
+        </div>
+        {showDiff && promptAvailable && (
+          <div className="mt-3 rounded-xl border border-slate-800 bg-slate-900/60 p-3 text-[0.65rem] leading-relaxed text-slate-200">
+            <div className="grid grid-cols-[40px_1fr_1fr] gap-2 text-slate-400">
+              <span>Line</span>
+              <span>Library</span>
+              <span>Rendered</span>
+            </div>
+            <div className="mt-2 space-y-1">
+              {diffLines.map((line) => (
+                <div
+                  key={`diff-line-${line.index}`}
+                  className="grid grid-cols-[40px_1fr_1fr] gap-2 rounded-md px-2 py-1 transition"
+                  style={{
+                    background:
+                      line.status === 'equal' ? 'rgba(148, 163, 184, 0.05)' : 'rgba(248, 113, 113, 0.1)',
+                  }}
+                >
+                  <span className="text-slate-500">{line.index}</span>
+                  <span className="truncate">{line.canonical || '—'}</span>
+                  <span className="truncate">{line.rendered || '—'}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        <div className="mt-3 text-[0.75rem] text-slate-500">
+          <p className="mb-1 font-semibold text-slate-300">Rendered Prompt Preview</p>
+          <pre className="max-h-40 overflow-auto rounded-xl border border-slate-800 bg-black/50 p-2 text-[0.7rem] text-slate-100">
+            {renderablePrompt || 'No prompt available.'}
+          </pre>
+        </div>
+      </div>
 
       <div className="text-xs text-slate-500">
         Last updated {new Date(agent.updatedAt).toLocaleString()}

@@ -1,6 +1,12 @@
 'use client'
 
-import type { PromptItem } from '@/lib/types/prompts'
+import type {
+  PromptHistoryEntry,
+  PromptItem,
+  PromptQuality,
+  PromptRefine,
+  PromptQualitySubscores,
+} from '@/lib/types/prompts'
 import { getStarterPromptsWithTimestamps } from '@/lib/data/starterPrompts'
 
 const PROMPT_STORAGE_KEY = 'ai-toolbox-prompt-library'
@@ -18,12 +24,22 @@ function uid(): string {
 
 export function normalizePrompt(prompt: Partial<PromptItem>): PromptItem {
   const now = nowIso()
-  return {
+  const defaultSubscores: PromptQualitySubscores = {
+    clarity: 0,
+    constraints: 0,
+    outputFormat: 0,
+    examples: 0,
+    safety: 0,
+    reusability: 0,
+  }
+
+  const base: PromptItem = {
     id: prompt.id || uid(),
     title: prompt.title || 'New Prompt',
     template: prompt.template || '',
     createdAt: prompt.createdAt || now,
     updatedAt: prompt.updatedAt || now,
+    version: prompt.version,
     category: prompt.category || '',
     context: prompt.context || '',
     description: prompt.description || '',
@@ -36,7 +52,38 @@ export function normalizePrompt(prompt: Partial<PromptItem>): PromptItem {
     stop: prompt.stop || [],
     temperature: prompt.temperature ?? 0.2,
     top_p: prompt.top_p ?? 1.0,
-    ...prompt,
+    quality: undefined,
+    refine: undefined,
+    history: [],
+  }
+
+  const normalizedQuality: PromptQuality = {
+    overallScore: prompt.quality?.overallScore ?? 0,
+    subscores: {
+      ...defaultSubscores,
+      ...prompt.quality?.subscores,
+    },
+    findings: prompt.quality?.findings ?? [],
+    suggestions: prompt.quality?.suggestions ?? [],
+    lastRatedAt: prompt.quality?.lastRatedAt ?? '',
+    raterVersion: prompt.quality?.raterVersion ?? '',
+  }
+
+  const normalizedRefine: PromptRefine = {
+    draftText: prompt.refine?.draftText ?? base.template,
+    notes: prompt.refine?.notes ?? '',
+    lastRefinedAt: prompt.refine?.lastRefinedAt ?? null,
+  }
+
+  const normalizedHistory: PromptHistoryEntry[] = Array.isArray(prompt.history)
+    ? prompt.history
+    : []
+
+  return {
+    ...base,
+    quality: normalizedQuality,
+    refine: normalizedRefine,
+    history: normalizedHistory,
   }
 }
 

@@ -10,6 +10,40 @@ export interface FewShotExample {
   output: string
 }
 
+export interface PromptQualitySubscores {
+  clarity: number
+  constraints: number
+  outputFormat: number
+  examples: number
+  safety: number
+  reusability: number
+}
+
+export interface PromptQuality {
+  overallScore: number
+  subscores: PromptQualitySubscores
+  findings: string[]
+  suggestions: string[]
+  lastRatedAt: string
+  raterVersion: string
+}
+
+export interface PromptRefine {
+  draftText: string | null
+  notes: string
+  lastRefinedAt: string | null
+}
+
+export interface PromptHistoryEntry {
+  versionId: string
+  savedAt: string
+  title: string
+  promptText: string
+  context?: string
+  qualitySnapshot?: PromptQuality
+  notes?: string
+}
+
 export interface PromptItem {
   id: string
   title: string
@@ -29,4 +63,7 @@ export interface PromptItem {
   stop?: string[]
   temperature?: number
   top_p?: number
+  quality?: PromptQuality
+  refine?: PromptRefine
+  history?: PromptHistoryEntry[]
 }

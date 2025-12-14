@@ -3,6 +3,7 @@
 import type { AgentInstruction } from '@/lib/types/agents'
 
 const AGENT_STORAGE_KEY = 'ai-toolbox-agent-library'
+const AGENT_PROMPT_OVERRIDES_KEY = 'agentPromptOverrides'
 
 function nowIso(): string {
   return new Date().toISOString()
@@ -85,4 +86,27 @@ export async function fetchAgentLibrary(): Promise<AgentInstruction[]> {
 export async function persistAgentLibrary(agents: AgentInstruction[]): Promise<void> {
   if (typeof localStorage === 'undefined') return
   localStorage.setItem(AGENT_STORAGE_KEY, JSON.stringify(agents))
+}
+
+export function loadPromptOverrides(): Record<string, string> {
+  if (typeof localStorage === 'undefined') return {}
+  try {
+    const raw = localStorage.getItem(AGENT_PROMPT_OVERRIDES_KEY)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw) as Record<string, string>
+    return parsed ?? {}
+  } catch {
+    return {}
+  }
+}
+
+export function persistPromptOverride(agentId: string, prompt: string | null): void {
+  if (typeof localStorage === 'undefined') return
+  const existing = loadPromptOverrides()
+  if (!prompt) {
+    delete existing[agentId]
+  } else {
+    existing[agentId] = prompt
+  }
+  localStorage.setItem(AGENT_PROMPT_OVERRIDES_KEY, JSON.stringify(existing))
 }

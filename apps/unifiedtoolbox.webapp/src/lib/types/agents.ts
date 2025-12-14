@@ -5,6 +5,8 @@ export interface AgentInstruction {
   name: string
   purpose: string
   mission?: string
+  role?: string
+  prompt?: string
   status: AgentStatus
   tags: string[]
   triggers?: string[]

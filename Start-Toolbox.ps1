@@ -394,6 +394,9 @@ function Start-Dashboard {
     try {
         Push-Location $dashboardDir
 
+        # Clean up any stale Next.js lock files
+        Clear-NextLockFile -ProjectPath $dashboardDir | Out-Null
+
         # Install dependencies if needed
         if (-not (Test-Path "node_modules")) {
             Write-Status "Installing dependencies..." -Level "Info"
@@ -441,6 +444,12 @@ function Start-WebPortal {
 
     try {
         Push-Location $webDir
+
+        # Ensure no stray Next.js dev process is holding the port
+        $stoppedNextJs = Stop-ExistingNextJsDevProcesses
+        if ($stoppedNextJs) {
+            Start-Sleep -Seconds 1
+        }
 
         # Clean up any stale lock files
         Clear-NextLockFile -ProjectPath $webDir | Out-Null
