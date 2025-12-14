@@ -27,10 +27,12 @@ pip install -e ..\..\packages\prompt-registry   # registry helpers (editable ins
 # PROMPT_API_OPENAI_API_KEY=sk-***
 # PROMPT_API_OPENAI_MODEL=gpt-4o-mini
 
-uvicorn app:app --reload --port 5050
+uvicorn app:app --reload --host 0.0.0.0 --port 8000
+
+> Tip: The root `Start-Toolbox.ps1` launcher (choose option 2 for API-only or option 1 for the full stack) sets `PROMPT_API_PORT=8000` and runs this exact command, so you can start all services from the workspace root without remembering the manual steps.
 ```
 
-Point Prompt Hub at `http://localhost:5050` via `VITE_API_BASE`. Useful endpoints once the server is running:
+Point Prompt Hub at `http://localhost:8000` via `VITE_API_BASE`. Useful endpoints once the server is running:
 
 - `GET /prompts` / `GET /prompts/{id}` – canonical prompt payloads that match the UI contract.
 - `POST /prompts/render` – render prompt blocks with the supplied variable bag.
@@ -43,6 +45,12 @@ Point Prompt Hub at `http://localhost:5050` via `VITE_API_BASE`. Useful endpoint
 - `GET /admin/costs/summary` – get total AI API cost summary with optional date/provider filters.
 - `GET /admin/costs/breakdown` – detailed cost breakdown by provider, model, and daily usage.
 - `GET /admin/costs/budget` – check budget status and get alerts when approaching limits.
+
+## Health & launch checklist
+
+- Visit `http://localhost:8000/health` once the service is running to confirm the FastAPI health check is healthy; the root launcher polls this path before stating that the API is ready.
+- If you need to fire up the API manually, rerun the commands above in `apps/UnifiedPromptApp/services/prompt-api`. On Windows, `Start-Toolbox.ps1` or `Start-PromptWorkbench.ps1` handles the virtual environment, dependency install, and `uvicorn` invocation for you.
+- The same health check is exercised by `apps/UnifiedPromptApp/services/prompt-api/tests/test_prompts.py`, so running `pytest` from that directory ensures the endpoint is reachable before you point other services at it.
 
 ## AI Provider Configuration
 

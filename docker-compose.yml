@@ -3,7 +3,7 @@ version: '3.8'
 services:
   prompt-api:
     build:
-      context: ./services/prompt-api
+      context: ./apps/UnifiedPromptApp/services/prompt-api
       dockerfile: Dockerfile
     ports:
       - "${API_PORT:-8000}:8000"
@@ -15,8 +15,8 @@ services:
       - WORKBENCH_PORT=${WORKBENCH_PORT:-8501}
     volumes:
       - ./data:/app/data:ro
-      - ./services/prompt-api/data:/app/data-local
-      - ./services/prompt-api/workbench.db:/app/workbench.db
+      - ./apps/UnifiedPromptApp/services/prompt-api/data:/app/data-local
+      - ./apps/UnifiedPromptApp/services/prompt-api/workbench.db:/app/workbench.db
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s

@@ -59,34 +59,226 @@ function Write-Status {
 # Check if a service is running on a port
 function Test-PortInUse {
     param([int]$Port)
+
+    # Prefer using Get-NetTCPConnection for accurate IPv4/IPv6 coverage
     try {
-        $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, $Port)
-        $listener.Start()
-        $listener.Stop()
-        return $false
+        $connection = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
+        if ($connection) {
+            return $true
+        }
     }
     catch {
-        return $true
+        # Ignore if cmdlet unavailable
+    }
+
+    # Fallback to binding attempts if NetTCPConnection is not available
+    foreach ($address in @([System.Net.IPAddress]::Loopback, [System.Net.IPAddress]::IPv6Loopback)) {
+        try {
+            $listener = [System.Net.Sockets.TcpListener]::new($address, $Port)
+            $listener.Server.SetSocketOption([System.Net.Sockets.SocketOptionLevel]::Socket, [System.Net.Sockets.SocketOptionName]::ReuseAddress, $false)
+            $listener.Start()
+            $listener.Stop()
+        }
+        catch [System.Net.Sockets.SocketException] {
+            return $true
+        }
+        catch {
+            continue
+        }
+    }
+
+    return $false
+}
+
+function Get-PortOwningProcess {
+    param([int]$Port)
+
+    try {
+        $connection = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($connection) {
+            return Get-Process -Id $connection.OwningProcess -ErrorAction SilentlyContinue
+        }
+    }
+    catch {
+        # Fallback on older PowerShell versions without Get-NetTCPConnection
+        try {
+            $pattern = "^\s*TCP\s+\S+:$Port\s+\S+\s+LISTENING\s+(\d+)$"
+            $match = netstat -ano -p tcp | Select-String -Pattern $pattern | Select-Object -First 1
+            if ($match) {
+                $pid = [int]$match.Matches[0].Groups[1].Value
+                return Get-Process -Id $pid -ErrorAction SilentlyContinue
+            }
+        }
+        catch {
+            return $null
+        }
+    }
+
+    return $null
+}
+
+$Script:DefaultApiPort = 8000
+$Script:DefaultDashboardPort = 5173
+$Script:DefaultWebPortalPort = 3000
+
+$Script:PromptApiPort = $null
+$Script:PromptApiBaseUrl = $null
+$Script:DashboardPort = $null
+$Script:WebPortalPort = $null
+$Script:LastWebPortalUrlOpened = $null
+
+function Get-NextAvailablePort {
+    param(
+        [int]$StartingPort,
+        [int]$MaxPort = 65535
+    )
+
+    for ($port = $StartingPort; $port -le $MaxPort; $port++) {
+        if (-not (Test-PortInUse -Port $port)) {
+            return $port
+        }
+    }
+
+    throw "No available ports could be found between $StartingPort and $MaxPort"
+}
+
+function Resolve-ServicePort {
+    param(
+        [Parameter(Mandatory = $true)][string]$ServiceName,
+        [Parameter(Mandatory = $true)][int]$DefaultPort,
+        [int]$MaxPort = 0
+    )
+
+    if ($MaxPort -le 0 -or $MaxPort -gt 65535) {
+        $MaxPort = [math]::Min($DefaultPort + 100, 65535)
+    }
+
+    if (-not (Test-PortInUse -Port $DefaultPort)) {
+        return $DefaultPort
+    }
+
+    $owner = Get-PortOwningProcess -Port $DefaultPort
+    $ownerDesc = if ($owner) { "$($owner.ProcessName) (PID $($owner.Id))" } else { "another process" }
+    Write-Status "⚠️ $ServiceName default port $DefaultPort is already in use by $ownerDesc. Looking for a free port..." -Level "Warning"
+
+    try {
+        $newPort = Get-NextAvailablePort -StartingPort ($DefaultPort + 1) -MaxPort $MaxPort
+        Write-Status "ℹ️ $ServiceName will run on port $newPort" -Level "Info"
+        return $newPort
+    }
+    catch {
+        throw "Unable to find an available port for $ServiceName around $DefaultPort"
+    }
+}
+
+function Get-ApiBaseUrl {
+    if ($Script:PromptApiBaseUrl) {
+        return $Script:PromptApiBaseUrl
+    }
+    if ($env:NEXT_PUBLIC_API_BASE) {
+        return $env:NEXT_PUBLIC_API_BASE
+    }
+
+    if ($env:VITE_API_BASE) {
+        return $env:VITE_API_BASE
+    }
+
+    if ($env:PROMPT_API_BASE) {
+        return $env:PROMPT_API_BASE
+    }
+
+    if ($env:PROMPT_API_PORT) {
+        return "http://localhost:$($env:PROMPT_API_PORT)"
+    }
+
+    return "http://localhost:$($Script:DefaultApiPort)"
+}
+
+function Get-NextJsDevProcesses {
+    try {
+        return Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue |
+            Where-Object { $_.CommandLine -and $_.CommandLine -match '\bnext\b.*\bdev\b' }
+    }
+    catch {
+        return @()
+    }
+}
+
+function Stop-ExistingNextJsDevProcesses {
+    $processes = Get-NextJsDevProcesses
+    if (-not $processes) {
+        return $false
+    }
+
+    foreach ($proc in $processes) {
+        try {
+            Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue
+            Write-Status "🛑 Stopped existing Next.js dev process (PID $($proc.ProcessId))" -Level "Info"
+        }
+        catch {
+            Write-Status "⚠️ Unable to stop Next.js dev process (PID $($proc.ProcessId)): $_" -Level "Warning"
+        }
+    }
+
+    Start-Sleep -Seconds 1
+    return $true
+}
+
+function Open-WebPortalBrowser {
+    if (-not $Script:WebPortalPort) {
+        return
+    }
+
+    $url = "http://localhost:$($Script:WebPortalPort)"
+    if ($Script:LastWebPortalUrlOpened -eq $url) {
+        return
+    }
+
+    try {
+        Start-Process $url
+        Write-Status "🌐 Opened web portal in the default browser at $url" -Level "Success"
+        $Script:LastWebPortalUrlOpened = $url
+    }
+    catch {
+        Write-Status "⚠️ Failed to open $url in the browser: $_" -Level "Warning"
     }
 }
 
 # Clean up stale Next.js lock files
 function Clear-NextLockFile {
     param([string]$ProjectPath)
-    
+
     $lockFile = Join-Path $ProjectPath ".next\dev\lock"
-    
-    if (Test-Path $lockFile) {
+
+    if (-not (Test-Path $lockFile)) {
+        return $true
+    }
+
+    Write-Status "🧹 Clearing stale Next.js dev lock file..." -Level "Info"
+
+    $attempt = 0
+    $stoppedExisting = $false
+
+    while ($attempt -lt 2) {
+        $attempt++
         try {
             Remove-Item -Path $lockFile -Force -ErrorAction Stop
-            Write-Status "🧹 Removed stale Next.js lock file" -Level "Info"
+            Write-Status "🧹 Removed stale Next.js dev lock file" -Level "Info"
             return $true
         }
         catch {
+            if (-not $stoppedExisting) {
+                $stoppedExisting = Stop-ExistingNextJsDevProcesses
+                if ($stoppedExisting) {
+                    Start-Sleep -Seconds 1
+                    continue
+                }
+            }
             Write-Status "⚠️  Could not remove lock file: $_" -Level "Warning"
             return $false
         }
     }
+
     return $true
 }
 
@@ -98,16 +290,20 @@ function Show-Menu {
     Write-Host "╚════════════════════════════════════════════════════════════╝`n" -ForegroundColor Cyan
     
     # Check service status
-    $apiRunning = Test-PortInUse -Port 8000
-    $dashboardRunning = Test-PortInUse -Port 5173
-    $webRunning = Test-PortInUse -Port 3000
-    
+    $apiPortForStatus = if ($Script:PromptApiPort) { $Script:PromptApiPort } else { $Script:DefaultApiPort }
+    $dashboardPortForStatus = if ($Script:DashboardPort) { $Script:DashboardPort } else { $Script:DefaultDashboardPort }
+    $webPortForStatus = if ($Script:WebPortalPort) { $Script:WebPortalPort } else { $Script:DefaultWebPortalPort }
+
+    $apiRunning = Test-PortInUse -Port $apiPortForStatus
+    $dashboardRunning = Test-PortInUse -Port $dashboardPortForStatus
+    $webRunning = Test-PortInUse -Port $webPortForStatus
+
     Write-Host "  Current Status:" -ForegroundColor White
-    Write-Host "    API (8000):       " -NoNewline
+    Write-Host "    API ($apiPortForStatus):       " -NoNewline
     Write-Host $(if ($apiRunning) { "🟢 Running" } else { "⚫ Stopped" }) -ForegroundColor $(if ($apiRunning) { "Green" } else { "Gray" })
-    Write-Host "    Dashboard (5173): " -NoNewline
+    Write-Host "    Dashboard ($dashboardPortForStatus): " -NoNewline
     Write-Host $(if ($dashboardRunning) { "🟢 Running" } else { "⚫ Stopped" }) -ForegroundColor $(if ($dashboardRunning) { "Green" } else { "Gray" })
-    Write-Host "    Web Portal (3000):" -NoNewline
+    Write-Host "    Web Portal ($webPortForStatus):" -NoNewline
     Write-Host $(if ($webRunning) { "🟢 Running" } else { "⚫ Stopped" }) -ForegroundColor $(if ($webRunning) { "Green" } else { "Gray" })
     
     Write-Host "`n  Launch Options:" -ForegroundColor White
@@ -153,22 +349,26 @@ function Start-API {
         # Set environment variables
         $env:ORCHESTRATOR_PS1 = "MilestoneController.ps1"
         $env:POF_PS1 = $env:ORCHESTRATOR_PS1
-        $env:PROMPT_API_PORT = 8000
-        
+
+        $apiPort = Resolve-ServicePort -ServiceName "Prompt API" -DefaultPort $Script:DefaultApiPort
+        $apiBaseUrl = "http://localhost:$apiPort"
+        $Script:PromptApiPort = $apiPort
+        $Script:PromptApiBaseUrl = $apiBaseUrl
+        $env:PROMPT_API_PORT = $apiPort
+       
         # Start the server
         $process = Start-Process -NoNewWindow -PassThru -FilePath "python" `
-            -ArgumentList "-m", "uvicorn", "app:app", "--reload", "--host", "0.0.0.0", "--port", "8000" `
+            -ArgumentList "-m", "uvicorn", "app:app", "--reload", "--host", "0.0.0.0", "--port", "$apiPort" `
             -WorkingDirectory $apiDir
-        
         Start-Sleep -Seconds 3
         
-        if (Test-PortInUse -Port 8000) {
-            Write-Status "✅ API running at http://localhost:8000" -Level "Success"
-            Write-Status "   📖 API Docs: http://localhost:8000/docs" -Level "Info"
+        if (Test-PortInUse -Port $apiPort) {
+            Write-Status "✅ API running at http://localhost:$apiPort" -Level "Success"
+            Write-Status "   📖 API Docs: http://localhost:$apiPort/docs" -Level "Info"
             return $process
         }
         else {
-            Write-Status "⚠️  API may still be starting..." -Level "Warning"
+            Write-Status "⚠️  API may still be starting on http://localhost:$apiPort" -Level "Warning"
             return $process
         }
     }
@@ -201,18 +401,22 @@ function Start-Dashboard {
         }
         
         # Set environment variables
-        $env:VITE_PORT = 5173
-        $env:VITE_API_URL = "http://localhost:8000"
-        $env:VITE_API_BASE = "http://localhost:8000"
+        $dashboardPort = Resolve-ServicePort -ServiceName "Vite Dashboard" -DefaultPort $Script:DefaultDashboardPort
+        $Script:DashboardPort = $dashboardPort
+        $apiBaseUrl = Get-ApiBaseUrl
+
+        $env:VITE_PORT = $dashboardPort
+        $env:VITE_API_URL = $apiBaseUrl
+        $env:VITE_API_BASE = $apiBaseUrl
         
         # Start the dev server
         $comspec = $env:ComSpec
         $process = Start-Process -FilePath $comspec `
-            -ArgumentList "/c", "npm run dev -- -p 5173" `
+            -ArgumentList "/c", "npm run dev -- -p $dashboardPort" `
             -WorkingDirectory $dashboardDir -NoNewWindow -PassThru
         
         Start-Sleep -Seconds 3
-        Write-Status "✅ Dashboard starting at http://localhost:5173" -Level "Success"
+        Write-Status "✅ Dashboard starting at http://localhost:$dashboardPort" -Level "Success"
         
         return $process
     }
@@ -248,17 +452,22 @@ function Start-WebPortal {
         }
         
         # Set environment variables
-        $env:NEXT_PUBLIC_API_BASE = "http://localhost:8000"
-        $env:PORT = 3000
+        $webPort = Resolve-ServicePort -ServiceName "Next.js Web Portal" -DefaultPort $Script:DefaultWebPortalPort
+        $Script:WebPortalPort = $webPort
+        $apiBaseUrl = Get-ApiBaseUrl
+
+        $env:NEXT_PUBLIC_API_BASE = $apiBaseUrl
+        $env:PORT = $webPort
         
         # Start the dev server
         $comspec = $env:ComSpec
         $process = Start-Process -FilePath $comspec `
-            -ArgumentList "/c", "npm run dev -- --hostname 0.0.0.0 --port 3000" `
+            -ArgumentList "/c", "npm run dev -- --hostname 0.0.0.0 --port $webPort" `
             -WorkingDirectory $webDir -NoNewWindow -PassThru
         
         Start-Sleep -Seconds 3
-        Write-Status "✅ Web Portal starting at http://localhost:3000" -Level "Success"
+        Write-Status "✅ Web Portal starting at http://localhost:$webPort" -Level "Success"
+        Open-WebPortalBrowser
         
         return $process
     }

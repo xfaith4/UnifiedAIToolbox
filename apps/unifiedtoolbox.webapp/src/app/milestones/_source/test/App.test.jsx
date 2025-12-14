@@ -12,15 +12,14 @@ describe('App Component - Edge Cases', () => {
   });
 
   it('should handle empty data gracefully', async () => {
-    // Mock fetch to return empty data structures
     global.fetch.mockImplementation((url) => {
       if (url.includes('CurrentGoal.json')) {
         return Promise.resolve({
           ok: true,
           json: () => Promise.resolve({
-            goal: '',
-            objective: '',
-            successCriteria: []
+            Goal: '',
+            Objective: '',
+            SuccessCriteria: []
           })
         });
       }
@@ -52,8 +51,8 @@ describe('App Component - Edge Cases', () => {
         return Promise.resolve({
           ok: true,
           json: () => Promise.resolve({
-            // Missing 'goal' and 'objective'
-            successCriteria: null // null instead of array
+            // Missing goal and objective fields
+            SuccessCriteria: null
           })
         });
       }
