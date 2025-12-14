@@ -222,6 +222,9 @@ function Invoke-Orchestration {
             if ($lastSpace -gt 0) {
                 $truncated = $truncated.Substring(0, $lastSpace)
             }
+            elseif ($lastSpace -eq 0) {
+                $truncated = $truncated.Substring(0, 1)
+            }
             $refineTitle = ($truncated.TrimEnd()) + "..."
         }
         else {
@@ -238,7 +241,10 @@ function Invoke-Orchestration {
 
     $prompt = if ($PromptObject) { $PromptObject } elseif ($PromptId) { Get-Prompt -Id $PromptId | Select-Object -First 1 }
     if (-not $prompt -and $refinementRecord) {
-        $checksumSource = if ($refinementRecord.RefinedPrompt) { $refinementRecord.RefinedPrompt } else { $SimpleRequest }
+        $checksumSource = $SimpleRequest
+        if ($refinementRecord.RefinedPrompt) {
+            $checksumSource = $refinementRecord.RefinedPrompt
+        }
         $prompt = [pscustomobject]@{
             id            = $PromptId
             title         = if ($refineTitle) { $refineTitle } else { $refinementRecord.PromptId }
