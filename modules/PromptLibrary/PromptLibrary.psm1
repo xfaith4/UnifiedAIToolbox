@@ -204,13 +204,37 @@ function Invoke-Orchestration {
     param(
         [string]$PromptId,
         [pscustomobject]$PromptObject,
+        [string]$SimpleRequest,
         [Parameter(Mandatory)][string]$AgentId,
         [Parameter(Mandatory)][hashtable]$Inputs,
         [Parameter(Mandatory)][string]$Model,
         [string]$ArtifactName = ("art_" + (Get-Date -Format 'yyyyMMdd_HHmmss'))
     )
 
+    $refinementRecord = $null
+    if (-not $PromptObject -and -not $PromptId -and $SimpleRequest) {
+        $refineTitle = if ($SimpleRequest.Length -gt 60) { $SimpleRequest.Substring(0, 60) } else { $SimpleRequest }
+        $refinementRecord = New-RefinedPrompt -UserPrompt $SimpleRequest `
+                                              -Title $refineTitle `
+                                              -Category 'orchestration' `
+                                              -Tags @('orchestration', 'auto-refined') `
+                                              -RefinementIterations 1 `
+                                              -SkipValidation
+        $PromptId = $refinementRecord.PromptId
+    }
+
     $prompt = if ($PromptObject) { $PromptObject } elseif ($PromptId) { Get-Prompt -Id $PromptId | Select-Object -First 1 }
+    if (-not $prompt -and $refinementRecord) {
+        $checksumSource = if ($refinementRecord.RefinedPrompt) { $refinementRecord.RefinedPrompt } else { $SimpleRequest }
+        $prompt = [pscustomobject]@{
+            id            = $PromptId
+            title         = $refinementRecord.PromptId
+            user_template = $SimpleRequest
+            system        = $refinementRecord.RefinedPrompt
+            tags          = @('orchestration', 'auto-refined')
+            checksum      = Get-ContentHash -Text $checksumSource
+        }
+    }
     if (-not $prompt) {
         throw ("Prompt {0} not found." -f ($PromptId ?? '<unspecified>'))
     }
@@ -229,6 +253,9 @@ function Invoke-Orchestration {
             $template = $prompt.blocks.instructions
         }
     }
+    if ($refinementRecord -and $SimpleRequest) {
+        $template = $SimpleRequest
+    }
 
     if ([string]::IsNullOrWhiteSpace($template)) {
         throw "The selected prompt does not define a user template."
@@ -243,6 +270,9 @@ function Invoke-Orchestration {
 
     if ([string]::IsNullOrWhiteSpace($systemText)) {
         $systemText = "You are an orchestration agent."
+    }
+    if ($refinementRecord -and $refinementRecord.RefinedPrompt) {
+        $systemText = $refinementRecord.RefinedPrompt
     }
 
     $prompt | Add-Member -NotePropertyName system -NotePropertyValue $systemText -Force
