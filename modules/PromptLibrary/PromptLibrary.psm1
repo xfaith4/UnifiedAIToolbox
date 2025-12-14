@@ -216,7 +216,17 @@ function Invoke-Orchestration {
     $refineTags = @('orchestration', 'auto-refined')
     $titleMaxLength = 60
     if (-not $PromptObject -and -not $PromptId -and $SimpleRequest) {
-        $refineTitle = if ($SimpleRequest.Length -gt $titleMaxLength) { $SimpleRequest.Substring(0, $titleMaxLength) } else { $SimpleRequest }
+        if ($SimpleRequest.Length -gt $titleMaxLength) {
+            $truncated = $SimpleRequest.Substring(0, $titleMaxLength)
+            $lastSpace = $truncated.LastIndexOf(' ')
+            if ($lastSpace -gt 0) {
+                $truncated = $truncated.Substring(0, $lastSpace)
+            }
+            $refineTitle = ($truncated.TrimEnd()) + "..."
+        }
+        else {
+            $refineTitle = $SimpleRequest
+        }
         $refinementRecord = New-RefinedPrompt -UserPrompt $SimpleRequest `
                                               -Title $refineTitle `
                                               -Category 'orchestration' `
@@ -249,7 +259,7 @@ function Invoke-Orchestration {
         $prompt | Add-Member -NotePropertyName tags -NotePropertyValue @() -Force
     }
 
-    $template = if ($refinementRecord -and $SimpleRequest) { $SimpleRequest } else { $null }
+    $template = if ($refinementRecord) { $SimpleRequest } else { $null }
     if ([string]::IsNullOrWhiteSpace($template)) {
         $template = if ($prompt.PSObject.Properties.Match('user_template')) { $prompt.user_template } else { $null }
         if ([string]::IsNullOrWhiteSpace($template) -and $prompt.blocks) {
