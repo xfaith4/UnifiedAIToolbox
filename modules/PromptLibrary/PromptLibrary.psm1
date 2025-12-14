@@ -223,7 +223,7 @@ function Invoke-Orchestration {
                 $truncated = $truncated.Substring(0, $lastSpace)
             }
             elseif ($lastSpace -eq 0) {
-                $truncated = $truncated.Substring(0, 1)
+                $truncated = $truncated.TrimStart()
             }
             $refineTitle = ($truncated.TrimEnd()) + "..."
         }
@@ -241,6 +241,7 @@ function Invoke-Orchestration {
 
     $prompt = if ($PromptObject) { $PromptObject } elseif ($PromptId) { Get-Prompt -Id $PromptId | Select-Object -First 1 }
     if (-not $prompt -and $refinementRecord) {
+        # Prefer checksums that reflect the refined system instructions when available
         $checksumSource = $SimpleRequest
         if ($refinementRecord.RefinedPrompt) {
             $checksumSource = $refinementRecord.RefinedPrompt
@@ -265,6 +266,7 @@ function Invoke-Orchestration {
         $prompt | Add-Member -NotePropertyName tags -NotePropertyValue @() -Force
     }
 
+    # Keep the original request as the user template while the refined text feeds the system prompt
     $template = if ($refinementRecord) { $SimpleRequest } else { $null }
     if ([string]::IsNullOrWhiteSpace($template)) {
         $template = if ($prompt.PSObject.Properties.Match('user_template')) { $prompt.user_template } else { $null }
