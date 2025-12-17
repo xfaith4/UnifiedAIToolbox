@@ -1,6 +1,6 @@
 # Unified AI Toolbox - Project Roadmap
 
-**Last Updated**: November 30, 2025  
+**Last Updated**: December 17, 2025  
 **Current Version**: 1.5 (Enterprise Ready)  
 **Next Version**: 2.0 (Multi-Tenant SaaS)
 
@@ -23,6 +23,10 @@
 - Extend provider router to support Anthropic/Azure, removing 501 placeholders.
 - Ensure orchestrator runs default to real execution path when scripts/tools are present (simulate only as fallback).
 
+## 🎯 Feature Snapshot (Current → Planned)
+- **Current (v1.5)**: Single-tenant deployment, OpenAI-backed orchestration, prompt/agent libraries with analytics, cost tracking, GitHub automation, dashboard + portal + desktop clients.
+- **Planned (v2.0)**: Multi-tenant SaaS with PostgreSQL/Row-Level Security, Redis caching, Kubernetes + Helm with Prometheus/Grafana, pgvector semantic search, and enterprise SSO/webhook integrations.
+
 ---
 
 ## ✅ What's Complete (Milestone 1.5)
@@ -39,7 +43,8 @@
 - [x] Prompt library with CRUD operations
 - [x] Full-text search with SQLite FTS5
 - [x] Agent library management
-- [x] Multi-provider AI support (OpenAI, Anthropic)
+- [x] Provider abstraction with OpenAI live
+- [ ] Anthropic/Azure provider support (Phase 3 rollout)
 - [x] GitHub automation (clone, analyze, create PRs)
 - [x] Cost tracking and budget management
 - [x] JWT authentication with RBAC
