@@ -20,7 +20,7 @@ The Unified AI Toolbox is a comprehensive platform that unifies prompt managemen
 
 ### 🤖 AI Provider Integration
 
-- **Multiple Providers**: OpenAI (GPT-4, GPT-3.5), Anthropic (Claude 3.5), Azure OpenAI
+- **Multiple Providers**: OpenAI (GPT-4, GPT-3.5) today, with Anthropic (Claude 3.5) and Azure OpenAI rolling out in Phase 3
 - **Provider Abstraction**: Unified interface for all providers
 - **Cost Tracking**: Real-time token usage and cost monitoring
 - **Rate Limiting**: Built-in protection against quota exhaustion
@@ -63,6 +63,13 @@ The Unified AI Toolbox is a comprehensive platform that unifies prompt managemen
 - **Alert Monitoring**: Real-time alerting for failures, performance issues, and anomalies
 - **Unified CLI**: Single entry point (`tools/utb.ps1`) for all toolbox operations
 - **Template Versioning**: Semantic versioning and changelog support for CI/CD templates
+
+### 🛣️ Coming in Phase 3 (v2.0)
+
+- **Multi-Tenancy**: Tenant isolation with PostgreSQL + Row-Level Security and per-tenant quotas
+- **Cloud-Native Runtime**: Kubernetes + Helm deployment with Prometheus/Grafana monitoring
+- **Performance Layer**: Redis caching and pgvector-backed semantic search
+- **Enterprise Readiness**: SSO/SAML, tenant-level audit logging, and webhook/notification integrations
 
 ## 🚀 Quick Start
 
