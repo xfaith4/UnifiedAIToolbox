@@ -65,6 +65,7 @@ const SWARM_SAMPLE_RUN = {
   inputTokens: 5200,
   outputTokens: 3000,
   engine: 'codex-swarm',
+  model: '',
 }
 
 const SWARM_SUPERVISOR_USES = [
@@ -143,7 +144,7 @@ export default function OrchestratorPage() {
       }
     }
     void checkConnection()
-  }, [])
+  }, [validateApiConnection])
 
   // Load libraries on mount
   useEffect(() => {
@@ -170,7 +171,7 @@ export default function OrchestratorPage() {
       }
     }
     void loadAll()
-  }, [])
+  }, [fetchAgentLibrary, fetchPromptLibrary, fetchOrchestrationRuns, listLocalRuns])
 
   // Polling for run updates
   useEffect(() => {
@@ -184,7 +185,7 @@ export default function OrchestratorPage() {
       }
     }, 5000)
     return () => clearInterval(interval)
-  }, [])
+  }, [fetchOrchestrationRuns, listLocalRuns])
 
   // Memoized selections
   const selectedAgent = useMemo(
@@ -861,7 +862,6 @@ export default function OrchestratorPage() {
                   </button>
                 </div>
               </div>
-            </div>
             </div>
 
             <div className="grid gap-4 lg:grid-cols-2">
