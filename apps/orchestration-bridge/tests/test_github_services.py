@@ -16,6 +16,19 @@ from github_integration.codex_service import CodexSwarmService, CodexRunStatus
 from github_integration.repo_intake_service import RepoIntakeService, RepoIntakeError
 from github_integration.supervisor_planner import SupervisorPlanner, SupervisorPlannerError
 from github import GithubException
+import pytest
+import tempfile
+from pathlib import Path
+from unittest.mock import Mock, patch
+import sys
+
+# Add parent directory to path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from github_integration.clone_service import GitHubCloneService, RepositoryCloneError, CloneProgress
+from github_integration.codex_service import CodexSwarmService, CodexRunStatus
+from github_integration.repo_intake_service import RepoIntakeService, RepoIntakeError
+from github import GithubException
 
 
 class TestCloneProgress:
@@ -130,6 +143,81 @@ class TestGitHubCloneService:
             
             service = GitHubCloneService(clone_base_dir=Path(tmpdir))
             tree = service.get_file_tree(repo_dir, max_depth=2)
+            
+            assert tree['name'] == "test_repo"
+            assert tree['type'] == "directory"
+            assert len(tree['children']) >= 2
+    
+    def test_list_accessible_repos_requires_token(self):
+        """Listing repositories should require authentication."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            service = GitHubCloneService(clone_base_dir=Path(tmpdir))
+            service.github_client = None
+            
+            with pytest.raises(RepositoryCloneError, match="token required"):
+                service.list_accessible_repos()
+    
+    def test_list_accessible_repos_success(self):
+        """Test listing accessible repositories."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            service = GitHubCloneService(
+                github_token="token",
+                clone_base_dir=Path(tmpdir)
+            )
+            
+            mock_repo = Mock()
+            mock_repo.id = 1
+            mock_repo.full_name = "owner/repo"
+            mock_repo.name = "repo"
+            mock_repo.owner.login = "owner"
+            mock_repo.description = "Test repo"
+            mock_repo.html_url = "https://github.com/owner/repo"
+            mock_repo.clone_url = "https://github.com/owner/repo.git"
+            mock_repo.default_branch = "main"
+            mock_repo.private = True
+            mock_repo.archived = False
+            mock_repo.updated_at = None
+            
+            mock_core = Mock(remaining=10, reset=0)
+            mock_client = Mock()
+            mock_client.get_rate_limit.return_value = Mock(core=mock_core)
+            mock_user = Mock()
+            mock_user.get_repos.return_value = [mock_repo]
+            mock_client.get_user.return_value = mock_user
+            
+            service.github_client = mock_client
+            
+            repos = service.list_accessible_repos()
+            
+            assert len(repos) == 1
+            assert repos[0]['full_name'] == "owner/repo"
+            assert repos[0]['private'] is True
+            mock_user.get_repos.assert_called_once_with(
+                visibility="all",
+                affiliation="owner,collaborator,organization_member"
+            )
+    
+    def test_list_accessible_repos_permission_error(self):
+        """Test permission error when listing repositories."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            service = GitHubCloneService(
+                github_token="token",
+                clone_base_dir=Path(tmpdir)
+            )
+            
+            mock_core = Mock(remaining=10, reset=0)
+            mock_client = Mock()
+            mock_client.get_rate_limit.return_value = Mock(core=mock_core)
+            mock_client.get_user.side_effect = GithubException(
+                status=403,
+                data={"message": "Resource not accessible by integration"},
+                headers=None
+            )
+            
+            service.github_client = mock_client
+            
+            with pytest.raises(RepositoryCloneError, match="missing repository access"):
+                service.list_accessible_repos()
             
             assert tree['name'] == "test_repo"
             assert tree['type'] == "directory"
@@ -356,6 +444,60 @@ class TestSupervisorPlanner:
         planner = SupervisorPlanner(runs_dir=Path(tempfile.gettempdir()) / "runs")
         with pytest.raises(SupervisorPlannerError):
             planner.generate_taskgraph(run_id="", intake={}, user_goal="goal", constraints={})
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])
+            assert status['run_id'] == "test-run"
+            assert status['status'] == CodexRunStatus.COMPLETED
+
+
+class TestRepoIntakeService:
+    """Tests for repository intake generation."""
+
+    @patch('github_integration.repo_intake_service.GitHubCloneService')
+    def test_repo_intake_generates_artifacts(self, mock_clone_service):
+        """Intake should write artifacts and prune heavy dirs."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_dir = Path(tmpdir) / "repo"
+            repo_dir.mkdir()
+            (repo_dir / "README.md").write_text("# sample", encoding="utf-8")
+            (repo_dir / "package.json").write_text('{"scripts": {"test": "jest"}}', encoding="utf-8")
+            heavy_dir = repo_dir / "node_modules"
+            heavy_dir.mkdir()
+
+            mock_instance = Mock()
+            mock_instance.clone_repository.return_value = repo_dir
+            # Use real tree to ensure pruning removes heavy dirs
+            mock_instance.get_file_tree.side_effect = lambda path, max_depth=5: {
+                "name": "repo",
+                "type": "directory",
+                "children": [
+                    {"name": "README.md", "type": "file"},
+                    {"name": "package.json", "type": "file"},
+                    {"name": "node_modules", "type": "directory", "children": []},
+                ],
+            }
+            mock_clone_service.return_value = mock_instance
+
+            service = RepoIntakeService(runs_dir=Path(tmpdir) / "runs")
+            intake = service.run_intake("https://example.com/repo", run_id="run-1")
+
+            assert (Path(tmpdir) / "runs" / "run-1" / "intake.json").exists()
+            assert intake["file_tree"]["children"]
+            assert all(child["name"] != "node_modules" for child in intake["file_tree"]["children"])
+            assert any(signal["type"] == "node" for signal in intake["build_signals"])
+
+    @patch('github_integration.repo_intake_service.GitHubCloneService')
+    def test_repo_intake_handles_errors(self, mock_clone_service):
+        """Errors should surface as RepoIntakeError."""
+        mock_instance = Mock()
+        mock_instance.clone_repository.side_effect = RepositoryCloneError("nope")
+        mock_clone_service.return_value = mock_instance
+
+        service = RepoIntakeService(runs_dir=Path(tempfile.gettempdir()) / "runs")
+        with pytest.raises(RepoIntakeError):
+            service.run_intake("bad/repo", run_id="run-err")
 
 
 if __name__ == "__main__":

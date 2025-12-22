@@ -30,6 +30,20 @@ try:
 except ImportError as e:
     logging.warning(f"GitHub integration services not available: {e}")
     GITHUB_AVAILABLE = False
+try:
+    import sys
+    bridge_path = Path(__file__).parent.parent.parent.parent.parent / "apps" / "orchestration-bridge"
+    if str(bridge_path) not in sys.path:
+        sys.path.insert(0, str(bridge_path))
+    
+    from github_integration.clone_service import GitHubCloneService, RepositoryCloneError
+    from github_integration.pr_service import GitHubPRService, PRCreationError
+    from github_integration.repo_intake_service import RepoIntakeService, RepoIntakeError
+    from shared.github_core import parse_repo_url
+    GITHUB_AVAILABLE = True
+except ImportError as e:
+    logging.warning(f"GitHub integration services not available: {e}")
+    GITHUB_AVAILABLE = False
 
 router = APIRouter(prefix="/github", tags=["github"])
 logger = logging.getLogger(__name__)
@@ -116,6 +130,43 @@ class TaskGraphRequest(BaseModel):
 class TaskGraphResponse(BaseModel):
     """Response with task graph data."""
     taskgraph: Dict[str, Any]
+
+
+class CloneRepositoryRequest(BaseModel):
+    """Request model for cloning a repository."""
+    repo_url: str = Field(..., description="Repository URL or owner/repo format")
+    branch: Optional[str] = Field(None, description="Specific branch to clone")
+    private: bool
+    archived: bool
+    updated_at: Optional[str] = None
+
+
+class AccessibleRepository(BaseModel):
+    """Repository listing entry for accessible repositories."""
+    id: Optional[int] = None
+    full_name: str
+    name: str
+    owner: Optional[str] = None
+    description: Optional[str] = ""
+    html_url: str
+    clone_url: Optional[str] = None
+    default_branch: Optional[str] = None
+    private: bool = False
+    archived: bool = False
+    visibility: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class RepoIntakeRequest(BaseModel):
+    """Request model for repository intake."""
+    repo_url: str = Field(..., description="Repository URL or owner/repo format")
+    run_id: str = Field(..., description="Workspace/run identifier for artifacts")
+    branch: Optional[str] = Field(None, description="Optional branch to checkout")
+
+
+class RepoIntakeResponse(BaseModel):
+    """Response model for repository intake."""
+    intake: Dict[str, Any]
 
 
 class CloneRepositoryRequest(BaseModel):
@@ -368,6 +419,84 @@ def generate_taskgraph(
     except Exception as e:
         logger.error(f"Failed to generate taskgraph: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate task graph.")
+
+
+@router.get("/repos/{owner}/{repo}", response_model=RepositoryMetadataResponse)
+def get_repository_metadata(
+    owner: str,
+    repo: str,
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to verify authentication: {str(e)}"
+        )
+
+
+@router.get("/repos", response_model=List[AccessibleRepository])
+def list_accessible_repositories(
+    authorization: Optional[str] = Header(None)
+):
+    """
+    List repositories accessible to the provided GitHub token.
+    
+    Includes both public and private repositories where the token holder is
+    an owner, collaborator, or organization member.
+    """
+    validate_github_available()
+    
+    token = get_github_token(authorization)
+    if not token:
+        raise HTTPException(
+            status_code=401,
+            detail="GitHub token required to list accessible repositories."
+        )
+
+    
+    try:
+        service = GitHubCloneService(github_token=token)
+        return service.list_accessible_repos()
+    except RepositoryCloneError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to list accessible repositories: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to list accessible repositories."
+        )
+
+
+@router.post("/repos/intake", response_model=RepoIntakeResponse)
+def generate_repo_intake(
+    request: RepoIntakeRequest,
+    authorization: Optional[str] = Header(None),
+):
+    """
+    Generate an intake report for the requested repository.
+
+    The report is persisted under apps/orchestration-bridge/runs/<run_id>/intake.{json,md}
+    and returned as structured JSON.
+    """
+    validate_github_available()
+
+    token = get_github_token(authorization)
+    runs_dir = Path(__file__).parent.parent.parent.parent / "orchestration-bridge" / "runs"
+
+    try:
+        service = RepoIntakeService(
+            github_token=token,
+            runs_dir=runs_dir,
+        )
+        intake = service.run_intake(
+            repo_url=request.repo_url,
+            run_id=request.run_id,
+            branch=request.branch,
+        )
+        return RepoIntakeResponse(intake=intake)
+    except RepoIntakeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to generate intake: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate intake report.")
 
 
 @router.get("/repos/{owner}/{repo}", response_model=RepositoryMetadataResponse)
