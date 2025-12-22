@@ -194,7 +194,8 @@ class GitHubClientMixin:
     def _init_github_client(
         self, 
         token: Optional[str] = None,
-        use_auth_class: bool = False
+        use_auth_class: bool = False,
+        per_page: int = 100,
     ) -> Optional[Github]:
         """
         Initialize GitHub API client.
@@ -207,12 +208,12 @@ class GitHubClientMixin:
             Initialized Github client or None
         """
         if not token:
-            return None if use_auth_class else Github()
+            return None if use_auth_class else Github(per_page=per_page)
         
         try:
             # Always use Auth.Token for token-based authentication (modern API)
             auth = Auth.Token(token)
-            return Github(auth=auth)
+            return Github(auth=auth, per_page=per_page)
         except Exception as e:
             logger.warning(f"Failed to initialize GitHub client: {e}")
             return None

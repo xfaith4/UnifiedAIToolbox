@@ -1,23 +1,43 @@
 'use client'
 
+import { ORCHESTRATOR_API_BASE } from './orchestratorApi'
 import type { GitHubRepo } from '@/lib/types/github'
 
-export async function getUserRepos(username: string, token?: string): Promise<GitHubRepo[]> {
-  if (!username) return []
-  const headers: Record<string, string> = {
-    Accept: 'application/vnd.github+json',
+export async function listAccessibleRepos(token: string): Promise<GitHubRepo[]> {
+  const trimmedToken = token.trim()
+  if (!trimmedToken) {
+    throw new Error('A GitHub personal access token is required to list repositories.')
   }
-  if (token) headers.Authorization = `Bearer ${token}`
 
-  const res = await fetch(`https://api.github.com/users/${encodeURIComponent(username)}/repos`, {
-    headers,
+  if (!ORCHESTRATOR_API_BASE) {
+    throw new Error('Orchestrator API base URL is not configured.')
+  }
+
+  const res = await fetch(`${ORCHESTRATOR_API_BASE}/github/repos`, {
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${trimmedToken}`,
+    },
+    cache: 'no-store',
   })
 
+  const body = await res.text()
+
   if (!res.ok) {
-    const detail = await res.text()
-    throw new Error(`GitHub request failed (${res.status}): ${detail || res.statusText}`)
+    let detail = res.statusText
+    try {
+      const parsed = JSON.parse(body)
+      detail = parsed.detail || parsed.error || detail
+    } catch {
+      if (body) detail = body
+    }
+    throw new Error(`Failed to load repositories (${res.status}): ${detail}`)
   }
 
-  const data = (await res.json()) as GitHubRepo[]
-  return Array.isArray(data) ? data : []
+  try {
+    const data = JSON.parse(body) as GitHubRepo[]
+    return Array.isArray(data) ? data : []
+  } catch {
+    return []
+  }
 }
