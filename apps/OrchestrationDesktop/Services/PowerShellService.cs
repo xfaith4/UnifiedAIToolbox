@@ -72,7 +72,7 @@ public sealed class PowerShellService : IDisposable
                 allGood = false;
             }
 
-            if (string.IsNullOrEmpty(options.GoalFile) && string.IsNullOrEmpty(options.DirectGoalText))
+            if (string.IsNullOrEmpty(options.GoalFile) && string.IsNullOrEmpty(options.CustomPromptText))
             {
                 log(LogLevel.Warning, "No goal specified. Please enter a goal or select a goal file.");
                 allGood = false;
