@@ -29,7 +29,9 @@ from shared.github_core import (
     list_repo_branches,
     switch_repo_branch,
     cleanup_repository,
+    github_call_with_backoff,
 )
+from shared.security import redact_text, safe_message
 
 logger = logging.getLogger(__name__)
 
@@ -157,8 +159,11 @@ class GitHubCloneService(GitHubClientMixin, FileTreeMixin, CloneUrlMixin):
             )
         
         try:
-            results = self._search_repos(
-                self.github_client, query, limit, include_topics=True, include_private=True
+            results = github_call_with_backoff(
+                lambda: self._search_repos(
+                    self.github_client, query, limit, include_topics=True, include_private=True
+                ),
+                description="Search repositories",
             )
             return results
         except GithubException as e:
@@ -189,7 +194,10 @@ class GitHubCloneService(GitHubClientMixin, FileTreeMixin, CloneUrlMixin):
         
         try:
             try:
-                rate_limit = self.github_client.get_rate_limit().core
+                rate_limit = github_call_with_backoff(
+                    lambda: self.github_client.get_rate_limit().core,
+                    description="Check GitHub rate limit",
+                )
                 if rate_limit.remaining <= 0:
                     reset_time = datetime.fromtimestamp(
                         rate_limit.reset, timezone.utc
@@ -201,10 +209,13 @@ class GitHubCloneService(GitHubClientMixin, FileTreeMixin, CloneUrlMixin):
                 # If rate limit lookup fails, continue and let the main call surface errors
                 rate_limit = None  # type: ignore
             
-            user = self.github_client.get_user()
-            repos_iter = user.get_repos(
-                visibility="all",
-                affiliation="owner,collaborator,organization_member",
+            user = github_call_with_backoff(self.github_client.get_user, description="Get authenticated user")
+            repos_iter = github_call_with_backoff(
+                lambda: user.get_repos(
+                    visibility="all",
+                    affiliation="owner,collaborator,organization_member",
+                ),
+                description="List user repositories",
             )
             
             repos: list[Dict[str, Any]] = []
@@ -303,7 +314,7 @@ class GitHubCloneService(GitHubClientMixin, FileTreeMixin, CloneUrlMixin):
             progress = CloneProgress(callback=progress_callback)
             
             # Clone repository
-            logger.info(f"Cloning repository to {clone_path}")
+            logger.info("Cloning repository to %s", clone_path)
             repo = Repo.clone_from(
                 clone_url_with_auth,
                 clone_path,
@@ -311,7 +322,7 @@ class GitHubCloneService(GitHubClientMixin, FileTreeMixin, CloneUrlMixin):
                 progress=progress
             )
             
-            logger.info(f"Successfully cloned repository to {clone_path}")
+            logger.info("Successfully cloned repository to %s", clone_path)
             
             return clone_path
             
@@ -320,7 +331,8 @@ class GitHubCloneService(GitHubClientMixin, FileTreeMixin, CloneUrlMixin):
             if 'clone_path' in locals() and Path(clone_path).exists():
                 cleanup_repository(Path(clone_path))
             
-            raise RepositoryCloneError(f"Failed to clone repository: {str(e)}")
+            redacted_error = safe_message(str(e))
+            raise RepositoryCloneError(f"Failed to clone repository: {redacted_error}")
     
     def list_branches(self, repo_path: Path) -> list[str]:
         """

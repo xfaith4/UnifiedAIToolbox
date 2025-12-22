@@ -7,8 +7,9 @@ including file tree generation, URL handling, and GitHub API client setup.
 
 import logging
 import shutil
+import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, TypeVar
 
 try:
     from git import Repo
@@ -20,6 +21,7 @@ except ImportError:
     )
 
 logger = logging.getLogger(__name__)
+T = TypeVar("T")
 
 
 def build_file_tree(
@@ -188,35 +190,71 @@ def parse_repo_url(repo_url: str) -> "tuple[str, str]":
     return owner, repo_name
 
 
+def create_github_client(token: Optional[str] = None, per_page: int = 100) -> Optional[Github]:
+    """Create a GitHub client with consistent settings."""
+    if not token:
+        return Github(per_page=per_page)
+
+    try:
+        auth = Auth.Token(token)
+        return Github(auth=auth, per_page=per_page)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to initialize GitHub client: %s", exc)
+        return None
+
+
+def github_call_with_backoff(func: Callable[[], T], *, retries: int = 3, description: str = "GitHub call") -> T:
+    """Execute a GitHub SDK call with basic rate-limit backoff."""
+    last_exc: Optional[Exception] = None
+    for attempt in range(1, retries + 1):
+        try:
+            return func()
+        except GithubException as exc:
+            last_exc = exc
+            message = exc.data.get("message", str(exc)) if getattr(exc, "data", None) else str(exc)
+            is_rate = exc.status in (403, 429) or "rate limit" in message.lower()
+            retry_after = 0
+            headers = getattr(exc, "headers", {}) or {}
+            try:
+                retry_after = int(headers.get("Retry-After", "0") or 0)
+            except Exception:
+                retry_after = 0
+            backoff_seconds = retry_after if retry_after > 0 else min(2 ** attempt, 30)
+            if is_rate and attempt < retries:
+                logger.warning(
+                    "%s hit rate limit (status=%s). Sleeping %s seconds before retry %s/%s",
+                    description,
+                    exc.status,
+                    backoff_seconds,
+                    attempt + 1,
+                    retries,
+                )
+                time.sleep(backoff_seconds)
+                continue
+            raise
+        except Exception as exc:  # pragma: no cover - defensive
+            last_exc = exc
+            if attempt >= retries:
+                raise
+            time.sleep(min(2 ** attempt, 30))
+    # If we exit loop without returning, re-raise last exception
+    if last_exc:
+        raise last_exc
+    raise RuntimeError(f"{description} failed unexpectedly without raising")
+
+
 class GitHubClientMixin:
     """Mixin providing GitHub API client initialization and common operations."""
-    
+
     def _init_github_client(
-        self, 
+        self,
         token: Optional[str] = None,
         use_auth_class: bool = False,
         per_page: int = 100,
     ) -> Optional[Github]:
-        """
-        Initialize GitHub API client.
-        
-        Args:
-            token: GitHub personal access token
-            use_auth_class: Whether to use Auth.Token class (newer API)
-            
-        Returns:
-            Initialized Github client or None
-        """
-        if not token:
-            return None if use_auth_class else Github(per_page=per_page)
-        
-        try:
-            # Always use Auth.Token for token-based authentication (modern API)
-            auth = Auth.Token(token)
-            return Github(auth=auth, per_page=per_page)
-        except Exception as e:
-            logger.warning(f"Failed to initialize GitHub client: {e}")
-            return None
+        """Initialize GitHub API client."""
+        # use_auth_class retained for backward compatibility; creation is centralized
+        return create_github_client(token=token, per_page=per_page)
     
     def _fetch_repo_metadata(
         self,
@@ -242,7 +280,10 @@ class GitHubClientMixin:
         Raises:
             GithubException: If API call fails
         """
-        repo = github_client.get_repo(f"{owner}/{repo_name}")
+        repo = github_call_with_backoff(
+            lambda: github_client.get_repo(f"{owner}/{repo_name}"),
+            description=f"Get repo {owner}/{repo_name}",
+        )
         
         metadata = {
             'full_name': repo.full_name,
@@ -293,7 +334,10 @@ class GitHubClientMixin:
         Returns:
             List of repository metadata dictionaries
         """
-        repos = github_client.search_repositories(query=query)
+        repos = github_call_with_backoff(
+            lambda: github_client.search_repositories(query=query),
+            description="Search repositories",
+        )
         results = []
         
         for repo in repos[:limit]:
