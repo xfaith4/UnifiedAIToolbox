@@ -32,6 +32,19 @@ uvicorn app:app --reload --host 0.0.0.0 --port 8000
 > Tip: The root `Start-Toolbox.ps1` launcher (choose option 2 for API-only or option 1 for the full stack) sets `PROMPT_API_PORT=8000` and runs this exact command, so you can start all services from the workspace root without remembering the manual steps.
 ```
 
+### WSL recommended start (with GitHub CLI token bootstrap)
+
+When running in WSL, the API can bootstrap `GITHUB_TOKEN` from `gh auth token` at startup. Use the launcher script to ensure the token is set without writing it to disk:
+
+```bash
+./scripts/start-prompt-api.sh
+```
+
+Notes:
+- If `GITHUB_TOKEN` is already set, it is reused.
+- To disable gh token bootstrap, set `PROMPT_API_DISABLE_GH_TOKEN_BOOTSTRAP=1`.
+- If gh is missing or not authenticated, the API will report a clear error and exit.
+
 Point Prompt Hub at `http://localhost:8000` via `VITE_API_BASE`. Useful endpoints once the server is running:
 
 - `GET /prompts` / `GET /prompts/{id}` – canonical prompt payloads that match the UI contract.

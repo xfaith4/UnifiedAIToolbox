@@ -17,6 +17,8 @@ import yaml # pyright: ignore[reportMissingModuleSource]
 import requests # pyright: ignore[reportMissingModuleSource]
 from urllib.parse import urlparse
 
+from auth_github import ensure_github_token
+
 # Configure logging at module level
 logger = logging.getLogger(__name__)
 
@@ -1133,6 +1135,7 @@ def create_app() -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
+        ensure_github_token()
         init_db()
         yield
 
@@ -3236,7 +3239,8 @@ async def start_repo_orchestration(req: RepoOrchestrationRequest, request: Reque
                     asyncio.run_coroutine_threadsafe(_record_codex(), loop)
                 _enqueue_sync({"type": "task_progress", **event})
 
-            execution_result = executor.execute_taskgraph(
+            execution_result = await asyncio.to_thread(
+                executor.execute_taskgraph,
                 repo_path=clone_path,
                 run_id=run_id,
                 taskgraph_path=taskgraph_path,

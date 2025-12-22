@@ -342,13 +342,40 @@ function Start-API {
     Write-Status "🚀 Starting FastAPI Backend..." -Level "Info"
     Initialize-GitHubToken
 
-    $apiDir = Join-Path $ProjectRoot "apps\UnifiedPromptApp\services\prompt-api"
-    if (-not (Test-Path $apiDir)) {
-        Write-Status "❌ API directory not found at: $apiDir" -Level "Error"
-        return $null
-    }
-
     try {
+        $apiPort = Resolve-ServicePort -ServiceName "Prompt API" -DefaultPort $Script:DefaultApiPort
+        $apiBaseUrl = "http://localhost:$apiPort"
+        $Script:PromptApiPort = $apiPort
+        $Script:PromptApiBaseUrl = $apiBaseUrl
+        $env:PROMPT_API_PORT = $apiPort
+
+        $wslExe = Get-Command wsl.exe -ErrorAction SilentlyContinue
+        if ($wslExe) {
+            $wslRoot = (wsl.exe wslpath -a "$ProjectRoot").Trim()
+            if ($wslRoot) {
+                $wslScript = "$wslRoot/scripts/start-prompt-api.sh"
+                $chmodResult = wsl.exe --exec bash -lc "chmod +x '$wslScript'"
+                $process = Start-Process -NoNewWindow -PassThru -FilePath "wsl.exe" `
+                    -ArgumentList "--exec", "bash", "-lc", "PROMPT_API_PORT=$apiPort '$wslScript'"
+                Start-Sleep -Seconds 3
+
+                if (Test-PortInUse -Port $apiPort) {
+                    Write-Status "✅ API running at http://localhost:$apiPort (WSL)" -Level "Success"
+                    Write-Status "   📖 API Docs: http://localhost:$apiPort/docs" -Level "Info"
+                    return $process
+                }
+
+                Write-Status "⚠️  API may still be starting on http://localhost:$apiPort (WSL)" -Level "Warning"
+                return $process
+            }
+        }
+
+        $apiDir = Join-Path $ProjectRoot "apps\UnifiedPromptApp\services\prompt-api"
+        if (-not (Test-Path $apiDir)) {
+            Write-Status "❌ API directory not found at: $apiDir" -Level "Error"
+            return $null
+        }
+
         Push-Location $apiDir
 
         # Create virtual environment if needed
@@ -368,12 +395,6 @@ function Start-API {
         # Set environment variables
         $env:ORCHESTRATOR_PS1 = "MilestoneController.ps1"
         $env:POF_PS1 = $env:ORCHESTRATOR_PS1
-
-        $apiPort = Resolve-ServicePort -ServiceName "Prompt API" -DefaultPort $Script:DefaultApiPort
-        $apiBaseUrl = "http://localhost:$apiPort"
-        $Script:PromptApiPort = $apiPort
-        $Script:PromptApiBaseUrl = $apiBaseUrl
-        $env:PROMPT_API_PORT = $apiPort
 
         # Start the server
         $process = Start-Process -NoNewWindow -PassThru -FilePath "python" `

@@ -94,6 +94,14 @@ The Unified AI Toolbox is a comprehensive platform that unifies prompt managemen
 ./launch.sh   # Automated launch with verification
 ```
 
+**WSL Prompt API (recommended for GitHub PR orchestration):**
+
+```bash
+./scripts/start-prompt-api.sh
+```
+
+> The WSL launcher bootstraps `GITHUB_TOKEN` from `gh auth token` without logging or persisting it.
+
 **Linux/Mac:**
 
 ```bash
