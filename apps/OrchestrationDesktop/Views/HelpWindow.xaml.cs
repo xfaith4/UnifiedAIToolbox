@@ -40,7 +40,7 @@ public partial class HelpWindow : Window
 
     private void OnNavigate(object sender, RoutedEventArgs e)
     {
-        if (sender is Button button && button.Tag is string docName)
+        if (sender is System.Windows.Controls.Button button && button.Tag is string docName)
         {
             ShowDocumentation(docName);
         }
@@ -69,7 +69,7 @@ public partial class HelpWindow : Window
             }
             catch (Exception ex)
             {
-                MessageBox.Show(
+                System.Windows.MessageBox.Show(
                     $"Unable to open documentation file:\n{docPath}\n\nError: {ex.Message}",
                     "Documentation Error",
                     MessageBoxButton.OK,
@@ -78,7 +78,7 @@ public partial class HelpWindow : Window
         }
         else
         {
-            MessageBox.Show(
+            System.Windows.MessageBox.Show(
                 $"Documentation file not found:\n{docPath}\n\nPlease ensure the documentation is installed.",
                 "Documentation Not Found",
                 MessageBoxButton.OK,
@@ -100,7 +100,7 @@ public partial class HelpWindow : Window
             }
             catch (Exception ex)
             {
-                MessageBox.Show(
+                System.Windows.MessageBox.Show(
                     $"Unable to open docs folder:\n{_docsPath}\n\nError: {ex.Message}",
                     "Error",
                     MessageBoxButton.OK,
@@ -109,7 +109,7 @@ public partial class HelpWindow : Window
         }
         else
         {
-            MessageBox.Show(
+            System.Windows.MessageBox.Show(
                 $"Documentation folder not found:\n{_docsPath}",
                 "Folder Not Found",
                 MessageBoxButton.OK,
@@ -129,7 +129,7 @@ public partial class HelpWindow : Window
         }
         catch (Exception ex)
         {
-            MessageBox.Show(
+            System.Windows.MessageBox.Show(
                 $"Unable to open online help:\n\nError: {ex.Message}",
                 "Error",
                 MessageBoxButton.OK,
