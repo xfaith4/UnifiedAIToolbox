@@ -18,6 +18,10 @@ import {
   persistPromptLibrary,
 } from '@/lib/services/promptStore'
 import { runPromptLibrarySelfChecks } from '@/lib/services/promptSelfCheck'
+import {
+  parsePromptImport,
+  type PromptImportReport,
+} from '@/lib/services/promptImport'
 
 export default function PromptsPage() {
   const [items, setItems] = useState<PromptItem[]>([])
@@ -26,6 +30,7 @@ export default function PromptsPage() {
   const [editing, setEditing] = useState<PromptItem | null>(null)
   const [activeId, setActiveId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [importReport, setImportReport] = useState<PromptImportReport | null>(null)
   const initialized = useRef(false)
 
   useEffect(() => {
@@ -138,26 +143,39 @@ export default function PromptsPage() {
     window.URL.revokeObjectURL(url)
   }
 
-  function importJson(file: globalThis.File) {
-    const reader = new window.FileReader()
-    reader.onload = () => {
-      try {
-        const parsed = JSON.parse(String(reader.result))
-        if (!Array.isArray(parsed)) throw new Error('Invalid format: expected an array of prompts.')
-        const map = new Map<string, PromptItem>(items.map((i) => [i.id, i]))
-        for (const raw of parsed) {
-          const prompt = normalizePrompt(raw)
-          map.set(prompt.id, prompt)
-        }
-        const merged = Array.from(map.values()).sort((a, b) =>
-          (b.updatedAt || '').localeCompare(a.updatedAt || '')
-        )
-        setItems(merged)
-      } catch (e) {
-        window.alert('Import failed: ' + (e as Error).message)
+  async function importPrompts(file: globalThis.File) {
+    try {
+      const text = await file.text()
+      const report = parsePromptImport(text, {
+        fileName: file.name,
+        contentType: file.type,
+      })
+      setImportReport(report)
+
+      if (report.prompts.length === 0) return
+
+      const map = new Map<string, PromptItem>(items.map((i) => [i.id, i]))
+      for (const prompt of report.prompts) {
+        map.set(prompt.id, prompt)
       }
+      const merged = Array.from(map.values()).sort((a, b) =>
+        (b.updatedAt || '').localeCompare(a.updatedAt || '')
+      )
+      setItems(merged)
+    } catch (e) {
+      setImportReport({
+        prompts: [],
+        warnings: [],
+        guidance: [
+          'Import failed to read the file. Try JSON, YAML, or CSV with title and template fields.',
+        ],
+        errors: [(e as Error).message],
+        detectedFormat: 'unknown',
+        sourceName: file.name,
+        importedCount: 0,
+        skippedCount: 0,
+      })
     }
-    reader.readAsText(file)
   }
 
   return (
@@ -177,14 +195,14 @@ export default function PromptsPage() {
             Export JSON
           </button>
           <label className="cursor-pointer rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-1.5 text-sm hover:bg-slate-700/80">
-            Import JSON
+            Import File
             <input
               type="file"
-              accept="application/json"
+              accept="application/json,application/yaml,text/yaml,.yaml,.yml,text/csv,.csv"
               className="hidden"
               onChange={(e) => {
                 const f = e.target.files?.[0]
-                if (f) importJson(f)
+                if (f) void importPrompts(f)
               }}
             />
           </label>
@@ -196,6 +214,49 @@ export default function PromptsPage() {
           </button>
         </div>
       </div>
+
+      {importReport && (
+        <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 text-sm text-slate-200">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="font-medium">Import summary</div>
+            <button
+              className="text-xs text-slate-400 hover:text-slate-200"
+              onClick={() => setImportReport(null)}
+              type="button"
+            >
+              Dismiss
+            </button>
+          </div>
+          <div className="mt-1 text-xs text-slate-400">
+            {importReport.sourceName} • {importReport.detectedFormat.toUpperCase()} • Imported{' '}
+            {importReport.importedCount} • Skipped {importReport.skippedCount}
+          </div>
+          <div className="mt-2 text-xs text-emerald-200">
+            Completed import: {importReport.importedCount} prompts added.
+          </div>
+          {importReport.errors.length > 0 && (
+            <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-red-300">
+              {importReport.errors.map((error) => (
+                <li key={error}>{error}</li>
+              ))}
+            </ul>
+          )}
+          {importReport.warnings.length > 0 && (
+            <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-amber-200">
+              {importReport.warnings.map((warning) => (
+                <li key={warning}>{warning}</li>
+              ))}
+            </ul>
+          )}
+          {importReport.guidance.length > 0 && (
+            <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-slate-300">
+              {importReport.guidance.map((guidance) => (
+                <li key={guidance}>{guidance}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       <div className="flex gap-3">
         <input
@@ -277,6 +338,15 @@ function PromptCard({
       className={`rounded-xl border p-3 transition ${
         active ? 'border-blue-500 bg-slate-800' : 'border-transparent hover:border-slate-700'
       }`}
+      role="button"
+      tabIndex={0}
+      onClick={onEdit}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          onEdit()
+        }
+      }}
     >
       <div className="flex items-start justify-between gap-3">
         <div>
@@ -298,19 +368,28 @@ function PromptCard({
       <div className="mt-3 flex flex-wrap gap-2">
         <button
           className="rounded-lg bg-slate-700/80 px-2 py-1 text-xs hover:bg-slate-700"
-          onClick={onEdit}
+          onClick={(event) => {
+            event.stopPropagation()
+            onEdit()
+          }}
         >
           Edit
         </button>
         <button
           className="rounded-lg bg-slate-800/50 px-2 py-1 text-xs hover:bg-slate-700/50"
-          onClick={onClone}
+          onClick={(event) => {
+            event.stopPropagation()
+            onClone()
+          }}
         >
           Clone
         </button>
         <button
           className="rounded-lg bg-rose-500/10 px-2 py-1 text-xs text-rose-400 hover:bg-rose-500/20"
-          onClick={onDelete}
+          onClick={(event) => {
+            event.stopPropagation()
+            onDelete()
+          }}
         >
           Delete
         </button>
@@ -947,7 +1026,7 @@ function PromptEditor({
                     <li key={`summary-${index}`}>{item}</li>
                   ))
                 ) : (
-                  <li className="text-slate-500">Awaiting AI draft.</li>
+                  <li className="text-slate-500">No change summary returned.</li>
                 )}
               </ul>
               {aiRubric && (

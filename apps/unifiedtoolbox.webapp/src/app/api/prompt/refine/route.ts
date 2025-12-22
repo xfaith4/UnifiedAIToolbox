@@ -1,6 +1,6 @@
 'use server'
 
-import { evaluatePromptQuality } from '@/lib/utils/promptQuality'
+import { evaluatePromptQuality, getPromptQualityCriteria } from '@/lib/utils/promptQuality'
 import { extractSummaryFromChange } from '@/lib/utils/promptRefiner'
 import { PromptQualitySubscores } from '@/lib/types/prompts'
 import { callOpenAIChat, type ChatUsage, type ChatMessage } from '@/lib/services/serverOpenAI'
@@ -26,6 +26,30 @@ type CriticResponse = {
 type EngineerResponse = {
   refinedTemplate?: string
   changeSummary?: string[]
+}
+
+function formatCriteriaForPrompt(): string {
+  const criteria = getPromptQualityCriteria()
+  const sections = criteria.sections
+    .map((section) => `- ${section.name}: ${section.placeholder}`)
+    .join('\n')
+  const signals = Object.entries(criteria.signals)
+    .map(([key, items]) => `- ${key}: ${items.join(', ')}`)
+    .join('\n')
+  const thresholds = Object.entries(criteria.thresholds)
+    .map(([key, value]) => `- ${key}: >= ${value}`)
+    .join('\n')
+
+  return [
+    'Evaluation sections:',
+    sections,
+    '',
+    'Keyword signals (used in local scoring):',
+    signals,
+    '',
+    'Thresholds (min score targets):',
+    thresholds,
+  ].join('\n')
 }
 
 function buildMetadata(payload: PromptRefinerPayload): string {
@@ -57,6 +81,38 @@ function safeParseJson<T>(text?: string): T | null {
   }
 }
 
+function parseEngineerFallback(text: string): EngineerResponse {
+  const lines = text.split('\n')
+  const refinedIndex = lines.findIndex((line) =>
+    /(refined template|refined prompt|refined result)/i.test(line)
+  )
+  const summaryIndex = lines.findIndex((line) =>
+    /(change summary|summary of changes|changes)/i.test(line)
+  )
+
+  let refinedLines: string[] = []
+  if (refinedIndex !== -1) {
+    const start = refinedIndex + 1
+    const end = summaryIndex > start ? summaryIndex : lines.length
+    refinedLines = lines.slice(start, end)
+  }
+
+  let summaryLines: string[] = []
+  if (summaryIndex !== -1) {
+    summaryLines = lines.slice(summaryIndex + 1)
+  }
+
+  const refinedTemplate = refinedLines.length ? refinedLines.join('\n').trim() : text.trim()
+  const changeSummary = summaryLines
+    .map((line) => line.replace(/^[-*•\s]+/, '').trim())
+    .filter(Boolean)
+
+  return {
+    refinedTemplate: refinedTemplate || undefined,
+    changeSummary: changeSummary.length ? changeSummary : undefined,
+  }
+}
+
 function accumulateUsage(target: ChatUsage, usage?: ChatUsage) {
   if (!usage) return
   target.prompt_tokens = (target.prompt_tokens ?? 0) + (usage.prompt_tokens ?? 0)
@@ -66,15 +122,16 @@ function accumulateUsage(target: ChatUsage, usage?: ChatUsage) {
 
 async function runCritic(payload: PromptRefinerPayload, apiKey: string): Promise<{ bullets: string[]; usage: ChatUsage }> {
   const metadata = buildMetadata(payload)
+  const criteriaText = formatCriteriaForPrompt()
   const messages: ChatMessage[] = [
     {
       role: 'system',
       content:
-        'You are a Prompt Critic. Identify ambiguities, missing constraints, missing output formats, and placeholder issues.',
+        'You are a Prompt Critic. Identify ambiguities, missing constraints, missing output formats, and placeholder issues using the local evaluation criteria.',
     },
     {
       role: 'user',
-      content: `Prompt metadata:\n${metadata}\n\nTemplate:\n${payload.template}\n\nReturn JSON: { "critiqueBullets": ["..."] }`,
+      content: `Prompt metadata:\n${metadata}\n\nLocal evaluation criteria:\n${criteriaText}\n\nTemplate:\n${payload.template}\n\nReturn JSON: { "critiqueBullets": ["..."] }`,
     },
   ]
 
@@ -89,21 +146,26 @@ async function runCritic(payload: PromptRefinerPayload, apiKey: string): Promise
 
 async function runEngineer(payload: PromptRefinerPayload, apiKey: string): Promise<{ result: EngineerResponse; usage: ChatUsage }> {
   const metadata = buildMetadata(payload)
+  const criteriaText = formatCriteriaForPrompt()
   const messages: ChatMessage[] = [
     {
       role: 'system',
       content:
-        'You are a Prompt Engineer. Improve the prompt by clarifying intent, constraints, and output format without inventing new requirements.',
+        'You are a Prompt Engineer. Improve the prompt by clarifying intent, constraints, and output format without inventing new requirements. Align the output with the local evaluation criteria.',
     },
     {
       role: 'user',
-      content: `Prompt metadata:\n${metadata}\n\nTemplate:\n${payload.template}\n\nReturn JSON with keys: refinedTemplate (the improved prompt text) and changeSummary (array of bullet points summarizing changes).`,
+      content: `Prompt metadata:\n${metadata}\n\nLocal evaluation criteria:\n${criteriaText}\n\nTemplate:\n${payload.template}\n\nReturn JSON with keys: refinedTemplate (the improved prompt text) and changeSummary (array of bullet points summarizing changes).`,
     },
   ]
 
   const response = await callOpenAIChat(messages, apiKey, MODEL)
   const parsed = safeParseJson<EngineerResponse>(response.content)
-  return { result: parsed ?? {}, usage: response.usage ?? {} }
+  if (parsed?.refinedTemplate || parsed?.changeSummary?.length) {
+    return { result: parsed, usage: response.usage ?? {} }
+  }
+  const fallback = parseEngineerFallback(response.content)
+  return { result: fallback, usage: response.usage ?? {} }
 }
 
 export async function POST(request: Request) {
@@ -145,9 +207,12 @@ export async function POST(request: Request) {
     const rubricBreakdown: PromptQualitySubscores = refinedQuality.subscores
 
     const critiqueBullets = critic.bullets
-    const changeSummary =
+    let changeSummary =
       engineer.result.changeSummary?.map((entry) => entry.toString()) ??
       extractSummaryFromChange(engineer.result.refinedTemplate ?? '')
+    if (changeSummary.length === 0 && refinedTemplate === payload.template) {
+      changeSummary = ['AI returned critique only; no draft changes were produced.']
+    }
 
     return new Response(
       JSON.stringify({

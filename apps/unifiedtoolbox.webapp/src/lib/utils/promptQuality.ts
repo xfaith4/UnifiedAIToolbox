@@ -19,6 +19,12 @@ const refinementSections = [
   { name: 'Success Criteria', placeholder: 'Clarify how to know the task succeeded.' },
 ] as const
 
+export type PromptQualityCriteria = {
+  sections: Array<{ name: string; placeholder: string }>
+  signals: Record<keyof PromptQualitySubscores, string[]>
+  thresholds: Record<keyof PromptQualitySubscores, number>
+}
+
 function clampScore(value: number): number {
   return Math.max(0, Math.min(10, Math.round(value * 10) / 10))
 }
@@ -96,6 +102,31 @@ export function evaluatePromptQuality(template: string, context?: string): Promp
     suggestions: Array.from(suggestions),
     lastRatedAt: new Date().toISOString(),
     raterVersion: REFINER_VERSION,
+  }
+}
+
+export function getPromptQualityCriteria(): PromptQualityCriteria {
+  return {
+    sections: refinementSections.map((section) => ({
+      name: section.name,
+      placeholder: section.placeholder,
+    })),
+    signals: {
+      clarity: claritySignals,
+      constraints: constraintSignals,
+      outputFormat: outputFormatSignals,
+      examples: exampleSignals,
+      safety: safetySignals,
+      reusability: reusabilitySignals,
+    },
+    thresholds: {
+      clarity: 5,
+      constraints: 4,
+      outputFormat: 4,
+      examples: 2,
+      safety: 4,
+      reusability: 5,
+    },
   }
 }
 
