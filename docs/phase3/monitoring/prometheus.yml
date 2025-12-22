@@ -29,6 +29,8 @@ scrape_configs:
   - job_name: 'unified-api'
     metrics_path: '/metrics'
     static_configs:
+      # For local Docker development, use host.docker.internal
+      # For Kubernetes, use: unified-api.unified-toolbox.svc.cluster.local:8000
       - targets: ['host.docker.internal:8000']
         labels:
           service: 'prompt-api'
@@ -38,6 +40,8 @@ scrape_configs:
   - job_name: 'unified-dashboard'
     metrics_path: '/metrics'
     static_configs:
+      # For local Docker development, use host.docker.internal
+      # For Kubernetes, use: unified-dashboard.unified-toolbox.svc.cluster.local:80
       - targets: ['host.docker.internal:5173']
         labels:
           service: 'dashboard'
