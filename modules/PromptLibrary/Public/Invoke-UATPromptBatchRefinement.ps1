@@ -35,6 +35,12 @@
 .PARAMETER FailFast
   Stop on first error if set.
 
+.PARAMETER SkipShouldProcess
+  Bypass ShouldProcess confirmation (useful for automation/tests).
+
+.PARAMETER Refiner
+  Optional scriptblock override for invoking prompt refinement (used for tests).
+
 .OUTPUTS
   PSCustomObject with properties:
   file, id, title, kind, status, promptIdUsed, artifactsPath, outFile, error, tokensUsed, estimatedCost
@@ -171,6 +177,14 @@ function Get-RefinedTextFromArtifacts {
     return $null
 }
 
+function Invoke-PromptRefinerInternal {
+    param(
+        [Parameter(Mandatory = $true)][hashtable]$Args
+    )
+
+    New-RefinedPrompt @Args
+}
+
 function Invoke-UATPromptBatchRefinement {
     [CmdletBinding(SupportsShouldProcess = $true)]
     param(
@@ -198,7 +212,13 @@ function Invoke-UATPromptBatchRefinement {
         [string]$ExcludeRegex = '(\.meta\.yaml$|\.tests\.yaml$)',
 
         [Parameter(Mandatory = $false)]
-        [switch]$FailFast
+        [switch]$FailFast,
+
+        [Parameter(Mandatory = $false)]
+        [switch]$SkipShouldProcess,
+
+        [Parameter(Mandatory = $false)]
+        [scriptblock]$Refiner
     )
 
     Set-StrictMode -Version Latest
@@ -219,7 +239,7 @@ function Invoke-UATPromptBatchRefinement {
     }
     $files = $all | Where-Object { $_.FullName -notmatch $ExcludeRegex } | Sort-Object FullName -Unique
 
-    if (-not $files -or $files.Count -eq 0) {
+    if (-not $files -or @($files).Count -eq 0) {
         Write-Warning "No prompt files found under $($PromptRoot) using patterns: $($IncludePatterns -join ', ')"
         return
     }
@@ -232,7 +252,12 @@ function Invoke-UATPromptBatchRefinement {
 
     foreach ($f in $files) {
         $path = $f.FullName
-        $rel = try { Resolve-Path -LiteralPath $path -Relative } catch { $path }
+        $rel = $path
+        try {
+            $rel = Resolve-Path -LiteralPath $path -Relative
+        } catch {
+            $rel = $path
+        }
 
         $entry = [ordered]@{
             file = $rel
@@ -300,10 +325,10 @@ function Invoke-UATPromptBatchRefinement {
                 "Return only the refined prompt text (no preface, no metadata)."
             )
 
-            if ($placeholders.Count -gt 0) {
+            if (@($placeholders).Count -gt 0) {
                 $goals += ("Preserve these placeholders EXACTLY (do not rename/remove/add): " + ($placeholders -join ', '))
             }
-            if ($testConstraints.Count -gt 0) {
+            if (@($testConstraints).Count -gt 0) {
                 $goals += "These behavioral constraints come from the prompt's tests and must still hold:"
                 $goals += $testConstraints
             }
@@ -317,7 +342,12 @@ function Invoke-UATPromptBatchRefinement {
 
             $invokeLabel = "$($promptIdUsed) <= $($id) ($($entry.kind))"
 
-            if ($PSCmdlet.ShouldProcess($invokeLabel, "Refine prompt")) {
+            $shouldRun = $true
+            if (-not $SkipShouldProcess) {
+                $shouldRun = $PSCmdlet.ShouldProcess($invokeLabel, "Refine prompt")
+            }
+
+            if ($shouldRun) {
 
                 $artifactTarget = Join-Path $artifactsDir ($promptIdUsed -replace '[^A-Za-z0-9_\-\.]+', '_')
                 New-Item -ItemType Directory -Force -Path $artifactTarget | Out-Null
@@ -329,11 +359,15 @@ function Invoke-UATPromptBatchRefinement {
                     Category = $category
                     Tags = $tags
                     RefinementIterations = $Iterations
-                    RefinementGoals = $goals
+                    RefinementGoals = ($goals -join "`n")
                 }
                 if ($SaveArtifacts) { $args.SaveArtifacts = $true }
 
-                $result = New-RefinedPrompt @args
+                if ($Refiner) {
+                    $result = & $Refiner $args
+                } else {
+                    $result = Invoke-PromptRefinerInternal -Args $args
+                }
 
                 if ($result) {
                     if ($result.PSObject.Properties.Name -contains 'TokensUsed') { $entry.tokensUsed = $result.TokensUsed }
@@ -380,8 +414,17 @@ function Invoke-UATPromptBatchRefinement {
                     Set-Content -LiteralPath $path -Value $patched -Encoding UTF8
                 }
 
-                $entry.outFile = (try { Resolve-Path -LiteralPath $outPath -Relative } catch { $outPath })
-                $entry.artifactsPath = (try { Resolve-Path -LiteralPath $artPath -Relative } catch { $artPath })
+                try {
+                    $entry.outFile = Resolve-Path -LiteralPath $outPath -Relative
+                } catch {
+                    $entry.outFile = $outPath
+                }
+
+                try {
+                    $entry.artifactsPath = Resolve-Path -LiteralPath $artPath -Relative
+                } catch {
+                    $entry.artifactsPath = $artPath
+                }
                 $entry.status = 'ok'
             } else {
                 $entry.status = 'whatif'

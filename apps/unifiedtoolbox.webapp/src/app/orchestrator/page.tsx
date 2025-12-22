@@ -95,7 +95,7 @@ export default function OrchestratorPage() {
   const [agents, setAgents] = useState<AgentInstruction[]>([])
   const [orchestratorAgents, setOrchestratorAgents] = useState<OrchestratorAgent[]>(DEFAULT_ORCHESTRATOR_AGENTS)
   const [prompts, setPrompts] = useState<PromptItem[]>([])
-  
+
   // Form state
   const [form, setForm] = useState<OrchestrationForm>({
     goal: '',
@@ -109,11 +109,11 @@ export default function OrchestratorPage() {
     model: '',
   })
   const [selectedAgents, setSelectedAgents] = useState<string[]>([])
-  
+
   // Run state
   const [runs, setRuns] = useState<OrchestrationRun[]>([])
   const [isRunning, setIsRunning] = useState(false)
-  
+
   // Modal state
   const [showAgentCreator, setShowAgentCreator] = useState(false)
   const [newAgent, setNewAgent] = useState<OrchestratorAgent>({ name: '', role: 'system', prompt: '', description: '' })
@@ -121,13 +121,13 @@ export default function OrchestratorPage() {
   const [logText, setLogText] = useState('')
   const [logLoading, setLogLoading] = useState(false)
   const [logError, setLogError] = useState('')
-  
+
   // Legacy mode state
   const [legacyMode, setLegacyMode] = useState(false)
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null)
   const [selectedPromptId, setSelectedPromptId] = useState<string | null>(null)
   const [inputs, setInputs] = useState<Record<string, string>>({})
-  
+
   // Connection state
   const [apiConnected, setApiConnected] = useState<boolean | null>(null) // null = checking, true = connected, false = disconnected
   const [apiError, setApiError] = useState<string>('')
@@ -156,7 +156,7 @@ export default function OrchestratorPage() {
       setPrompts(promptData)
       if (agentData.length > 0) setSelectedAgentId(agentData[0].id)
       if (promptData.length > 0) setSelectedPromptId(promptData[0].id)
-      
+
       // Load runs
       if (ORCHESTRATOR_API_BASE) {
         try {
@@ -264,7 +264,7 @@ export default function OrchestratorPage() {
     if (!goal.trim()) return []
     const goalLower = goal.toLowerCase()
     const recommendations: string[] = []
-    
+
     if (goalLower.includes('research') || goalLower.includes('analyze') || goalLower.includes('investigate')) {
       recommendations.push('Researcher')
     }
@@ -280,12 +280,12 @@ export default function OrchestratorPage() {
     if (goalLower.includes('evaluate') || goalLower.includes('assess') || goalLower.includes('judge')) {
       recommendations.push('Commissioner')
     }
-    
+
     // Default workflow if no specific keywords
     if (recommendations.length === 0) {
       recommendations.push('Researcher', 'Engineer', 'Critic', 'Synthesizer')
     }
-    
+
     return recommendations.filter((name) => orchestratorAgents.some((a) => a.name === name))
   }, [orchestratorAgents])
 
@@ -305,7 +305,7 @@ export default function OrchestratorPage() {
   // Create ad-hoc agent
   const handleCreateAgent = () => {
     if (!newAgent.name.trim() || !newAgent.prompt?.trim()) return
-    
+
     setOrchestratorAgents((prev) => [...prev, newAgent])
     setSelectedAgents((prev) => [...prev, newAgent.name])
     setNewAgent({ name: '', role: 'system', prompt: '', description: '' })
@@ -316,7 +316,7 @@ export default function OrchestratorPage() {
   async function handleMultiAgentRun(e: React.FormEvent) {
     e.preventDefault()
     if (!form.goal.trim()) return
-    
+
     setIsRunning(true)
     const run = createNewRun(form.goal, {
       promptId: form.promptId,
@@ -337,7 +337,7 @@ export default function OrchestratorPage() {
         // Local simulation
         addLocalRun(run)
         setRuns((prev) => [run, ...prev])
-        
+
         // Simulate completion
         setTimeout(() => {
           updateLocalRun(run.id, { status: 'completed', mode: 'simulated' })
@@ -407,12 +407,12 @@ export default function OrchestratorPage() {
     if (!run) return
     if (!silent) setLogLoading(true)
     setLogError('')
-    
+
     try {
       if (run.id && ORCHESTRATOR_API_BASE) {
         const latest = await fetchOrchestrationRun(run.id)
         setLogRun(latest)
-        
+
         let manifestText = JSON.stringify(latest, null, 2)
         try {
           const logResp = await fetchOrchestrationRunLog(run.id)
@@ -861,7 +861,7 @@ export default function OrchestratorPage() {
                   </button>
                 </div>
               </div>
-              </div>
+            </div>
             </div>
 
             <div className="grid gap-4 lg:grid-cols-2">
@@ -1024,7 +1024,7 @@ export default function OrchestratorPage() {
                   className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                   placeholder="e.g., Data Analyst"
                   value={newAgent.name}
-                  onChange={(e) => setNewAgent((a) => ({ ...a, name: e.target.value }))}
+                  onChange={(e) => setNewAgent((prev) => ({ ...prev, name: e.target.value }))}
                 />
               </div>
               <div className="space-y-2">
@@ -1034,7 +1034,7 @@ export default function OrchestratorPage() {
                   className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                   placeholder="system"
                   value={newAgent.role || 'system'}
-                  onChange={(e) => setNewAgent((a) => ({ ...a, role: e.target.value }))}
+                  onChange={(e) => setNewAgent((prev) => ({ ...prev, role: e.target.value }))}
                 />
               </div>
               <div className="space-y-2">
@@ -1043,8 +1043,8 @@ export default function OrchestratorPage() {
                   className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                   rows={6}
                   placeholder="Describe the agent's role, capabilities, and instructions..."
-                  value={newAgent.prompt || ''}
-                  onChange={(e) => setNewAgent((a) => ({ ...a, prompt: e.target.value }))}
+                  value={newAgent.prompt ?? ''}
+                  onChange={(e) => setNewAgent((prev) => ({ ...prev, prompt: e.target.value }))}
                 />
               </div>
               <div className="space-y-2">
@@ -1053,8 +1053,8 @@ export default function OrchestratorPage() {
                   className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                   rows={2}
                   placeholder="Brief description of what this agent does..."
-                  value={newAgent.description || ''}
-                  onChange={(e) => setNewAgent((a) => ({ ...a, description: e.target.value }))}
+                  value={newAgent.description ?? ''}
+                  onChange={(e) => setNewAgent((prev) => ({ ...prev, description: e.target.value }))}
                 />
               </div>
               <div className="flex gap-3 pt-2">
@@ -1149,3 +1149,4 @@ export default function OrchestratorPage() {
     </main>
   )
 }
+

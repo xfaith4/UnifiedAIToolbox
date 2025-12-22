@@ -105,8 +105,8 @@ function Get-PortOwningProcess {
             $pattern = "^\s*TCP\s+\S+:$Port\s+\S+\s+LISTENING\s+(\d+)$"
             $match = netstat -ano -p tcp | Select-String -Pattern $pattern | Select-Object -First 1
             if ($match) {
-                $pid = [int]$match.Matches[0].Groups[1].Value
-                return Get-Process -Id $pid -ErrorAction SilentlyContinue
+                $processId = [int]$match.Matches[0].Groups[1].Value
+                return Get-Process -Id $processId -ErrorAction SilentlyContinue
             }
         }
         catch {

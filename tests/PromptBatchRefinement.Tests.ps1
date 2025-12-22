@@ -6,11 +6,14 @@
 BeforeAll {
     $ModulePath = Join-Path $PSScriptRoot '..' 'modules' 'PromptLibrary' 'PromptLibrary.psm1'
     Import-Module $ModulePath -Force -DisableNameChecking
+}
 
-    $script:PromptRoot = Join-Path $TestDrive 'prompts'
-    New-Item -ItemType Directory -Path $script:PromptRoot -Force | Out-Null
+Describe "Invoke-UATPromptBatchRefinement" {
+    BeforeEach {
+        $script:PromptRoot = Join-Path $TestDrive 'prompts'
+        New-Item -ItemType Directory -Path $script:PromptRoot -Force | Out-Null
 
-    $promptOne = @'
+        $promptOne = @'
 id: network.prompt
 title: Network Prompt
 category: analysis
@@ -20,7 +23,7 @@ user_template: |
   Keep it short.
 '@
 
-    $promptTwo = @'
+        $promptTwo = @'
 id: spec.prompt
 version: 1
 blocks:
@@ -28,44 +31,46 @@ blocks:
     Process ${foo} with {{bar}}.
 '@
 
-    Set-Content -LiteralPath (Join-Path $script:PromptRoot 'network.prompt.yaml') -Value $promptOne -Encoding UTF8
-    Set-Content -LiteralPath (Join-Path $script:PromptRoot 'spec.yaml') -Value $promptTwo -Encoding UTF8
+        Set-Content -LiteralPath (Join-Path $script:PromptRoot 'network.prompt.yaml') -Value $promptOne -Encoding UTF8
+        Set-Content -LiteralPath (Join-Path $script:PromptRoot 'spec.yaml') -Value $promptTwo -Encoding UTF8
 
-    $global:PromptBatchTestPromptRoot = $script:PromptRoot
-}
-
-Describe "Invoke-UATPromptBatchRefinement" {
-    BeforeEach {
-        Mock New-RefinedPrompt -ModuleName PromptLibrary {
-            param(
-                $UserPrompt,
-                $PromptId,
-                $Title,
-                $Category,
-                $Tags,
-                $RefinementIterations,
-                $RefinementGoals,
-                $SaveArtifacts
-            )
-
-            $artifactPath = Join-Path $TestDrive ("artifacts/" + $PromptId)
-            New-Item -ItemType Directory -Path $artifactPath -Force | Out-Null
-            Set-Content -LiteralPath (Join-Path $artifactPath "iteration_1.txt") -Value "Refined Result:`nRefined for $PromptId" -Encoding UTF8
-
-            [pscustomobject]@{
-                RefinedPrompt = "Refined for $PromptId"
-                ArtifactsPath = $artifactPath
-                TokensUsed = 123
-                EstimatedCost = 0.01
-            }
-        }
+        $global:PromptBatchTestPromptRoot = $script:PromptRoot
+        $global:PromptBatchTestDriveRoot = $TestDrive
     }
 
     It "creates refined copies and summary output in copy mode" {
         $outRoot = Join-Path $TestDrive 'batch-out'
         $global:PromptBatchOutRoot = $outRoot
         $results = InModuleScope PromptLibrary {
-            Invoke-UATPromptBatchRefinement -PromptRoot $global:PromptBatchTestPromptRoot -OutRoot $global:PromptBatchOutRoot -Iterations 2 -SaveArtifacts -Mode Copy -Confirm:$false
+            $ConfirmPreference = 'None'
+            $WhatIfPreference = $false
+
+            Mock New-RefinedPrompt {
+                param(
+                    $UserPrompt,
+                    $PromptId,
+                    $Title,
+                    $Category,
+                    $Tags,
+                    $RefinementIterations,
+                    $RefinementGoals,
+                    $SaveArtifacts
+                )
+
+                $artifactPath = Join-Path $global:PromptBatchTestDriveRoot ("artifacts/" + $PromptId)
+                New-Item -ItemType Directory -Path $artifactPath -Force | Out-Null
+                Set-Content -LiteralPath (Join-Path $artifactPath "iteration_1.txt") -Value "Refined Result:`nRefined for $PromptId" -Encoding UTF8
+
+                [pscustomobject]@{
+                    RefinedPrompt = "Refined for $PromptId"
+                    ArtifactsPath = $artifactPath
+                    TokensUsed = 123
+                    EstimatedCost = 0.01
+                }
+            }
+
+            $refiner = { param($RefinerArgs) New-RefinedPrompt @RefinerArgs }
+            Invoke-UATPromptBatchRefinement -PromptRoot $global:PromptBatchTestPromptRoot -OutRoot $global:PromptBatchOutRoot -Iterations 2 -SaveArtifacts -Mode Copy -SkipShouldProcess -Confirm:$false -WhatIf:$false -Refiner $refiner
         }
 
         $results.Count | Should -Be 2
@@ -86,12 +91,40 @@ Describe "Invoke-UATPromptBatchRefinement" {
         $outRoot = Join-Path $TestDrive 'batch-out-placeholders'
         $global:PromptBatchOutRoot = $outRoot
         InModuleScope PromptLibrary {
-            Invoke-UATPromptBatchRefinement -PromptRoot $global:PromptBatchTestPromptRoot -OutRoot $global:PromptBatchOutRoot -Iterations 1 -Mode Copy -Confirm:$false | Out-Null
-        }
+            $ConfirmPreference = 'None'
+            $WhatIfPreference = $false
 
-        Assert-MockCalled New-RefinedPrompt -ModuleName PromptLibrary -Times 2 -ParameterFilter {
-            ($RefinementGoals -join ' ') -match '\$\{foo\}' -and
-            ($RefinementGoals -join ' ') -match '\{\{bar\}\}'
+            Mock New-RefinedPrompt {
+                param(
+                    $UserPrompt,
+                    $PromptId,
+                    $Title,
+                    $Category,
+                    $Tags,
+                    $RefinementIterations,
+                    $RefinementGoals,
+                    $SaveArtifacts
+                )
+
+                $artifactPath = Join-Path $global:PromptBatchTestDriveRoot ("artifacts/" + $PromptId)
+                New-Item -ItemType Directory -Path $artifactPath -Force | Out-Null
+                Set-Content -LiteralPath (Join-Path $artifactPath "iteration_1.txt") -Value "Refined Result:`nRefined for $PromptId" -Encoding UTF8
+
+                [pscustomobject]@{
+                    RefinedPrompt = "Refined for $PromptId"
+                    ArtifactsPath = $artifactPath
+                    TokensUsed = 123
+                    EstimatedCost = 0.01
+                }
+            }
+
+            $refiner = { param($RefinerArgs) New-RefinedPrompt @RefinerArgs }
+            Invoke-UATPromptBatchRefinement -PromptRoot $global:PromptBatchTestPromptRoot -OutRoot $global:PromptBatchOutRoot -Iterations 1 -Mode Copy -SkipShouldProcess -Confirm:$false -WhatIf:$false -Refiner $refiner | Out-Null
+
+            Assert-MockCalled New-RefinedPrompt -Times 2 -ParameterFilter {
+                $RefinementGoals -match '\$\{foo\}' -and
+                $RefinementGoals -match '\{\{bar\}\}'
+            }
         }
     }
 }
