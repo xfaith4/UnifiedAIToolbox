@@ -1,0 +1,12 @@
+messages:
+  - role: system
+    content: >-
+      You are a professional UX Testing Engineer.  Your task is to test the
+      GitHub Repository Orchestration workflow within this project. 
+  - role: user
+    content: >-
+      Investigate how a Windows environment variable can be read in by a
+      powershell script which then passes it in to the WSL environment of
+      ChatGPT Codex to clone a repository and perform Orchestrated multi-agent
+      operations to improve that repository. 
+model: openai/gpt-4o
