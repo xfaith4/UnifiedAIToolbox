@@ -1,0 +1,16 @@
+id: pr_20251126_cloud_monitoring
+title: Cloud Infrastructure Monitoring System
+version: 1
+category: monitoring
+tags: [cloud, monitoring, infrastructure, alerts]
+model_hints: [gpt, gemini]
+system: |
+  You are a helpful AI assistant. Follow the instructions carefully and provide accurate, relevant responses.
+user_template: |
+  Design a comprehensive monitoring system for cloud infrastructure with a strong focus on the following key areas:  
+1. Security Best Practices: Implement and document strategies to safeguard data integrity and availability, emphasizing identity and access management, encryption protocols, and adherence to relevant compliance standards.  
+2. Error Handling and Logging: Develop advanced error handling mechanisms and in-depth logging capabilities to streamline troubleshooting, maintain comprehensive audit trails, and ensure accountability across the system.  
+3. Performance Optimization: Formulate and implement strategies aimed at enhancing resource utilization, application responsiveness, and overall system efficiency, including effective load balancing and optimal resource allocation techniques.  
+4. Monitoring and Alerting: Establish robust monitoring and alerting functionalities that provide real-time insights and proactive notifications regarding performance metrics and security incidents, ensuring a swift response to potential issues.
+checksum: 43c50bf5ccd935c6813551cad970034b5d36ffb80f562f6eddc8318caff61672
+created_utc: 2025-12-21T22:34:34.8446487-05:00

@@ -192,6 +192,81 @@ catch {
         return InvokeScriptAsync(script, parameters, log, cancellationToken);
     }
 
+    public Task RunPromptBatchRefinementAsync(
+        PromptBatchRefinementOptions options,
+        Action<PromptBatchRefinementResult> onResult,
+        Action<LogLevel, string> log,
+        CancellationToken cancellationToken)
+    {
+        if (options is null) { throw new ArgumentNullException(nameof(options)); }
+        if (onResult is null) { throw new ArgumentNullException(nameof(onResult)); }
+
+        return Task.Run(() =>
+        {
+            using var runspace = RunspaceFactory.CreateRunspace(_initialSessionState);
+            runspace.Open();
+            ApplyEnvironmentOverrides(runspace);
+
+            using var ps = System.Management.Automation.PowerShell.Create();
+            ps.Runspace = runspace;
+            RegisterStreamHandlers(ps, log);
+
+            var modulePath = Path.Combine(_baseDirectory, "modules", "PromptLibrary", "PromptLibrary.psd1");
+            ps.AddCommand("Import-Module")
+                .AddParameter("Name", modulePath)
+                .AddParameter("Force")
+                .AddParameter("DisableNameChecking")
+                .AddStatement();
+
+            ps.AddCommand("Invoke-UATPromptBatchRefinement")
+                .AddParameter("PromptRoot", options.PromptRoot)
+                .AddParameter("Iterations", options.Iterations)
+                .AddParameter("Mode", options.Mode)
+                .AddParameter("OutRoot", options.OutRoot)
+                .AddParameter("IncludePatterns", options.IncludePatterns)
+                .AddParameter("ExcludeRegex", options.ExcludeRegex);
+
+            if (options.SaveArtifacts)
+            {
+                ps.AddParameter("SaveArtifacts");
+            }
+
+            using var output = new PSDataCollection<PSObject>();
+            output.DataAdded += (_, args) =>
+            {
+                if (output.Count <= args.Index)
+                {
+                    return;
+                }
+
+                var value = output[args.Index];
+                var mapped = MapPromptBatchResult(value);
+                if (mapped is not null)
+                {
+                    onResult(mapped);
+                }
+            };
+
+            using var registration = cancellationToken.Register(() =>
+            {
+                try
+                {
+                    if (ps.InvocationStateInfo.State is not PSInvocationState.Stopping and not PSInvocationState.Stopped)
+                    {
+                        ps.Stop();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    log(LogLevel.Warning, $"Cancellation requested but PowerShell stop failed: {ex.Message}");
+                }
+            });
+
+            ps.Invoke(null, output);
+            FlushStreams(ps, log);
+        }, cancellationToken);
+    }
+
     private async Task InvokeScriptAsync(string scriptPath, IDictionary<string, object?> parameters, Action<LogLevel, string> log, CancellationToken cancellationToken)
     {
         using var runspace = RunspaceFactory.CreateRunspace(_initialSessionState);
@@ -351,6 +426,50 @@ catch {
     {
         if (_disposed) { return; }
         _disposed = true;
+    }
+
+    private static PromptBatchRefinementResult? MapPromptBatchResult(PSObject value)
+    {
+        if (value is null)
+        {
+            return null;
+        }
+
+        string? ReadString(string name)
+        {
+            return value.Properties[name]?.Value?.ToString();
+        }
+
+        int? ReadInt(string name)
+        {
+            var raw = value.Properties[name]?.Value;
+            if (raw is null) { return null; }
+            if (raw is int intValue) { return intValue; }
+            if (int.TryParse(raw.ToString(), out var parsed)) { return parsed; }
+            return null;
+        }
+
+        decimal? ReadDecimal(string name)
+        {
+            var raw = value.Properties[name]?.Value;
+            if (raw is null) { return null; }
+            if (raw is decimal decValue) { return decValue; }
+            if (decimal.TryParse(raw.ToString(), out var parsed)) { return parsed; }
+            return null;
+        }
+
+        return new PromptBatchRefinementResult(
+            ReadString("file"),
+            ReadString("id"),
+            ReadString("title"),
+            ReadString("kind"),
+            ReadString("status"),
+            ReadString("promptIdUsed"),
+            ReadString("artifactsPath"),
+            ReadString("outFile"),
+            ReadString("error"),
+            ReadInt("tokensUsed"),
+            ReadDecimal("estimatedCost"));
     }
 }
 

@@ -66,6 +66,7 @@ Import-Module "$PSScriptRoot\Private\Database.psm1" -Force -DisableNameChecking
 . "$PSScriptRoot\Public\Get-Search-Export.ps1"
 . "$PSScriptRoot\Public\Invoke-Model.ps1"
 . "$PSScriptRoot\Public\New-RefinedPrompt.ps1"
+. "$PSScriptRoot\Public\Invoke-UATPromptBatchRefinement.ps1"
 
 # Initialize database on module import
 try {
@@ -446,7 +447,7 @@ $MyInvocation.MyCommand.ScriptBlock.Module.OnRemove = {
 # ----------------------------------------------------
 # Exports (only from inside the module)
 # ----------------------------------------------------
-Export-ModuleMember -Function Get-PromptFile, Get-PromptList, Get-AgentFile, Invoke-Orchestration, Update-PromptIndexAll, Update-PromptIndex, Update-AgentIndex, Search-Prompts, Invoke-PromptYaml, New-RefinedPrompt, Get-ContentHash, ConvertTo-TemplateText, Get-Agent
+Export-ModuleMember -Function Get-PromptFile, Get-PromptList, Get-AgentFile, Invoke-Orchestration, Update-PromptIndexAll, Update-PromptIndex, Update-AgentIndex, Search-Prompts, Invoke-PromptYaml, New-RefinedPrompt, Invoke-UATPromptBatchRefinement, Get-ContentHash, ConvertTo-TemplateText, Get-Agent
 # region Utility helpers
 function Test-OrchCli {
     <#

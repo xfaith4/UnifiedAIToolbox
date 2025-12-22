@@ -13,6 +13,7 @@ public partial class MainWindow : Window
     private readonly SettingsService _settingsService;
     private readonly PromptLibraryService _promptLibraryService;
     private readonly AgentDefinitionService _agentDefinitionService;
+    private readonly string _repoRoot;
     private HelpWindow? _helpWindow;
 
     private MainViewModel ViewModel => (MainViewModel)DataContext;
@@ -22,6 +23,7 @@ public partial class MainWindow : Window
         InitializeComponent();
 
         var repoRoot = LocateRepoRoot();
+        _repoRoot = repoRoot;
         var apiKey = App.OpenAiApiKey;
         if (string.IsNullOrWhiteSpace(apiKey))
         {
@@ -144,6 +146,15 @@ Version 1.0.0
     private void OnOpenAgentDefinitions(object sender, RoutedEventArgs e)
     {
         var window = new AgentDefinitionsWindow(_agentDefinitionService)
+        {
+            Owner = this
+        };
+        window.ShowDialog();
+    }
+
+    private void OnOpenPromptBatchRefinement(object sender, RoutedEventArgs e)
+    {
+        var window = new PromptBatchRefinementWindow(_powerShellService, _repoRoot)
         {
             Owner = this
         };

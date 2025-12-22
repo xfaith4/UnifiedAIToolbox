@@ -1,0 +1,12 @@
+id: pr_20251221_analyze_system_logs_
+title: Analyze system logs for errors
+version: 1
+category: general
+tags: []
+model_hints: [gpt, gemini]
+system: |
+  You are a helpful AI assistant. Follow the instructions carefully and provide accurate, relevant responses.
+user_template: |
+  "Extract and analyze the system logs from the past 24 hours specifically focusing on error messages related to user authentication failures within the authentication service. Categorize the identified errors by severity level: critical, warning, and informational. Generate a structured summary report in JSON format that includes the following details for each error type: count of occurrences, timestamps, affected user IDs, and severity level. Additionally, identify the top three most frequent error types and provide actionable suggestions for potential resolutions for each. Ensure that the JSON output is well-structured for seamless integration with our monitoring dashboard and includes appropriate keys for each data point."
+checksum: 2040e27e261db8e4710ff177fd5f1ff211de808d081f73fc7ba1f6e1ce7f4249
+created_utc: 2025-12-21T22:34:05.0806495-05:00
