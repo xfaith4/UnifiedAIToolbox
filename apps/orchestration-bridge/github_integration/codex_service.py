@@ -302,14 +302,27 @@ class CodexSwarmService:
                     parts = agent_dir.name.split('_', 1)
                     role = parts[0] if len(parts) > 0 else 'unknown'
                     shard = parts[1] if len(parts) > 1 else 'unknown'
-                    
+
+                    patch_file = None
+                    for candidate in ("diff.patch", "patch.diff", "changes.patch"):
+                        candidate_path = agent_dir / candidate
+                        if candidate_path.exists():
+                            patch_file = candidate_path
+                            break
+                    if patch_file is None:
+                        # Fallback: any .patch in directory
+                        for maybe in agent_dir.glob("*.patch"):
+                            patch_file = maybe
+                            break
+
                     findings.append({
                         'id': str(uuid.uuid4()),
                         'agent_role': role,
                         'shard': shard,
-                        'log_content': log_content[:1000],  # Limit size
+                        'log_excerpt': log_content[:1000],  # Limit size
                         'log_file': str(log_file),
-                        'directory': str(agent_dir)
+                        'directory': str(agent_dir),
+                        'patch_file': str(patch_file) if patch_file else None,
                     })
         except Exception as e:
             logger.error(f"Failed to parse findings: {e}")
