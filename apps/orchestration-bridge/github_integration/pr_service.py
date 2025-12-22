@@ -207,6 +207,42 @@ class GitHubPRService:
             
         except Exception as e:
             raise PRCreationError(f"Failed to push branch: {e}")
+
+    def create_pr_from_branch(
+        self,
+        repo_owner: str,
+        repo_name: str,
+        head_branch: str,
+        base_branch: str,
+        title: str,
+        body: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Create a PR from an existing branch without committing new changes.
+
+        Args:
+            repo_owner: Repository owner
+            repo_name: Repository name
+            head_branch: Branch to merge from (head)
+            base_branch: Target branch (base)
+            title: PR title
+            body: PR body
+        """
+        try:
+            repo = self.github_client.get_repo(f"{repo_owner}/{repo_name}")
+            pr = repo.create_pull(title=title, body=body or "", head=head_branch, base=base_branch)
+            return {
+                "pr_number": pr.number,
+                "pr_url": pr.html_url,
+                "title": pr.title,
+                "state": pr.state,
+                "base_branch": base_branch,
+                "head_branch": head_branch,
+            }
+        except GithubException as e:
+            raise PRCreationError(f"Failed to create PR: {e.data.get('message', str(e))}")
+        except Exception as e:
+            raise PRCreationError(f"Unexpected error creating PR: {e}")
     
     def create_pull_request(
         self,
