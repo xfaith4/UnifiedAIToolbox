@@ -16,12 +16,14 @@ from datetime import datetime, timezone
 
 try:
     from git import Repo, GitCommandError
-    from github import Github, GithubException
+    from github import GithubException
 except ImportError:
     raise ImportError(
         "GitPython and PyGithub are required. "
         "Install with: pip install GitPython PyGithub"
     )
+
+from shared.github_core import create_github_client, github_call_with_backoff
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +49,9 @@ class GitHubPRService:
         if not self.github_token:
             raise ValueError("GitHub token is required for PR creation")
         
-        self.github_client = Github(self.github_token)
+        self.github_client = create_github_client(self.github_token)
+        if self.github_client is None:
+            raise ValueError("Failed to initialize GitHub client for PR creation")
     
     def create_branch_from_findings(
         self,
@@ -229,8 +233,14 @@ class GitHubPRService:
             body: PR body
         """
         try:
-            repo = self.github_client.get_repo(f"{repo_owner}/{repo_name}")
-            pr = repo.create_pull(title=title, body=body or "", head=head_branch, base=base_branch)
+            repo = github_call_with_backoff(
+                lambda: self.github_client.get_repo(f"{repo_owner}/{repo_name}"),
+                description="Fetch repo for PR",
+            )
+            pr = github_call_with_backoff(
+                lambda: repo.create_pull(title=title, body=body or "", head=head_branch, base=base_branch),
+                description="Create pull request",
+            )
             return {
                 "pr_number": pr.number,
                 "pr_url": pr.html_url,
@@ -274,7 +284,10 @@ class GitHubPRService:
         """
         try:
             # Get repository
-            repo = self.github_client.get_repo(f"{repo_owner}/{repo_name}")
+            repo = github_call_with_backoff(
+                lambda: self.github_client.get_repo(f"{repo_owner}/{repo_name}"),
+                description="Fetch repo for PR",
+            )
             
             # Generate title if not provided
             if not title:
@@ -285,11 +298,14 @@ class GitHubPRService:
                 body = self._generate_pr_body(findings)
             
             # Create PR
-            pr = repo.create_pull(
-                title=title,
-                body=body,
-                head=branch_name,
-                base=base_branch
+            pr = github_call_with_backoff(
+                lambda: repo.create_pull(
+                    title=title,
+                    body=body,
+                    head=branch_name,
+                    base=base_branch
+                ),
+                description="Create pull request",
             )
             
             logger.info(f"Created PR #{pr.number}: {pr.html_url}")
@@ -305,7 +321,8 @@ class GitHubPRService:
             }
             
         except GithubException as e:
-            raise PRCreationError(f"GitHub API error: {e}")
+            message = e.data.get('message', str(e)) if getattr(e, "data", None) else str(e)
+            raise PRCreationError(f"GitHub API error: {message}")
         except Exception as e:
             raise PRCreationError(f"Failed to create PR: {e}")
     
@@ -441,8 +458,14 @@ class GitHubPRService:
             PRCreationError: If status retrieval fails
         """
         try:
-            repo = self.github_client.get_repo(f"{repo_owner}/{repo_name}")
-            pr = repo.get_pull(pr_number)
+            repo = github_call_with_backoff(
+                lambda: self.github_client.get_repo(f"{repo_owner}/{repo_name}"),
+                description="Fetch repo for PR status",
+            )
+            pr = github_call_with_backoff(
+                lambda: repo.get_pull(pr_number),
+                description="Fetch PR status",
+            )
             
             return {
                 'pr_number': pr.number,

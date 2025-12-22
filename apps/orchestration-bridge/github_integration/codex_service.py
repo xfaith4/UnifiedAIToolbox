@@ -15,6 +15,8 @@ from typing import Optional, Dict, Any, AsyncGenerator
 from datetime import datetime, timezone
 from enum import Enum
 
+from shared.security import redact_text
+
 logger = logging.getLogger(__name__)
 
 
@@ -65,6 +67,14 @@ class CodexSwarmService:
         
         # Active runs tracking
         self.active_runs: Dict[str, Dict[str, Any]] = {}
+
+    def _atomic_write_json(self, path: Path, data: Any) -> None:
+        """Write JSON atomically to avoid partial artifacts on retries."""
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temp = path.with_suffix(".tmp")
+        with open(temp, "w", encoding="utf-8") as handle:
+            json.dump(data, handle, indent=2, default=str)
+        temp.replace(path)
     
     def _check_powershell_available(self) -> bool:
         """Check if PowerShell is available on the system."""
@@ -146,8 +156,7 @@ class CodexSwarmService:
         
         # Save run metadata to disk
         metadata_file = run_dir / 'metadata.json'
-        with open(metadata_file, 'w') as f:
-            json.dump(self.active_runs[run_id], f, indent=2, default=str)
+        self._atomic_write_json(metadata_file, self.active_runs[run_id])
         
         return run_id
     
@@ -248,8 +257,7 @@ class CodexSwarmService:
             run_info['findings_count'] = len(findings)
             
             # Save findings
-            with open(run_info['findings_file'], 'w') as f:
-                json.dump(findings, f, indent=2)
+            self._atomic_write_json(Path(run_info['findings_file']), findings)
             
         except Exception as e:
             logger.error(f"Codex run {run_id} failed: {e}")
@@ -266,8 +274,7 @@ class CodexSwarmService:
         finally:
             # Save updated metadata
             metadata_file = run_dir / 'metadata.json'
-            with open(metadata_file, 'w') as f:
-                json.dump(run_info, f, indent=2, default=str)
+            self._atomic_write_json(metadata_file, run_info)
     
     async def _parse_findings(self, run_dir: Path) -> list[Dict[str, Any]]:
         """
@@ -295,7 +302,7 @@ class CodexSwarmService:
                 log_file = agent_dir / "codex.log"
                 if log_file.exists():
                     with open(log_file, 'r') as f:
-                        log_content = f.read()
+                        log_content = redact_text(f.read())
                     
                     # Extract finding info from directory name
                     # Format: {role}_{shard}
@@ -354,6 +361,8 @@ class CodexSwarmService:
             
             run_info['status'] = CodexRunStatus.CANCELLED
             run_info['end_time'] = datetime.now(timezone.utc).isoformat()
+            metadata_file = Path(run_info['output_dir']) / 'metadata.json'
+            self._atomic_write_json(metadata_file, run_info)
             
             return True
         
@@ -423,7 +432,9 @@ class CodexSwarmService:
         findings_file = run_dir / 'findings.json'
         
         if findings_file.exists():
-            with open(findings_file, 'r') as f:
-                return json.load(f)
+            with open(findings_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                if isinstance(data, list):
+                    return data
         
         return []

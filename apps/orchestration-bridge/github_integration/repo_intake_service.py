@@ -60,6 +60,12 @@ class RepoIntakeService:
         self.runs_dir.mkdir(parents=True, exist_ok=True)
         self.github_token = github_token
 
+    def _atomic_write_json(self, path: Path, data: Dict[str, Any]) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temp = path.with_suffix(".tmp")
+        temp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        temp.replace(path)
+
     def run_intake(
         self,
         repo_url: str,
@@ -128,7 +134,7 @@ class RepoIntakeService:
         json_path = run_dir / "intake.json"
         md_path = run_dir / "intake.md"
 
-        json_path.write_text(json.dumps(intake, indent=2), encoding="utf-8")
+        self._atomic_write_json(json_path, intake)
         md_path.write_text(self._render_markdown(intake), encoding="utf-8")
 
         return IntakeArtifacts(
