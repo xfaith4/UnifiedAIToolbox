@@ -12,6 +12,7 @@
                 <MenuItem Header="Milestone _Dashboard" Command="{Binding OpenDashboardCommand}"/>
                 <Separator/>
                 <MenuItem Header="Agent _Definitions..." Click="OnOpenAgentDefinitions"/>
+                <MenuItem Header="Refine All Prompts (Batch)..." Click="OnOpenPromptBatchRefinement"/>
             </MenuItem>
             <MenuItem Header="_Help">
                 <MenuItem Header="View _Documentation" Click="OnOpenHelp"/>

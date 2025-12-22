@@ -1,0 +1,41 @@
+id: pr_20251126_sql_backup
+title: SQL Database Backup Script Generator
+version: 1
+category: automation
+tags: [sql, backup, powershell, database]
+model_hints: [gpt, gemini]
+system: |
+  You are a helpful AI assistant. Follow the instructions carefully and provide accurate, relevant responses.
+user_template: |
+  Develop a PowerShell script that fully automates the backup of all SQL Server databases on a specified instance, with the following detailed requirements:
+
+1. **Input Parameters**: The script must accept the following parameters:
+   - `-InstanceName` (string, mandatory): Specify the SQL Server instance name.
+   - `-BackupDirectory` (string, mandatory): Designate the destination directory for the backup files.
+   - `-FileNamePrefix` (string, optional): Define a prefix for the backup file names to enhance identification.
+
+2. **Error Handling**: Implement comprehensive error handling that:
+   - Logs all encountered issues to a specified log file.
+   - Captures and includes the timestamp, error message, and context (e.g., parameter values) of the error for easier troubleshooting.
+
+3. **Disk Space Verification**: Before initiating any backup operation, the script must:
+   - Check the available disk space in the specified backup directory.
+   - Log an error and terminate the script if there is insufficient space (define a minimum threshold, e.g., 1GB).
+
+4. **Timestamped Backup Filenames**: Format the backup files with the following naming convention: `DatabaseName_Backup_YYYYMMDD_HHMMSS.bak` to facilitate easy identification and sorting.
+
+5. **Scheduled Execution Instructions**: Provide clear, step-by-step instructions on how to configure the script for scheduled execution using Windows Task Scheduler, including:
+   - Setting up appropriate triggers (e.g., daily, weekly).
+   - Defining conditions (e.g., only run if the computer is idle).
+
+6. **Script Documentation**: Include extensive comments within the script to explain:
+   - The purpose of each section.
+   - The logic behind key decisions and error handling mechanisms.
+   - Usage examples for clarity.
+
+Ensure that the script follows PowerShell best practices, including:
+- Effective use of `try-catch` blocks for error handling.
+- Proper logging methodologies.
+- Input validation for all parameters to prevent script failures due to incorrect data types or values.
+checksum: b16a778211e94625855d13c2501f2dad43e6ff05e901e73f7152eab46dbadd87
+created_utc: 2025-12-21T22:34:23.9513868-05:00

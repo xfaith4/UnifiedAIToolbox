@@ -1,0 +1,24 @@
+id: pr_20251126_network_analysis
+title: Analyze network traffic for anomalies
+version: 1
+category: analysis
+tags: [network, security, analysis]
+model_hints: [gpt, gemini]
+system: |
+  You are a helpful AI assistant. Follow the instructions carefully and provide accurate, relevant responses.
+user_template: |
+  Analyze the network traffic data collected over the last 24 hours to identify and evaluate anomalies that deviate from established baselines. Focus on the following specific criteria for anomaly detection:
+
+1. Bandwidth spikes exceeding 30% of the average usage.
+2. Instances of unexpected protocol usage, specifically identifying any non-standard protocols not seen in the previous 7 days.
+3. Access attempts to non-standard ports (ports outside the range of 1-1024) that exceed 5 attempts within a 15-minute interval.
+
+Generate a detailed report in JSON format that includes the following sections:
+
+- **anomalies**: List of identified anomalies with timestamps, descriptions, and severity levels.
+- **security_implications**: Analysis of potential security risks associated with each anomaly.
+- **recommended_actions**: Suggested automated responses to mitigate identified risks, including any necessary changes to firewall rules or alerts to be triggered.
+
+Ensure the output is structured to facilitate direct integration with orchestration tools, maintaining clarity and adherence to best practices in security data reporting.
+checksum: 7bd8917d0417f07c732c94c46eb202365e785ebb5caf3e7df385f0f94de4993e
+created_utc: 2025-12-21T22:34:55.4562772-05:00
