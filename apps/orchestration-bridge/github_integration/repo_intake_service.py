@@ -65,6 +65,7 @@ class RepoIntakeService:
         repo_url: str,
         run_id: str,
         branch: Optional[str] = None,
+        clone_path: Optional[Path] = None,
     ) -> Dict[str, Any]:
         """
         Execute the intake workflow and return the structured report.
@@ -73,6 +74,7 @@ class RepoIntakeService:
             repo_url: Repository URL or owner/repo slug.
             run_id: Workspace/run identifier for artifact storage.
             branch: Optional branch to checkout.
+            clone_path: Optional pre-cloned repository path to reuse.
 
         Returns:
             Intake report data.
@@ -89,11 +91,12 @@ class RepoIntakeService:
                 clone_base_dir=run_dir,
             )
 
-            clone_path = clone_service.clone_repository(
-                repo_url=repo_url,
-                branch=branch,
-                clone_id=run_id,
-            )
+            if clone_path is None:
+                clone_path = clone_service.clone_repository(
+                    repo_url=repo_url,
+                    branch=branch,
+                    clone_id=run_id,
+                )
 
             raw_tree = clone_service.get_file_tree(clone_path, max_depth=5)
             file_tree = self._prune_heavy_dirs(raw_tree)
