@@ -30,21 +30,7 @@ const calculateCost = (model: keyof typeof PRICING, inputTokens: number, outputT
 
 const useOrchestrator = () => {
   const [session, setSession] = useState<Session | null>(null);
-  const [history, setHistory] = useState<Session[]>(() => {
-    // Load history from localStorage on initial load
-    if (typeof window !== 'undefined') {
-      try {
-        const storedHistory = window.localStorage.getItem(STORAGE_KEY);
-        if (storedHistory) {
-          return JSON.parse(storedHistory);
-        }
-      } catch (error) {
-        console.error("Failed to load session history from localStorage:", error);
-        window.localStorage.removeItem(STORAGE_KEY);
-      }
-    }
-    return [];
-  });
+  const [history, setHistory] = useState<Session[]>([]);
   const [isOrchestrating, setIsOrchestrating] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
 
@@ -57,8 +43,27 @@ const useOrchestrator = () => {
     isOrchestratingRef.current = isOrchestrating;
   }, [isOrchestrating]);
 
+  const hasLoadedHistoryRef = useRef(false);
+
+  useEffect(() => {
+    try {
+      const storedHistory = window.localStorage.getItem(STORAGE_KEY);
+      if (storedHistory) {
+        setHistory(JSON.parse(storedHistory));
+      }
+    } catch (error) {
+      console.error("Failed to load session history from localStorage:", error);
+      window.localStorage.removeItem(STORAGE_KEY);
+    } finally {
+      hasLoadedHistoryRef.current = true;
+    }
+  }, []);
+
   // Save history to localStorage whenever it changes
   useEffect(() => {
+    if (!hasLoadedHistoryRef.current) {
+      return;
+    }
     try {
       const serializedHistory = JSON.stringify(history);
       window.localStorage.setItem(STORAGE_KEY, serializedHistory);

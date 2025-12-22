@@ -106,6 +106,17 @@ class GitHubCloneService(GitHubClientMixin, FileTreeMixin, CloneUrlMixin):
         
         # Initialize GitHub API client using shared mixin
         self.github_client = self._init_github_client(self.github_token, use_auth_class=False)
+
+    def _get_core_rate_limit(self):
+        if not self.github_client:
+            return None
+        rate_overview = self.github_client.get_rate_limit()
+        core_rate = getattr(rate_overview, "core", None)
+        if core_rate is None:
+            resources = getattr(rate_overview, "resources", None)
+            if resources is not None:
+                core_rate = getattr(resources, "core", None)
+        return core_rate
     
     def get_repo_metadata(self, owner: str, repo_name: str) -> Dict[str, Any]:
         """
@@ -195,10 +206,10 @@ class GitHubCloneService(GitHubClientMixin, FileTreeMixin, CloneUrlMixin):
         try:
             try:
                 rate_limit = github_call_with_backoff(
-                    lambda: self.github_client.get_rate_limit().core,
+                    lambda: self._get_core_rate_limit(),
                     description="Check GitHub rate limit",
                 )
-                if rate_limit.remaining <= 0:
+                if rate_limit and rate_limit.remaining <= 0:
                     reset_time = datetime.fromtimestamp(
                         rate_limit.reset, timezone.utc
                     ).isoformat()
@@ -246,8 +257,13 @@ class GitHubCloneService(GitHubClientMixin, FileTreeMixin, CloneUrlMixin):
             
             if e.status == 403 and "rate limit" in message.lower():
                 try:
-                    reset = self.github_client.get_rate_limit().core.reset
-                    reset_time = datetime.fromtimestamp(reset, timezone.utc).isoformat()
+                    rate_limit = self._get_core_rate_limit()
+                    if rate_limit:
+                        reset_time = datetime.fromtimestamp(
+                            rate_limit.reset, timezone.utc
+                        ).isoformat()
+                    else:
+                        reset_time = "soon"
                 except Exception:
                     reset_time = "soon"
                 raise RepositoryCloneError(
