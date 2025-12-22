@@ -124,7 +124,7 @@ export default function AgentActivityStatus({ runId, isActive }) {
         <div className="mt-6 p-4 border border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
           <h3 className="text-lg font-semibold text-yellow-800 dark:text-yellow-400 mb-3 flex items-center gap-2">
             <AlertCircle size={20} />
-            Commissioner's Agent Improvement Suggestions
+            Commissioner&apos;s Agent Improvement Suggestions
           </h3>
           <div className="space-y-3">
             {improvements.map((improvement, idx) => (

@@ -74,7 +74,8 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose, session,
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label htmlFor="feedback-message" className="block text-sm font-medium text-gray-300 mb-1">
-                  Your Feedback on the run for goal: <span className="text-indigo-300 font-semibold">"{session.goal}"</span>
+                  Your Feedback on the run for goal:{' '}
+                  <span className="text-indigo-300 font-semibold">&quot;{session.goal}&quot;</span>
                 </label>
                 <textarea
                   id="feedback-message"

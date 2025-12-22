@@ -117,7 +117,7 @@ const useOrchestrator = () => {
     setTasks([]);
 
     let initialContext = '';
-    let initialTasks: Task[] = [];
+    const initialTasks: Task[] = [];
 
     if (fileContent) {
       let truncatedContent = fileContent;
@@ -269,7 +269,7 @@ const useOrchestrator = () => {
 
         // Process the full response at once for robustness
         const lines = (fullResponseText || "").split('\n');
-        let artifactLines: string[] = [];
+        const artifactLines: string[] = [];
         let hasSeenArtifactTag = false;
 
         for (const line of lines) {
@@ -283,7 +283,7 @@ const useOrchestrator = () => {
           }
         }
 
-        let artifactContent = artifactLines.join('\n');
+        const artifactContent = artifactLines.join('\n');
 
         // Fallback: If no ARTIFACT tag was found, treat the whole response (minus logs) as the artifact.
         if (!artifactContent.trim() && fullResponseText.trim()) {

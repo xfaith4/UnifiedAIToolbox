@@ -5,16 +5,16 @@ import { NextResponse } from 'next/server'
 
 const AGENTS_DIR = path.resolve(process.cwd(), '..', '..', 'data', 'agents')
 
-async function readAgentFiles(): Promise<any[]> {
+async function readAgentFiles(): Promise<Record<string, unknown>[]> {
   const entries = await fs.readdir(AGENTS_DIR, { withFileTypes: true })
-  const docs: any[] = []
+  const docs: Record<string, unknown>[] = []
   for (const entry of entries) {
     if (!entry.isFile() || !entry.name.endsWith('.yaml')) continue
     const raw = await fs.readFile(path.join(AGENTS_DIR, entry.name), 'utf-8')
     try {
       const parsed = yaml.load(raw)
       if (typeof parsed === 'object' && parsed !== null) {
-        docs.push(parsed)
+        docs.push(parsed as Record<string, unknown>)
       }
     } catch (error) {
       console.warn(`Failed to parse ${entry.name}:`, error)

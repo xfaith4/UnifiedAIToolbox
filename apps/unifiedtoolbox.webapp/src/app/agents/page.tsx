@@ -9,7 +9,7 @@ import {
   persistPromptOverride,
 } from '@/lib/services/agentStore'
 import type { AgentInstruction, AgentStatus } from '@/lib/types/agents'
-import { computeDiff, computeHash, type DiffLine } from '@/lib/utils/textHelpers'
+import { computeDiff, computeHash } from '@/lib/utils/textHelpers'
 
 const statusLabels: Record<AgentStatus, string> = {
   draft: 'Draft',
@@ -291,7 +291,11 @@ function AgentDetailForm({
   }
 
   const canonicalPrompt = agent.prompt ?? ''
-  const [overridePrompt, setOverridePrompt] = useState<string | null>(null)
+  const [overridePrompt, setOverridePrompt] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null
+    const overrides = loadPromptOverrides()
+    return overrides[agent.id] ?? null
+  })
   const [draftPrompt, setDraftPrompt] = useState(canonicalPrompt)
   const [editingPrompt, setEditingPrompt] = useState(false)
   const [expanded, setExpanded] = useState(false)
@@ -301,19 +305,7 @@ function AgentDetailForm({
   const [canonicalHash, setCanonicalHash] = useState('')
   const [renderedHash, setRenderedHash] = useState('')
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    const overrides = loadPromptOverrides()
-    setOverridePrompt(overrides[agent.id] ?? null)
-  }, [agent.id])
-
   const finalPrompt = overridePrompt ?? canonicalPrompt
-
-  useEffect(() => {
-    if (!editingPrompt) {
-      setDraftPrompt(finalPrompt)
-    }
-  }, [finalPrompt, editingPrompt])
 
   useEffect(() => {
     let active = true
@@ -505,7 +497,17 @@ function AgentDetailForm({
           <button
             type="button"
             className="rounded-lg border border-slate-700 bg-slate-800/70 px-3 py-1.5 text-xs hover:bg-slate-700/80"
-            onClick={() => setEditingPrompt((prev) => !prev)}
+            onClick={() => {
+              setEditingPrompt((prev) => {
+                const next = !prev
+                if (next) {
+                  setDraftPrompt(finalPrompt)
+                } else {
+                  setDraftPrompt(finalPrompt)
+                }
+                return next
+              })
+            }}
           >
             {editingPrompt ? 'Cancel Edit' : 'Edit Prompt'}
           </button>

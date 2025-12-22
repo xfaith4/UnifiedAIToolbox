@@ -12,6 +12,7 @@ import {
   generateRefinementDraft,
 } from '@/lib/utils/promptQuality'
 import { containsSecretIndicators } from '@/lib/utils/promptRefiner'
+import { resolveDisplayableTemplate } from '@/lib/utils/promptDisplay.mjs'
 import {
   fetchPromptLibrary,
   normalizePrompt,
@@ -459,6 +460,11 @@ function PromptEditor({
     return localStorage.getItem('ai-toolbox-api-key')
   }
 
+  const displayTemplate = useMemo(
+    () => resolveDisplayableTemplate(prompt.template),
+    [prompt.template]
+  )
+
   const aiAvailable = Boolean(getStoredApiKey() || process.env.NEXT_PUBLIC_OPENAI_API_KEY)
 
   useEffect(() => {
@@ -468,8 +474,8 @@ function PromptEditor({
   }, [aiAvailable, refinerMode])
 
   const renderedPrompt = useMemo(
-    () => [prompt.context, prompt.template].filter(Boolean).join('\n\n'),
-    [prompt.context, prompt.template]
+    () => [prompt.context, displayTemplate].filter(Boolean).join('\n\n'),
+    [prompt.context, displayTemplate]
   )
 
   useEffect(() => {
@@ -550,7 +556,7 @@ function PromptEditor({
 
   function handleCopyPrompt() {
     if (!navigator.clipboard) return
-    navigator.clipboard.writeText(prompt.template).then(() => {
+    navigator.clipboard.writeText(renderedPrompt || prompt.template).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
     })
@@ -1179,6 +1185,7 @@ function TextAreaField({
     </label>
   )
 }
+
 
 function qualityBadgeColor(score: number) {
   if (score >= 8) {

@@ -48,7 +48,7 @@ export async function analyzePrompt(
             // Convert GPT-4 result to our format
             const suggestions: Suggestion[] = gpt4Result.suggestions.map((s, i) => ({
                 id: `gpt4-${i}`,
-                type: s.category as any,
+                type: toSuggestionType(s.category),
                 severity: s.severity,
                 message: s.issue,
                 suggestedChange: s.recommendation + (s.example ? `\n\nExample: ${s.example}` : ''),
@@ -97,6 +97,20 @@ export async function analyzePrompt(
         },
         usedGPT4: false,
     };
+}
+
+function toSuggestionType(value: string): Suggestion['type'] {
+    const normalized = value.toLowerCase();
+    const allowed: Suggestion['type'][] = [
+        'clarity',
+        'specificity',
+        'structure',
+        'examples',
+        'constraints',
+        'effectiveness',
+    ];
+    const match = allowed.find((item) => item === normalized);
+    return match ?? 'clarity';
 }
 
 /**

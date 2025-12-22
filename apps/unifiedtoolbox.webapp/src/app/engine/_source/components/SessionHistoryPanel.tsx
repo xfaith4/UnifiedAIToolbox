@@ -68,7 +68,9 @@ const SessionHistoryPanel: React.FC<SessionHistoryPanelProps> = ({
                                 onClick={() => onSelectSession(session.id)}
                                 className={`w-full text-left p-3 rounded-lg border-2 transition-colors ${currentSessionId === session.id ? 'bg-indigo-500/30 border-indigo-500' : 'bg-gray-900/50 border-gray-700 hover:border-indigo-400'}`}
                             >
-                                <p className="font-semibold text-gray-200 truncate">Goal: "{session.goal}"</p>
+                                <p className="font-semibold text-gray-200 truncate">
+                                    Goal: &quot;{session.goal}&quot;
+                                </p>
                                 <div className="flex justify-between items-center text-xs mt-1">
                                     <p><span className="font-medium">Date:</span> {formatDate(session.date)}</p>
                                     {session.totalCost !== undefined && (

@@ -6,7 +6,7 @@ import * as yaml from 'js-yaml';
 interface YAMLPrompt {
     id: string;
     version?: string;
-    variables?: Record<string, any>;
+    variables?: Record<string, { type?: string; default?: string }>;
     blocks?: {
         system?: string;
         instructions?: string;
@@ -45,7 +45,7 @@ interface PromptItem {
     temperature?: number;
 }
 
-function convertYAMLToPrompt(yamlPrompt: YAMLPrompt, filename: string): PromptItem {
+function convertYAMLToPrompt(yamlPrompt: YAMLPrompt): PromptItem {
     // Build template from blocks
     let template = '';
     if (yamlPrompt.blocks?.system) {
@@ -63,11 +63,11 @@ function convertYAMLToPrompt(yamlPrompt: YAMLPrompt, filename: string): PromptIt
 
     // Extract variables
     const variables = yamlPrompt.variables
-        ? Object.entries(yamlPrompt.variables).map(([name, config]: [string, any]) => ({
+        ? Object.entries(yamlPrompt.variables).map(([name, config]) => ({
             name,
             label: name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-            type: config.type === 'array' ? 'multiline' : 'string',
-            default: config.default,
+            type: config?.type === 'array' ? 'multiline' : 'string',
+            default: config?.default,
         }))
         : [];
 
@@ -104,7 +104,7 @@ async function migratePrompts() {
         try {
             const content = readFileSync(join(promptsDir, file), 'utf-8');
             const yamlPrompt = yaml.load(content) as YAMLPrompt;
-            const prompt = convertYAMLToPrompt(yamlPrompt, file);
+            const prompt = convertYAMLToPrompt(yamlPrompt);
             prompts.push(prompt);
             console.log(`✓ Converted: ${prompt.title}`);
         } catch (error) {

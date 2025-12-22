@@ -48,7 +48,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
             )}
           </div>
           <p className="text-sm text-gray-400">
-            The API key is configured via an <code className="bg-gray-700 text-indigo-300 px-1.5 py-0.5 rounded">.env</code> file in the project's root directory. For more details on local setup, please refer to the README file.
+            The API key is configured via an <code className="bg-gray-700 text-indigo-300 px-1.5 py-0.5 rounded">.env</code> file in the project&apos;s root directory. For more details on local setup, please refer to the README file.
           </p>
         </div>
 
