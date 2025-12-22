@@ -41,7 +41,7 @@ $Env:WSLENV = ( @($existingEnv + $wslEnvEntries) | Select-Object -Unique ) -join
 $bashLines = @(
     'set -euo pipefail',
     'REPO="${MY_GITHUB_REPO:-}"',
-    'if [ -z "$REPO" ]; then echo "MY_GITHUB_REPO is required inside WSL" >&2; exit 1; fi',
+    'if [ -z "$REPO" ]; then echo "MY_GITHUB_REPO is required inside WSL (owner/name or full URL)" >&2; exit 1; fi',
     'if [[ "$REPO" != *"://"* ]]; then REPO="https://github.com/${REPO}.git"; fi',
     'WORKDIR="${WSL_WORKDIR:-$HOME/repos}"',
     'if ! command -v git >/dev/null 2>&1; then echo "git is required inside WSL. Install with: sudo apt-get update && sudo apt-get install -y git" >&2; exit 1; fi',
