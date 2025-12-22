@@ -171,6 +171,170 @@ catch {
         return InvokeScriptAsync(unifiedScript, parameters, log, cancellationToken);
     }
 
+
+namespace OrchestrationDesktop.Services;
+
+public sealed class PowerShellService : IDisposable
+{
+    private readonly InitialSessionState _initialSessionState;
+    private readonly string _baseDirectory;
+    private readonly string _openAiApiKey;
+    private bool _disposed;
+
+    public PowerShellService(string baseDirectory, string openAiApiKey)
+    {
+        if (string.IsNullOrWhiteSpace(baseDirectory))
+        {
+            throw new ArgumentException("Base directory is required.", nameof(baseDirectory));
+        }
+
+        if (string.IsNullOrWhiteSpace(openAiApiKey))
+        {
+            throw new ArgumentException("OpenAI API key is required.", nameof(openAiApiKey));
+        }
+
+        _baseDirectory = baseDirectory;
+        _openAiApiKey = openAiApiKey.Trim();
+        _initialSessionState = InitialSessionState.CreateDefault();
+
+        var modulePath = Path.Combine(_baseDirectory, "modules", "Orchestration.Common.psm1");
+        if (File.Exists(modulePath))
+        {
+            _initialSessionState.ImportPSModule(new[] { modulePath });
+        }
+    }
+
+    public Task<bool> ValidateAsync(OrchestrationOptions options, Action<LogLevel, string> log, CancellationToken cancellationToken)
+    {
+        return Task.Run(async () =>
+        {
+            var allGood = true;
+
+            if (!options.SkipCodex)
+            {
+                var codexOk = await EnsureCodexAvailableAsync(options, log, cancellationToken);
+                if (!codexOk)
+                {
+                    allGood = false;
+                }
+            }
+
+            var gitDetected = await InvokeScalarAsync<bool>("Test-OrchCli 'git'", log, cancellationToken);
+            if (!gitDetected)
+            {
+                log(LogLevel.Warning, "Git was not detected on PATH.");
+                allGood = false;
+            }
+            else
+            {
+                log(LogLevel.Success, "Git detected.");
+            }
+
+            if (!Directory.Exists(options.RepoRoot))
+            {
+                log(LogLevel.Warning, $"Repository path not found: {options.RepoRoot}");
+                allGood = false;
+            }
+
+            if (string.IsNullOrEmpty(options.GoalFile) && string.IsNullOrEmpty(options.CustomPromptText))
+            {
+                log(LogLevel.Warning, "No goal specified. Please enter a goal or select a goal file.");
+                allGood = false;
+            }
+            else if (!string.IsNullOrEmpty(options.GoalFile) && !File.Exists(options.GoalFile))
+            {
+                log(LogLevel.Warning, $"Goal file not found: {options.GoalFile}");
+                allGood = false;
+            }
+
+            return allGood;
+        }, cancellationToken);
+    }
+
+    private Task<bool> EnsureCodexAvailableAsync(OrchestrationOptions options, Action<LogLevel, string> log, CancellationToken cancellationToken)
+    {
+        if (options.UseWslForCodex)
+        {
+            return EnsureCodexViaWslAsync(log, cancellationToken);
+        }
+
+        return EnsureCodexOnWindowsAsync(log, cancellationToken);
+    }
+
+    private async Task<bool> EnsureCodexOnWindowsAsync(Action<LogLevel, string> log, CancellationToken cancellationToken)
+    {
+        var detected = await InvokeScalarAsync<bool>("Test-OrchCli 'codex'", log, cancellationToken);
+        if (!detected)
+        {
+            log(LogLevel.Warning, "Codex CLI was not detected on PATH.");
+            return false;
+        }
+
+        log(LogLevel.Success, "Codex CLI detected.");
+        return true;
+    }
+
+    private async Task<bool> EnsureCodexViaWslAsync(Action<LogLevel, string> log, CancellationToken cancellationToken)
+    {
+        var wslDetected = await InvokeScalarAsync<bool>("Test-OrchCli 'wsl'", log, cancellationToken);
+        if (!wslDetected)
+        {
+            log(LogLevel.Warning, "WSL was not detected on PATH. Install Windows Subsystem for Linux or disable the WSL Codex option.");
+            return false;
+        }
+
+        const string script = @"
+try {
+    $null = wsl.exe -e which codex 2>$null
+    return $true
+}
+catch {
+    return $false
+}";
+
+        var codexDetected = await InvokeScalarAsync<bool>(script, log, cancellationToken);
+        if (!codexDetected)
+        {
+            log(LogLevel.Warning, "Codex CLI was not detected inside the configured WSL environment. Launch WSL and ensure 'codex' is installed.");
+            return false;
+        }
+
+        log(LogLevel.Success, "Codex CLI detected via WSL.");
+        return true;
+    }
+
+    public Task RunUnifiedAsync(OrchestrationOptions options, Action<LogLevel, string> log, CancellationToken cancellationToken)
+    {
+        var unifiedScript = Path.Combine(_baseDirectory, "scripts", "Unified-Orchestration.ps1");
+        if (!File.Exists(unifiedScript))
+        {
+            throw new FileNotFoundException("Unified orchestration script not found.", unifiedScript);
+        }
+
+        var parameters = new Dictionary<string, object?>
+        {
+            ["RepoRoot"] = options.RepoRoot,
+            ["GoalFile"] = options.GoalFile,
+            ["Model"] = options.Model,
+            ["ModelInstruction"] = string.IsNullOrWhiteSpace(options.ModelInstruction) ? null : options.ModelInstruction,
+            ["PromptId"] = options.PromptId,
+            ["CustomPrompt"] = string.IsNullOrWhiteSpace(options.CustomPromptText) ? null : options.CustomPromptText,
+            ["AgentId"] = options.AgentId,
+            ["AutoSelectAgent"] = options.AutoSelectAgent,
+            ["MaxIterations"] = options.MaxIterations,
+            ["PassThreshold"] = options.PassThreshold,
+            ["SkipContextResolution"] = options.SkipContextResolution ? true : null,
+            ["SkipCodex"] = options.SkipCodex ? true : null,
+            ["CodexModel"] = options.CodexModel,
+            ["CodexInstruction"] = string.IsNullOrWhiteSpace(options.CodexInstruction) ? null : options.CodexInstruction,
+            ["UseWslForCodex"] = options.UseWslForCodex ? true : null,
+            ["MaxParallel"] = options.MaxParallel,
+            ["WorkDir"] = options.WorkDir
+        };
+
+        return InvokeScriptAsync(unifiedScript, parameters, log, cancellationToken);
+    }
+
     public Task RunCodexOnlyAsync(OrchestrationOptions options, Action<LogLevel, string> log, CancellationToken cancellationToken)
     {
         var script = Path.Combine(_baseDirectory, "codex-multiagent-swarm", "Orchestrate-Codex.ps1");
