@@ -33,6 +33,24 @@ param(
 $ErrorActionPreference = "Stop"
 $Script:ProjectRoot = $PSScriptRoot
 
+# Ensure GitHub token propagates to child processes (and WSL if used).
+function Initialize-GitHubToken {
+    if ([string]::IsNullOrWhiteSpace($env:GITHUB_TOKEN)) {
+        Write-Status "⚠️ GITHUB_TOKEN is not set. GitHub orchestration may fail to clone or create PRs." -Level "Warning"
+        return
+    }
+
+    $tokenEntry = "GITHUB_TOKEN/up"
+    if ([string]::IsNullOrWhiteSpace($env:WSLENV)) {
+        $env:WSLENV = $tokenEntry
+    }
+    elseif ($env:WSLENV -notmatch '(^|:)GITHUB_TOKEN(/[^:]*)?($|:)') {
+        $env:WSLENV = "$($env:WSLENV):$tokenEntry"
+    }
+
+    Write-Status "✅ GITHUB_TOKEN detected and will be passed to child processes (and WSL when invoked)." -Level "Info"
+}
+
 # Color-coded status messages
 function Write-Status {
     param(
@@ -322,6 +340,7 @@ function Show-Menu {
 # Launch the FastAPI backend
 function Start-API {
     Write-Status "🚀 Starting FastAPI Backend..." -Level "Info"
+    Initialize-GitHubToken
 
     $apiDir = Join-Path $ProjectRoot "apps\UnifiedPromptApp\services\prompt-api"
     if (-not (Test-Path $apiDir)) {
@@ -505,6 +524,7 @@ function Open-HTMLPortal {
 # Run orchestration
 function Start-Orchestration {
     Write-Status "🤖 Starting Orchestration..." -Level "Info"
+    Initialize-GitHubToken
 
     $orchestrationScript = Join-Path $ProjectRoot "Orchestration\MilestoneController.ps1"
     if (-not (Test-Path $orchestrationScript)) {
