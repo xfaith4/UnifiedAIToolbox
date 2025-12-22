@@ -21,6 +21,7 @@ build/
 codex_out/
 codex-multiagent-swarm/
 runs/
+.uaitoolbox/
 *.db
 *.log
 

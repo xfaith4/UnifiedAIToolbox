@@ -145,6 +145,16 @@ If the orchestrator page shows a red "Cannot connect to Prompt API" banner:
 
 For more details, see [apps/unifiedtoolbox.webapp/README.md](apps/unifiedtoolbox.webapp/README.md).
 
+## 🧭 Orchestration Workflow
+
+Use a simple intake → plan → execute loop for repository automation:
+
+1. **Intake**: Capture the goal (issue, ticket, or `Goals/CurrentGoal.txt`).
+2. **Plan**: Define the smallest viable steps and pick a runner (for example `scripts/Unified-Orchestration.ps1`).
+3. **Execute**: Run the orchestration and review outputs before packaging results.
+
+Artifacts are kept local in directories like `runs/`, `apps/orchestration-bridge/runs/`, `.uaitoolbox/`, and `artifacts/`. These locations are ignored by git so orchestration outputs stay local.
+
 ## 📁 Project Structure
 
 ```
