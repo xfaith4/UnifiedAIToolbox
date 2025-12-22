@@ -18,6 +18,12 @@ log() {
 
 log "start" "ok" "orchestrator=${project_name} scripts/orchestrator.sh"
 tests_failed=0
+format_failed=0
+has_npm_package=0
+
+if [ -f "${repo_root}/package.json" ] && command -v npm >/dev/null 2>&1; then
+  has_npm_package=1
+fi
 
 # Tool checks
 if command -v node >/dev/null 2>&1; then
@@ -33,7 +39,7 @@ else
 fi
 
 # Tests (best-effort)
-if [ -f "${repo_root}/package.json" ] && command -v npm >/dev/null 2>&1; then
+if (( has_npm_package )); then
   if [ -d "${repo_root}/node_modules" ]; then
     log "tests" "running" "npm test --if-present"
     if (cd "$repo_root" && npm test --if-present); then
@@ -50,12 +56,13 @@ else
 fi
 
 # Formatting (best-effort)
-if [ -f "${repo_root}/package.json" ] && command -v npm >/dev/null 2>&1; then
+if (( has_npm_package )); then
   log "format" "running" "npm run format --if-present"
   if (cd "$repo_root" && npm run format --if-present); then
     log "format" "ok" "format step completed"
   else
     log "format" "skip" "format script missing or failed"
+    format_failed=1
   fi
 else
   log "format" "skip" "format step unavailable"
@@ -63,8 +70,10 @@ fi
 
 if (( tests_failed )); then
   log "complete" "warn" "orchestrator finished with test failures"
+elif (( format_failed )); then
+  log "complete" "warn" "orchestrator finished with formatting issues"
 else
   log "complete" "ok" "orchestrator finished"
 fi
 
-exit $tests_failed
+exit $(( tests_failed || format_failed ))
