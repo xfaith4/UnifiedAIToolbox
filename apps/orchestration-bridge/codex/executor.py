@@ -1,10 +1,10 @@
 """Codex swarm executor for automated code review and analysis."""
 
-import os
 import subprocess
 import json
 import threading
 import time
+import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -82,11 +82,21 @@ class CodexExecutor:
             output_dir: Directory to store run outputs
         """
         if codex_script_path is None:
-            # Default to the script in packages/prompt-registry/tooling
+            # Prefer explicit env override, then the in-repo script location.
             base_dir = Path(__file__).parent.parent.parent.parent
-            codex_script_path = str(
-                base_dir / "packages" / "prompt-registry" / "tooling" / "Orchestrate-Codex.ps1"
-            )
+            env_path = os.environ.get("CODEX_SWARM_PS1")
+            if env_path:
+                codex_script_path = str(Path(env_path).expanduser().resolve())
+            else:
+                primary = (
+                    base_dir / "Orchestration" / "engine" / "codex-multiagent-swarm"
+                    / "Orchestrate-Codex.ps1"
+                )
+                fallback = (
+                    base_dir / "packages" / "prompt-registry" / "tooling"
+                    / "Orchestrate-Codex.ps1"
+                )
+                codex_script_path = str(primary if primary.exists() else fallback)
         
         self.codex_script_path = Path(codex_script_path)
         self.output_dir = Path(output_dir)

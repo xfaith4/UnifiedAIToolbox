@@ -3135,7 +3135,13 @@ async def start_repo_orchestration(req: RepoOrchestrationRequest, request: Reque
     event_queue: asyncio.Queue[Dict[str, Any]] = asyncio.Queue()
     loop = asyncio.get_event_loop()
     cancel_event = asyncio.Event()
-    codex_service = CodexSwarmService(output_dir=run_dir / "codex_runs")
+    try:
+        codex_service = CodexSwarmService(
+            codex_script_path=pathlib.Path(CODEX_SWARM_PS1),
+            output_dir=run_dir / "codex_runs",
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     async with _repo_state_lock:
         _repo_orchestration_state[run_id] = {
