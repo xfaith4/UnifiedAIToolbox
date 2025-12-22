@@ -7,6 +7,7 @@ import type { OrchestrationRun, OrchestrationForm, OrchestratorAgent } from '@/l
 import { fetchAgentLibrary } from '@/lib/services/agentStore'
 import { fetchPromptLibrary } from '@/lib/services/promptStore'
 import { getChatCompletion } from '@/lib/services/ai'
+import { calculateCost } from '@/lib/config/modelPricing'
 import {
   createOrchestrationRun,
   fetchOrchestrationRuns,
@@ -25,6 +26,7 @@ import {
 
 // Default agents for multi-agent orchestration
 const DEFAULT_ORCHESTRATOR_AGENTS: OrchestratorAgent[] = [
+  { name: 'Supervisor', role: 'system', description: 'Directs the swarm and enforces quality gates' },
   { name: 'Researcher', role: 'system', description: 'Investigates and gathers information' },
   { name: 'Engineer', role: 'system', description: 'Implements solutions and writes code' },
   { name: 'Critic', role: 'system', description: 'Reviews and validates work' },
@@ -39,6 +41,54 @@ const HIGHLIGHT_CARD =
   'rounded-3xl border border-blue-500/40 bg-gradient-to-br from-blue-900/70 to-slate-950/80 shadow-[0_30px_55px_rgba(15,23,42,0.7)] p-6'
 const MODAL_PANEL = 'w-full max-w-3xl rounded-3xl border border-slate-800 bg-slate-900/90 shadow-2xl'
 const OVERLAY = 'fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4'
+
+const SWARM_WORKFLOW_STEPS = [
+  {
+    title: 'Supervisor frames the swarm objective',
+    detail: 'Convert the user goal into a focused swarm plan with success criteria and guardrails.',
+  },
+  {
+    title: 'Parallel specialist swarm',
+    detail: 'Research, engineering, and critique agents work concurrently on scoped tasks.',
+  },
+  {
+    title: 'Synthesis and validation',
+    detail: 'The supervisor consolidates outputs, resolves conflicts, and validates quality.',
+  },
+]
+
+const SWARM_SAMPLE_RUN = {
+  goal: 'Draft a release note and migration checklist for the new swarming feature.',
+  agents: ['Supervisor', 'Researcher', 'Engineer', 'Critic', 'Synthesizer'],
+  status: 'completed',
+  duration: '2m 18s',
+  inputTokens: 5200,
+  outputTokens: 3000,
+  engine: 'codex-swarm',
+}
+
+const SWARM_SUPERVISOR_USES = [
+  'Trigger swarm mode when tasks are parallelizable or need independent opinions.',
+  'Set round limits and stop conditions to prevent over-spend.',
+  'Assign a synthesizer pass to unify tone and reduce contradictions.',
+]
+
+const SWARM_USE_CASES = [
+  'Rapid design reviews with multiple perspectives',
+  'Research synthesis across disparate sources',
+  'Large refactor planning with risk checks',
+  'Policy or compliance drafting with critique loops',
+]
+
+const SWARM_COST_BASELINE = {
+  label: 'Small swarm baseline',
+  agents: 4,
+  rounds: 2,
+  inputTokens: 6000,
+  outputTokens: 2000,
+}
+
+const SWARM_COST_MODELS = ['gpt-4o-mini', 'gpt-4-turbo', 'claude-3.5-sonnet'] as const
 
 export default function OrchestratorPage() {
   // Libraries
@@ -146,6 +196,57 @@ export default function OrchestratorPage() {
     () => prompts.find((p) => p.id === selectedPromptId),
     [prompts, selectedPromptId]
   )
+
+  const swarmRun = useMemo(() => {
+    const swarms = runs.filter((run) => run.runMode === 'codex-swarm')
+    if (swarms.length === 0) return null
+    return [...swarms].sort((a, b) => {
+      const aTime = Date.parse(a.completedAt || a.startedAt || a.requestedAt || '') || 0
+      const bTime = Date.parse(b.completedAt || b.startedAt || b.requestedAt || '') || 0
+      return bTime - aTime
+    })[0]
+  }, [runs])
+
+  const swarmRunDisplay = useMemo(() => {
+    if (!swarmRun) return SWARM_SAMPLE_RUN
+    const inputTokens = swarmRun.tokens?.prompt ?? 0
+    const outputTokens = swarmRun.tokens?.completion ?? 0
+    return {
+      goal: swarmRun.goal || SWARM_SAMPLE_RUN.goal,
+      agents: swarmRun.agents && swarmRun.agents.length > 0 ? swarmRun.agents : SWARM_SAMPLE_RUN.agents,
+      status: swarmRun.status || 'completed',
+      duration: swarmRun.completedAt && swarmRun.startedAt
+        ? `${Math.max(1, Math.round((Date.parse(swarmRun.completedAt) - Date.parse(swarmRun.startedAt)) / 1000 / 60))}m`
+        : SWARM_SAMPLE_RUN.duration,
+      inputTokens: inputTokens || SWARM_SAMPLE_RUN.inputTokens,
+      outputTokens: outputTokens || SWARM_SAMPLE_RUN.outputTokens,
+      engine: swarmRun.runMode || SWARM_SAMPLE_RUN.engine,
+      model: swarmRun.model,
+    }
+  }, [swarmRun])
+
+  const handleRunSampleSwarm = () => {
+    const availableAgents = new Set(orchestratorAgents.map((agent) => agent.name))
+    const selected = swarmRunDisplay.agents.filter((agent) => availableAgents.has(agent))
+    setLegacyMode(false)
+    setForm((prev) => ({
+      ...prev,
+      goal: swarmRunDisplay.goal,
+      runMode: 'codex-swarm',
+      agents: [],
+      model: swarmRunDisplay.model || '',
+    }))
+    setSelectedAgents(selected)
+  }
+
+  const swarmCostEstimates = useMemo(() => {
+    return SWARM_COST_MODELS.map((model) => ({
+      model,
+      cost: calculateCost(model, SWARM_COST_BASELINE.inputTokens, SWARM_COST_BASELINE.outputTokens),
+    }))
+  }, [])
+
+  const hasSwarmRun = Boolean(swarmRun)
 
   // Template rendering for legacy mode
   function renderTemplate(): string {
@@ -666,6 +767,161 @@ export default function OrchestratorPage() {
               </button>
             </div>
           </form>
+
+          {/* Swarming Preview */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-200">Swarming Fit and Sample Run</h2>
+                <p className="text-sm text-slate-400">
+                  Position swarming as a high-parallelism execution mode that the supervisor can invoke when speed and
+                  cross-checking matter most.
+                </p>
+              </div>
+              <span className="rounded-full border border-blue-700 bg-blue-900/40 px-3 py-1 text-xs text-blue-200">
+                Preview only
+              </span>
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-[1.1fr_1fr]">
+              <div className={`${CARD_SHELL} ${CARD_PADDING} space-y-4`}>
+                <div>
+                  <div className="text-sm font-semibold text-slate-200">Where swarming fits</div>
+                  <p className="mt-2 text-sm text-slate-300">
+                    Use swarming when the goal can be split into parallel tracks and you want diversity of ideas before
+                    converging. The supervisor agent acts as the swarm conductor, enforcing quality gates and merging
+                    outputs into a single deliverable.
+                  </p>
+                </div>
+                <div className="space-y-3">
+                  <div className="text-sm font-semibold text-slate-200">Example workflow</div>
+                  <div className="space-y-2">
+                    {SWARM_WORKFLOW_STEPS.map((step, index) => (
+                      <div key={step.title} className="rounded-xl border border-slate-800 bg-slate-900/70 p-3">
+                        <div className="text-xs font-semibold text-blue-300">Step {index + 1}</div>
+                        <div className="text-sm font-semibold text-slate-100">{step.title}</div>
+                        <div className="text-xs text-slate-400">{step.detail}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className={`${CARD_SHELL} ${CARD_PADDING} space-y-4`}>
+                <div className="flex items-center justify-between">
+                  <div className="text-sm font-semibold text-slate-200">
+                    {hasSwarmRun ? 'Latest swarming run' : 'Sample run'}
+                  </div>
+                  <span className="text-[11px] uppercase tracking-wide text-slate-500">
+                    {hasSwarmRun ? 'Live data' : 'Example'}
+                  </span>
+                </div>
+                <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 space-y-3">
+                  <div>
+                    <div className="text-xs uppercase tracking-wide text-slate-500">Goal</div>
+                    <div className="text-sm text-slate-100">{swarmRunDisplay.goal}</div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {swarmRunDisplay.agents.map((agent) => (
+                      <span key={agent} className="rounded bg-slate-800 px-2 py-1 text-xs text-slate-200">
+                        {agent}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 text-xs text-slate-400">
+                    <div>
+                      <div className="text-[11px] uppercase tracking-wide text-slate-500">Status</div>
+                      <div className="text-slate-200">{swarmRunDisplay.status}</div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] uppercase tracking-wide text-slate-500">Engine</div>
+                      <div className="text-slate-200">{swarmRunDisplay.engine}</div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] uppercase tracking-wide text-slate-500">Duration</div>
+                      <div className="text-slate-200">{swarmRunDisplay.duration}</div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] uppercase tracking-wide text-slate-500">Tokens</div>
+                      <div className="text-slate-200">
+                        {swarmRunDisplay.inputTokens + swarmRunDisplay.outputTokens} total
+                      </div>
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-blue-900/50 bg-blue-950/60 px-3 py-2 text-xs text-blue-200">
+                    Estimated cost (gpt-4o-mini): $
+                    {calculateCost('gpt-4o-mini', swarmRunDisplay.inputTokens, swarmRunDisplay.outputTokens).toFixed(4)}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRunSampleSwarm}
+                    className="w-full rounded-lg border border-blue-700 bg-blue-800/40 px-3 py-2 text-xs font-semibold text-blue-100 hover:bg-blue-700/50"
+                  >
+                    Run this swarm
+                  </button>
+                </div>
+              </div>
+              </div>
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-2">
+              <div className={`${CARD_SHELL} ${CARD_PADDING}`}>
+                <div className="text-sm font-semibold text-slate-200">Supervisor agent playbook</div>
+                <ul className="mt-3 space-y-2 text-sm text-slate-300">
+                  {SWARM_SUPERVISOR_USES.map((item) => (
+                    <li key={item} className="flex gap-2">
+                      <span className="mt-1 h-1.5 w-1.5 rounded-full bg-blue-400" />
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className={`${CARD_SHELL} ${CARD_PADDING}`}>
+                <div className="text-sm font-semibold text-slate-200">Best-fit use cases</div>
+                <ul className="mt-3 space-y-2 text-sm text-slate-300">
+                  {SWARM_USE_CASES.map((item) => (
+                    <li key={item} className="flex gap-2">
+                      <span className="mt-1 h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
+            <div className={`${CARD_SHELL} ${CARD_PADDING} space-y-3`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-sm font-semibold text-slate-200">Small-scale cost estimate</div>
+                  <div className="text-xs text-slate-400">
+                    {SWARM_COST_BASELINE.agents} agents, {SWARM_COST_BASELINE.rounds} rounds, {SWARM_COST_BASELINE.inputTokens} input
+                    / {SWARM_COST_BASELINE.outputTokens} output tokens
+                  </div>
+                </div>
+                <span className="text-xs text-slate-500">Estimates based on model pricing config</span>
+              </div>
+              <div className="overflow-hidden rounded-xl border border-slate-800">
+                <table className="min-w-full text-xs">
+                  <thead className="bg-slate-800/70 text-slate-300">
+                    <tr>
+                      <th className="px-3 py-2 text-left">Model</th>
+                      <th className="px-3 py-2 text-right">Per run</th>
+                      <th className="px-3 py-2 text-right">10 runs</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {swarmCostEstimates.map((estimate) => (
+                      <tr key={estimate.model} className="border-t border-slate-800 text-slate-200">
+                        <td className="px-3 py-2">{estimate.model}</td>
+                        <td className="px-3 py-2 text-right">${estimate.cost.toFixed(4)}</td>
+                        <td className="px-3 py-2 text-right">${(estimate.cost * 10).toFixed(4)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
 
           {/* Recent Orchestrations */}
           <div className="space-y-2">
