@@ -283,7 +283,7 @@ const useOrchestrator = () => {
           }
         }
 
-        const artifactContent = artifactLines.join('\n');
+        let artifactContent = artifactLines.join('\n');
 
         // Fallback: If no ARTIFACT tag was found, treat the whole response (minus logs) as the artifact.
         if (!artifactContent.trim() && fullResponseText.trim()) {
