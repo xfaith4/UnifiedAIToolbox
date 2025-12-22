@@ -54,7 +54,7 @@ if [ -f "${repo_root}/package.json" ] && command -v npm >/dev/null 2>&1; then
   if (cd "$repo_root" && npm run format --if-present); then
     log "format" "ok" "format step completed"
   else
-    log "format" "skip" "format step failed or not defined"
+    log "format" "skip" "format script missing or failed"
   fi
 else
   log "format" "skip" "format step unavailable"
