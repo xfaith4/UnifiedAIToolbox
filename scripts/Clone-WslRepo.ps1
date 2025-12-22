@@ -17,7 +17,7 @@ if (-not $Repo) {
 }
 
 if (-not $Repo) {
-    throw "Repo was not provided. Set -Repo or define $Env:MY_GITHUB_REPO before running."
+    throw "Repo was not provided. Set -Repo or define MY_GITHUB_REPO in the environment before running."
 }
 
 $Env:MY_GITHUB_REPO = $Repo
@@ -61,13 +61,13 @@ $bashLines = @(
     'fi',
     'if [ ! -d "$repo_dir/.git" ]; then',
     '  printf "[%s] stage=clone action=git-clone dest=%s\n" "$(date -Iseconds)" "$repo_dir" | tee -a "$log_file"',
-    '  git clone "$REPO" "$repo_dir" | tee -a "$log_file"',
+    '  git clone "$REPO" "$repo_dir" 2>&1 | tee -a "$log_file"',
     '  log_file="$repo_log"',
     '  cat "$bootstrap_log" >> "$log_file"',
     'else',
     '  printf "[%s] stage=update action=git-fetch\n" "$(date -Iseconds)" | tee -a "$log_file"',
-    '  git -C "$repo_dir" fetch --all --prune | tee -a "$log_file"',
-    '  git -C "$repo_dir" pull --ff-only | tee -a "$log_file"',
+    '  git -C "$repo_dir" fetch --all --prune 2>&1 | tee -a "$log_file"',
+    '  git -C "$repo_dir" pull --ff-only 2>&1 | tee -a "$log_file"',
     'fi',
     'orchestrator="${ORCHESTRATOR_PATH:-orchestrator.sh}"',
     'candidate="$repo_dir/$orchestrator"',

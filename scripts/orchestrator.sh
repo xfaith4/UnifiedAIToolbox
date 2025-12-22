@@ -16,6 +16,7 @@ log() {
 }
 
 log "start" "ok" "orchestrator=UnifiedAIToolbox scripts/orchestrator.sh"
+tests_failed=0
 
 # Tool checks
 if command -v node >/dev/null 2>&1; then
@@ -38,7 +39,7 @@ if [ -f "${repo_root}/package.json" ] && command -v npm >/dev/null 2>&1; then
       log "tests" "ok" "npm test completed"
     else
       log "tests" "fail" "npm test failed"
-      exit 1
+      tests_failed=1
     fi
   else
     log "tests" "skip" "node_modules missing; run npm install to enable tests"
@@ -59,4 +60,10 @@ else
   log "format" "skip" "format step unavailable"
 fi
 
-log "complete" "ok" "orchestrator finished"
+if (( tests_failed )); then
+  log "complete" "warn" "orchestrator finished with test failures"
+else
+  log "complete" "ok" "orchestrator finished"
+fi
+
+exit $tests_failed
