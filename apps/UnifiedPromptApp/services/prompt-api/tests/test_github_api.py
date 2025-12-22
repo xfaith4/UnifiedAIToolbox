@@ -19,6 +19,25 @@ sys.modules['github_integration.repo_intake_service'] = MagicMock()
 sys.modules['github_integration.supervisor_planner'] = MagicMock()
 sys.modules['shared'] = MagicMock()
 sys.modules['shared.github_core'] = MagicMock()
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# Mock the GitHub services before importing app
+sys.modules['github_integration'] = MagicMock()
+sys.modules['github_integration.clone_service'] = MagicMock()
+sys.modules['github_integration.pr_service'] = MagicMock()
+sys.modules['github_integration.repo_intake_service'] = MagicMock()
+sys.modules['github_integration.supervisor_planner'] = MagicMock()
+sys.modules['shared'] = MagicMock()
+sys.modules['shared.github_core'] = MagicMock()
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# Mock the GitHub services before importing app
+sys.modules['github_integration'] = MagicMock()
+sys.modules['github_integration.clone_service'] = MagicMock()
+sys.modules['github_integration.pr_service'] = MagicMock()
+sys.modules['github_integration.repo_intake_service'] = MagicMock()
+sys.modules['shared'] = MagicMock()
+sys.modules['shared.github_core'] = MagicMock()
 
 from github_api import router
 from fastapi import FastAPI
@@ -124,6 +143,252 @@ class TestTaskGraph:
         )
 
         assert response.status_code == 400
+
+
+class TestListAccessibleRepositories:
+    """Tests for accessible repository listing endpoint."""
+    
+    @patch('github_api.GITHUB_AVAILABLE', True)
+    @patch('github_api.GitHubCloneService')
+    def test_list_accessible_repos_success(self, mock_service_class):
+        """Token-based listing should return repositories."""
+        mock_service = Mock()
+        mock_service.list_accessible_repos.return_value = [{
+            "id": 1,
+            "full_name": "owner/repo",
+            "name": "repo",
+            "owner": "owner",
+            "description": "Repo description",
+            "html_url": "https://github.com/owner/repo",
+            "private": True
+        }]
+        mock_service_class.return_value = mock_service
+        
+        response = client.get(
+            "/github/repos",
+            headers={"Authorization": "Bearer testtoken"}
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["full_name"] == "owner/repo"
+        mock_service.list_accessible_repos.assert_called_once()
+    
+    @patch('github_api.GITHUB_AVAILABLE', True)
+    def test_list_accessible_repos_missing_token(self):
+        """Token is required for listing repositories."""
+        response = client.get("/github/repos")
+        assert response.status_code == 401
+    
+    @patch('github_api.GITHUB_AVAILABLE', True)
+    @patch('github_api.GitHubCloneService')
+    def test_list_accessible_repos_service_error(self, mock_service_class):
+        """RepositoryCloneError should propagate as 400."""
+        RepoErr = type('RepoErr', (Exception,), {})
+        
+        with patch('github_api.RepositoryCloneError', new=RepoErr):
+            mock_service = Mock()
+            mock_service.list_accessible_repos.side_effect = RepoErr("scope error")
+            mock_service_class.return_value = mock_service
+            
+            response = client.get(
+                "/github/repos",
+                headers={"Authorization": "Bearer testtoken"}
+            )
+            
+            assert response.status_code == 400
+
+
+class TestGitHubAuth:
+    """Tests for GitHub authentication endpoints."""
+        assert "authenticated" in data
+        assert "message" in data
+
+
+class TestRepoIntake:
+    """Tests for repository intake endpoint."""
+
+    @patch('github_api.GITHUB_AVAILABLE', True)
+    @patch('github_api.RepoIntakeService')
+    def test_repo_intake_success(self, mock_service_class):
+        """Intake endpoint should return generated intake data."""
+        mock_service = Mock()
+        mock_service.run_intake.return_value = {"run_id": "r1", "repo_url": "https://example.com/repo"}
+        mock_service_class.return_value = mock_service
+
+        response = client.post(
+            "/github/repos/intake",
+            json={"repo_url": "https://example.com/repo", "run_id": "r1"},
+            headers={"Authorization": "Bearer token"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["intake"]["run_id"] == "r1"
+        mock_service.run_intake.assert_called_once()
+
+    @patch('github_api.GITHUB_AVAILABLE', True)
+    @patch('github_api.RepoIntakeService')
+    def test_repo_intake_error(self, mock_service_class):
+        """RepoIntakeError should surface as 400."""
+        Err = type('IntakeErr', (Exception,), {})
+        with patch('github_api.RepoIntakeError', new=Err):
+            mock_service = Mock()
+            mock_service.run_intake.side_effect = Err("fail")
+            mock_service_class.return_value = mock_service
+
+            response = client.post(
+                "/github/repos/intake",
+                json={"repo_url": "https://example.com/repo", "run_id": "r2"},
+            )
+
+            assert response.status_code == 400
+
+
+class TestTaskGraph:
+    """Tests for task graph generation endpoint."""
+
+    @patch('github_api.GITHUB_AVAILABLE', True)
+    @patch('github_api.SupervisorPlanner')
+    def test_taskgraph_success(self, mock_planner_class):
+        mock_planner = Mock()
+        mock_planner.generate_taskgraph.return_value = {"tasks": []}
+        mock_planner_class.return_value = mock_planner
+
+        response = client.post(
+            "/github/supervisor/taskgraph",
+            json={
+                "run_id": "r1",
+                "user_goal": "Do work",
+                "constraints": {"allowed_paths": ["src"], "max_parallel": 2, "risk_posture": "standard"},
+                "intake": {"build_signals": []},
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "taskgraph" in data
+        mock_planner.generate_taskgraph.assert_called_once()
+
+    @patch('github_api.GITHUB_AVAILABLE', True)
+    @patch('github_api.SupervisorPlanner')
+    def test_taskgraph_missing_intake_file(self, mock_planner_class):
+        """Missing intake on disk should return 400."""
+        mock_planner = Mock()
+        mock_planner_class.return_value = mock_planner
+
+        response = client.post(
+            "/github/supervisor/taskgraph",
+            json={
+                "run_id": "missing",
+                "user_goal": "Do work",
+                "constraints": {},
+            },
+        )
+
+        assert response.status_code == 400
+
+
+class TestListAccessibleRepositories:
+    """Tests for accessible repository listing endpoint."""
+    
+    @patch('github_api.GITHUB_AVAILABLE', True)
+    @patch('github_api.GitHubCloneService')
+    def test_list_accessible_repos_success(self, mock_service_class):
+        """Token-based listing should return repositories."""
+        mock_service = Mock()
+        mock_service.list_accessible_repos.return_value = [{
+            "id": 1,
+            "full_name": "owner/repo",
+            "name": "repo",
+            "owner": "owner",
+            "description": "Repo description",
+            "html_url": "https://github.com/owner/repo",
+            "private": True
+        }]
+        mock_service_class.return_value = mock_service
+        
+        response = client.get(
+            "/github/repos",
+            headers={"Authorization": "Bearer testtoken"}
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["full_name"] == "owner/repo"
+        mock_service.list_accessible_repos.assert_called_once()
+    
+    @patch('github_api.GITHUB_AVAILABLE', True)
+    def test_list_accessible_repos_missing_token(self):
+        """Token is required for listing repositories."""
+        response = client.get("/github/repos")
+        assert response.status_code == 401
+    
+    @patch('github_api.GITHUB_AVAILABLE', True)
+    @patch('github_api.GitHubCloneService')
+    def test_list_accessible_repos_service_error(self, mock_service_class):
+        """RepositoryCloneError should propagate as 400."""
+        RepoErr = type('RepoErr', (Exception,), {})
+        
+        with patch('github_api.RepositoryCloneError', new=RepoErr):
+            mock_service = Mock()
+            mock_service.list_accessible_repos.side_effect = RepoErr("scope error")
+            mock_service_class.return_value = mock_service
+            
+            response = client.get(
+                "/github/repos",
+                headers={"Authorization": "Bearer testtoken"}
+            )
+            
+            assert response.status_code == 400
+
+
+class TestGitHubAuth:
+    """Tests for GitHub authentication endpoints."""
+        assert "authenticated" in data
+        assert "message" in data
+
+
+class TestRepoIntake:
+    """Tests for repository intake endpoint."""
+
+    @patch('github_api.GITHUB_AVAILABLE', True)
+    @patch('github_api.RepoIntakeService')
+    def test_repo_intake_success(self, mock_service_class):
+        """Intake endpoint should return generated intake data."""
+        mock_service = Mock()
+        mock_service.run_intake.return_value = {"run_id": "r1", "repo_url": "https://example.com/repo"}
+        mock_service_class.return_value = mock_service
+
+        response = client.post(
+            "/github/repos/intake",
+            json={"repo_url": "https://example.com/repo", "run_id": "r1"},
+            headers={"Authorization": "Bearer token"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["intake"]["run_id"] == "r1"
+        mock_service.run_intake.assert_called_once()
+
+    @patch('github_api.GITHUB_AVAILABLE', True)
+    @patch('github_api.RepoIntakeService')
+    def test_repo_intake_error(self, mock_service_class):
+        """RepoIntakeError should surface as 400."""
+        Err = type('IntakeErr', (Exception,), {})
+        with patch('github_api.RepoIntakeError', new=Err):
+            mock_service = Mock()
+            mock_service.run_intake.side_effect = Err("fail")
+            mock_service_class.return_value = mock_service
+
+            response = client.post(
+                "/github/repos/intake",
+                json={"repo_url": "https://example.com/repo", "run_id": "r2"},
+            )
+
+            assert response.status_code == 400
 
 
 class TestListAccessibleRepositories:
