@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from github_integration.clone_service import GitHubCloneService, RepositoryCloneError, CloneProgress
 from github_integration.codex_service import CodexSwarmService, CodexRunStatus
+from github import GithubException
 
 
 class TestCloneProgress:
@@ -131,6 +132,77 @@ class TestGitHubCloneService:
             assert tree['name'] == "test_repo"
             assert tree['type'] == "directory"
             assert len(tree['children']) >= 2
+    
+    def test_list_accessible_repos_requires_token(self):
+        """Listing repositories should require authentication."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            service = GitHubCloneService(clone_base_dir=Path(tmpdir))
+            service.github_client = None
+            
+            with pytest.raises(RepositoryCloneError, match="token required"):
+                service.list_accessible_repos()
+    
+    def test_list_accessible_repos_success(self):
+        """Test listing accessible repositories."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            service = GitHubCloneService(
+                github_token="token",
+                clone_base_dir=Path(tmpdir)
+            )
+            
+            mock_repo = Mock()
+            mock_repo.id = 1
+            mock_repo.full_name = "owner/repo"
+            mock_repo.name = "repo"
+            mock_repo.owner.login = "owner"
+            mock_repo.description = "Test repo"
+            mock_repo.html_url = "https://github.com/owner/repo"
+            mock_repo.clone_url = "https://github.com/owner/repo.git"
+            mock_repo.default_branch = "main"
+            mock_repo.private = True
+            mock_repo.archived = False
+            mock_repo.updated_at = None
+            
+            mock_core = Mock(remaining=10, reset=0)
+            mock_client = Mock()
+            mock_client.get_rate_limit.return_value = Mock(core=mock_core)
+            mock_user = Mock()
+            mock_user.get_repos.return_value = [mock_repo]
+            mock_client.get_user.return_value = mock_user
+            
+            service.github_client = mock_client
+            
+            repos = service.list_accessible_repos()
+            
+            assert len(repos) == 1
+            assert repos[0]['full_name'] == "owner/repo"
+            assert repos[0]['private'] is True
+            mock_user.get_repos.assert_called_once_with(
+                visibility="all",
+                affiliation="owner,collaborator,organization_member"
+            )
+    
+    def test_list_accessible_repos_permission_error(self):
+        """Test permission error when listing repositories."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            service = GitHubCloneService(
+                github_token="token",
+                clone_base_dir=Path(tmpdir)
+            )
+            
+            mock_core = Mock(remaining=10, reset=0)
+            mock_client = Mock()
+            mock_client.get_rate_limit.return_value = Mock(core=mock_core)
+            mock_client.get_user.side_effect = GithubException(
+                status=403,
+                data={"message": "Resource not accessible by integration"},
+                headers=None
+            )
+            
+            service.github_client = mock_client
+            
+            with pytest.raises(RepositoryCloneError, match="missing repository access"):
+                service.list_accessible_repos()
 
 
 class TestCodexSwarmService:

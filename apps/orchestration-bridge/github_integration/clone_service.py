@@ -9,7 +9,7 @@ import os
 import logging
 from pathlib import Path
 from typing import Optional, Dict, Any, Callable
-from datetime import datetime
+from datetime import datetime, timezone
 import tempfile
 
 try:
@@ -165,6 +165,95 @@ class GitHubCloneService(GitHubClientMixin, FileTreeMixin, CloneUrlMixin):
             raise RepositoryCloneError(f"Search failed: {e.data.get('message', str(e))}")
         except Exception as e:
             raise RepositoryCloneError(f"Unexpected error during search: {str(e)}")
+    
+    def list_accessible_repos(
+        self,
+        limit: Optional[int] = None
+    ) -> list[Dict[str, Any]]:
+        """
+        List repositories the authenticated user can access.
+        
+        Args:
+            limit: Optional limit on number of repositories to return
+            
+        Returns:
+            List of accessible repository metadata dictionaries
+            
+        Raises:
+            RepositoryCloneError: If listing fails or authentication is missing
+        """
+        if not self.github_client:
+            raise RepositoryCloneError(
+                "GitHub token required for listing accessible repositories"
+            )
+        
+        try:
+            try:
+                rate_limit = self.github_client.get_rate_limit().core
+                if rate_limit.remaining <= 0:
+                    reset_time = datetime.fromtimestamp(
+                        rate_limit.reset, timezone.utc
+                    ).isoformat()
+                    raise RepositoryCloneError(
+                        f"GitHub rate limit exceeded. Core API resets at {reset_time}."
+                    )
+            except GithubException:
+                # If rate limit lookup fails, continue and let the main call surface errors
+                rate_limit = None  # type: ignore
+            
+            user = self.github_client.get_user()
+            repos_iter = user.get_repos(
+                visibility="all",
+                affiliation="owner,collaborator,organization_member",
+            )
+            
+            repos: list[Dict[str, Any]] = []
+            for repo in repos_iter:
+                repos.append({
+                    "id": getattr(repo, "id", None),
+                    "full_name": repo.full_name,
+                    "name": repo.name,
+                    "owner": repo.owner.login if getattr(repo, "owner", None) else "",
+                    "description": repo.description or "",
+                    "html_url": repo.html_url,
+                    "clone_url": repo.clone_url,
+                    "default_branch": getattr(repo, "default_branch", None),
+                    "private": bool(getattr(repo, "private", False)),
+                    "archived": bool(getattr(repo, "archived", False)),
+                    "visibility": "private" if getattr(repo, "private", False) else "public",
+                    "updated_at": repo.updated_at.isoformat() if getattr(repo, "updated_at", None) else None,
+                })
+                
+                if limit is not None and len(repos) >= limit:
+                    break
+            
+            return repos
+        except RepositoryCloneError:
+            raise
+        except GithubException as e:
+            message = e.data.get('message', str(e)) if getattr(e, "data", None) else str(e)
+            
+            if e.status == 403 and "rate limit" in message.lower():
+                try:
+                    reset = self.github_client.get_rate_limit().core.reset
+                    reset_time = datetime.fromtimestamp(reset, timezone.utc).isoformat()
+                except Exception:
+                    reset_time = "soon"
+                raise RepositoryCloneError(
+                    f"GitHub rate limit exceeded. Core API resets at {reset_time}."
+                )
+            
+            if e.status in (401, 403):
+                raise RepositoryCloneError(
+                    "GitHub token is missing repository access. "
+                    "Ensure the PAT includes the repo scope or fine-grained permissions for repository read access."
+                )
+            
+            raise RepositoryCloneError(
+                f"Failed to list accessible repositories: {message}"
+            )
+        except Exception as e:
+            raise RepositoryCloneError(f"Unexpected error listing repositories: {str(e)}")
     
     def clone_repository(
         self,

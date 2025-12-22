@@ -68,6 +68,22 @@ class RepositoryMetadataResponse(BaseModel):
     updated_at: Optional[str] = None
 
 
+class AccessibleRepository(BaseModel):
+    """Repository listing entry for accessible repositories."""
+    id: Optional[int] = None
+    full_name: str
+    name: str
+    owner: Optional[str] = None
+    description: Optional[str] = ""
+    html_url: str
+    clone_url: Optional[str] = None
+    default_branch: Optional[str] = None
+    private: bool = False
+    archived: bool = False
+    visibility: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
 class CloneRepositoryRequest(BaseModel):
     """Request model for cloning a repository."""
     repo_url: str = Field(..., description="Repository URL or owner/repo format")
@@ -213,6 +229,38 @@ def verify_github_auth(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to verify authentication: {str(e)}"
+        )
+
+
+@router.get("/repos", response_model=List[AccessibleRepository])
+def list_accessible_repositories(
+    authorization: Optional[str] = Header(None)
+):
+    """
+    List repositories accessible to the provided GitHub token.
+    
+    Includes both public and private repositories where the token holder is
+    an owner, collaborator, or organization member.
+    """
+    validate_github_available()
+    
+    token = get_github_token(authorization)
+    if not token:
+        raise HTTPException(
+            status_code=401,
+            detail="GitHub token required to list accessible repositories."
+        )
+    
+    try:
+        service = GitHubCloneService(github_token=token)
+        return service.list_accessible_repos()
+    except RepositoryCloneError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to list accessible repositories: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to list accessible repositories."
         )
 
 
