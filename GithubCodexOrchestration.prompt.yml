@@ -1,0 +1,119 @@
+messages:
+  - role: system
+    content: >-
+      You are a professional UX Testing Engineer.  Your task is to test the
+      GitHub Repository Orchestration workflow within this project. 
+  - role: user
+    content: >
+      TITLE: Fix Windows → PowerShell → WSL env-var pass-through for Codex
+      orchestration (UnifiedAIToolbox)
+
+
+      CONTEXT
+
+      UnifiedAIToolbox launches a WSL-based Codex/orchestration workflow, but
+      environment variables set in Windows are not reliably visible inside WSL.
+      This blocks git operations (clone/fetch) and downstream multi-agent
+      orchestration.
+
+
+      PRIMARY GOAL
+
+      Implement a reproducible, testable pipeline that:
+
+      1) Reads values from Windows PowerShell (repo URL / repo slug, optional
+      token),
+
+      2) Passes them into WSL in a reliable way,
+
+      3) Clones/updates a repo inside WSL,
+
+      4) Runs an orchestrator script in WSL,
+
+      5) Produces logs proving each stage worked.
+
+
+      HARD REQUIREMENTS
+
+      - Use PowerShell-compatible execution (no bash heredocs like `wsl <<
+      EOF`).
+
+      - Use WSLENV to guarantee env-var pass-through from Win32 → WSL:
+        - Add variables to WSLENV using colon-delimited entries.
+        - Use /u flag for Win32→WSL-only variables (do not leak back to Windows processes).
+      - Do NOT print secrets. If a token is used, mask it in logs (show only
+      first 4 + last 4).
+
+      - Prefer auth in WSL using `gh auth login` (one-time) instead of embedding
+      tokens in URLs.
+
+      - Include strong error handling: fail fast with actionable messages.
+
+
+      DELIVERABLES (make these exact changes)
+
+      1) Create `scripts/Clone-WslRepo.ps1` (PowerShell 5.1+ compatible) that:
+         - Accepts parameters:
+             -Repo (repo URL or owner/name)
+             -WslDistro (optional)
+             -WslWorkDir (default: ~/repos)
+             -OrchestratorPath (default: orchestrator.sh)
+         - Reads $Env:MY_GITHUB_REPO when -Repo not provided.
+         - Sets process-scoped env vars (NOT setx) and uses WSLENV allowlisting:
+             - Ensure MY_GITHUB_REPO is included with /u
+             - If GH_TOKEN is present, include GH_TOKEN/u but never echo it
+         - Calls WSL via: `wsl.exe -- bash -lc "<single command string>"`
+           The bash command must:
+             - `set -euo pipefail`
+             - Ensure `git` exists, fail with install hint if missing
+             - Create workdir
+             - Clone if missing, else fetch+pull
+             - Run orchestrator if present (repo-root relative), else explain what’s missing
+             - Write a log file in the repo: `orchestration.log`
+
+      2) Create `scripts/orchestrator.sh` (or document expected location) that:
+         - Is idempotent and safe (no destructive ops by default)
+         - Demonstrates “multi-step” behavior:
+             - tool checks (node/python optional)
+             - run tests if present
+             - optional formatting if tools exist
+         - Appends structured logs to orchestration.log
+
+      3) Add `docs/wsl-env-passthrough.md` explaining:
+         - Why setx isn’t used for runtime execution (session scope)
+         - How WSLENV works (colon-delimited allowlist; /u flag)
+         - Example usage commands for Windows PowerShell + expected outputs
+
+      TEST PLAN (must be executed and documented in the PR description)
+
+      A) Happy path:
+         - In PowerShell:
+             $env:MY_GITHUB_REPO="https://github.com/<owner>/<repo>.git"
+             .\scripts\Clone-WslRepo.ps1
+         - Verify in WSL:
+             echo "$MY_GITHUB_REPO"
+             ls ~/repos/<repo>
+             tail -n 50 ~/repos/<repo>/orchestration.log
+
+      B) Missing env var:
+         - Clear variable and run script, confirm it fails with a clear message.
+
+      C) Existing repo:
+         - Run twice; second run must pull/fetch rather than reclone.
+
+      D) Secret safety:
+         - If GH_TOKEN is set, ensure logs never contain the full token.
+
+      DEFINITION OF DONE
+
+      - A single command in PowerShell can kick off the workflow end-to-end.
+
+      - WSL receives MY_GITHUB_REPO reliably (proved by logs).
+
+      - Repo is cloned or updated in ~/repos (or specified dir).
+
+      - Orchestrator runs and produces `orchestration.log`.
+
+      - Failure modes give actionable remediation steps (install git/gh, auth,
+      etc.).
+model: openai/gpt-4o
