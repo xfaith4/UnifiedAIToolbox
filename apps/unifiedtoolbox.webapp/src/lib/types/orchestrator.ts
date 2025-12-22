@@ -84,3 +84,44 @@ export interface OrchestratorAgent {
   meta?: Record<string, unknown>
 }
 
+export interface RepoOrchestrationOptions {
+  branch?: string
+  base_branch?: string
+  integration_branch?: string
+  allowed_paths?: string[]
+  max_parallel?: number
+  risk_posture?: string
+  github_token?: string
+  model?: string
+  pr_title?: string
+  pr_body?: string
+}
+
+export interface RepoOrchestrationRequest {
+  repo: string
+  goal: string
+  options?: RepoOrchestrationOptions
+}
+
+export interface RepoOrchestrationResult {
+  runId?: string
+  run_id?: string
+  status?: string
+  prUrl?: string
+  pr_url?: string
+  artifacts?: Record<string, unknown>
+  cancelled?: boolean
+}
+
+export interface RepoOrchestrationEvent {
+  run_id?: string
+  type?: string
+  message?: string
+  progress?: Record<string, unknown>
+  task_id?: string
+  log_line?: string
+  result?: RepoOrchestrationResult
+  final?: boolean
+  [key: string]: unknown
+}
+

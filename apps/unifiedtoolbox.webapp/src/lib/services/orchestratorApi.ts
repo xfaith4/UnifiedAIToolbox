@@ -1,6 +1,12 @@
 'use client'
 
-import type { OrchestrationRun, OrchestrationRunEvent } from '@/lib/types/orchestrator'
+import type {
+  OrchestrationRun,
+  OrchestrationRunEvent,
+  RepoOrchestrationEvent,
+  RepoOrchestrationRequest,
+  RepoOrchestrationResult,
+} from '@/lib/types/orchestrator'
 
 // API base URL from environment, falling back to the onboard Prompt API for local dev
 const API_BASE_FROM_ENV = (process.env.NEXT_PUBLIC_API_BASE ?? process.env.NEXT_PUBLIC_PROMPT_API_BASE ?? '').trim()
@@ -191,4 +197,84 @@ function normalizeApiRun(raw: Record<string, unknown>): OrchestrationRun {
     output: raw.output ? String(raw.output) : undefined,
     tokens: raw.tokens as OrchestrationRun['tokens'],
   }
+}
+
+/**
+ * Start a repository orchestration run with streaming SSE events
+ */
+export async function startRepoOrchestration(
+  payload: RepoOrchestrationRequest,
+  onEvent: (event: RepoOrchestrationEvent) => void
+): Promise<{ cancel: () => void }> {
+  if (!API_BASE) throw new Error('API base not configured')
+
+  const controller = new AbortController()
+  const res = await fetch(`${API_BASE}/orchestrate/repo`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    signal: controller.signal,
+  })
+
+  if (!res.ok || !res.body) {
+    const msg = await res.text().catch(() => 'failed to start repo orchestration')
+    throw new Error(`Failed to start repo orchestration (${res.status}): ${msg}`)
+  }
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  const pump = async (): Promise<void> => {
+    try {
+      while (true) {
+        const { value, done } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const parts = buffer.split('\n\n')
+        buffer = parts.pop() ?? ''
+        for (const chunk of parts) {
+          for (const line of chunk.split('\n')) {
+            const trimmed = line.trim()
+            if (!trimmed.startsWith('data:')) continue
+            const jsonPayload = trimmed.replace(/^data:\s*/, '')
+            try {
+              const parsed = JSON.parse(jsonPayload) as RepoOrchestrationEvent
+              onEvent(parsed)
+              if (parsed.final) {
+                return
+              }
+            } catch (err) {
+              console.warn('[RepoOrchestration] Failed to parse event', err, jsonPayload)
+            }
+          }
+        }
+      }
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') return
+      console.warn('[RepoOrchestration] Stream ended with error', err)
+    }
+  }
+
+  // Begin processing asynchronously
+  void pump()
+
+  return {
+    cancel: () => controller.abort(),
+  }
+}
+
+/**
+ * Cancel an active repository orchestration run
+ */
+export async function cancelRepoOrchestration(runId: string): Promise<RepoOrchestrationResult> {
+  if (!API_BASE) throw new Error('API base not configured')
+  const res = await fetch(`${API_BASE}/orchestrate/repo/${encodeURIComponent(runId)}/cancel`, {
+    method: 'POST',
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => 'unknown error')
+    throw new Error(`Failed to cancel run (${res.status}): ${text}`)
+  }
+  return (await res.json()) as RepoOrchestrationResult
 }

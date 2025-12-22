@@ -37,6 +37,7 @@ class MergeCoordinator:
         taskgraph_path: Optional[Path] = None,
         pr_title: Optional[str] = None,
         pr_body: Optional[str] = None,
+        push_integration: bool = False,
     ) -> Dict[str, Any]:
         if not run_id:
             raise MergeCoordinatorError("run_id is required")
@@ -100,6 +101,11 @@ class MergeCoordinator:
         pr_service = GitHubPRService(github_token=self.github_token)
         title = pr_title or f"Integration for {run_id}"
         body = pr_body or self._render_pr_body(merged_tasks, validation_results, artifacts_dir)
+        if push_integration:
+            self._run_cmd(
+                ["git", "-C", str(repo_path), "push", "-u", "origin", integration_branch],
+                check=True,
+            )
         pr_info = pr_service.create_pr_from_branch(
             repo_owner=repo_owner,
             repo_name=repo_name,

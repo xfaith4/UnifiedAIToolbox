@@ -3,7 +3,14 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import type { AgentInstruction } from '@/lib/types/agents'
 import type { PromptItem } from '@/lib/types/prompts'
-import type { OrchestrationRun, OrchestrationForm, OrchestratorAgent } from '@/lib/types/orchestrator'
+import type {
+  OrchestrationRun,
+  OrchestrationForm,
+  OrchestratorAgent,
+  RepoOrchestrationEvent,
+  RepoOrchestrationRequest,
+  RepoOrchestrationResult,
+} from '@/lib/types/orchestrator'
 import { fetchAgentLibrary } from '@/lib/services/agentStore'
 import { fetchPromptLibrary } from '@/lib/services/promptStore'
 import { getChatCompletion } from '@/lib/services/ai'
@@ -16,6 +23,8 @@ import {
   validateApiConnection,
   ORCHESTRATOR_API_BASE,
   ORCHESTRATOR_API_USING_DEFAULT_BASE,
+  startRepoOrchestration,
+  cancelRepoOrchestration,
 } from '@/lib/services/orchestratorApi'
 import {
   listLocalRuns,
@@ -114,6 +123,17 @@ export default function OrchestratorPage() {
   // Run state
   const [runs, setRuns] = useState<OrchestrationRun[]>([])
   const [isRunning, setIsRunning] = useState(false)
+  const [repoForm, setRepoForm] = useState<RepoOrchestrationRequest>({
+    repo: '',
+    goal: '',
+    options: { allowed_paths: ['.'] },
+  })
+  const [repoEvents, setRepoEvents] = useState<RepoOrchestrationEvent[]>([])
+  const [repoResult, setRepoResult] = useState<RepoOrchestrationResult | null>(null)
+  const [repoRunId, setRepoRunId] = useState<string | null>(null)
+  const [repoRunning, setRepoRunning] = useState(false)
+  const [cancelRepoHandler, setCancelRepoHandler] = useState<(() => void) | null>(null)
+  const [repoError, setRepoError] = useState<string>('')
 
   // Modal state
   const [showAgentCreator, setShowAgentCreator] = useState(false)
@@ -311,6 +331,66 @@ export default function OrchestratorPage() {
     setSelectedAgents((prev) => [...prev, newAgent.name])
     setNewAgent({ name: '', role: 'system', prompt: '', description: '' })
     setShowAgentCreator(false)
+  }
+
+  // Launch repo orchestration (clone -> intake -> plan -> execute -> PR)
+  const handleStartRepoOrchestration = async () => {
+    if (!repoForm.repo.trim() || !repoForm.goal.trim()) {
+      setRepoError('Repository and goal are required')
+      return
+    }
+
+    setRepoRunning(true)
+    setRepoError('')
+    setRepoEvents([])
+    setRepoResult(null)
+    setRepoRunId(null)
+
+    const payload: RepoOrchestrationRequest = {
+      repo: repoForm.repo.trim(),
+      goal: repoForm.goal.trim(),
+      options: {
+        ...repoForm.options,
+        allowed_paths: repoForm.options?.allowed_paths?.map((p) => p.trim()).filter(Boolean),
+      },
+    }
+
+    try {
+      const { cancel } = await startRepoOrchestration(payload, (event) => {
+        setRepoEvents((prev) => [...prev, event])
+        if (event.run_id) setRepoRunId(event.run_id)
+        if (event.result) {
+          setRepoResult({
+            runId: event.result.run_id || event.result.runId,
+            prUrl: event.result.pr_url || event.result.prUrl,
+            status: event.result.status,
+            artifacts: event.result.artifacts,
+          })
+        }
+        if (event.final || event.type === 'error') {
+          setRepoRunning(false)
+          setCancelRepoHandler(null)
+        }
+      })
+      setCancelRepoHandler(() => cancel)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to start repo orchestration'
+      setRepoError(message)
+      setRepoRunning(false)
+    }
+  }
+
+  const handleCancelRepo = async () => {
+    if (!repoRunId) return
+    try {
+      await cancelRepoOrchestration(repoRunId)
+      cancelRepoHandler?.()
+      setRepoRunning(false)
+      setRepoEvents((prev) => [...prev, { type: 'status', message: 'Cancelled by user', run_id: repoRunId }])
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to cancel run'
+      setRepoError(message)
+    }
   }
 
   // Launch multi-agent orchestration
@@ -518,6 +598,169 @@ export default function OrchestratorPage() {
           </div>
         </div>
       )}
+
+      {/* Repo orchestration */}
+      <div className={`${CARD_SHELL} ${CARD_PADDING} space-y-4`}>
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <svg className="h-5 w-5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <h2 className="text-lg font-semibold text-slate-100">Repo Orchestration (clone → plan → PR)</h2>
+            </div>
+            <p className="text-sm text-slate-400">
+              Streams clone, intake, supervisor planning, Codex swarm task execution, merge coordination, and PR creation.
+            </p>
+          </div>
+          <div className="flex gap-2">
+            {repoRunId && repoRunning && (
+              <button
+                onClick={handleCancelRepo}
+                className="rounded-lg border border-red-700 px-3 py-1.5 text-xs font-medium text-red-200 hover:bg-red-900/30"
+              >
+                Cancel run
+              </button>
+            )}
+            <button
+              onClick={handleStartRepoOrchestration}
+              disabled={repoRunning || !repoForm.repo.trim() || !repoForm.goal.trim()}
+              className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-slate-700"
+            >
+              {repoRunning ? 'Running…' : 'Start repo orchestration'}
+            </button>
+          </div>
+        </div>
+        {repoError && (
+          <div className="rounded-lg border border-red-800 bg-red-950/40 px-3 py-2 text-sm text-red-200">
+            {repoError}
+          </div>
+        )}
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs text-slate-400">Repository (owner/repo or URL)</label>
+              <input
+                type="text"
+                value={repoForm.repo}
+                onChange={(e) => setRepoForm((prev) => ({ ...prev, repo: e.target.value }))}
+                placeholder="my-org/my-repo or https://github.com/my-org/my-repo"
+                className="mt-1 w-full rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400">Goal</label>
+              <textarea
+                rows={3}
+                value={repoForm.goal}
+                onChange={(e) => setRepoForm((prev) => ({ ...prev, goal: e.target.value }))}
+                placeholder="Describe what you want the orchestrator to accomplish"
+                className="mt-1 w-full rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-slate-400">Source branch</label>
+                <input
+                  type="text"
+                  value={repoForm.options?.branch ?? ''}
+                  onChange={(e) =>
+                    setRepoForm((prev) => ({
+                      ...prev,
+                      options: { ...prev.options, branch: e.target.value },
+                    }))
+                  }
+                  placeholder="main (optional)"
+                  className="mt-1 w-full rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400">Integration branch</label>
+                <input
+                  type="text"
+                  value={repoForm.options?.integration_branch ?? ''}
+                  onChange={(e) =>
+                    setRepoForm((prev) => ({
+                      ...prev,
+                      options: { ...prev.options, integration_branch: e.target.value },
+                    }))
+                  }
+                  placeholder="auto-generated if empty"
+                  className="mt-1 w-full rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400">Allowed paths (comma separated)</label>
+              <input
+                type="text"
+                value={(repoForm.options?.allowed_paths || ['.']).join(', ')}
+                onChange={(e) =>
+                  setRepoForm((prev) => ({
+                    ...prev,
+                    options: {
+                      ...prev.options,
+                      allowed_paths: e.target.value
+                        .split(',')
+                        .map((p) => p.trim())
+                        .filter(Boolean),
+                    },
+                  }))
+                }
+                className="mt-1 w-full rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
+              />
+            </div>
+          </div>
+          <div className="space-y-2 rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-semibold text-slate-200">Live progress</div>
+              {repoResult?.prUrl && (
+                <a
+                  className="text-xs text-emerald-400 underline"
+                  href={repoResult.prUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  View PR
+                </a>
+              )}
+            </div>
+            <div className="h-40 overflow-y-auto rounded-lg border border-slate-800 bg-slate-900/60 p-2 text-xs text-slate-200">
+              {repoEvents.length === 0 && <div className="text-slate-500">No events yet.</div>}
+              {repoEvents.map((ev, idx) => (
+                <div key={`${ev.type}-${idx}`} className="mb-1 border-b border-slate-800 pb-1 last:border-b-0 last:pb-0">
+                  <div className="flex items-center gap-2">
+                    <span className="rounded bg-slate-800 px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-300">
+                      {ev.type}
+                    </span>
+                    {ev.run_id && <span className="text-[10px] text-slate-500">run {ev.run_id}</span>}
+                  </div>
+                  {ev.message && <div className="text-slate-200">{ev.message}</div>}
+                  {ev.progress?.message && <div className="text-slate-300">{ev.progress.message as string}</div>}
+                  {ev.log_line && <div className="font-mono text-[11px] text-slate-400">{ev.log_line}</div>}
+                  {ev.result?.pr_url && (
+                    <div className="text-emerald-300">PR: {ev.result.pr_url as string}</div>
+                  )}
+                </div>
+              ))}
+            </div>
+            {repoResult && (
+              <div className="rounded-lg border border-emerald-700/50 bg-emerald-950/30 p-2 text-xs text-emerald-100">
+                <div className="font-semibold">Final result</div>
+                <div>Status: {repoResult.status || 'unknown'}</div>
+                {repoResult.prUrl && (
+                  <div>
+                    PR URL:{' '}
+                    <a className="underline" href={repoResult.prUrl} target="_blank" rel="noreferrer">
+                      {repoResult.prUrl}
+                    </a>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
 
       {apiConnected === true && !ORCHESTRATOR_API_USING_DEFAULT_BASE && (
         <div className="rounded-lg border border-green-700 bg-green-900/20 px-4 py-3 text-sm text-green-300">

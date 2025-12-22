@@ -1,5 +1,5 @@
 ### BEGIN FILE: app.py
-import os, json, hashlib, sqlite3, datetime, textwrap, pathlib, sys, subprocess, re, uuid, time, threading, shutil, logging
+import os, json, hashlib, sqlite3, datetime, textwrap, pathlib, sys, subprocess, re, uuid, time, threading, shutil, logging, asyncio
 from typing import cast
 import openai
 from dataclasses import dataclass
@@ -7,14 +7,15 @@ from contextlib import asynccontextmanager
 from typing import List, Optional, Dict, Any, Tuple, Callable
 from functools import wraps
 
-from fastapi import FastAPI, HTTPException, Path, Query, Header, Depends, status # pyright: ignore[reportMissingImports]
+from fastapi import FastAPI, HTTPException, Path, Query, Header, Depends, status, Request # pyright: ignore[reportMissingImports]
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field, field_validator # pyright: ignore[reportMissingImports]
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import uvicorn # pyright: ignore[reportMissingImports]
 import yaml # pyright: ignore[reportMissingModuleSource]
 import requests # pyright: ignore[reportMissingModuleSource]
+from urllib.parse import urlparse
 
 # Configure logging at module level
 logger = logging.getLogger(__name__)
@@ -2530,6 +2531,35 @@ class CloneRequest(BaseModel):
     repo_url: str = Field(..., description="Repository URL")
     branch: Optional[str] = Field(None, description="Branch to clone")
 
+# ----------------------------
+# Orchestration Bridge Imports
+# ----------------------------
+_orchestration_bridge_path = ROOT_DIR / "apps" / "orchestration-bridge"
+if _orchestration_bridge_path not in sys.path:
+    sys.path.insert(0, str(_orchestration_bridge_path))
+
+try:
+    from github_integration.clone_service import GitHubCloneService, RepositoryCloneError  # type: ignore
+    from github_integration.repo_intake_service import RepoIntakeService, RepoIntakeError  # type: ignore
+    from github_integration.supervisor_planner import SupervisorPlanner, SupervisorPlannerError  # type: ignore
+    from github_integration.task_executor import TaskExecutor, TaskExecutionError  # type: ignore
+    from github_integration.merge_coordinator import MergeCoordinator, MergeCoordinatorError  # type: ignore
+    from github_integration.pr_service import PRCreationError  # type: ignore
+    from github_integration.codex_service import CodexSwarmService  # type: ignore
+except Exception as orchestration_import_error:  # pragma: no cover - optional dependency
+    GitHubCloneService = None  # type: ignore
+    RepositoryCloneError = Exception  # type: ignore
+    RepoIntakeService = None  # type: ignore
+    RepoIntakeError = Exception  # type: ignore
+    SupervisorPlanner = None  # type: ignore
+    SupervisorPlannerError = Exception  # type: ignore
+    TaskExecutor = None  # type: ignore
+    TaskExecutionError = Exception  # type: ignore
+    MergeCoordinator = None  # type: ignore
+    MergeCoordinatorError = Exception  # type: ignore
+    PRCreationError = Exception  # type: ignore
+    CodexSwarmService = None  # type: ignore
+
 
 # ----------------------------
 # Orchestration Run Stub
@@ -2548,6 +2578,35 @@ class OrchestrationRequest(BaseModel):
     run_mode: Optional[str] = "default"  # default | codex-swarm
     repo_root: Optional[str] = None
     max_iterations: Optional[int] = None
+
+
+class RepoOrchestrationOptions(BaseModel):
+    """Options for repository-first orchestration."""
+
+    branch: Optional[str] = None
+    base_branch: Optional[str] = None
+    integration_branch: Optional[str] = None
+    allowed_paths: List[str] = Field(default_factory=list)
+    max_parallel: int = 1
+    risk_posture: str = "standard"
+    github_token: Optional[str] = Field(
+        default=None, description="GitHub token (not persisted to disk)"
+    )
+    model: Optional[str] = None
+    pr_title: Optional[str] = None
+    pr_body: Optional[str] = None
+
+
+class RepoOrchestrationRequest(BaseModel):
+    """Request to orchestrate a repo workflow end-to-end."""
+
+    repo: str = Field(..., description="Repository URL or owner/repo slug")
+    goal: str = Field(..., description="Goal for the orchestration")
+    options: RepoOrchestrationOptions = Field(default_factory=RepoOrchestrationOptions)
+
+
+_repo_orchestration_state: Dict[str, Dict[str, Any]] = {}
+_repo_state_lock = asyncio.Lock()
 
 
 @app.post("/orchestrate/run")
@@ -2929,6 +2988,371 @@ def get_orchestration_log(run_id: str, max_bytes: int = Query(8000, ge=1, le=200
 # ----------------------------
 # Run Feedback and Learning Endpoints
 # ----------------------------
+
+
+# ----------------------------
+# Repo Orchestration Workflow
+# ----------------------------
+def _repo_manifest_path(run_id: str) -> pathlib.Path:
+    run_dir = BRIDGE_RUN_DIR / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    return run_dir / "repo-orchestration.json"
+
+
+def _repo_result_path(run_id: str) -> pathlib.Path:
+    return BRIDGE_RUN_DIR / run_id / "repo-result.json"
+
+
+def _redact_options(options: Dict[str, Any]) -> Dict[str, Any]:
+    cleaned = dict(options or {})
+    if cleaned.get("github_token"):
+        cleaned["github_token"] = "REDACTED"
+    return cleaned
+
+
+def _persist_repo_state(path: pathlib.Path, payload: Dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def _parse_owner_repo(repo: str) -> Tuple[str, str]:
+    candidate = repo.strip()
+    parsed = urlparse(candidate)
+    parts = [p for p in parsed.path.split("/") if p] if parsed.scheme else [p for p in candidate.split("/") if p]
+    if len(parts) < 2:
+        raise ValueError("Unable to parse repository identifier")
+    owner, name = parts[-2], parts[-1]
+    if name.endswith(".git"):
+        name = name[:-4]
+    return owner, name
+
+
+def _materialize_task_branches(
+    repo_path: pathlib.Path,
+    base_branch: str,
+    run_id: str,
+    task_results: List[Dict[str, Any]],
+) -> Dict[str, str]:
+    branches: Dict[str, str] = {}
+    for task in task_results:
+        task_id = task.get("task_id")
+        diff_path_str = (task.get("artifacts") or {}).get("diff")
+        if not task_id or not diff_path_str:
+            continue
+        diff_path = pathlib.Path(diff_path_str)
+        if not diff_path.exists():
+            continue
+        try:
+            diff_text = diff_path.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        if not diff_text.strip():
+            continue
+
+        branch_name = f"{run_id}-{task_id}"
+        checkout_base = subprocess.run(
+            ["git", "-C", str(repo_path), "checkout", base_branch],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        if checkout_base.returncode != 0:
+            raise MergeCoordinatorError(f"Failed to checkout {base_branch}: {checkout_base.stderr}")
+
+        branch_create = subprocess.run(
+            ["git", "-C", str(repo_path), "checkout", "-B", branch_name, base_branch],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        if branch_create.returncode != 0:
+            raise MergeCoordinatorError(f"Failed to create branch {branch_name}: {branch_create.stderr}")
+
+        apply_proc = subprocess.run(
+            ["git", "-C", str(repo_path), "apply", str(diff_path)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        if apply_proc.returncode != 0:
+            raise MergeCoordinatorError(
+                f"Failed to apply patch for {task_id}: {apply_proc.stderr or apply_proc.stdout}"
+            )
+
+        status_proc = subprocess.run(
+            ["git", "-C", str(repo_path), "status", "--porcelain"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        if status_proc.stdout.strip():
+            git_env = os.environ.copy()
+            git_env.setdefault("GIT_COMMITTER_NAME", "repo-orchestrator")
+            git_env.setdefault("GIT_COMMITTER_EMAIL", "repo-orchestrator@example.com")
+            git_env.setdefault("GIT_AUTHOR_NAME", git_env["GIT_COMMITTER_NAME"])
+            git_env.setdefault("GIT_AUTHOR_EMAIL", git_env["GIT_COMMITTER_EMAIL"])
+            subprocess.run(["git", "-C", str(repo_path), "add", "-A"], check=True)
+            subprocess.run(
+                ["git", "-C", str(repo_path), "commit", "-m", f"Task {task_id} changes"],
+                check=True,
+                env=git_env,
+            )
+            branches[task_id] = branch_name
+
+        # Reset back to base branch for the next iteration
+        subprocess.run(["git", "-C", str(repo_path), "checkout", base_branch], check=False)
+    return branches
+
+
+@app.post("/orchestrate/repo", response_class=StreamingResponse)
+async def start_repo_orchestration(req: RepoOrchestrationRequest, request: Request):
+    """Start a repository-first orchestration workflow with streaming progress."""
+    if (
+        GitHubCloneService is None
+        or RepoIntakeService is None
+        or SupervisorPlanner is None
+        or TaskExecutor is None
+        or CodexSwarmService is None
+    ):
+        raise HTTPException(status_code=503, detail="orchestration bridge components are unavailable")
+
+    run_suffix = uuid.uuid4().hex[:6]
+    safe_slug = sanitize_run_id(req.goal or req.repo)[:40]
+    run_id = f"repo-{safe_slug}-{run_suffix}"
+    run_dir = BRIDGE_RUN_DIR / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    manifest = {
+        "run_id": run_id,
+        "repo": req.repo,
+        "goal": req.goal,
+        "options": _redact_options(req.options.model_dump()),
+        "status": "accepted",
+        "requested_at": now_iso(),
+    }
+    _persist_repo_state(_repo_manifest_path(run_id), manifest)
+
+    event_queue: asyncio.Queue[Dict[str, Any]] = asyncio.Queue()
+    loop = asyncio.get_event_loop()
+    cancel_event = asyncio.Event()
+    codex_service = CodexSwarmService(output_dir=run_dir / "codex_runs")
+
+    async with _repo_state_lock:
+        _repo_orchestration_state[run_id] = {
+            "cancel_event": cancel_event,
+            "codex_service": codex_service,
+            "codex_runs": set(),
+        }
+
+    def _enqueue_sync(payload: Dict[str, Any]) -> None:
+        payload.setdefault("run_id", run_id)
+        loop.call_soon_threadsafe(event_queue.put_nowait, payload)
+
+    async def _enqueue(payload: Dict[str, Any]) -> None:
+        payload.setdefault("run_id", run_id)
+        await event_queue.put(payload)
+
+    async def _pipeline() -> None:
+        manifest_path = _repo_manifest_path(run_id)
+        try:
+            await _enqueue({"type": "status", "message": "accepted"})
+            clone_service = GitHubCloneService(
+                github_token=req.options.github_token,
+                clone_base_dir=run_dir,
+            )
+
+            def _on_clone_progress(progress: Dict[str, Any]) -> None:
+                safe_progress = dict(progress)
+                if isinstance(safe_progress.get("message"), str):
+                    safe_progress["message"] = safe_progress["message"][:200]
+                _enqueue_sync({"type": "clone_progress", "progress": safe_progress})
+
+            clone_path = await asyncio.to_thread(
+                clone_service.clone_repository,
+                req.repo,
+                req.options.branch,
+                _on_clone_progress,
+                run_id,
+            )
+            manifest.update({"clone_path": str(clone_path), "status": "cloned"})
+            _persist_repo_state(manifest_path, manifest)
+            await _enqueue({"type": "cloned", "repo_path": str(clone_path)})
+
+            if cancel_event.is_set():
+                raise TaskExecutionError("cancelled")
+
+            intake_service = RepoIntakeService(
+                github_token=req.options.github_token,
+                runs_dir=BRIDGE_RUN_DIR,
+            )
+            intake = await asyncio.to_thread(
+                intake_service.run_intake,
+                req.repo,
+                run_id,
+                req.options.branch,
+                clone_path,
+            )
+            manifest.update({"intake": intake, "status": "intake_complete"})
+            _persist_repo_state(manifest_path, manifest)
+            await _enqueue({"type": "intake_complete", "artifacts": intake.get("artifacts")})
+
+            planner = SupervisorPlanner(runs_dir=BRIDGE_RUN_DIR)
+            constraints = {
+                "allowed_paths": req.options.allowed_paths,
+                "max_parallel": req.options.max_parallel,
+                "risk_posture": req.options.risk_posture,
+            }
+            taskgraph = planner.generate_taskgraph(
+                run_id=run_id,
+                intake=intake,
+                user_goal=req.goal,
+                constraints=constraints,
+            )
+            taskgraph_path = pathlib.Path(taskgraph["artifacts"]["taskgraph_json"])
+            manifest.update({"taskgraph": taskgraph, "status": "planned"})
+            _persist_repo_state(manifest_path, manifest)
+            await _enqueue({"type": "planned", "taskgraph": taskgraph["artifacts"]})
+
+            if cancel_event.is_set():
+                raise TaskExecutionError("cancelled")
+
+            executor = TaskExecutor(runs_dir=BRIDGE_RUN_DIR, codex_service=codex_service)
+
+            def _on_task_progress(event: Dict[str, Any]) -> None:
+                if event.get("event") == "codex_run_started" and event.get("codex_run_id"):
+                    async def _record_codex():
+                        async with _repo_state_lock:
+                            state = _repo_orchestration_state.get(run_id, {})
+                            runs = state.get("codex_runs", set())
+                            runs.add(event["codex_run_id"])
+                            state["codex_runs"] = runs
+                            _repo_orchestration_state[run_id] = state
+                    asyncio.run_coroutine_threadsafe(_record_codex(), loop)
+                _enqueue_sync({"type": "task_progress", **event})
+
+            execution_result = executor.execute_taskgraph(
+                repo_path=clone_path,
+                run_id=run_id,
+                taskgraph_path=taskgraph_path,
+                progress_callback=_on_task_progress,
+                cancel_event=cancel_event,
+            )
+            manifest.update({"tasks": execution_result, "status": "executed"})
+            _persist_repo_state(manifest_path, manifest)
+            await _enqueue({"type": "tasks_complete", "tasks": execution_result})
+
+            if cancel_event.is_set():
+                raise TaskExecutionError("cancelled")
+
+            coordinator = MergeCoordinator(github_token=req.options.github_token, runs_dir=BRIDGE_RUN_DIR)
+            base_branch = req.options.base_branch or coordinator._detect_default_branch(clone_path)  # type: ignore[attr-defined]
+            integration_branch = req.options.integration_branch or f"{run_id}-integration"
+            branch_map = _materialize_task_branches(
+                repo_path=clone_path,
+                base_branch=base_branch,
+                run_id=run_id,
+                task_results=execution_result.get("tasks", []),
+            )
+            if branch_map:
+                tg_data = safe_json_load(taskgraph_path, default={}, context=f"taskgraph:{run_id}")
+                for task in tg_data.get("tasks", []):
+                    task_id = task.get("id")
+                    if task_id in branch_map:
+                        task["branch"] = branch_map[task_id]
+                taskgraph_path.write_text(json.dumps(tg_data, indent=2), encoding="utf-8")
+
+            repo_owner, repo_name = _parse_owner_repo(req.repo)
+            merge_result = coordinator.merge_taskgraph(
+                repo_path=clone_path,
+                run_id=run_id,
+                repo_owner=repo_owner,
+                repo_name=repo_name,
+                base_branch=base_branch,
+                integration_branch=integration_branch,
+                taskgraph_path=taskgraph_path,
+                pr_title=req.options.pr_title,
+                pr_body=req.options.pr_body,
+                push_integration=True,
+            )
+            manifest.update({"merge": merge_result, "status": merge_result.get("status")})
+            _persist_repo_state(manifest_path, manifest)
+            await _enqueue({"type": "merged", "merge": merge_result})
+
+            result_payload = {
+                "run_id": run_id,
+                "status": merge_result.get("status", "unknown"),
+                "pr_url": (merge_result.get("pr") or {}).get("pr_url"),
+                "artifacts": {
+                    "run_dir": str(run_dir),
+                    "manifest": str(manifest_path),
+                    "result": str(_repo_result_path(run_id)),
+                },
+            }
+            _persist_repo_state(_repo_result_path(run_id), result_payload)
+            await _enqueue({"type": "complete", "final": True, "result": result_payload})
+        except TaskExecutionError as exc:
+            error_msg = "cancelled" if str(exc) == "cancelled" else str(exc)
+            manifest.update({"status": "cancelled" if str(exc) == "cancelled" else "error", "error": error_msg})
+            _persist_repo_state(manifest_path, manifest)
+            await _enqueue({"type": "error", "message": error_msg, "final": True})
+        except Exception as exc:
+            manifest.update({"status": "error", "error": str(exc)})
+            _persist_repo_state(manifest_path, manifest)
+            await _enqueue({"type": "error", "message": str(exc), "final": True})
+        finally:
+            async with _repo_state_lock:
+                _repo_orchestration_state.pop(run_id, None)
+
+    asyncio.create_task(_pipeline())
+
+    async def event_generator():
+        while True:
+            try:
+                payload = await event_queue.get()
+            except asyncio.CancelledError:
+                break
+            yield f"data: {json.dumps(payload)}\n\n"
+            if payload.get("final"):
+                break
+            if await request.is_disconnected():
+                cancel_event.set()
+                break
+
+    headers = {
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
+    }
+    return StreamingResponse(event_generator(), media_type="text/event-stream", headers=headers)
+
+
+@app.get("/orchestrate/repo/{run_id}")
+def get_repo_orchestration(run_id: str):
+    manifest_path = _repo_manifest_path(run_id)
+    if not manifest_path.exists():
+        raise HTTPException(status_code=404, detail="Run not found")
+    data = safe_json_load(manifest_path, default={}, context=f"repo_manifest:{run_id}") or {}
+    result_path = _repo_result_path(run_id)
+    if result_path.exists():
+        data["result"] = safe_json_load(result_path, default={}, context=f"repo_result:{run_id}")
+    return data
+
+
+@app.post("/orchestrate/repo/{run_id}/cancel")
+async def cancel_repo_orchestration(run_id: str):
+    async with _repo_state_lock:
+        state = _repo_orchestration_state.get(run_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="Run not active or already finished")
+    cancel_event: asyncio.Event = state.get("cancel_event")  # type: ignore[assignment]
+    cancel_event.set()
+    codex_service = state.get("codex_service")
+    for codex_run_id in list(state.get("codex_runs", [])):
+        try:
+            await codex_service.cancel_run(codex_run_id)  # type: ignore[operator]
+        except Exception:
+            continue
+    return {"run_id": run_id, "cancelled": True}
+
 class RunFeedbackRequest(BaseModel):
     """Request model for submitting run feedback (from Supervisor)."""
     run_id: str

@@ -6,7 +6,7 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Callable
 
 from github import GithubException
 
@@ -45,6 +45,8 @@ class TaskExecutor:
         repo_path: Path,
         run_id: str,
         taskgraph_path: Optional[Path] = None,
+        progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+        cancel_event: Optional[asyncio.Event] = None,
     ) -> Dict[str, Any]:
         """
         Execute the tasks defined in taskgraph.json sequentially respecting conflict groups.
@@ -67,6 +69,15 @@ class TaskExecutor:
         conflict_busy: Set[str] = set()
 
         for task in tasks:
+            if cancel_event and cancel_event.is_set():
+                results.append(
+                    {
+                        "task_id": task.get("id"),
+                        "status": "cancelled",
+                        "artifacts": {},
+                    }
+                )
+                break
             task_id = task.get("id")
             conflict_group = task.get("conflict_group") or ""
             deps = set(task.get("dependencies") or [])
@@ -79,7 +90,13 @@ class TaskExecutor:
                 raise TaskExecutionError(f"Conflict group busy: {conflict_group}")
 
             conflict_busy.add(conflict_group)
-            result = self._execute_task(repo_path, run_id, task)
+            result = self._execute_task(
+                repo_path,
+                run_id,
+                task,
+                progress_callback=progress_callback,
+                cancel_event=cancel_event,
+            )
             conflict_busy.discard(conflict_group)
             completed.add(task_id)
             results.append(result)
@@ -88,7 +105,14 @@ class TaskExecutor:
         summary_path.write_text(json.dumps(results, indent=2), encoding="utf-8")
         return {"tasks": results, "results_file": str(summary_path)}
 
-    def _execute_task(self, repo_path: Path, run_id: str, task: Dict[str, Any]) -> Dict[str, Any]:
+    def _execute_task(
+        self,
+        repo_path: Path,
+        run_id: str,
+        task: Dict[str, Any],
+        progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+        cancel_event: Optional[asyncio.Event] = None,
+    ) -> Dict[str, Any]:
         task_id = task["id"]
         allowed_paths = task.get("file_scope") or ["."]
         task_dir = self.runs_dir / run_id / "tasks" / task_id
@@ -118,15 +142,31 @@ class TaskExecutor:
                 )
             )
 
+            if progress_callback:
+                progress_callback(
+                    {
+                        "task_id": task_id,
+                        "event": "codex_run_started",
+                        "codex_run_id": codex_run_id,
+                    }
+                )
+
             # Consume the async generator to completion
             async def _consume():
                 async for _ in self.codex_service.execute_codex_run(codex_run_id):
-                    pass
+                    if cancel_event and cancel_event.is_set():
+                        await self.codex_service.cancel_run(codex_run_id)
+                        raise TaskExecutionError("cancelled")
+                    if progress_callback:
+                        progress_callback({**_, "task_id": task_id})
 
             asyncio.run(_consume())
             findings = self.codex_service.get_findings(codex_run_id) or []
         except (GithubException, Exception) as exc:
-            status = "failed"
+            if isinstance(exc, TaskExecutionError) and str(exc) == "cancelled":
+                status = "cancelled"
+            else:
+                status = "failed"
             log_lines.append(f"[error] {exc}")
 
         # Capture diff and enforce scope
