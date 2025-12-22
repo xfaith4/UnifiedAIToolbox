@@ -179,7 +179,7 @@ export default function OrchestratorPage() {
       if (promptData.length > 0) setSelectedPromptId(promptData[0].id)
 
       // Load runs
-      if (ORCHESTRATOR_API_BASE) {
+      if (ORCHESTRATOR_API_BASE && apiConnected === true) {
         try {
           const apiRuns = await fetchOrchestrationRuns()
           setRuns(apiRuns)
@@ -191,21 +191,21 @@ export default function OrchestratorPage() {
       }
     }
     void loadAll()
-  }, [fetchAgentLibrary, fetchPromptLibrary, fetchOrchestrationRuns, listLocalRuns])
+  }, [apiConnected, fetchAgentLibrary, fetchPromptLibrary, fetchOrchestrationRuns, listLocalRuns])
 
   // Polling for run updates
   useEffect(() => {
+    if (!ORCHESTRATOR_API_BASE || apiConnected !== true) {
+      setRuns(listLocalRuns())
+      return
+    }
     const interval = setInterval(() => {
-      if (ORCHESTRATOR_API_BASE) {
-        fetchOrchestrationRuns()
-          .then(setRuns)
-          .catch(() => setRuns(listLocalRuns()))
-      } else {
-        setRuns(listLocalRuns())
-      }
+      fetchOrchestrationRuns()
+        .then(setRuns)
+        .catch(() => setRuns(listLocalRuns()))
     }, 5000)
     return () => clearInterval(interval)
-  }, [fetchOrchestrationRuns, listLocalRuns])
+  }, [apiConnected, fetchOrchestrationRuns, listLocalRuns])
 
   // Memoized selections
   const selectedAgent = useMemo(
