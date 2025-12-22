@@ -1,0 +1,33 @@
+# Grafana Datasources Configuration for Phase 3
+# Unified AI Toolbox v2.0
+
+apiVersion: 1
+
+datasources:
+  # Prometheus datasource
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true
+    jsonData:
+      timeInterval: '15s'
+      httpMethod: POST
+    version: 1
+
+  # PostgreSQL datasource (optional - for direct DB queries)
+  # Requires grafana-postgresql-datasource plugin
+  # - name: PostgreSQL
+  #   type: postgres
+  #   access: proxy
+  #   url: postgres:5432
+  #   database: unified_dev
+  #   user: unified_user
+  #   secureJsonData:
+  #     password: 'dev_password_change_me'
+  #   jsonData:
+  #     sslmode: 'disable'
+  #     postgresVersion: 1500
+  #   editable: true
+  #   version: 1
