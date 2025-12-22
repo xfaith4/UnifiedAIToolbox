@@ -160,9 +160,10 @@ class TestMixins:
             pass
         
         obj = TestClass()
-        
-        auth_url = obj._get_auth_url("https://github.com/owner/repo", "token")
-        assert "token@" in auth_url
+        with patch("shared.github_core.get_clone_url_for_repo") as mock_get_url:
+            mock_get_url.return_value = "https://token@github.com/owner/repo"
+            auth_url = obj._get_auth_url("https://github.com/owner/repo", "token")
+            assert "token@" in auth_url
         
         owner, repo = obj._parse_repo_url("owner/repo")
         assert owner == "owner"

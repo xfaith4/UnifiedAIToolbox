@@ -5,9 +5,13 @@ This module contains reusable components for GitHub repository operations,
 including file tree generation, URL handling, and GitHub API client setup.
 """
 
+import json
 import logging
 import shutil
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, TypeVar
 
@@ -163,6 +167,66 @@ def get_authenticated_clone_url(repo_url: str, token: Optional[str]) -> str:
         return repo_url.replace('https://', f'https://{token}@')
     
     return repo_url
+
+
+def _strip_embedded_auth(repo_url: str) -> str:
+    """Remove embedded userinfo from an HTTPS URL, if present."""
+    if not repo_url.startswith(("http://", "https://")):
+        return repo_url
+
+    parsed = urllib.parse.urlsplit(repo_url)
+    if "@" not in parsed.netloc:
+        return repo_url
+
+    host = parsed.netloc.split("@", 1)[1]
+    sanitized = parsed._replace(netloc=host)
+    return urllib.parse.urlunsplit(sanitized)
+
+
+def _fetch_repo_visibility(owner: str, repo: str, timeout: int = 5) -> tuple[int, Optional[bool]]:
+    """Return (status_code, is_private) using unauthenticated GitHub API."""
+    url = f"https://api.github.com/repos/{owner}/{repo}"
+    request = urllib.request.Request(
+        url,
+        headers={"Accept": "application/vnd.github+json"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+            return response.status, payload.get("private")
+    except urllib.error.HTTPError as exc:
+        return exc.code, None
+    except Exception:
+        return 0, None
+
+
+def get_clone_url_for_repo(repo_url: str, token: Optional[str]) -> str:
+    """
+    Prefer unauthenticated clone for public GitHub repos; inject token only if needed.
+    """
+    if not repo_url.startswith(("http://", "https://")):
+        return get_authenticated_clone_url(repo_url, token)
+
+    if "github.com" not in repo_url:
+        return get_authenticated_clone_url(repo_url, token)
+
+    owner, repo = parse_repo_url(repo_url)
+    if not owner or not repo:
+        return get_authenticated_clone_url(repo_url, token)
+
+    status, is_private = _fetch_repo_visibility(owner, repo)
+    sanitized = _strip_embedded_auth(repo_url)
+
+    if status == 200 and is_private is False:
+        return sanitized
+
+    if status == 200 and is_private is True:
+        return get_authenticated_clone_url(sanitized, token) if token else sanitized
+
+    if token:
+        return get_authenticated_clone_url(sanitized, token)
+
+    return sanitized
 
 
 def parse_repo_url(repo_url: str) -> "tuple[str, str]":
@@ -403,7 +467,7 @@ class CloneUrlMixin:
         Returns:
             URL with embedded authentication if token provided
         """
-        return get_authenticated_clone_url(repo_url, token)
+        return get_clone_url_for_repo(repo_url, token)
     
     def _parse_repo_url(self, repo_url: str) -> "tuple[str, str]":
         """
