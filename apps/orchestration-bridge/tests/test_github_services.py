@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from github_integration.clone_service import GitHubCloneService, RepositoryCloneError, CloneProgress
 from github_integration.codex_service import CodexSwarmService, CodexRunStatus
+from github_integration.repo_intake_service import RepoIntakeService, RepoIntakeError
 from github import GithubException
 
 
@@ -278,6 +279,54 @@ class TestCodexSwarmService:
             assert status is not None
             assert status['run_id'] == "test-run"
             assert status['status'] == CodexRunStatus.COMPLETED
+
+
+class TestRepoIntakeService:
+    """Tests for repository intake generation."""
+
+    @patch('github_integration.repo_intake_service.GitHubCloneService')
+    def test_repo_intake_generates_artifacts(self, mock_clone_service):
+        """Intake should write artifacts and prune heavy dirs."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_dir = Path(tmpdir) / "repo"
+            repo_dir.mkdir()
+            (repo_dir / "README.md").write_text("# sample", encoding="utf-8")
+            (repo_dir / "package.json").write_text('{"scripts": {"test": "jest"}}', encoding="utf-8")
+            heavy_dir = repo_dir / "node_modules"
+            heavy_dir.mkdir()
+
+            mock_instance = Mock()
+            mock_instance.clone_repository.return_value = repo_dir
+            # Use real tree to ensure pruning removes heavy dirs
+            mock_instance.get_file_tree.side_effect = lambda path, max_depth=5: {
+                "name": "repo",
+                "type": "directory",
+                "children": [
+                    {"name": "README.md", "type": "file"},
+                    {"name": "package.json", "type": "file"},
+                    {"name": "node_modules", "type": "directory", "children": []},
+                ],
+            }
+            mock_clone_service.return_value = mock_instance
+
+            service = RepoIntakeService(runs_dir=Path(tmpdir) / "runs")
+            intake = service.run_intake("https://example.com/repo", run_id="run-1")
+
+            assert (Path(tmpdir) / "runs" / "run-1" / "intake.json").exists()
+            assert intake["file_tree"]["children"]
+            assert all(child["name"] != "node_modules" for child in intake["file_tree"]["children"])
+            assert any(signal["type"] == "node" for signal in intake["build_signals"])
+
+    @patch('github_integration.repo_intake_service.GitHubCloneService')
+    def test_repo_intake_handles_errors(self, mock_clone_service):
+        """Errors should surface as RepoIntakeError."""
+        mock_instance = Mock()
+        mock_instance.clone_repository.side_effect = RepositoryCloneError("nope")
+        mock_clone_service.return_value = mock_instance
+
+        service = RepoIntakeService(runs_dir=Path(tempfile.gettempdir()) / "runs")
+        with pytest.raises(RepoIntakeError):
+            service.run_intake("bad/repo", run_id="run-err")
 
 
 if __name__ == "__main__":

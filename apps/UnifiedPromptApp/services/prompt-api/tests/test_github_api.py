@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.modules['github_integration'] = MagicMock()
 sys.modules['github_integration.clone_service'] = MagicMock()
 sys.modules['github_integration.pr_service'] = MagicMock()
+sys.modules['github_integration.repo_intake_service'] = MagicMock()
 sys.modules['shared'] = MagicMock()
 sys.modules['shared.github_core'] = MagicMock()
 
@@ -38,6 +39,46 @@ class TestGitHubStatus:
         assert "available" in data
         assert "authenticated" in data
         assert "message" in data
+
+
+class TestRepoIntake:
+    """Tests for repository intake endpoint."""
+
+    @patch('github_api.GITHUB_AVAILABLE', True)
+    @patch('github_api.RepoIntakeService')
+    def test_repo_intake_success(self, mock_service_class):
+        """Intake endpoint should return generated intake data."""
+        mock_service = Mock()
+        mock_service.run_intake.return_value = {"run_id": "r1", "repo_url": "https://example.com/repo"}
+        mock_service_class.return_value = mock_service
+
+        response = client.post(
+            "/github/repos/intake",
+            json={"repo_url": "https://example.com/repo", "run_id": "r1"},
+            headers={"Authorization": "Bearer token"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["intake"]["run_id"] == "r1"
+        mock_service.run_intake.assert_called_once()
+
+    @patch('github_api.GITHUB_AVAILABLE', True)
+    @patch('github_api.RepoIntakeService')
+    def test_repo_intake_error(self, mock_service_class):
+        """RepoIntakeError should surface as 400."""
+        Err = type('IntakeErr', (Exception,), {})
+        with patch('github_api.RepoIntakeError', new=Err):
+            mock_service = Mock()
+            mock_service.run_intake.side_effect = Err("fail")
+            mock_service_class.return_value = mock_service
+
+            response = client.post(
+                "/github/repos/intake",
+                json={"repo_url": "https://example.com/repo", "run_id": "r2"},
+            )
+
+            assert response.status_code == 400
 
 
 class TestListAccessibleRepositories:
