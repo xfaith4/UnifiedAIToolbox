@@ -2,6 +2,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+project_name="$(basename "$repo_root")"
 log_file="${repo_root}/orchestration.log"
 
 timestamp() {
@@ -15,7 +16,7 @@ log() {
   printf "[%s] stage=%s status=%s %s\n" "$(timestamp)" "$stage" "$status" "$message" | tee -a "$log_file"
 }
 
-log "start" "ok" "orchestrator=UnifiedAIToolbox scripts/orchestrator.sh"
+log "start" "ok" "orchestrator=${project_name} scripts/orchestrator.sh"
 tests_failed=0
 
 # Tool checks

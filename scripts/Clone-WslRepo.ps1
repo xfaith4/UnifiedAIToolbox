@@ -54,7 +54,7 @@ $bashLines = @(
     'repo_log="$repo_dir/orchestration.log"',
     'printf "[%s] stage=preflight repo=%s workdir=%s\n" "$(date -Iseconds)" "$REPO" "$WORKDIR" | tee -a "$bootstrap_log"',
     'if [ -z "${GH_TOKEN:-}" ]; then',
-    '  printf "[%s] stage=auth status=warn detail=""GH_TOKEN not set; run gh auth login if repo is private""\n" "$(date -Iseconds)" | tee -a "$bootstrap_log"',
+    '  printf "[%s] stage=auth status=warn detail=\"GH_TOKEN not set; run gh auth login if repo is private\"\n" "$(date -Iseconds)" | tee -a "$bootstrap_log"',
     'fi',
     'if [ -d "$repo_dir/.git" ]; then',
     '  log_file="$repo_log"',
@@ -70,7 +70,10 @@ $bashLines = @(
     'else',
     '  printf "[%s] stage=update action=git-fetch\n" "$(date -Iseconds)" | tee -a "$log_file"',
     '  git -C "$repo_dir" fetch --all --prune 2>&1 | tee -a "$log_file"',
-    '  git -C "$repo_dir" pull --ff-only 2>&1 | tee -a "$log_file" || { printf "[%s] stage=update status=fail detail=""pull --ff-only failed; resolve divergence manually""\n" "$(date -Iseconds)" | tee -a "$log_file"; exit 1; }',
+    '  if ! git -C "$repo_dir" pull --ff-only 2>&1 | tee -a "$log_file"; then',
+    '    printf "[%s] stage=update status=fail detail=\"pull --ff-only failed; resolve divergence manually\"\n" "$(date -Iseconds)" | tee -a "$log_file"',
+    '    exit 1',
+    '  fi',
     'fi',
     'orchestrator="${ORCHESTRATOR_PATH:-orchestrator.sh}"',
     'candidate="$repo_dir/$orchestrator"',
@@ -86,7 +89,7 @@ $bashLines = @(
     'fi'
 )
 
-$bashCommand = ($bashLines -join ' && ')
+$bashCommand = ($bashLines -join '; ')
 
 $wslArgs = @()
 if ($WslDistro) {
