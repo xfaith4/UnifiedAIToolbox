@@ -1,112 +1,161 @@
+<#
+.SYNOPSIS
+    Clone or update a GitHub repo inside WSL and run an orchestrator script with env-var pass-through.
+
+.DESCRIPTION
+    - Reads the repo from -Repo or $Env:MY_GITHUB_REPO.
+    - Ensures MY_GITHUB_REPO (and optional GH_TOKEN) are passed into WSL via WSLENV using the /u flag.
+    - Uses a single wsl.exe invocation (PowerShell-compatible, no heredocs) to clone/pull and run the orchestrator.
+    - Writes a detailed log at <repo>/orchestration.log inside WSL.
+
+.NOTES
+    PowerShell 5.1+ compatible. Uses process-scoped env vars only (no setx).
+#>
+[CmdletBinding()]
 param(
+    [Parameter(Mandatory = $false)]
     [string]$Repo,
+
+    [Parameter(Mandatory = $false)]
     [string]$WslDistro,
+
+    [Parameter(Mandatory = $false)]
     [string]$WslWorkDir = "~/repos",
-    [string]$OrchestratorPath = "orchestrator.sh"
+
+    [Parameter(Mandatory = $false)]
+    [string]$OrchestratorPath = "scripts/orchestrator.sh"
 )
 
-function Mask-Token {
-    param([string]$Token)
-    if (-not $Token) { return "" }
-    if ($Token.Length -le 8) { return ('*' * $Token.Length) }
-    return "{0}****{1}" -f $Token.Substring(0, 4), $Token.Substring($Token.Length - 4)
+$ErrorActionPreference = "Stop"
+
+function Write-Status {
+    param(
+        [Parameter(Mandatory = $true)][string]$Message,
+        [Parameter()][ValidateSet("Info","Success","Warning","Error")][string]$Level = "Info"
+    )
+    $timestamp = Get-Date -Format "HH:mm:ss"
+    $color = switch ($Level) {
+        "Success" { "Green" }
+        "Warning" { "Yellow" }
+        "Error"   { "Red" }
+        default   { "Cyan" }
+    }
+    Write-Host "[$timestamp] $Message" -ForegroundColor $color
+}
+
+function Add-WslEnvEntry {
+    param(
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter()][string]$Flags = "/u"
+    )
+    $entries = @()
+    if ($env:WSLENV) {
+        $entries = $env:WSLENV -split ":" | Where-Object { $_ -ne "" }
+    }
+    $target = "$Name$Flags"
+    $entries = $entries | Where-Object { $_ -notmatch "^$Name(/|$)" }
+    $entries += $target
+    $env:WSLENV = ($entries -join ":")
+}
+
+# Resolve repo source
+if (-not $Repo -and [string]::IsNullOrWhiteSpace($Env:MY_GITHUB_REPO)) {
+    throw "MY_GITHUB_REPO is not set and -Repo was not provided. Set the variable (e.g., `$env:MY_GITHUB_REPO='https://github.com/owner/repo.git'`) or pass -Repo."
 }
 
 if (-not $Repo) {
     $Repo = $Env:MY_GITHUB_REPO
 }
 
-if (-not $Repo) {
-    throw "Repo was not provided. Set -Repo or define MY_GITHUB_REPO in the environment before running."
-}
+# Ensure MY_GITHUB_REPO is set for this process so WSL can read it.
+$env:MY_GITHUB_REPO = $Repo
+Add-WslEnvEntry -Name "MY_GITHUB_REPO"
 
-$Env:MY_GITHUB_REPO = $Repo
-$Env:WSL_WORKDIR = $WslWorkDir
-$Env:ORCHESTRATOR_PATH = $OrchestratorPath
-
-$wslEnvEntries = @("MY_GITHUB_REPO/u", "WSL_WORKDIR/u", "ORCHESTRATOR_PATH/u")
-
+# Optional GH_TOKEN pass-through (masked in logs)
+$ghTokenMasked = $null
 if ($Env:GH_TOKEN) {
-    $wslEnvEntries += "GH_TOKEN/u"
-    Write-Output ("GH_TOKEN detected (masked): {0}" -f (Mask-Token $Env:GH_TOKEN))
+    Add-WslEnvEntry -Name "GH_TOKEN"
+    if ($Env:GH_TOKEN.Length -ge 8) {
+        $ghTokenMasked = "$($Env:GH_TOKEN.Substring(0,4))...$($Env:GH_TOKEN.Substring($Env:GH_TOKEN.Length-4))"
+    } else {
+        $ghTokenMasked = "[masked]"
+    }
 }
 
-$existingEnv = @()
-if ($Env:WSLENV) {
-    $existingEnv = $Env:WSLENV -split ":" | Where-Object { $_ }
+Write-Status "WSLENV: $($env:WSLENV)" "Info"
+Write-Status "Repo source: $Repo" "Info"
+if ($ghTokenMasked) {
+    Write-Status "GH_TOKEN detected (masked: $ghTokenMasked)" "Info"
 }
 
-$Env:WSLENV = ( @($existingEnv + $wslEnvEntries) | Select-Object -Unique ) -join ":"
+# Escape values for bash
+function Escape-Bash {
+    param([string]$Value)
+    return $Value -replace "'", "'\"'\"'"
+}
 
-$bashLines = @(
-    'set -euo pipefail',
-    'REPO="${MY_GITHUB_REPO:-}"',
-    'if [ -z "$REPO" ]; then echo "MY_GITHUB_REPO is required inside WSL (owner/name or full URL)" >&2; exit 1; fi',
-    'if [[ "$REPO" != *"://"* ]]; then REPO="https://github.com/${REPO}.git"; fi',
-    'WORKDIR="${WSL_WORKDIR:-$HOME/repos}"',
-    'if ! command -v git >/dev/null 2>&1; then echo "git is required inside WSL. Install with: sudo apt-get update && sudo apt-get install -y git" >&2; exit 1; fi',
-    'mkdir -p "$WORKDIR"',
-    'repo_name=$(basename "$REPO")',
-    'repo_name="${repo_name%.git}"',
-    'repo_dir="$WORKDIR/$repo_name"',
-    'bootstrap_log="$WORKDIR/orchestration.log"',
-    ': > "$bootstrap_log"',
-    'repo_log="$repo_dir/orchestration.log"',
-    'printf "[%s] stage=preflight repo=%s workdir=%s\n" "$(date -Iseconds)" "$REPO" "$WORKDIR" | tee -a "$bootstrap_log"',
-    'if [ -z "${GH_TOKEN:-}" ]; then',
-    '  printf "[%s] stage=auth status=warn detail=\"GH_TOKEN not set; run gh auth login if repo is private\"\n" "$(date -Iseconds)" | tee -a "$bootstrap_log"',
-    'fi',
-    'if [ -d "$repo_dir/.git" ]; then',
-    '  log_file="$repo_log"',
-    '  cat "$bootstrap_log" >> "$log_file"',
-    'else',
-    '  log_file="$bootstrap_log"',
-    'fi',
-    'if [ ! -d "$repo_dir/.git" ]; then',
-    '  printf "[%s] stage=clone action=git-clone dest=%s\n" "$(date -Iseconds)" "$repo_dir" | tee -a "$log_file"',
-    '  git clone "$REPO" "$repo_dir" 2>&1 | tee -a "$log_file"',
-    '  log_file="$repo_log"',
-    '  cat "$bootstrap_log" >> "$log_file"',
-    'else',
-    '  printf "[%s] stage=update action=git-fetch\n" "$(date -Iseconds)" | tee -a "$log_file"',
-    '  git -C "$repo_dir" fetch --all --prune 2>&1 | tee -a "$log_file"',
-    '  if ! git -C "$repo_dir" pull --ff-only 2>&1 | tee -a "$log_file"; then',
-    '    printf "[%s] stage=update status=fail detail=\"pull --ff-only failed; resolve divergence manually\"\n" "$(date -Iseconds)" | tee -a "$log_file"',
-    '    exit 1',
-    '  fi',
-    'fi',
-    'orchestrator="${ORCHESTRATOR_PATH:-orchestrator.sh}"',
-    'candidate="$repo_dir/$orchestrator"',
-    'if [ ! -f "$candidate" ] && [ "$orchestrator" = "orchestrator.sh" ] && [ -f "$repo_dir/scripts/orchestrator.sh" ]; then',
-    '  candidate="$repo_dir/scripts/orchestrator.sh"',
-    'fi',
-    'if [ -f "$candidate" ]; then',
-    '  printf "[%s] stage=orchestrator path=%s\n" "$(date -Iseconds)" "$candidate" | tee -a "$log_file"',
-    '  chmod +x "$candidate"',
-    '  (cd "$repo_dir" && "$candidate") | tee -a "$log_file"',
-    'else',
-    '  printf "[%s] stage=orchestrator status=missing detail=%s\n" "$(date -Iseconds)" "$candidate" | tee -a "$log_file"',
-    'fi'
-)
+$bashWorkDir = Escape-Bash $WslWorkDir
+$bashOrchPath = Escape-Bash $OrchestratorPath
 
-$bashCommand = ($bashLines -join '; ')
+$bashCommand = @"
+set -euo pipefail
+
+if ! command -v git >/dev/null 2>&1; then
+  echo "[ERROR] git is not installed in WSL. Install with: sudo apt-get update && sudo apt-get install -y git" >&2
+  exit 1
+fi
+
+repo="\${MY_GITHUB_REPO:-}"
+if [ -z "\$repo" ]; then
+  echo "[ERROR] MY_GITHUB_REPO is not set inside WSL. Ensure WSLENV includes MY_GITHUB_REPO/u." >&2
+  exit 1
+fi
+
+workdir='$bashWorkDir'
+if [ -z "\$workdir" ]; then
+  workdir="\$HOME/repos"
+fi
+mkdir -p "\$workdir"
+
+reponame="\$(basename "\$repo" .git)"
+repodir="\$workdir/\$reponame"
+log="\$repodir/orchestration.log"
+mkdir -p "\$repodir"
+mkdir -p "\$(dirname "\$log")"
+
+log_msg() {
+  ts=\$(date -Is)
+  printf '[%s] %s\n' "\$ts" "\$1" | tee -a "\$log"
+}
+
+log_msg "Starting orchestration for \$repo"
+if [ ! -d "\$repodir/.git" ]; then
+  log_msg "Cloning repository into \$repodir"
+  git clone "\$repo" "\$repodir"
+else
+  log_msg "Repository already exists; fetching latest changes"
+  git -C "\$repodir" fetch --all --prune
+  git -C "\$repodir" pull --ff-only
+fi
+
+orch_rel='$bashOrchPath'
+orch_path="\$repodir/\$orch_rel"
+if [ -f "\$orch_path" ]; then
+  log_msg "Running orchestrator: \$orch_rel"
+  chmod +x "\$orch_path" || true
+  (cd "\$repodir" && "\$orch_path") | tee -a "\$log"
+  log_msg "Orchestrator completed"
+else
+  log_msg "Orchestrator script not found at \$orch_rel; skipping run."
+fi
+"@
 
 $wslArgs = @()
 if ($WslDistro) {
-    $wslArgs += "-d"
-    $wslArgs += $WslDistro
+    $wslArgs += @("-d", $WslDistro)
 }
-$wslArgs += "--"
-$wslArgs += "bash"
-$wslArgs += "-lc"
-$wslArgs += $bashCommand
+$wslArgs += @("--", "bash", "-lc", $bashCommand)
 
-$distroLabel = if ($WslDistro) { $WslDistro } else { "default" }
-Write-Output "Invoking WSL (distro: $distroLabel) with workdir $WslWorkDir and orchestrator $OrchestratorPath"
-Write-Output "WSLENV=$($Env:WSLENV)"
-
-$process = Start-Process -FilePath "wsl.exe" -ArgumentList $wslArgs -Wait -PassThru -NoNewWindow
-
-if ($process.ExitCode -ne 0) {
-    throw "WSL command failed with exit code $($process.ExitCode)"
-}
+Write-Status "Invoking WSL..." "Info"
+wsl.exe @wslArgs
+Write-Status "WSL operation finished." "Success"

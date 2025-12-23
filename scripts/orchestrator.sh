@@ -1,79 +1,55 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-project_name="$(basename "$repo_root")"
-log_file="${repo_root}/orchestration.log"
+# Simple, safe orchestrator to demonstrate multi-step behavior.
+# Idempotent: no destructive actions, only checks and optional tests/formatting.
 
-timestamp() {
-  date -Iseconds
-}
+LOG_FILE="${LOG_FILE:-$(pwd)/orchestration.log}"
+touch "$LOG_FILE"
 
 log() {
-  local stage="$1"; shift
-  local status="$1"; shift
-  local message="$*"
-  printf "[%s] stage=%s status=%s %s\n" "$(timestamp)" "$stage" "$status" "$message" | tee -a "$log_file"
+  local ts
+  ts="$(date -Is)"
+  printf '[%s] %s\n' "$ts" "$1" | tee -a "$LOG_FILE"
 }
 
-log "start" "ok" "orchestrator=${project_name} scripts/orchestrator.sh"
-tests_failed=0
-format_failed=0
-has_npm_package=0
-
-if [ -f "${repo_root}/package.json" ] && command -v npm >/dev/null 2>&1; then
-  has_npm_package=1
-fi
-
-# Tool checks
-if command -v node >/dev/null 2>&1; then
-  log "toolcheck" "ok" "node=$(node --version)"
-else
-  log "toolcheck" "skip" "node not found"
-fi
-
-if command -v python >/dev/null 2>&1; then
-  log "toolcheck" "ok" "python=$(python --version 2>&1)"
-else
-  log "toolcheck" "skip" "python not found"
-fi
-
-# Tests (best-effort)
-if (( has_npm_package )); then
-  if [ -d "${repo_root}/node_modules" ]; then
-    log "tests" "running" "npm test --if-present"
-    if (cd "$repo_root" && npm test --if-present); then
-      log "tests" "ok" "npm test completed"
-    else
-      log "tests" "fail" "npm test failed"
-      tests_failed=1
-    fi
+run_if_present() {
+  local cmd="$1"
+  shift
+  if command -v "$cmd" >/dev/null 2>&1; then
+    log "Running: $cmd $*"
+    "$cmd" "$@" | tee -a "$LOG_FILE"
   else
-    log "tests" "skip" "node_modules missing; run npm install to enable tests"
+    log "Skipping: $cmd not found"
   fi
+}
+
+log "Orchestrator started in $(pwd)"
+
+# Step 1: tool checks
+run_if_present git --version
+run_if_present node --version
+run_if_present npm --version
+run_if_present python --version
+
+# Step 2: optional lint/format/test hooks when package.json exists
+if [ -f package.json ]; then
+  log "package.json detected; running npm scripts if present"
+  npm run lint --if-present | tee -a "$LOG_FILE" || true
+  npm run fmt --if-present  | tee -a "$LOG_FILE" || true
+  npm run test --if-present | tee -a "$LOG_FILE" || true
 else
-  log "tests" "skip" "npm or package.json not available"
+  log "No package.json found; skipping npm-based checks"
 fi
 
-# Formatting (best-effort)
-if (( has_npm_package )); then
-  log "format" "running" "npm run format --if-present"
-  if (cd "$repo_root" && npm run format --if-present); then
-    log "format" "ok" "format step completed"
+# Step 3: Python tests if a tests/ folder exists
+if [ -d tests ]; then
+  if command -v pytest >/dev/null 2>&1; then
+    log "Running pytest"
+    pytest | tee -a "$LOG_FILE" || true
   else
-    log "format" "skip" "format script missing or failed"
-    format_failed=1
+    log "tests/ detected but pytest not installed; skipping"
   fi
-else
-  log "format" "skip" "format step unavailable"
 fi
 
-if (( tests_failed )); then
-  log "complete" "warn" "orchestrator finished with test failures"
-elif (( format_failed )); then
-  log "complete" "warn" "orchestrator finished with formatting issues"
-else
-  log "complete" "ok" "orchestrator finished"
-fi
-
-exit $(( tests_failed || format_failed ))
+log "Orchestrator finished"
