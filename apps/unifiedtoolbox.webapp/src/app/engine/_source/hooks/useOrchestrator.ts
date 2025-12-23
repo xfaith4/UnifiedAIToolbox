@@ -17,6 +17,62 @@ const PRICING = {
 
 const STORAGE_KEY = 'orchestrator-session-history';
 const MAX_HISTORY_ITEMS = 50;
+const HISTORY_API_ENDPOINT = '/api/engine/history';
+
+const parseHistoryDate = (value?: string) => {
+  const timestamp = value ? Date.parse(value) : NaN;
+  return Number.isFinite(timestamp) ? timestamp : 0;
+};
+
+const mergeHistories = (serverHistory: Session[], localHistory: Session[]) => {
+  const byId = new Map<string, Session>();
+
+  const addSession = (entry: Session | null | undefined) => {
+    if (!entry || !entry.id) return;
+    const candidate: Session = {
+      ...entry,
+      date: entry.date || new Date().toISOString(),
+    };
+
+    const existing = byId.get(candidate.id);
+    if (!existing || parseHistoryDate(candidate.date) > parseHistoryDate(existing.date)) {
+      byId.set(candidate.id, candidate);
+    }
+  };
+
+  serverHistory.forEach(addSession);
+  localHistory.forEach(addSession);
+
+  return Array.from(byId.values())
+    .sort((a, b) => parseHistoryDate(b.date) - parseHistoryDate(a.date))
+    .slice(0, MAX_HISTORY_ITEMS);
+};
+
+const loadLocalHistory = (): Session[] => {
+  if (typeof window === 'undefined') return [];
+  try {
+    const storedHistory = window.localStorage.getItem(STORAGE_KEY);
+    if (!storedHistory) {
+      return [];
+    }
+    const parsed = JSON.parse(storedHistory);
+    return Array.isArray(parsed) ? (parsed as Session[]) : [];
+  } catch (error) {
+    console.error("Failed to load session history from localStorage:", error);
+    window.localStorage.removeItem(STORAGE_KEY);
+    return [];
+  }
+};
+
+const persistLocalHistory = (history: Session[]) => {
+  if (typeof window === 'undefined') return;
+  try {
+    const serializedHistory = JSON.stringify(history);
+    window.localStorage.setItem(STORAGE_KEY, serializedHistory);
+  } catch (error) {
+    console.error("Failed to save session history to localStorage:", error);
+  }
+};
 
 const calculateCost = (model: keyof typeof PRICING, inputTokens: number, outputTokens: number, images: number = 0): number => {
   if (model === 'gemini-2.5-flash-image') {
@@ -46,17 +102,38 @@ const useOrchestrator = () => {
   const hasLoadedHistoryRef = useRef(false);
 
   useEffect(() => {
-    try {
-      const storedHistory = window.localStorage.getItem(STORAGE_KEY);
-      if (storedHistory) {
-        setHistory(JSON.parse(storedHistory));
+    let isActive = true;
+
+    const hydrateHistory = async () => {
+      let serverHistory: Session[] = [];
+      try {
+        const response = await fetch(HISTORY_API_ENDPOINT, { cache: 'no-store' });
+        if (response.ok) {
+          const payload = await response.json();
+          if (Array.isArray(payload)) {
+            serverHistory = payload as Session[];
+          } else {
+            console.warn("History API returned an unexpected payload. Using local cache only.");
+          }
+        } else {
+          console.warn(`History API returned ${response.status}; using local cache instead.`);
+        }
+      } catch (error) {
+        console.error("Failed to load session history from API:", error);
       }
-    } catch (error) {
-      console.error("Failed to load session history from localStorage:", error);
-      window.localStorage.removeItem(STORAGE_KEY);
-    } finally {
-      hasLoadedHistoryRef.current = true;
-    }
+
+      const mergedHistory = mergeHistories(serverHistory, loadLocalHistory());
+      if (isActive) {
+        setHistory(mergedHistory);
+        hasLoadedHistoryRef.current = true;
+      }
+    };
+
+    void hydrateHistory();
+
+    return () => {
+      isActive = false;
+    };
   }, []);
 
   // Save history to localStorage whenever it changes
@@ -64,12 +141,7 @@ const useOrchestrator = () => {
     if (!hasLoadedHistoryRef.current) {
       return;
     }
-    try {
-      const serializedHistory = JSON.stringify(history);
-      window.localStorage.setItem(STORAGE_KEY, serializedHistory);
-    } catch (error) {
-      console.error("Failed to save session history to localStorage:", error);
-    }
+    persistLocalHistory(history);
   }, [history]);
 
   useEffect(() => {
@@ -114,6 +186,26 @@ const useOrchestrator = () => {
       agent: { ...task.agent, log: [...task.agent.log, entry] }
     }));
   };
+
+  const persistSessionToServer = useCallback(async (sessionToPersist: Session) => {
+    try {
+      await fetch(HISTORY_API_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(sessionToPersist),
+      });
+    } catch (error) {
+      console.error("Failed to persist session history to API:", error);
+    }
+  }, []);
+
+  const clearServerHistory = useCallback(async () => {
+    try {
+      await fetch(HISTORY_API_ENDPOINT, { method: 'DELETE' });
+    } catch (error) {
+      console.error("Failed to clear persisted session history:", error);
+    }
+  }, []);
 
   const startOrchestration = useCallback(async (goal: string, fileContent: string | null) => {
     setIsOrchestrating(true);
@@ -343,7 +435,11 @@ const useOrchestrator = () => {
 
     const finalSession: Session = { ...session, tasks, totalCost, environmentalImpact: null };
     // Add to history, maintaining the size limit
-    setHistory(h => [finalSession, ...h].slice(0, MAX_HISTORY_ITEMS));
+    setHistory(h => {
+      const updatedHistory = [finalSession, ...h].slice(0, MAX_HISTORY_ITEMS);
+      void persistSessionToServer(finalSession);
+      return updatedHistory;
+    });
     setSession(finalSession);
     setIsOrchestrating(false);
     setIsComplete(true);
@@ -376,8 +472,15 @@ const useOrchestrator = () => {
 
   const clearHistory = useCallback(() => {
     setHistory([]);
-    // The useEffect hook will handle removing it from localStorage
-  }, []);
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.removeItem(STORAGE_KEY);
+      } catch (error) {
+        console.error("Failed to clear local session history cache:", error);
+      }
+    }
+    void clearServerHistory();
+  }, [clearServerHistory]);
 
   const runFeedback = useCallback(async (session: Session, feedback: string): Promise<string> => {
     const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_API_KEY || process.env.API_KEY });

@@ -8,6 +8,7 @@ venv/
 *.zip
 data/sqlite/*.db
 data/artifacts/**
+data/orchestrator-history/
 .vscode/
 bin/
 obj/
