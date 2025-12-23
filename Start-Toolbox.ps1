@@ -342,6 +342,7 @@ function Start-API {
     Write-Status "🚀 Starting FastAPI Backend..." -Level "Info"
     Initialize-GitHubToken
 
+    $locationPushed = $false
     try {
         $apiPort = Resolve-ServicePort -ServiceName "Prompt API" -DefaultPort $Script:DefaultApiPort
         $apiBaseUrl = "http://localhost:$apiPort"
@@ -351,7 +352,21 @@ function Start-API {
 
         $wslExe = Get-Command wsl.exe -ErrorAction SilentlyContinue
         if ($wslExe) {
-            $wslRoot = (wsl.exe wslpath -a "$ProjectRoot").Trim()
+            $wslRoot = $null
+            try {
+                $wslRootOutput = & wsl.exe wslpath -a "$ProjectRoot" 2>$null
+                $wslRootOutputText = [string]($wslRootOutput | Out-String)
+                $wslRootOutputText = $wslRootOutputText.Trim()
+                if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($wslRootOutputText)) {
+                    if ($wslRootOutputText -notmatch '^(?i)wslpath:') {
+                        $wslRoot = $wslRootOutputText
+                    }
+                }
+            }
+            catch {
+                $wslRoot = $null
+            }
+
             if ($wslRoot) {
                 $wslScript = "$wslRoot/scripts/start-prompt-api.sh"
                 $chmodResult = wsl.exe --exec bash -lc "chmod +x '$wslScript'"
@@ -368,6 +383,8 @@ function Start-API {
                 Write-Status "⚠️  API may still be starting on http://localhost:$apiPort (WSL)" -Level "Warning"
                 return $process
             }
+
+            Write-Status "⚠️  WSL path resolution failed; falling back to Windows launch." -Level "Warning"
         }
 
         $apiDir = Join-Path $ProjectRoot "apps\UnifiedPromptApp\services\prompt-api"
@@ -377,6 +394,7 @@ function Start-API {
         }
 
         Push-Location $apiDir
+        $locationPushed = $true
 
         # Create virtual environment if needed
         $venvDir = Join-Path $apiDir ".venv"
@@ -417,7 +435,9 @@ function Start-API {
         return $null
     }
     finally {
-        Pop-Location
+        if ($locationPushed) {
+            Pop-Location
+        }
     }
 }
 
