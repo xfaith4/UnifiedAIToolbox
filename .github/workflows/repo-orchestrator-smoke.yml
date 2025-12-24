@@ -1,0 +1,58 @@
+name: Repo Orchestrator Smoke
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 7 * * *"
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    env:
+      REPO_PAT: ${{ secrets.REPO_PAT }}
+      TARGET_REPO: https://github.com/xfaith4/Ideal-Prompt-Library.git
+      TARGET_BRANCH: main
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install orchestration-bridge Python deps
+        working-directory: apps/orchestration-bridge
+        run: pip install -r requirements.txt
+
+      - name: Clone and intake via bridge services (smoke)
+        working-directory: apps/orchestration-bridge
+        env:
+          GITHUB_TOKEN: ${{ env.REPO_PAT }}
+        run: |
+          python - <<'PY'
+          import os
+          import sys
+          sys.path.append('.')
+          from github_integration.repo_intake_service import RepoIntakeService, RepoIntakeError
+
+          repo = os.environ["TARGET_REPO"]
+          branch = os.environ.get("TARGET_BRANCH") or None
+          run_id = "gha-smoke"
+
+          svc = RepoIntakeService(github_token=os.environ["GITHUB_TOKEN"])
+          try:
+            intake = svc.run_intake(repo_url=repo, run_id=run_id, branch=branch)
+            print("INTAKE OK")
+            print("clone_path:", intake["clone_path"])
+            print("intake_json:", intake["artifacts"]["intake_json"])
+          except RepoIntakeError as exc:
+            print("INTAKE FAILED:", exc)
+            raise
+          PY
+
+      - name: Upload intake artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: repo-intake-smoke
+          path: apps/orchestration-bridge/runs/gha-smoke/**

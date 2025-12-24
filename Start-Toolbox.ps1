@@ -358,6 +358,7 @@ function Show-Menu {
 function Start-API {
     Write-Status "🚀 Starting FastAPI Backend..." -Level "Info"
     Initialize-GitHubToken
+    Ensure-OrchestrationBridgePythonDeps
 
     $locationPushed = $false
     try {

@@ -15,6 +15,8 @@ export default function GitHubPage() {
 
   const [selectedRepo, setSelectedRepo] = useState<GitHubRepo | null>(null)
   const [instruction, setInstruction] = useState('')
+  const [branch, setBranch] = useState('')
+  const [integrationBranch, setIntegrationBranch] = useState('')
   const [orchEvents, setOrchEvents] = useState<RepoOrchestrationEvent[]>([])
   const [orchResult, setOrchResult] = useState<RepoOrchestrationResult | null>(null)
   const [orchRunning, setOrchRunning] = useState(false)
@@ -56,6 +58,8 @@ export default function GitHubPage() {
     setOrchEvents([])
     setOrchResult(null)
     setOrchError(null)
+    setBranch(repo.default_branch || 'main')
+    setIntegrationBranch(`${repo.default_branch || 'main'}-orchestration`)
   }
 
   const handleRunRepoOrchestration = async () => {
@@ -74,6 +78,8 @@ export default function GitHubPage() {
     }
 
     const repoUrl = `https://github.com/${selectedRepo.full_name}.git`
+    const branchValue = branch.trim() || selectedRepo.default_branch || 'main'
+    const integrationBranchValue = integrationBranch.trim() || `${branchValue}-orchestration`
     setOrchRunning(true)
     setOrchEvents([])
     setOrchResult(null)
@@ -86,6 +92,8 @@ export default function GitHubPage() {
           goal: instruction.trim(),
           options: {
             github_token: trimmedToken,
+            branch: branchValue,
+            integration_branch: integrationBranchValue,
           },
         },
         (event) => {
@@ -216,6 +224,29 @@ export default function GitHubPage() {
               onChange={(e) => setInstruction(e.target.value)}
               disabled={orchRunning}
             />
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <label className="text-sm text-slate-300">Branch to work on</label>
+              <input
+                className="w-full rounded-xl border border-slate-700 bg-slate-800/60 px-3 py-2 text-sm text-slate-100 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="e.g., main"
+                value={branch}
+                onChange={(e) => setBranch(e.target.value)}
+                disabled={orchRunning}
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm text-slate-300">Integration branch (PR target)</label>
+              <input
+                className="w-full rounded-xl border border-slate-700 bg-slate-800/60 px-3 py-2 text-sm text-slate-100 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="e.g., main-orchestration"
+                value={integrationBranch}
+                onChange={(e) => setIntegrationBranch(e.target.value)}
+                disabled={orchRunning}
+              />
+            </div>
           </div>
 
           <div className="flex items-center gap-3">
