@@ -19,8 +19,6 @@ jobs:
         pwsh: ["7.4"]
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: 'recursive'
       
       - name: Install PowerShell modules
         shell: pwsh
@@ -75,8 +73,6 @@ jobs:
         python-version: ["3.10", "3.11", "3.12.1"]
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: 'recursive'
 
       - name: Show repo layout for debug
         run: |
@@ -154,8 +150,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: 'recursive'
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -192,8 +186,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: 'recursive'
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
