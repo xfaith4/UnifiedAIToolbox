@@ -74,6 +74,23 @@ function Write-Status {
     Write-Host $Message -ForegroundColor $color
 }
 
+function Ensure-OrchestrationBridgePythonDeps {
+    $bridgeDir = Join-Path $ProjectRoot "apps\orchestration-bridge"
+    $requirements = Join-Path $bridgeDir "requirements.txt"
+    if (-not (Test-Path $requirements)) {
+        return
+    }
+
+    Write-Status "?? Checking orchestration-bridge Python dependencies..." -Level "Info"
+    try {
+        python -m pip install --quiet --disable-pip-version-check -r $requirements
+        Write-Status "? orchestration-bridge Python dependencies are installed" -Level "Success"
+    }
+    catch {
+        Write-Status "? Failed to install orchestration-bridge Python dependencies: $_" -Level "Warning"
+    }
+}
+
 # Check if a service is running on a port
 function Test-PortInUse {
     param([int]$Port)
@@ -566,6 +583,7 @@ function Open-HTMLPortal {
 function Start-Orchestration {
     Write-Status "🤖 Starting Orchestration..." -Level "Info"
     Initialize-GitHubToken
+    Ensure-OrchestrationBridgePythonDeps
 
     $orchestrationScript = Join-Path $ProjectRoot "Orchestration\MilestoneController.ps1"
     if (-not (Test-Path $orchestrationScript)) {

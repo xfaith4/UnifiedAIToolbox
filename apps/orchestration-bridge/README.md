@@ -14,8 +14,16 @@ The orchestration bridge provides run tracking and API endpoints for managing AI
 
 ### 1. Install Dependencies
 
+Node (for the bridge helpers):
+
 ```bash
 npm install
+```
+
+Python (for Git-backed repo orchestration workflows):
+
+```bash
+pip install -r requirements.txt
 ```
 
 ### 2. Start the API Server

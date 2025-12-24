@@ -91,7 +91,7 @@ if ($ghTokenMasked) {
 # Escape values for bash
 function Escape-Bash {
     param([string]$Value)
-    return $Value -replace "'", "'\"'\"'"
+    return $Value -replace "'", "'\\''"
 }
 
 $bashWorkDir = Escape-Bash $WslWorkDir
@@ -124,7 +124,7 @@ mkdir -p "\$repodir"
 mkdir -p "\$(dirname "\$log")"
 
 log_msg() {
-  ts=\$(date -Is)
+  ts=\$(Get-date -Is)
   printf '[%s] %s\n' "\$ts" "\$1" | tee -a "\$log"
 }
 
