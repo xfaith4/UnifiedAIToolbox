@@ -199,7 +199,16 @@ The demo is automatically deployed to GitHub Pages when changes are pushed to th
 3. Uploads the artifact to GitHub Pages
 4. Deploys to the GitHub Pages environment
 
-**Manual Deployment**: You can also trigger the deployment manually from the Actions tab in GitHub.
+**Initial Setup (One-Time Configuration)**:
+
+To enable GitHub Pages for the first time:
+1. Navigate to repository Settings → Pages
+2. Under "Build and deployment", set Source to "GitHub Actions"
+3. The workflow will automatically deploy on the next push to `main`
+
+**Manual Deployment**: You can also trigger the deployment manually from the Actions tab in GitHub by clicking "Run workflow" on the "Deploy Animated Demo to GitHub Pages" workflow.
+
+**Verifying Deployment**: After the workflow completes, the demo will be available at `https://xfaith4.github.io/UnifiedAIToolbox/`
 
 **Configuration**: GitHub Pages must be enabled in the repository settings with source set to "GitHub Actions".
 

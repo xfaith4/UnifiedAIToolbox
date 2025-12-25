@@ -1,6 +1,11 @@
 ---
 name: Deploy Animated Demo to GitHub Pages
 
+# This workflow deploys the animated demo (demo-animated.html) to GitHub Pages
+# It automatically runs when changes are pushed to main branch or can be triggered manually
+# Prerequisites: GitHub Pages must be enabled with source set to "GitHub Actions"
+# in repository Settings → Pages
+
 on:
   # Runs on pushes targeting the default branch
   push:
