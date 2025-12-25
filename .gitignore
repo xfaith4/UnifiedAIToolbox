@@ -2,6 +2,11 @@
 Thumbs.db
 node_modules/
 apps/PromptWeb/dist/
+
+# Package manager lock files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
 venv/
 .venv/
 .venv-linux/
