@@ -90,9 +90,17 @@ The Unified AI Toolbox Animated Demo (`demo-animated.html`) is an interactive, v
 
 ## Usage
 
-### Opening the Demo
+### Viewing the Demo
 
-**Method 1: Direct File Access**
+**Method 1: GitHub Pages (Recommended)**
+The demo is hosted on GitHub Pages for easy access:
+```
+https://xfaith4.github.io/UnifiedAIToolbox/
+```
+
+This is the preferred method as it requires no local setup and works from any device.
+
+**Method 2: Direct File Access**
 Simply open `demo-animated.html` in any modern web browser:
 ```bash
 # macOS
@@ -105,7 +113,7 @@ xdg-open demo-animated.html
 start demo-animated.html
 ```
 
-**Method 2: Via HTTP Server**
+**Method 3: Via HTTP Server**
 For best results, serve via HTTP:
 ```bash
 # Python
@@ -118,7 +126,7 @@ npx http-server
 http://localhost:8080/demo-animated.html
 ```
 
-**Method 3: Via Launch Portal**
+**Method 4: Via Launch Portal**
 The demo is linked from the main [Launch Portal](../launch-portal.html) for easy access.
 
 ### Navigation
@@ -182,9 +190,27 @@ All content is in plain HTML - simply edit the text within each section.
 
 ## Integration
 
+### GitHub Pages Deployment
+
+The demo is automatically deployed to GitHub Pages when changes are pushed to the `main` branch. The deployment is handled by a GitHub Actions workflow (`.github/workflows/deploy-pages.yml`) that:
+
+1. Checks out the repository
+2. Copies `demo-animated.html` to `_site/index.html`
+3. Uploads the artifact to GitHub Pages
+4. Deploys to the GitHub Pages environment
+
+**Manual Deployment**: You can also trigger the deployment manually from the Actions tab in GitHub.
+
+**Configuration**: GitHub Pages must be enabled in the repository settings with source set to "GitHub Actions".
+
 ### Linking to Demo
 
 Add to your documentation or website:
+```markdown
+🌟 **[View Animated Demo](https://xfaith4.github.io/UnifiedAIToolbox/)** - Experience the toolbox capabilities!
+```
+
+Or link to the local version:
 ```markdown
 🌟 **[View Animated Demo](demo-animated.html)** - Experience the toolbox capabilities!
 ```

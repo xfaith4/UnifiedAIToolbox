@@ -9,7 +9,7 @@
 
 The Unified AI Toolbox is a comprehensive platform that unifies prompt management, agent orchestration, and AI provider integration into a single, powerful toolkit. Whether you're building AI workflows, managing prompt libraries, or orchestrating complex multi-agent systems, this toolbox provides the infrastructure you need.
 
-**✨ [View Animated Demo](demo-animated.html)** - Experience a visual journey through the toolbox's capabilities, from high-level ideas to fully designed software applications!
+**✨ [View Animated Demo](https://xfaith4.github.io/UnifiedAIToolbox/)** | [Local Demo](demo-animated.html) - Experience a visual journey through the toolbox's capabilities, from high-level ideas to fully designed software applications!
 
 ## ✨ Key Features
 
@@ -77,7 +77,7 @@ The Unified AI Toolbox is a comprehensive platform that unifies prompt managemen
 
 **Experience the power of AI orchestration** with our interactive animated demo:
 
-🌟 **[View Animated Demo](demo-animated.html)** - A visual fly-through journey showcasing:
+🌟 **[View Animated Demo Online](https://xfaith4.github.io/UnifiedAIToolbox/)** | [Local Version](demo-animated.html) - A visual fly-through journey showcasing:
 - High-level idea → AI Supervisor → Multi-agent orchestration
 - 9+ specialized AI agents working in harmony
 - Prompt refinement and quality assessment
