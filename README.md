@@ -9,6 +9,8 @@
 
 The Unified AI Toolbox is a comprehensive platform that unifies prompt management, agent orchestration, and AI provider integration into a single, powerful toolkit. Whether you're building AI workflows, managing prompt libraries, or orchestrating complex multi-agent systems, this toolbox provides the infrastructure you need.
 
+**✨ [View Animated Demo](demo-animated.html)** - Experience a visual journey through the toolbox's capabilities, from high-level ideas to fully designed software applications!
+
 ## ✨ Key Features
 
 ### 🎯 Prompt Management
@@ -70,6 +72,19 @@ The Unified AI Toolbox is a comprehensive platform that unifies prompt managemen
 - **Cloud-Native Runtime**: Kubernetes + Helm deployment with Prometheus/Grafana monitoring
 - **Performance Layer**: Redis caching and pgvector-backed semantic search
 - **Enterprise Readiness**: SSO/SAML, tenant-level audit logging, and webhook/notification integrations
+
+## 🎬 Demo & Showcase
+
+**Experience the power of AI orchestration** with our interactive animated demo:
+
+🌟 **[Launch Animated Demo](demo-animated.html)** - A visual fly-through journey showcasing:
+- High-level idea → AI Supervisor → Multi-agent orchestration
+- 9+ specialized AI agents working in harmony
+- Prompt refinement and quality assessment
+- Real-time cost tracking and learning loops
+- From concept to fully-designed software application
+
+The demo captures the imagination of what's possible with AI-powered development workflows!
 
 ## 🚀 Quick Start
 
