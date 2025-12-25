@@ -201,10 +201,11 @@ The demo is automatically deployed to GitHub Pages when changes are pushed to th
 
 **Initial Setup (One-Time Configuration)**:
 
-To enable GitHub Pages for the first time:
+To enable GitHub Pages for the first time (after this workflow is merged to main):
 1. Navigate to repository Settings → Pages
 2. Under "Build and deployment", set Source to "GitHub Actions"
-3. The workflow will automatically deploy on the next push to `main`
+3. Once enabled, the workflow will automatically deploy on the next push to `main`
+4. If the workflow file is already in main, you can manually trigger it from Actions tab
 
 **Manual Deployment**: You can also trigger the deployment manually from the Actions tab in GitHub by clicking "Run workflow" on the "Deploy Animated Demo to GitHub Pages" workflow.
 
