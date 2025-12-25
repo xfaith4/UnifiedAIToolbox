@@ -54,7 +54,8 @@ curl http://localhost:8001/api/runs
 
 ## Directory Structure
 
-```
+```markdown
+
 orchestration-bridge/
 ├── lib/
 │   ├── run-tracker.js           # Core tracking module
