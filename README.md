@@ -77,14 +77,23 @@ The Unified AI Toolbox is a comprehensive platform that unifies prompt managemen
 
 **Experience the power of AI orchestration** with our interactive animated demo:
 
-🌟 **[Launch Animated Demo](demo-animated.html)** - A visual fly-through journey showcasing:
+🌟 **[View Animated Demo](demo-animated.html)** - A visual fly-through journey showcasing:
 - High-level idea → AI Supervisor → Multi-agent orchestration
 - 9+ specialized AI agents working in harmony
 - Prompt refinement and quality assessment
 - Real-time cost tracking and learning loops
 - From concept to fully-designed software application
 
-The demo captures the imagination of what's possible with AI-powered development workflows!
+**Quick Launch:**
+```bash
+# Linux/Mac/WSL
+./launch-demo.sh
+
+# Windows PowerShell
+.\Launch-Demo.ps1
+```
+
+The demo captures the imagination of what's possible with AI-powered development workflows! See [Demo Guide](docs/DEMO.md) for more details.
 
 ## 🚀 Quick Start
 
