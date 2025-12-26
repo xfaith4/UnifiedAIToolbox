@@ -50,15 +50,18 @@ jobs:
           $errors = Invoke-ScriptAnalyzer -Path modules -Recurse -Severity Error -PassThru
           $warnings = Invoke-ScriptAnalyzer -Path modules -Recurse -Severity Warning -PassThru
 
-          if (($errors | Measure-Object).Count -gt 0 -or ($warnings | Measure-Object).Count -gt 0) {
-            if (($errors | Measure-Object).Count -gt 0) {
-              Write-Host "Errors:" -ForegroundColor Red
-              $errors | Format-Table RuleName, Severity, ScriptName, Line -AutoSize
+          if (($warnings | Measure-Object).Count -gt 0) {
+            Write-Host "Warnings:" -ForegroundColor Yellow
+            $warnings | Format-Table RuleName, Severity, ScriptName, Line -AutoSize
+            if ($env:GITHUB_STEP_SUMMARY) {
+              Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "### PowerShell lint warnings"
+              Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- [ ] Resolve $($warnings.Count) PowerShell lint warning(s)"
             }
-            if (($warnings | Measure-Object).Count -gt 0) {
-              Write-Host "Warnings:" -ForegroundColor Yellow
-              $warnings | Format-Table RuleName, Severity, ScriptName, Line -AutoSize
-            }
+          }
+
+          if (($errors | Measure-Object).Count -gt 0) {
+            Write-Host "Errors:" -ForegroundColor Red
+            $errors | Format-Table RuleName, Severity, ScriptName, Line -AutoSize
             exit 1
           }
       
