@@ -172,7 +172,12 @@ jobs:
         run: |
           Set-PSRepository PSGallery -InstallationPolicy Trusted
           Install-Module powershell-yaml -Scope CurrentUser -Force
-      
+          Import-Module PromptLibrary -Force
+          if (-not (Get-Command Get-Prompt -ErrorAction SilentlyContinue)) {
+             Write-Error "Get-Prompt function not found. Ensure the PromptLibrary module is present and imported correctly."
+          exit 1
+          }
+          $prompts = Get-Prompt
       - name: Build prompt index
         shell: pwsh
         run: |
@@ -335,3 +340,4 @@ jobs:
           echo "- Code quality metrics" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "All artifacts are available in the workflow run artifacts section." >> $GITHUB_STEP_SUMMARY
+
