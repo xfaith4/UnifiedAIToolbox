@@ -47,13 +47,18 @@ jobs:
         shell: pwsh
         run: |
           Write-Host "Linting PowerShell modules..." -ForegroundColor Cyan
-          Invoke-ScriptAnalyzer -Path modules -Recurse -Severity Error -EnableExit
-          $errorExit = $LASTEXITCODE
-          Invoke-ScriptAnalyzer -Path modules -Recurse -Severity Warning -EnableExit
-          $warningExit = $LASTEXITCODE
+          $errors = Invoke-ScriptAnalyzer -Path modules -Recurse -Severity Error -PassThru
+          $warnings = Invoke-ScriptAnalyzer -Path modules -Recurse -Severity Warning -PassThru
 
-          if ($errorExit -ne 0 -or $warningExit -ne 0) {
-            Write-Error "PowerShell lint failed (errors: $errorExit, warnings: $warningExit)"
+          if (($errors | Measure-Object).Count -gt 0 -or ($warnings | Measure-Object).Count -gt 0) {
+            if (($errors | Measure-Object).Count -gt 0) {
+              Write-Host "Errors:" -ForegroundColor Red
+              $errors | Format-Table RuleName, Severity, ScriptName, Line -AutoSize
+            }
+            if (($warnings | Measure-Object).Count -gt 0) {
+              Write-Host "Warnings:" -ForegroundColor Yellow
+              $warnings | Format-Table RuleName, Severity, ScriptName, Line -AutoSize
+            }
             exit 1
           }
       
