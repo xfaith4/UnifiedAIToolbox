@@ -47,9 +47,8 @@ jobs:
         shell: pwsh
         run: |
           Write-Host "Linting PowerShell modules..." -ForegroundColor Cyan
-          $analysis = Invoke-ScriptAnalyzer -Path modules -Recurse -PassThru
-          $errors = $analysis | Where-Object { $_.Severity -eq 'Error' }
-          $warnings = $analysis | Where-Object { $_.Severity -eq 'Warning' }
+          $errors = Invoke-ScriptAnalyzer -Path modules -Recurse -Severity Error -PassThru
+          $warnings = Invoke-ScriptAnalyzer -Path modules -Recurse -Severity Warning -PassThru
 
           if (($warnings | Measure-Object).Count -gt 0) {
             Write-Host "Warnings:" -ForegroundColor Yellow
