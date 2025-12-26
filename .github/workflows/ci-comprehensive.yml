@@ -48,7 +48,14 @@ jobs:
         run: |
           Write-Host "Linting PowerShell modules..." -ForegroundColor Cyan
           Invoke-ScriptAnalyzer -Path modules -Recurse -Severity Error -EnableExit
+          $errorExit = $LASTEXITCODE
           Invoke-ScriptAnalyzer -Path modules -Recurse -Severity Warning -EnableExit
+          $warningExit = $LASTEXITCODE
+
+          if ($errorExit -ne 0 -or $warningExit -ne 0) {
+            Write-Error "PowerShell lint failed (errors: $errorExit, warnings: $warningExit)"
+            exit 1
+          }
       
       - name: Run PowerShell tests
         shell: pwsh
