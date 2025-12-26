@@ -4,6 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Unified AI Toolbox - Animated Demo</title>
+    <meta name="description" content="Experience the Unified AI Toolbox animated demo: a multi-agent journey from ideas to production-ready software.">
+    <meta name="theme-color" content="#0a0a0a">
+    <meta property="og:title" content="Unified AI Toolbox - Animated Demo">
+    <meta property="og:description" content="See how multi-agent orchestration transforms ideas into production-ready applications with the Unified AI Toolbox.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://xfaith4.github.io/UnifiedAIToolbox/demo-animated.html">
+    <meta name="twitter:card" content="summary_large_image">
     <style>
         * {
             margin: 0;
@@ -17,6 +24,7 @@
             color: #ffffff;
             overflow-x: hidden;
             cursor: default;
+            line-height: 1.6;
         }
 
         /* Animated background */
@@ -104,6 +112,12 @@
             font-size: 1.2em;
             color: #667eea;
             font-weight: 600;
+        }
+
+        :focus-visible {
+            outline: 3px solid #f093fb;
+            outline-offset: 4px;
+            border-radius: 6px;
         }
 
         /* Idea section */
@@ -593,6 +607,24 @@
             .workflow-arrow { transform: rotate(90deg); }
         }
 
+        @media (prefers-reduced-motion: reduce) {
+            * {
+                animation: none !important;
+                transition: none !important;
+            }
+            .bg-animation,
+            .particle {
+                display: none;
+            }
+        }
+
+        .reduce-motion .bg-animation,
+        .reduce-motion .particle,
+        .reduce-motion .scroll-indicator {
+            animation: none !important;
+            display: none;
+        }
+
         /* Scroll indicator */
         .scroll-indicator {
             position: fixed;
@@ -611,6 +643,12 @@
     
     <!-- Floating particles -->
     <div class="particles" id="particles"></div>
+
+    <noscript>
+        <div style="background: #ffc107; color: #1a1a1a; padding: 12px 16px; text-align: center;">
+            JavaScript is disabled. Animations are limited, but the demo content is still available.
+        </div>
+    </noscript>
 
     <div class="demo-container">
         <!-- Hero Section -->
@@ -867,7 +905,7 @@
                 <h2 style="font-size: 3em; margin-bottom: 20px;">Ready to Transform Your AI Workflows?</h2>
                 <p style="font-size: 1.3em; color: #b0b0b0; margin-bottom: 40px;">Join the future of AI-powered software development</p>
                 <div class="cta-buttons">
-                    <a href="README.md" class="cta-button cta-primary">📖 Get Started</a>
+                    <a href="https://github.com/xfaith4/UnifiedAIToolbox#readme" class="cta-button cta-primary">📖 Get Started</a>
                     <a href="https://github.com/xfaith4/UnifiedAIToolbox" class="cta-button cta-secondary">💻 View on GitHub</a>
                     <a href="launch-portal.html" class="cta-button cta-secondary">🚀 Launch Portal</a>
                 </div>
@@ -882,26 +920,42 @@
     <div class="scroll-indicator">↓</div>
 
     <script>
-        // Create floating particles
         const particlesContainer = document.getElementById('particles');
-        for (let i = 0; i < 50; i++) {
-            const particle = document.createElement('div');
-            particle.className = 'particle';
-            particle.style.left = Math.random() * 100 + '%';
-            particle.style.animationDelay = Math.random() * 20 + 's';
-            particle.style.animationDuration = (Math.random() * 10 + 15) + 's';
-            particlesContainer.appendChild(particle);
-        }
+        const scrollIndicator = document.querySelector('.scroll-indicator');
+        const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+        const createParticles = () => {
+            particlesContainer.innerHTML = '';
+            for (let i = 0; i < 50; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'particle';
+                particle.style.left = Math.random() * 100 + '%';
+                particle.style.animationDelay = Math.random() * 20 + 's';
+                particle.style.animationDuration = (Math.random() * 10 + 15) + 's';
+                particlesContainer.appendChild(particle);
+            }
+        };
+
+        const applyMotionPreference = (shouldReduce) => {
+            if (shouldReduce) {
+                document.body.classList.add('reduce-motion');
+                particlesContainer.innerHTML = '';
+            } else {
+                document.body.classList.remove('reduce-motion');
+                createParticles();
+            }
+        };
+
+        applyMotionPreference(prefersReducedMotion.matches);
+        prefersReducedMotion.addEventListener('change', (event) => {
+            applyMotionPreference(event.matches);
+        });
 
         // Hide scroll indicator after scrolling
-        let lastScrollTop = 0;
         window.addEventListener('scroll', function() {
-            const scrollIndicator = document.querySelector('.scroll-indicator');
             const st = window.pageYOffset || document.documentElement.scrollTop;
-            if (st > 100) {
-                scrollIndicator.style.opacity = '0';
-            } else {
-                scrollIndicator.style.opacity = '1';
+            if (scrollIndicator) {
+                scrollIndicator.style.opacity = st > 100 ? '0' : '1';
             }
         });
 
