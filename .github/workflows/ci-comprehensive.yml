@@ -47,7 +47,8 @@ jobs:
         shell: pwsh
         run: |
           Write-Host "Linting PowerShell modules..." -ForegroundColor Cyan
-          Invoke-ScriptAnalyzer -Path modules -Recurse -Severity Error,Warning -EnableExit
+          Invoke-ScriptAnalyzer -Path modules -Recurse -Severity Error -EnableExit
+          Invoke-ScriptAnalyzer -Path modules -Recurse -Severity Warning -EnableExit
       
       - name: Run PowerShell tests
         shell: pwsh
