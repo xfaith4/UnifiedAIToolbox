@@ -447,7 +447,7 @@ $MyInvocation.MyCommand.ScriptBlock.Module.OnRemove = {
 # ----------------------------------------------------
 # Exports (only from inside the module)
 # ----------------------------------------------------
-Export-ModuleMember -Function Get-PromptFile, Get-PromptList, Get-AgentFile, Invoke-Orchestration, Update-PromptIndexAll, Update-PromptIndex, Update-AgentIndex, Search-Prompts, Invoke-PromptYaml, New-RefinedPrompt, Invoke-UATPromptBatchRefinement, Get-ContentHash, ConvertTo-TemplateText, Get-Agent
+Export-ModuleMember -Function Get-Prompt, Search-Prompt, Export-Prompt, Get-PromptFile, Get-PromptList, Get-AgentFile, Invoke-Orchestration, Update-PromptIndexAll, Update-PromptIndex, Update-AgentIndex, Search-Prompts, Invoke-PromptYaml, New-RefinedPrompt, Invoke-UATPromptBatchRefinement, Get-ContentHash, ConvertTo-TemplateText, Get-Agent
 # region Utility helpers
 function Test-OrchCli {
     <#
