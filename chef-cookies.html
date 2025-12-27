@@ -1,0 +1,955 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sweet Alchemy - Vegan Cookie Artisan</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Georgia', 'Garamond', serif;
+            background: #f9f5f0;
+            color: #2c1810;
+            overflow-x: hidden;
+            line-height: 1.6;
+        }
+
+        /* Animated background gradient */
+        .bg-animation {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #ffd89b 0%, #19547b 100%);
+            background-size: 400% 400%;
+            animation: gradientFlow 20s ease infinite;
+            z-index: -2;
+            opacity: 0.15;
+        }
+
+        @keyframes gradientFlow {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        /* Floating particles */
+        .particles {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            overflow: hidden;
+            pointer-events: none;
+        }
+
+        .particle {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            background: rgba(210, 180, 140, 0.4);
+            border-radius: 50%;
+            animation: float 15s infinite;
+        }
+
+        @keyframes float {
+            0%, 100% {
+                transform: translateY(0) translateX(0);
+                opacity: 0;
+            }
+            10% {
+                opacity: 0.6;
+            }
+            90% {
+                opacity: 0.6;
+            }
+            100% {
+                transform: translateY(-100vh) translateX(50px);
+                opacity: 0;
+            }
+        }
+
+        /* Navigation */
+        nav {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            background: rgba(249, 245, 240, 0.95);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            padding: 20px 0;
+            z-index: 1000;
+            box-shadow: 0 2px 20px rgba(0, 0, 0, 0.05);
+            animation: slideDown 0.8s ease;
+        }
+        
+        @supports not (backdrop-filter: blur(10px)) {
+            nav {
+                background: rgba(249, 245, 240, 0.98);
+            }
+        }
+
+        @keyframes slideDown {
+            from {
+                transform: translateY(-100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        nav .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        nav .logo {
+            font-size: 1.8em;
+            font-weight: bold;
+            background: linear-gradient(135deg, #d4a574 0%, #8b6f47 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: 2px;
+        }
+
+        nav ul {
+            display: flex;
+            list-style: none;
+            gap: 30px;
+        }
+
+        nav a {
+            text-decoration: none;
+            color: #5a4a3a;
+            font-weight: 500;
+            transition: color 0.3s ease;
+            position: relative;
+        }
+
+        nav a::after {
+            content: '';
+            position: absolute;
+            bottom: -5px;
+            left: 0;
+            width: 0;
+            height: 2px;
+            background: linear-gradient(135deg, #d4a574 0%, #8b6f47 100%);
+            transition: width 0.3s ease;
+        }
+
+        nav a:hover::after {
+            width: 100%;
+        }
+
+        nav a:hover {
+            color: #8b6f47;
+        }
+
+        /* Hero Section */
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 120px 40px 60px;
+            position: relative;
+        }
+
+        .hero-content {
+            max-width: 900px;
+            animation: fadeInUp 1.2s ease;
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(40px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .hero h1 {
+            font-size: 5em;
+            margin-bottom: 20px;
+            background: linear-gradient(135deg, #d4a574 0%, #8b6f47 50%, #d4a574 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            background-size: 200% auto;
+            animation: shimmer 3s linear infinite;
+            letter-spacing: 3px;
+            line-height: 1.2;
+        }
+
+        @keyframes shimmer {
+            to {
+                background-position: 200% center;
+            }
+        }
+
+        .hero .subtitle {
+            font-size: 1.8em;
+            color: #6b5444;
+            margin-bottom: 15px;
+            font-style: italic;
+            font-family: 'Brush Script MT', 'Lucida Handwriting', 'Apple Chancery', cursive, serif;
+        }
+
+        .hero .tagline {
+            font-size: 1.2em;
+            color: #8a7968;
+            margin-bottom: 40px;
+            font-weight: 300;
+        }
+
+        .hero .cta-button {
+            display: inline-block;
+            padding: 18px 45px;
+            background: linear-gradient(135deg, #d4a574 0%, #8b6f47 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 50px;
+            font-size: 1.1em;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 10px 30px rgba(212, 165, 116, 0.3);
+            animation: pulse 2s ease infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                transform: scale(1);
+            }
+            50% {
+                transform: scale(1.05);
+            }
+        }
+
+        .hero .cta-button:hover {
+            transform: translateY(-3px) scale(1.05);
+            box-shadow: 0 15px 40px rgba(212, 165, 116, 0.4);
+            animation: none;
+        }
+
+        /* About Section */
+        .about {
+            padding: 100px 40px;
+            background: rgba(255, 255, 255, 0.8);
+            position: relative;
+        }
+
+        .about .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            text-align: center;
+        }
+
+        .about h2 {
+            font-size: 3.5em;
+            margin-bottom: 30px;
+            color: #5a4a3a;
+            position: relative;
+            display: inline-block;
+        }
+
+        .about h2::after {
+            content: '';
+            position: absolute;
+            bottom: -10px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 80px;
+            height: 3px;
+            background: linear-gradient(135deg, #d4a574 0%, #8b6f47 100%);
+        }
+
+        .about p {
+            font-size: 1.3em;
+            color: #6b5444;
+            margin-bottom: 20px;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+            line-height: 1.8;
+        }
+
+        .about .highlights {
+            display: flex;
+            justify-content: center;
+            gap: 50px;
+            margin-top: 50px;
+            flex-wrap: wrap;
+        }
+
+        .highlight-item {
+            text-align: center;
+            animation: fadeIn 1s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .highlight-item .icon {
+            font-size: 3em;
+            margin-bottom: 15px;
+        }
+
+        .highlight-item h3 {
+            font-size: 1.5em;
+            color: #8b6f47;
+            margin-bottom: 10px;
+        }
+
+        .highlight-item p {
+            font-size: 1em;
+            color: #8a7968;
+        }
+
+        /* Gallery Section */
+        .gallery {
+            padding: 100px 40px;
+            background: linear-gradient(to bottom, rgba(255, 255, 255, 0.8) 0%, rgba(249, 245, 240, 0.9) 100%);
+        }
+
+        .gallery h2 {
+            text-align: center;
+            font-size: 3.5em;
+            margin-bottom: 60px;
+            color: #5a4a3a;
+            position: relative;
+            display: inline-block;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .gallery h2::after {
+            content: '';
+            position: absolute;
+            bottom: -10px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 80px;
+            height: 3px;
+            background: linear-gradient(135deg, #d4a574 0%, #8b6f47 100%);
+        }
+
+        .cookie-grid {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 40px;
+            padding: 20px;
+        }
+
+        .cookie-card {
+            background: white;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+            transition: all 0.4s ease;
+            position: relative;
+            animation: cardFloat 1.5s ease;
+        }
+
+        @keyframes cardFloat {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .cookie-card:hover {
+            transform: translateY(-10px) scale(1.02);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.15);
+        }
+
+        .cookie-card .image-placeholder {
+            width: 100%;
+            height: 300px;
+            background: linear-gradient(135deg, #f5e6d3 0%, #d4a574 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 4em;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .cookie-card .image-placeholder::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: linear-gradient(45deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+            transform: rotate(45deg);
+            animation: shine 3s infinite;
+        }
+
+        @keyframes shine {
+            0% {
+                left: -100%;
+            }
+            100% {
+                left: 100%;
+            }
+        }
+
+        .cookie-card .content {
+            padding: 30px;
+        }
+
+        .cookie-card h3 {
+            font-size: 1.8em;
+            color: #5a4a3a;
+            margin-bottom: 10px;
+        }
+
+        .cookie-card .description {
+            font-size: 1em;
+            color: #8a7968;
+            margin-bottom: 15px;
+            line-height: 1.6;
+        }
+
+        .cookie-card .tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .cookie-card .tag {
+            padding: 5px 15px;
+            background: rgba(212, 165, 116, 0.2);
+            color: #8b6f47;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 500;
+        }
+
+        /* Accolades Section */
+        .accolades {
+            padding: 100px 40px;
+            background: rgba(255, 255, 255, 0.9);
+        }
+
+        .accolades .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            text-align: center;
+        }
+
+        .accolades h2 {
+            font-size: 3.5em;
+            margin-bottom: 60px;
+            color: #5a4a3a;
+            position: relative;
+            display: inline-block;
+        }
+
+        .accolades h2::after {
+            content: '';
+            position: absolute;
+            bottom: -10px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 80px;
+            height: 3px;
+            background: linear-gradient(135deg, #d4a574 0%, #8b6f47 100%);
+        }
+
+        .testimonials {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 30px;
+            margin-top: 40px;
+        }
+
+        .testimonial {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.08);
+            position: relative;
+            transition: transform 0.3s ease;
+        }
+
+        .testimonial:hover {
+            transform: translateY(-5px);
+        }
+
+        .testimonial::before {
+            content: '"';
+            position: absolute;
+            top: 10px;
+            left: 20px;
+            font-size: 5em;
+            color: rgba(212, 165, 116, 0.2);
+            font-family: Georgia, serif;
+        }
+
+        .testimonial p {
+            font-size: 1.1em;
+            color: #6b5444;
+            font-style: italic;
+            margin-bottom: 15px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .testimonial .author {
+            font-size: 0.95em;
+            color: #8b6f47;
+            font-weight: 600;
+            font-style: normal;
+        }
+
+        /* Contact Section */
+        .contact {
+            padding: 100px 40px;
+            background: linear-gradient(135deg, #f5e6d3 0%, #e8d5c4 100%);
+            text-align: center;
+        }
+
+        .contact h2 {
+            font-size: 3.5em;
+            margin-bottom: 30px;
+            color: #5a4a3a;
+            position: relative;
+            display: inline-block;
+        }
+
+        .contact h2::after {
+            content: '';
+            position: absolute;
+            bottom: -10px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 80px;
+            height: 3px;
+            background: linear-gradient(135deg, #d4a574 0%, #8b6f47 100%);
+        }
+
+        .contact p {
+            font-size: 1.3em;
+            color: #6b5444;
+            margin-bottom: 40px;
+        }
+
+        .social-links {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin-top: 30px;
+        }
+
+        .social-link {
+            width: 60px;
+            height: 60px;
+            background: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.8em;
+            color: #8b6f47;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+        
+        .social-link[title]::after {
+            content: attr(title);
+            position: absolute;
+            bottom: -30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 0.5em;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+        
+        .social-link:hover::after {
+            opacity: 1;
+        }
+
+        .social-link:hover {
+            transform: translateY(-5px) scale(1.1);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+            background: linear-gradient(135deg, #d4a574 0%, #8b6f47 100%);
+            color: white;
+        }
+
+        /* Footer */
+        footer {
+            padding: 30px 40px;
+            background: #2c1810;
+            color: #d4a574;
+            text-align: center;
+        }
+
+        footer p {
+            font-size: 0.95em;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 3em;
+            }
+
+            .hero .subtitle {
+                font-size: 1.3em;
+            }
+
+            .hero .tagline {
+                font-size: 1em;
+            }
+
+            nav .container {
+                flex-direction: column;
+                gap: 20px;
+            }
+
+            nav ul {
+                flex-wrap: wrap;
+                justify-content: center;
+                gap: 15px;
+            }
+
+            .about h2,
+            .gallery h2,
+            .accolades h2,
+            .contact h2 {
+                font-size: 2.5em;
+            }
+
+            .cookie-grid {
+                grid-template-columns: 1fr;
+                gap: 30px;
+            }
+
+            .about .highlights {
+                flex-direction: column;
+                gap: 30px;
+            }
+        }
+
+        /* Scroll animations */
+        .fade-in-on-scroll {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: all 0.8s ease;
+        }
+
+        .fade-in-on-scroll.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    </style>
+</head>
+<body>
+    <!-- Background animations -->
+    <div class="bg-animation"></div>
+    <div class="particles" id="particles"></div>
+
+    <!-- Navigation -->
+    <nav>
+        <div class="container">
+            <div class="logo">Sweet Alchemy</div>
+            <ul>
+                <li><a href="#home">Home</a></li>
+                <li><a href="#about">About</a></li>
+                <li><a href="#gallery">Cookies</a></li>
+                <li><a href="#accolades">Praise</a></li>
+                <li><a href="#contact">Connect</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section id="home" class="hero">
+        <div class="hero-content">
+            <h1>Sweet Alchemy</h1>
+            <p class="subtitle">Vegan Cookie Artistry</p>
+            <p class="tagline">Where wholesome ingredients meet elaborate artistry. Dairy-free delights crafted with passion.</p>
+            <a href="#gallery" class="cta-button">Explore the Collection</a>
+        </div>
+    </section>
+
+    <!-- About Section -->
+    <section id="about" class="about fade-in-on-scroll">
+        <div class="container">
+            <h2>The Artist</h2>
+            <p>
+                Welcome to my kitchen, where every cookie tells a story. As a young culinary artist, 
+                I've dedicated myself to crafting vegan, dairy-free cookies that don't just nourish the body, 
+                but feed the soul. Each recipe is a carefully orchestrated symphony of wholesome ingredients, 
+                transformed through passion and creativity into something truly extraordinary.
+            </p>
+            <p>
+                What started as a personal journey into plant-based baking has blossomed into an art form 
+                that has earned recognition among friends, family, and fellow food enthusiasts. My cookies 
+                prove that conscious eating never means compromising on taste or beauty.
+            </p>
+            <div class="highlights">
+                <div class="highlight-item">
+                    <div class="icon">🌱</div>
+                    <h3>100% Vegan</h3>
+                    <p>Purely plant-based magic</p>
+                </div>
+                <div class="highlight-item">
+                    <div class="icon">🥛</div>
+                    <h3>Dairy-Free</h3>
+                    <p>Delicious without dairy</p>
+                </div>
+                <div class="highlight-item">
+                    <div class="icon">✨</div>
+                    <h3>Wholesome</h3>
+                    <p>Quality ingredients only</p>
+                </div>
+                <div class="highlight-item">
+                    <div class="icon">🎨</div>
+                    <h3>Artisanal</h3>
+                    <p>Handcrafted with love</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Gallery Section -->
+    <section id="gallery" class="gallery fade-in-on-scroll">
+        <h2>Cookie Collection</h2>
+        <div class="cookie-grid">
+            <div class="cookie-card">
+                <div class="image-placeholder">🍪</div>
+                <div class="content">
+                    <h3>Chocolate Dream</h3>
+                    <p class="description">
+                        Rich, decadent chocolate cookies with a perfect chewy center. 
+                        Made with organic cacao and coconut sugar.
+                    </p>
+                    <div class="tags">
+                        <span class="tag">Vegan</span>
+                        <span class="tag">Dairy-Free</span>
+                        <span class="tag">Gluten-Free Option</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="cookie-card">
+                <div class="image-placeholder">🌰</div>
+                <div class="content">
+                    <h3>Nutty Delight</h3>
+                    <p class="description">
+                        A celebration of premium nuts with maple syrup and vanilla. 
+                        Crunchy outside, tender inside.
+                    </p>
+                    <div class="tags">
+                        <span class="tag">Vegan</span>
+                        <span class="tag">Dairy-Free</span>
+                        <span class="tag">High Protein</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="cookie-card">
+                <div class="image-placeholder">🍋</div>
+                <div class="content">
+                    <h3>Citrus Burst</h3>
+                    <p class="description">
+                        Bright and zesty lemon cookies with a hint of lavender. 
+                        Perfect for summer afternoons.
+                    </p>
+                    <div class="tags">
+                        <span class="tag">Vegan</span>
+                        <span class="tag">Dairy-Free</span>
+                        <span class="tag">Light & Fresh</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="cookie-card">
+                <div class="image-placeholder">🍓</div>
+                <div class="content">
+                    <h3>Berry Bliss</h3>
+                    <p class="description">
+                        Loaded with real dried berries and white chocolate alternative. 
+                        A fruity indulgence.
+                    </p>
+                    <div class="tags">
+                        <span class="tag">Vegan</span>
+                        <span class="tag">Dairy-Free</span>
+                        <span class="tag">Antioxidant Rich</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="cookie-card">
+                <div class="image-placeholder">🥥</div>
+                <div class="content">
+                    <h3>Coconut Paradise</h3>
+                    <p class="description">
+                        Tropical coconut combined with almond flour and agave. 
+                        A taste of the islands.
+                    </p>
+                    <div class="tags">
+                        <span class="tag">Vegan</span>
+                        <span class="tag">Dairy-Free</span>
+                        <span class="tag">Paleo-Friendly</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="cookie-card">
+                <div class="image-placeholder">🎃</div>
+                <div class="content">
+                    <h3>Spice Symphony</h3>
+                    <p class="description">
+                        Warm spices meet pumpkin and molasses in this autumn favorite. 
+                        Comfort in every bite.
+                    </p>
+                    <div class="tags">
+                        <span class="tag">Vegan</span>
+                        <span class="tag">Dairy-Free</span>
+                        <span class="tag">Seasonal</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Accolades Section -->
+    <section id="accolades" class="accolades fade-in-on-scroll">
+        <div class="container">
+            <h2>What People Say</h2>
+            <div class="testimonials">
+                <div class="testimonial">
+                    <p>These cookies are absolute perfection! I can't believe they're vegan. The texture, the flavor - everything is just incredible.</p>
+                    <div class="author">— Sarah M.</div>
+                </div>
+                <div class="testimonial">
+                    <p>As someone with dairy allergies, finding treats this delicious is rare. These cookies have become my go-to dessert!</p>
+                    <div class="author">— James K.</div>
+                </div>
+                <div class="testimonial">
+                    <p>Not only are they beautiful to look at, but they taste even better than they look. True artistry in every bite.</p>
+                    <div class="author">— Emily R.</div>
+                </div>
+                <div class="testimonial">
+                    <p>I've tried many vegan cookies, but these are on another level. The care and creativity really shine through.</p>
+                    <div class="author">— Michael T.</div>
+                </div>
+                <div class="testimonial">
+                    <p>These cookies converted my whole family to vegan baking! We can't get enough of the Chocolate Dream variety.</p>
+                    <div class="author">— Lisa P.</div>
+                </div>
+                <div class="testimonial">
+                    <p>Such unique flavor combinations! Every cookie is an adventure. You can taste the passion in each recipe.</p>
+                    <div class="author">— David L.</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Contact Section -->
+    <section id="contact" class="contact fade-in-on-scroll">
+        <h2>Let's Connect</h2>
+        <p>Interested in custom orders or have questions about my cookies?<br>I'd love to hear from you!</p>
+        <div class="social-links">
+            <a href="#" class="social-link" title="Instagram" aria-label="Follow on Instagram">📷</a>
+            <a href="#" class="social-link" title="Facebook" aria-label="Follow on Facebook">👍</a>
+            <a href="#" class="social-link" title="Email" aria-label="Send an email">✉️</a>
+            <a href="#" class="social-link" title="Pinterest" aria-label="Follow on Pinterest">📌</a>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <p>&copy; 2025 Sweet Alchemy. Handcrafted with love and wholesome ingredients. 🌱</p>
+    </footer>
+
+    <script>
+        // Create floating particles
+        const particlesContainer = document.getElementById('particles');
+        for (let i = 0; i < 30; i++) {
+            const particle = document.createElement('div');
+            particle.className = 'particle';
+            particle.style.left = Math.random() * 100 + '%';
+            particle.style.animationDelay = Math.random() * 15 + 's';
+            particle.style.animationDuration = (Math.random() * 10 + 10) + 's';
+            particlesContainer.appendChild(particle);
+        }
+
+        // Smooth scrolling for navigation links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+
+        // Scroll animation observer
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -100px 0px'
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('visible');
+                }
+            });
+        }, observerOptions);
+
+        document.querySelectorAll('.fade-in-on-scroll').forEach(el => {
+            observer.observe(el);
+        });
+
+        // Add staggered animation delays to cookie cards
+        document.querySelectorAll('.cookie-card').forEach((card, index) => {
+            card.style.animationDelay = (index * 0.1) + 's';
+        });
+    </script>
+</body>
+</html>
