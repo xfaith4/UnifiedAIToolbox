@@ -127,6 +127,13 @@ The demo is linked from the main [Launch Portal](../launch-portal.html) for easy
 - **Hover Effects**: Hover over cards and buttons to see interactive effects
 - **Click Links**: Navigate to README, GitHub, or Launch Portal
 - **Responsive**: Works on desktop, tablet, and mobile devices
+- **Reduced Motion**: Respects system-level `prefers-reduced-motion` settings and suppresses background particles when enabled
+
+### Hosting on GitHub Pages
+
+- The demo is fully self-contained (no external assets) and works when served from `/demo-animated.html` at the repository root.
+- For this repository, the published URL is `https://xfaith4.github.io/UnifiedAIToolbox/demo-animated.html` once GitHub Pages is enabled for the `main` branch.
+- Relative links point back to the GitHub README and portal launcher so navigation continues to work under the `/UnifiedAIToolbox/` base path.
 
 ## Technical Details
 

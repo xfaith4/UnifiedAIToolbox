@@ -83,6 +83,7 @@ The Unified AI Toolbox is a comprehensive platform that unifies prompt managemen
 - Prompt refinement and quality assessment
 - Real-time cost tracking and learning loops
 - From concept to fully-designed software application
+- Live GitHub Pages preview: https://xfaith4.github.io/UnifiedAIToolbox/demo-animated.html (auto-loads from the repo root)
 
 **Quick Launch:**
 ```bash
