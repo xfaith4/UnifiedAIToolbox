@@ -118,6 +118,14 @@ src/
 └── public/                 # Static assets
 ```
 
+### Milestones dashboard
+
+- Data is loaded from `public/milestone-data/data/CurrentGoal.json` and `Milestone_Log.json`, normalized defensively for missing values.
+- Metrics (percentiles, acceptance rate, histograms) live in `src/lib/milestones/metrics.ts`.
+- Milestone thresholds are declared centrally in `src/lib/milestones/definitions.ts` and evaluated via `evaluateMilestones`. Update thresholds there to change the gating criteria.
+- Deltas compare the selected window to the immediately preceding window of the same duration; if no previous window exists the delta is omitted.
+- Unit tests for milestone evaluation are located in `src/app/milestones/__tests__/milestones.evaluation.test.ts` and run with `npm test`.
+
 ### Key Services
 
 - `orchestratorApi.ts` - Backend API integration
