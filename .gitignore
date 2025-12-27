@@ -7,6 +7,8 @@ apps/PromptWeb/dist/
 package-lock.json
 yarn.lock
 pnpm-lock.yaml
+# Exception: allow lock file for webapp to ensure reproducible GitHub Pages builds
+!apps/unifiedtoolbox.webapp/package-lock.json
 venv/
 .venv/
 .venv-linux/
