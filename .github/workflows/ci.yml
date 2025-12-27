@@ -39,11 +39,10 @@ jobs:
     name: CI Summary
     runs-on: ubuntu-latest
     if: always()
-    needs: [dashboard, prompt_api]
+    needs: [prompt_api]
     steps:
       - name: Summarize coverage
         run: |
-          dashboard_result="${{ needs.dashboard.result }}"
           api_result="${{ needs.prompt_api.result }}"
 
           checkbox() {
@@ -56,13 +55,12 @@ jobs:
 
           echo "## CI Coverage Summary" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "- [$(checkbox "$dashboard_result")] Dashboard lint, test, and build (apps/dashboard)" >> "$GITHUB_STEP_SUMMARY"
           echo "- [$(checkbox "$api_result")] Prompt API tests (Orchestration/UnifiedPromptApp/services/prompt-api)" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "### Follow-up coverage tasks" >> "$GITHUB_STEP_SUMMARY"
           echo "- [ ] Next.js unified web app not exercised in this workflow" >> "$GITHUB_STEP_SUMMARY"
           echo "- [ ] .NET desktop applications not exercised in this workflow" >> "$GITHUB_STEP_SUMMARY"
 
-          if [ "$dashboard_result" = "failure" ] || [ "$api_result" = "failure" ]; then
+          if [ "$api_result" = "failure" ]; then
             exit 1
           fi

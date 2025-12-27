@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { NextResponse } from 'next/server';
-import type { Session } from '@/app/engine/_source/types';
+import type { Session, EnvironmentalImpact } from '@/app/engine/_source/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,14 +41,23 @@ function normalizeSession(raw: unknown): Session | null {
   const date = session.date ? String(session.date) : new Date().toISOString();
   const tasks = Array.isArray(session.tasks) ? session.tasks : [];
 
+  // Validate environmentalImpact structure
+  let environmentalImpact: EnvironmentalImpact | null = null;
+  if (session.environmentalImpact && typeof session.environmentalImpact === 'object') {
+    const impact = session.environmentalImpact as Record<string, unknown>;
+    if (typeof impact.co2e === 'number' && typeof impact.water === 'number') {
+      environmentalImpact = { co2e: impact.co2e, water: impact.water };
+    }
+  }
+
   return {
     ...session,
     id: String(session.id),
     goal: session.goal ? String(session.goal) : '',
-    fileContent: (session as Session).fileContent ?? null,
+    fileContent: typeof session.fileContent === 'string' ? session.fileContent : null,
     date,
     tasks,
-    environmentalImpact: (session as Session).environmentalImpact ?? null,
+    environmentalImpact,
     planningCost: typeof session.planningCost === 'number' ? session.planningCost : undefined,
     totalCost: typeof session.totalCost === 'number' ? session.totalCost : undefined,
   };

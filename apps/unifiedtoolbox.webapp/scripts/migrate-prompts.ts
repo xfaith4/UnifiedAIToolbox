@@ -63,12 +63,15 @@ function convertYAMLToPrompt(yamlPrompt: YAMLPrompt): PromptItem {
 
     // Extract variables
     const variables = yamlPrompt.variables
-        ? Object.entries(yamlPrompt.variables).map(([name, config]) => ({
-            name,
-            label: name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-            type: (config?.type === 'array' ? 'multiline' : 'string') as 'string' | 'multiline',
-            default: config?.default,
-        }))
+        ? Object.entries(yamlPrompt.variables).map(([name, config]) => {
+            const variableType: 'string' | 'multiline' = config?.type === 'array' ? 'multiline' : 'string';
+            return {
+                name,
+                label: name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+                type: variableType,
+                default: config?.default,
+            };
+          })
         : [];
 
     // Generate title from ID

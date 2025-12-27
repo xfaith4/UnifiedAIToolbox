@@ -402,7 +402,7 @@ function extractString(obj: Record<string, unknown>, keys: string[]): string {
   const normalizedEntries = Object.entries(obj).map(([key, value]) => [
     normalizeKey(key),
     value,
-  ])
+  ] as [string, unknown])
   for (const candidate of keys) {
     const normalizedCandidate = normalizeKey(candidate)
     for (const [normalizedKey, value] of normalizedEntries) {
