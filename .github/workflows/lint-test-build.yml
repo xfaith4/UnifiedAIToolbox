@@ -136,8 +136,6 @@ jobs:
           ls -la Orchestration/UnifiedPromptApp/services || true
           echo "path=" >> "$GITHUB_OUTPUT"
           exit 1
-          echo "path=" >> "$GITHUB_OUTPUT"
-          exit 1
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
