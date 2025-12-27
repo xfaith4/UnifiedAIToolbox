@@ -66,7 +66,7 @@ function convertYAMLToPrompt(yamlPrompt: YAMLPrompt): PromptItem {
         ? Object.entries(yamlPrompt.variables).map(([name, config]) => ({
             name,
             label: name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-            type: config?.type === 'array' ? 'multiline' : 'string',
+            type: (config?.type === 'array' ? 'multiline' : 'string') as 'string' | 'multiline',
             default: config?.default,
         }))
         : [];
