@@ -137,34 +137,37 @@ export function buildHistogramSegments(values: number[], bucketCount = 6, range?
   return { buckets, min: sanitizedMin, max: sanitizedMax, total };
 }
 
+const EMPTY_DISTRIBUTION: Distribution = { buckets: [], min: 0, max: 0, total: 0 };
+const EMPTY_METRICS: MetricsSummary = {
+  totalRuns: 0,
+  avgScore: 0,
+  medianCost: 0,
+  tokensP90: 0,
+  tokensMedian: 0,
+  scoreMedian: 0,
+  scoreP75: 0,
+  scoreP90: 0,
+  costP75: 0,
+  costP90: 0,
+  durationP95: 0,
+  errorRate: 0,
+  acceptRate: 0,
+  outcomeCounts: { accepted: 0, refine: 0, rejected: 0, unknown: 0 },
+  histogram: {
+    tokens: EMPTY_DISTRIBUTION,
+    cost: EMPTY_DISTRIBUTION,
+    score: EMPTY_DISTRIBUTION,
+  },
+};
+
 export function summarizeRuns(runs: RunRecord[]): MetricsSummary {
   const total = runs.length;
   if (!total) {
-    return {
-      totalRuns: 0,
-      avgScore: 0,
-      medianCost: 0,
-      tokensP90: 0,
-      tokensMedian: 0,
-      scoreMedian: 0,
-      scoreP75: 0,
-      scoreP90: 0,
-      costP75: 0,
-      costP90: 0,
-      durationP95: 0,
-      errorRate: 0,
-      acceptRate: 0,
-      outcomeCounts: { accepted: 0, refine: 0, rejected: 0, unknown: 0 },
-      histogram: {
-        tokens: buildHistogramSegments([], 6),
-        cost: buildHistogramSegments([], 6),
-        score: buildHistogramSegments([], 6),
-      },
-    };
+    return { ...EMPTY_METRICS };
   }
 
   const extractNumeric = (field: keyof RunRecord) =>
-    runs.map((run) => safeNumber(run[field])).filter((value): value is number => value !== null);
+    runs.map((run) => safeNumber(run[field])).filter((value): value is number => value !== null && value !== undefined);
 
   const scoreValues = extractNumeric('score');
   const tokensValues = extractNumeric('tokens');

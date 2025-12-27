@@ -4,7 +4,7 @@ import { MetricsSummary, MilestoneEvaluation, MilestoneStatus, MilestoneThreshol
 const DEFAULT_TOLERANCE = 0.1;
 
 function meetsThreshold(value: number | null, threshold: MilestoneThreshold): { pass: boolean; near: boolean; missing: boolean } {
-  if (value === null || value === undefined || Number.isNaN(value)) {
+  if (value === null || Number.isNaN(value)) {
     return { pass: false, near: false, missing: true };
   }
   const tolerance = threshold.tolerance ?? DEFAULT_TOLERANCE * Math.abs(threshold.target || 1);

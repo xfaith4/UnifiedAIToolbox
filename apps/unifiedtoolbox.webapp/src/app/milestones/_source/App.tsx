@@ -165,8 +165,14 @@ export default function App() {
               Start
               <input
                 type="date"
-                value={(timeWindow as any).customStart ?? ''}
-                onChange={(e) => setTimeWindow((prev) => ({ ...(prev as any), type: 'custom', customStart: e.target.value }))}
+                value={timeWindow.type === 'custom' ? timeWindow.customStart : ''}
+                onChange={(e) =>
+                  setTimeWindow((prev) => ({
+                    type: 'custom',
+                    customStart: e.target.value,
+                    customEnd: prev.type === 'custom' ? prev.customEnd : '',
+                  }))
+                }
                 className="rounded border border-slate-800 bg-slate-950 px-2 py-1 text-slate-100"
               />
             </label>
@@ -174,8 +180,14 @@ export default function App() {
               End
               <input
                 type="date"
-                value={(timeWindow as any).customEnd ?? ''}
-                onChange={(e) => setTimeWindow((prev) => ({ ...(prev as any), type: 'custom', customEnd: e.target.value }))}
+                value={timeWindow.type === 'custom' ? timeWindow.customEnd : ''}
+                onChange={(e) =>
+                  setTimeWindow((prev) => ({
+                    type: 'custom',
+                    customStart: prev.type === 'custom' ? prev.customStart : '',
+                    customEnd: e.target.value,
+                  }))
+                }
                 className="rounded border border-slate-800 bg-slate-950 px-2 py-1 text-slate-100"
               />
             </label>
