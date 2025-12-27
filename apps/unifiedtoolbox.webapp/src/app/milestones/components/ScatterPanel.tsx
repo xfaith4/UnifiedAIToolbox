@@ -39,7 +39,7 @@ export function ScatterPanel({ runs }: Props) {
               formatter={(value: number, key: string) =>
                 key === 'tokens' ? [value.toLocaleString(), 'Tokens'] : [value.toFixed(2), 'Score']
               }
-              labelFormatter={(_, payload) => payload?.[0]?.payload?.label}
+              labelFormatter={(_, payload: any) => payload?.[0]?.payload?.label}
             />
             <Legend />
             <ReferenceLine x={tokensMedian} stroke="#fbbf24" strokeDasharray="3 3" label={{ value: 'Median tokens', fill: '#fbbf24' }} />

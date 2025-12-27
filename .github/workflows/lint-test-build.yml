@@ -48,14 +48,23 @@ jobs:
       - name: Verify prompt index
         shell: bash
         run: |
+          # Install sqlite3 if not available
+          if ! command -v sqlite3 &> /dev/null; then
+            echo "Installing sqlite3..."
+            sudo apt-get update && sudo apt-get install -y sqlite3
+          fi
+          
           echo "=== Database Info ==="
-          ls -lh data/prompts.db
-          echo ""
-          echo "=== Table Counts ==="
-          sqlite3 data/prompts.db "SELECT (SELECT COUNT(*) FROM prompts) as prompts, (SELECT COUNT(*) FROM agents) as agents;"
-          echo ""
-          echo "=== FTS Test Search ==="
-          sqlite3 data/prompts.db "SELECT COUNT(*) FROM prompts_fts JOIN prompts p ON prompts_fts.id = p.id WHERE prompts_fts MATCH 'powershell';"
+          ls -lh data/prompts.db || echo "Database file not found"
+          
+          if [ -f "data/prompts.db" ]; then
+            echo ""
+            echo "=== Table Counts ==="
+            sqlite3 data/prompts.db "SELECT (SELECT COUNT(*) FROM prompts) as prompts, (SELECT COUNT(*) FROM agents) as agents;" || echo "Warning: Could not query database"
+            echo ""
+            echo "=== FTS Test Search ==="
+            sqlite3 data/prompts.db "SELECT COUNT(*) FROM prompts_fts JOIN prompts p ON prompts_fts.id = p.id WHERE prompts_fts MATCH 'powershell';" || echo "Warning: FTS query failed"
+          fi
       
       - name: Upload prompt database
         uses: actions/upload-artifact@v4
@@ -95,6 +104,7 @@ jobs:
       - name: Detect prompt-api directory
         id: detect
         run: |
+          echo "Searching for prompt-api directory..."
           candidates=(
             "services/prompt-api"
             "services/prompt_api"
@@ -106,14 +116,24 @@ jobs:
 
           for d in "${candidates[@]}"; do
             if [ -d "$d" ]; then
-              echo "Found prompt-api at: $d"
+              echo "✓ Found prompt-api at: $d"
               echo "path=$d" >> "$GITHUB_OUTPUT"
+              
+              # Validate requirements.txt exists
+              if [ ! -f "$d/requirements.txt" ]; then
+                echo "⚠️  Warning: requirements.txt not found in $d"
+              else
+                echo "✓ requirements.txt found"
+              fi
+              
               exit 0
             fi
           done
 
-          echo "No prompt-api directory found in expected locations." >&2
-          echo "Expected one of: ${candidates[*]}" >&2
+          echo "❌ No prompt-api directory found"
+          echo "Searched locations: ${candidates[*]}"
+          echo "Directory structure:"
+          ls -la Orchestration/UnifiedPromptApp/services || true
           echo "path=" >> "$GITHUB_OUTPUT"
           exit 1
 

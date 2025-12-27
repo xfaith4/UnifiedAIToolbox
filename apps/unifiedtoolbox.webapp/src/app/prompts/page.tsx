@@ -580,6 +580,7 @@ function PromptEditor({
         ...prompt.refine,
         draftText: draft,
         lastRefinedAt: new Date().toISOString(),
+        notes: prompt.refine?.notes ?? '',
       },
     }
     setPrompt(updated)
@@ -635,6 +636,7 @@ function PromptEditor({
           ...prompt.refine,
           draftText: aiDraft,
           lastRefinedAt: new Date().toISOString(),
+          notes: prompt.refine?.notes ?? '',
         },
       }
       setPrompt(updated)
@@ -671,6 +673,8 @@ function PromptEditor({
       refine: {
         ...prompt.refine,
         lastRefinedAt: new Date().toISOString(),
+        notes: prompt.refine?.notes ?? '',
+        draftText: draft,
       },
     }
     setPrompt(updated)
@@ -702,6 +706,7 @@ function PromptEditor({
         ...prompt.refine,
         draftText: entry.promptText,
         lastRefinedAt: new Date().toISOString(),
+        notes: prompt.refine?.notes ?? '',
       },
     }
     setPrompt(updated)
@@ -714,6 +719,8 @@ function PromptEditor({
       refine: {
         ...prompt.refine,
         notes: value,
+        draftText: prompt.refine?.draftText ?? null,
+        lastRefinedAt: prompt.refine?.lastRefinedAt ?? null,
       },
     }
     setPrompt(updated)
@@ -726,6 +733,8 @@ function PromptEditor({
       refine: {
         ...prompt.refine,
         draftText: value,
+        notes: prompt.refine?.notes ?? '',
+        lastRefinedAt: prompt.refine?.lastRefinedAt ?? null,
       },
     }
     setPrompt(updated)

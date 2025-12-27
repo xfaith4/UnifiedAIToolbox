@@ -736,11 +736,13 @@ export default function OrchestratorPage() {
                     {ev.run_id && <span className="text-[10px] text-slate-500">run {ev.run_id}</span>}
                   </div>
                   {ev.message && <div className="text-slate-200">{ev.message}</div>}
-                  {ev.progress?.message && <div className="text-slate-300">{ev.progress.message as string}</div>}
+                  {ev.progress?.message && typeof ev.progress.message === 'string' ? (
+                    <div className="text-slate-300">{ev.progress.message}</div>
+                  ) : null}
                   {ev.log_line && <div className="font-mono text-[11px] text-slate-400">{ev.log_line}</div>}
-                  {ev.result?.pr_url && (
-                    <div className="text-emerald-300">PR: {ev.result.pr_url as string}</div>
-                  )}
+                  {ev.result?.pr_url && typeof ev.result.pr_url === 'string' ? (
+                    <div className="text-emerald-300">PR: {ev.result.pr_url}</div>
+                  ) : null}
                 </div>
               ))}
             </div>

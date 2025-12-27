@@ -109,7 +109,7 @@ export function normalizeRunForCompare(entry: NormalizedRunEntry): NormalizedRun
       thumbs: normalizedFeedback.thumbs ?? null,
       tags: Array.isArray(normalizedFeedback.tags) ? normalizedFeedback.tags.filter(Boolean) : [],
       note: normalizedFeedback.note ?? '',
-      createdAt: normalizedFeedback.createdAt ?? null,
+      createdAt: normalizedFeedback.createdAt,
     },
     artifacts: Array.from(new Set(mergedArtifacts)),
   };

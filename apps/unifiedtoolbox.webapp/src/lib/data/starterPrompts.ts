@@ -1,4 +1,6 @@
 // Starter prompts for the Prompt Refinement Studio
+import type { PromptItem } from '@/lib/types/prompts';
+
 export const STARTER_PROMPTS = [
     {
         id: 'code-review-assistant',
@@ -299,11 +301,11 @@ Prioritize refactorings by impact and effort.`,
 ];
 
 // Add timestamps
-export function getStarterPromptsWithTimestamps() {
+export function getStarterPromptsWithTimestamps(): PromptItem[] {
     const now = new Date().toISOString();
     return STARTER_PROMPTS.map(prompt => ({
         ...prompt,
         createdAt: now,
         updatedAt: now,
-    }));
+    })) as PromptItem[];
 }
