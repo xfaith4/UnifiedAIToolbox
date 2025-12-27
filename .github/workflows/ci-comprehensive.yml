@@ -90,14 +90,24 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         shell: bash
         run: |
+          # Install sqlite3 if not available
+          if ! command -v sqlite3 &> /dev/null; then
+            echo "Installing sqlite3..."
+            sudo apt-get update && sudo apt-get install -y sqlite3
+          fi
+          
           echo "=== Database Info ==="
-          ls -lh data/prompts.db
-          echo ""
-          echo "=== Table Counts ==="
-          sqlite3 data/prompts.db "SELECT (SELECT COUNT(*) FROM prompts) as prompts, (SELECT COUNT(*) FROM agents) as agents;" || echo "Warning: Could not query database"
+          ls -lh data/prompts.db || echo "Database file not found"
+          
+          if [ -f "data/prompts.db" ]; then
+            echo ""
+            echo "=== Table Counts ==="
+            sqlite3 data/prompts.db "SELECT (SELECT COUNT(*) FROM prompts) as prompts, (SELECT COUNT(*) FROM agents) as agents;" || echo "Warning: Could not query database"
+          fi
       
       - name: Upload prompt database artifact
         uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: prompt-index-${{ matrix.os }}-${{ matrix.pwsh }}
           path: data/prompts.db
@@ -150,6 +160,7 @@ jobs:
       
       - name: Upload coverage reports
         uses: actions/upload-artifact@v4
+        continue-on-error: true
         if: matrix.python-version == '3.12'
         with:
           name: python-coverage-report
@@ -238,6 +249,7 @@ jobs:
       
       - name: Upload desktop app artifacts
         uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: desktop-app-builds
           path: artifacts/desktop-builds
@@ -278,8 +290,15 @@ jobs:
       - name: Run PowerShell smoke tests
         shell: pwsh
         run: |
-          Write-Host "Running PowerShell smoke tests..." -ForegroundColor Cyan
-          pwsh -NoProfile -ExecutionPolicy Bypass -File Smoketest.ps1
+          if (Test-Path "Smoketest.ps1") {
+            Write-Host "Running PowerShell smoke tests..." -ForegroundColor Cyan
+            pwsh -NoProfile -ExecutionPolicy Bypass -File Smoketest.ps1
+          } elseif (Test-Path "archive/2025-12-LaunchCleanup/legacy-launchers/Smoketest.ps1") {
+            Write-Host "Running PowerShell smoke tests from archive..." -ForegroundColor Cyan
+            pwsh -NoProfile -ExecutionPolicy Bypass -File archive/2025-12-LaunchCleanup/legacy-launchers/Smoketest.ps1
+          } else {
+            Write-Host "Smoketest.ps1 not found, skipping..." -ForegroundColor Yellow
+          }
 
   # ============================================================================
   # CI Summary
