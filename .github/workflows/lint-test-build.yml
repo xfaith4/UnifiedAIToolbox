@@ -145,40 +145,6 @@ jobs:
         run: |
           pytest -v
 
-  dashboard:
-    name: Dashboard (React/Vite)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      
-      - name: Install dependencies
-        working-directory: apps/dashboard
-        run: npm ci
-      
-      - name: Lint TypeScript/JavaScript
-        working-directory: apps/dashboard
-        run: npm run lint
-      
-      - name: Run tests
-        working-directory: apps/dashboard
-        run: npm test
-      
-      - name: Build dashboard
-        working-directory: apps/dashboard
-        run: npm run build
-      
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: dashboard-build
-          path: apps/dashboard/dist
-          retention-days: 7
-
   unified_webapp:
     name: Unified Web App (Next.js)
     runs-on: ubuntu-latest
@@ -210,3 +176,4 @@ jobs:
           name: unified-webapp-build
           path: apps/unifiedtoolbox.webapp/.next
           retention-days: 7
+
