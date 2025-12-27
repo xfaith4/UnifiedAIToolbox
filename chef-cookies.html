@@ -84,10 +84,17 @@
             width: 100%;
             background: rgba(249, 245, 240, 0.95);
             backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
             padding: 20px 0;
             z-index: 1000;
             box-shadow: 0 2px 20px rgba(0, 0, 0, 0.05);
             animation: slideDown 0.8s ease;
+        }
+        
+        @supports not (backdrop-filter: blur(10px)) {
+            nav {
+                background: rgba(249, 245, 240, 0.98);
+            }
         }
 
         @keyframes slideDown {
@@ -204,7 +211,7 @@
             color: #6b5444;
             margin-bottom: 15px;
             font-style: italic;
-            font-family: 'Brush Script MT', cursive;
+            font-family: 'Brush Script MT', 'Lucida Handwriting', 'Apple Chancery', cursive, serif;
         }
 
         .hero .tagline {
@@ -577,6 +584,27 @@
             transition: all 0.3s ease;
             box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
         }
+        
+        .social-link[title]::after {
+            content: attr(title);
+            position: absolute;
+            bottom: -30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 0.5em;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+        
+        .social-link:hover::after {
+            opacity: 1;
+        }
 
         .social-link:hover {
             transform: translateY(-5px) scale(1.1);
@@ -862,10 +890,10 @@
         <h2>Let's Connect</h2>
         <p>Interested in custom orders or have questions about my cookies?<br>I'd love to hear from you!</p>
         <div class="social-links">
-            <a href="#" class="social-link" title="Instagram">📷</a>
-            <a href="#" class="social-link" title="Facebook">👍</a>
-            <a href="#" class="social-link" title="Email">✉️</a>
-            <a href="#" class="social-link" title="Pinterest">📌</a>
+            <a href="#" class="social-link" title="Instagram" aria-label="Follow on Instagram">📷</a>
+            <a href="#" class="social-link" title="Facebook" aria-label="Follow on Facebook">👍</a>
+            <a href="#" class="social-link" title="Email" aria-label="Send an email">✉️</a>
+            <a href="#" class="social-link" title="Pinterest" aria-label="Follow on Pinterest">📌</a>
         </div>
     </section>
 
