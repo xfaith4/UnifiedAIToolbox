@@ -11,6 +11,7 @@ Write-Host "🚀 Launching Unified AI Toolbox Animated Demo..." -ForegroundColor
 Write-Host ""
 
 # Check if the demo file exists
+
 $DemoPath = Join-Path $ScriptDir $DemoFile
 if (-not (Test-Path $DemoPath)) {
     Write-Host "❌ Error: $DemoFile not found in $ScriptDir" -ForegroundColor Red
@@ -24,10 +25,10 @@ $PortInUse = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction Si
 if ($PortInUse) {
     Write-Host "⚠️  Port $Port is already in use" -ForegroundColor Yellow
     Write-Host "   Opening demo in existing server..." -ForegroundColor Yellow
-    
+
     $DemoUrl = "http://localhost:$Port/$DemoFile"
     Start-Process $DemoUrl
-    
+
     exit 0
 }
 
@@ -85,7 +86,7 @@ Write-Host ""
 try {
     while ($true) {
         Start-Sleep -Seconds 1
-        
+
         # Check if job is still running
         if ($ServerJob.State -ne "Running") {
             Write-Host "⚠️  Server stopped unexpectedly" -ForegroundColor Yellow
