@@ -27,7 +27,25 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $false)]
-    [switch]$NonInteractive
+    [switch]$NonInteractive,
+
+    [Parameter(Mandatory = $false)]
+    [ValidateSet("FullStack", "Api", "Dashboard", "WebPortal", "HtmlPortal", "Orchestration", "Docker")]
+    [string]$Mode,
+
+    [Parameter(Mandatory = $false)]
+    [string]$Goal,
+
+    [Parameter(Mandatory = $false)]
+    [ValidateSet("gpt-4o-mini", "gpt-4", "gpt-3.5-turbo")]
+    [string]$Model = "gpt-4o-mini",
+
+    [Parameter(Mandatory = $false)]
+    [ValidateSet("Info", "Debug", "Warning", "Error")]
+    [string]$LogLevel = "Info",
+
+    [Parameter(Mandatory = $false)]
+    [switch]$NoWait
 )
 
 $ErrorActionPreference = "Stop"
@@ -81,13 +99,13 @@ function Ensure-OrchestrationBridgePythonDeps {
         return
     }
 
-    Write-Status "?? Checking orchestration-bridge Python dependencies..." -Level "Info"
+    Write-Status "Checking orchestration-bridge Python dependencies..." -Level "Info"
     try {
         python -m pip install --quiet --disable-pip-version-check -r $requirements
-        Write-Status "? orchestration-bridge Python dependencies are installed" -Level "Success"
+        Write-Status "orchestration-bridge Python dependencies are installed" -Level "Success"
     }
     catch {
-        Write-Status "? Failed to install orchestration-bridge Python dependencies: $_" -Level "Warning"
+        Write-Status "Failed to install orchestration-bridge Python dependencies: $_" -Level "Warning"
     }
 }
 
@@ -463,7 +481,7 @@ function Start-API {
 function Start-Dashboard {
     Write-Status "🚀 Starting Vite Dashboard..." -Level "Info"
 
-    $dashboardDir = Join-Path $ProjectRoot "apps\unifiedtoolbox.webapp"
+    $dashboardDir = Join-Path $ProjectRoot "apps\dashboard"
     if (-not (Test-Path $dashboardDir)) {
         Write-Status "❌ Dashboard directory not found at: $dashboardDir" -Level "Error"
         return $null
@@ -471,9 +489,6 @@ function Start-Dashboard {
 
     try {
         Push-Location $dashboardDir
-
-        # Clean up any stale Next.js lock files
-        Clear-NextLockFile -ProjectPath $dashboardDir | Out-Null
 
         # Install dependencies if needed
         if (-not (Test-Path "node_modules")) {
@@ -592,9 +607,12 @@ function Start-Orchestration {
         return
     }
 
-    $goal = Read-Host "Enter orchestration goal (or press Enter for default)"
-    if ([string]::IsNullOrWhiteSpace($goal)) {
-        $goal = "Run a complete analysis of the current project state"
+    $effectiveGoal = $Goal
+    if ([string]::IsNullOrWhiteSpace($effectiveGoal)) {
+        $effectiveGoal = Read-Host "Enter orchestration goal (or press Enter for default)"
+        if ([string]::IsNullOrWhiteSpace($effectiveGoal)) {
+            $effectiveGoal = "Run a complete analysis of the current project state"
+        }
     }
 
     $outputDir = Join-Path $ProjectRoot "apps\orchestration-bridge\runs"
@@ -605,10 +623,10 @@ function Start-Orchestration {
         "-NoProfile"
         "-ExecutionPolicy", "Bypass"
         "-File", "`"$orchestrationScript`""
-        "-Goal", "`"$goal`""
-        "-Model", "gpt-4o-mini"
+        "-Goal", "`"$effectiveGoal`""
+        "-Model", $Model
         "-OutputDir", "`"$outputDir`""
-        "-LogLevel", "Info"
+        "-LogLevel", $LogLevel
     )
 
     Start-Process -FilePath "pwsh.exe" -ArgumentList $arguments -Wait -NoNewWindow
@@ -637,11 +655,61 @@ function Start-Docker {
 
 # Main execution
 try {
+    $runningProcesses = @()
+
+    if ($Mode) {
+        Write-Host "`n=== 🚀 Unified AI Toolbox - $Mode ===`n" -ForegroundColor Cyan
+
+        switch ($Mode) {
+            "FullStack" {
+                $apiProcess = Start-API
+                if ($apiProcess) { $runningProcesses += $apiProcess }
+                $dashboardProcess = Start-Dashboard
+                if ($dashboardProcess) { $runningProcesses += $dashboardProcess }
+                $webProcess = Start-WebPortal
+                if ($webProcess) { $runningProcesses += $webProcess }
+            }
+            "Api" {
+                $apiProcess = Start-API
+                if ($apiProcess) { $runningProcesses += $apiProcess }
+            }
+            "Dashboard" {
+                $dashboardProcess = Start-Dashboard
+                if ($dashboardProcess) { $runningProcesses += $dashboardProcess }
+            }
+            "WebPortal" {
+                $webProcess = Start-WebPortal
+                if ($webProcess) { $runningProcesses += $webProcess }
+            }
+            "HtmlPortal" {
+                Open-HTMLPortal
+            }
+            "Orchestration" {
+                Start-Orchestration
+            }
+            "Docker" {
+                Start-Docker
+            }
+        }
+
+        if (-not $NoWait) {
+            Write-Host "Press Ctrl+C to stop..." -ForegroundColor Yellow
+            while ($true) {
+                Start-Sleep -Seconds 60
+            }
+        }
+
+        exit 0
+    }
+
     if ($NonInteractive) {
         Write-Host "`n=== 🚀 Unified AI Toolbox - Non-Interactive Launch ===`n" -ForegroundColor Cyan
         $apiProcess = Start-API
         $dashboardProcess = Start-Dashboard
         $webProcess = Start-WebPortal
+        if ($apiProcess) { $runningProcesses += $apiProcess }
+        if ($dashboardProcess) { $runningProcesses += $dashboardProcess }
+        if ($webProcess) { $runningProcesses += $webProcess }
 
         Write-Host "`n=== ✅ All Services Started ===`n" -ForegroundColor Green
         Write-Host "Press Ctrl+C to stop all services..." -ForegroundColor Yellow
@@ -651,8 +719,6 @@ try {
         }
     }
     else {
-        $runningProcesses = @()
-
         while ($true) {
             Show-Menu
             $choice = Read-Host
@@ -736,7 +802,7 @@ catch {
 }
 finally {
     # Cleanup on Ctrl+C
-    if ($runningProcesses) {
+    if ($runningProcesses -and $runningProcesses.Count -gt 0) {
         Write-Host "`n🛑 Stopping services..." -ForegroundColor Yellow
         foreach ($proc in $runningProcesses) {
             if ($proc -and -not $proc.HasExited) {

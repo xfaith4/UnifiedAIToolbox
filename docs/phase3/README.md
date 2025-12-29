@@ -8,6 +8,10 @@
 
 ---
 
+## Status Note
+
+Some Phase 3 documents in this folder describe the intended v2.0 target state. If you’re progressing Phase 3 incrementally, treat the specs/guides as a roadmap and confirm current implementation status in the repo before relying on any “complete” claims.
+
 ## Overview
 
 Phase 3 transforms the Unified AI Toolbox from a single-tenant application to an enterprise-grade, multi-tenant SaaS platform. This documentation hub covers all planning, specifications, and guides for Phase 3 development. Implementation is complete and live for the v2.0 baseline.
@@ -70,6 +74,7 @@ docs/phase3/
 
 ### Guides
 - [Development Environment Setup](guides/DEV_ENVIRONMENT_SETUP.md) - Phase 3 prerequisites
+- [Web Portal Deployment (Vercel)](WEB_PORTAL_DEPLOYMENT.md) - Deploy the Next.js portal to a Node-capable host
 
 ## Prerequisites
 

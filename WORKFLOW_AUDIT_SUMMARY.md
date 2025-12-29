@@ -28,14 +28,13 @@ Added comprehensive safety checks:
 
 ## Remaining Issue: Next.js Static Export Configuration
 
-### The Problem
-The Next.js application is configured with `output: 'export'` in `next.config.ts`, which generates static HTML files. However, the application contains API routes (e.g., `/api/agents`, `/api/engine/*`, etc.) which are **incompatible with static export**.
+## Resolved: Next.js Static Export Configuration ✅
 
-### Build Error
-```
-Error: export const dynamic = "force-static"/export const revalidate not configured 
-on route "/api/agents" with "output: export".
-```
+The Next.js app uses `src/app/api/*` routes and must run with a Node.js server. The `output: 'export'` setting was removed from `apps/unifiedtoolbox.webapp/next.config.ts`, and the GitHub Pages deployment workflow was converted into a build-only workflow.
+
+### Outcome
+- `apps/unifiedtoolbox.webapp/next.config.ts` no longer uses static export.
+- `.github/workflows/nextjs.yml` now runs `next build` and uploads `.next` as an artifact (no Pages deploy).
 
 ### Why This Happens
 - Static export (`output: 'export'`) pre-renders all pages at build time
@@ -107,20 +106,8 @@ export const revalidate = 60; // seconds
 - Still requires Node.js hosting
 - More complex configuration
 
-### Recommendation
-
-**For UnifiedAIToolbox:** Use **Option 1** (Remove Static Export)
-
-Reasons:
-1. The app has extensive API functionality (`/api/agents`, `/api/engine/*`, `/api/prompts`, etc.)
-2. These are core features, not nice-to-haves
-3. Modern hosting (Vercel, Netlify) provides excellent Next.js support
-4. The app already uses dynamic features
-
-**Implementation:**
-1. Remove `output: 'export'` from `next.config.ts`
-2. Update GitHub Pages workflow to deploy to Vercel/Netlify instead
-3. Or self-host with Node.js support
+### Follow-up (Phase 3)
+- Decide where to deploy the Next.js portal (Vercel/Netlify/self-host) if you want a hosted environment.
 
 ### Alternative Quick Fix (If GitHub Pages Required)
 If GitHub Pages deployment is mandatory:

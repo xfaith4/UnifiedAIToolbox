@@ -156,7 +156,7 @@ The Unified AI Toolbox features seamless integration between the Next.js web por
 **What's Configured:**
 
 - ✅ `.env.local` in `apps/unifiedtoolbox.webapp` with `NEXT_PUBLIC_API_BASE=http://localhost:8000`
-- ✅ Docker Compose sets `NEXT_PUBLIC_API_BASE=http://prompt-api:8000` for container networking
+- ✅ Docker Compose sets `NEXT_PUBLIC_API_BASE=http://localhost:8000` so the browser can reach the Prompt API through the published port
 - ✅ API health checks and connection validation built into the UI
 - ✅ Automatic fallback to simulation mode if backend is unavailable
 

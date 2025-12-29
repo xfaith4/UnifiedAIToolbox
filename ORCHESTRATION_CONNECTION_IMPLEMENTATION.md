@@ -33,7 +33,7 @@ Implemented a seamless, professional connection between frontend and backend ser
 - `docker-compose.yml`
 
 **Changes:**
-- Added `NEXT_PUBLIC_API_BASE=http://prompt-api:8000` environment variable to `unified-webapp` service
+- Set `NEXT_PUBLIC_API_BASE=http://localhost:8000` on the `unified-webapp` service so the browser can reach the Prompt API through the published host port
 - Added `depends_on` with health check condition to ensure prompt-api starts first
 
 **Benefits:**

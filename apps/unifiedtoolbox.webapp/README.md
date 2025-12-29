@@ -52,7 +52,7 @@ When running via docker-compose, the webapp automatically connects to the `promp
 docker-compose up unified-webapp
 ```
 
-The docker-compose configuration sets `NEXT_PUBLIC_API_BASE=http://prompt-api:8000` for container-to-container communication.
+The docker-compose configuration sets `NEXT_PUBLIC_API_BASE=http://localhost:8000` so the browser can reach the Prompt API through the published port.
 
 ### Production Deployment
 

@@ -7,6 +7,12 @@
 
 ---
 
+## Phase 3 Note: Web Portal Hosting
+
+The Next.js web portal (`apps/unifiedtoolbox.webapp`) includes `src/app/api/*` routes and must run on a Node-capable host (it cannot be deployed via GitHub Pages static export).
+
+- See `docs/phase3/WEB_PORTAL_DEPLOYMENT.md` for the Phase 3 deployment workflow (Vercel) and required secrets/vars.
+
 ## Executive Summary
 
 This document provides a comprehensive checklist for production deployment of the Unified AI Toolbox v1.5. All items should be completed and verified before deploying to production.

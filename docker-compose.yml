@@ -3,8 +3,8 @@ version: '3.8'
 services:
   prompt-api:
     build:
-      context: ./apps/UnifiedPromptApp/services/prompt-api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/UnifiedPromptApp/services/prompt-api/Dockerfile
     ports:
       - "${API_PORT:-8000}:8000"
     environment:
@@ -14,9 +14,8 @@ services:
       - FRONTEND_PORT=${FRONTEND_PORT:-5173}
       - WORKBENCH_PORT=${WORKBENCH_PORT:-8501}
     volumes:
-      - ./data:/app/data:ro
-      - ./apps/UnifiedPromptApp/services/prompt-api/data:/app/data-local
-      - ./apps/UnifiedPromptApp/services/prompt-api/workbench.db:/app/workbench.db
+      - ./apps/UnifiedPromptApp/services/prompt-api/data:/app/apps/UnifiedPromptApp/services/prompt-api/data
+      - ./apps/UnifiedPromptApp/services/prompt-api/workbench.db:/app/apps/UnifiedPromptApp/services/prompt-api/workbench.db
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
@@ -27,8 +26,8 @@ services:
 
   dashboard:
     build:
-      context: ./apps/dashboard
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/dashboard/Dockerfile
     ports:
       - "${FRONTEND_PORT:-5173}:5173"
     environment:
@@ -41,13 +40,13 @@ services:
 
   unified-webapp:
     build:
-      context: ./apps/unifiedtoolbox.webapp
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/unifiedtoolbox.webapp/Dockerfile
     ports:
       - "${WEB_PORT:-3000}:3000"
     environment:
       - PORT=3000
-      - NEXT_PUBLIC_API_BASE=http://prompt-api:8000
+      - NEXT_PUBLIC_API_BASE=http://localhost:${API_PORT:-8000}
     depends_on:
       prompt-api:
         condition: service_healthy

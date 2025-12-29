@@ -17,6 +17,7 @@ data/sqlite/*.db
 data/artifacts/**
 data/orchestrator-history/
 .vscode/
+.vercel/
 bin/
 obj/
 __pycache__/

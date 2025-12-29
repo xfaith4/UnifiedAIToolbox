@@ -1,0 +1,47 @@
+name: Deploy Unified Web Portal (Vercel)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: vercel
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Deploy (Vercel)
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          NEXT_PUBLIC_API_BASE: ${{ vars.NEXT_PUBLIC_API_BASE }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${VERCEL_TOKEN:-}" ] || [ -z "${VERCEL_ORG_ID:-}" ] || [ -z "${VERCEL_PROJECT_ID:-}" ]; then
+            echo "Missing required secrets: VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID"
+            echo "See docs/phase3/WEB_PORTAL_DEPLOYMENT.md"
+            exit 1
+          fi
+
+          args=(deploy --prod --yes --token "$VERCEL_TOKEN" --cwd apps/unifiedtoolbox.webapp)
+          if [ -n "${NEXT_PUBLIC_API_BASE:-}" ]; then
+            args+=(--env "NEXT_PUBLIC_API_BASE=${NEXT_PUBLIC_API_BASE}")
+          fi
+
+          npx vercel@latest "${args[@]}"
+
