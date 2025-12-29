@@ -405,7 +405,7 @@ function Start-API {
 
             if ($wslRoot) {
                 $wslScript = "$wslRoot/scripts/start-prompt-api.sh"
-                $chmodResult = wsl.exe --exec bash -lc "chmod +x '$wslScript'"
+                wsl.exe --exec bash -lc "chmod +x '$wslScript'" | Out-Null
                 $process = Start-Process -NoNewWindow -PassThru -FilePath "wsl.exe" `
                     -ArgumentList "--exec", "bash", "-lc", "PROMPT_API_PORT=$apiPort '$wslScript'"
                 Start-Sleep -Seconds 3
@@ -490,6 +490,33 @@ function Start-Dashboard {
     try {
         Push-Location $dashboardDir
 
+        $packageJsonPath = Join-Path $dashboardDir "package.json"
+        if (-not (Test-Path -Path $packageJsonPath -PathType Leaf)) {
+            Write-Status "⚠️ Dashboard is not configured as a Vite/Node app (missing package.json) at: $dashboardDir" -Level "Warning"
+            Write-Status "   apps/dashboard currently appears to be Docker-only; skipping Dashboard launch." -Level "Info"
+            return $null
+        }
+
+        try {
+            $pkg = Get-Content -Raw -Path $packageJsonPath | ConvertFrom-Json -ErrorAction Stop
+        }
+        catch {
+            Write-Status "❌ Failed to parse dashboard package.json: $_" -Level "Error"
+            return $null
+        }
+
+        $scriptNames = @()
+        if ($pkg.scripts) {
+            $scriptNames = @($pkg.scripts.PSObject.Properties.Name)
+        }
+
+        if (-not ($scriptNames -contains "dev")) {
+            $available = if ($scriptNames.Count -gt 0) { $scriptNames -join ", " } else { "<none>" }
+            Write-Status "❌ Dashboard package.json has no \"dev\" script. Available scripts: $available" -Level "Error"
+            Write-Status "   Fix: add a dev script, or update Start-Toolbox.ps1 to use the correct script." -Level "Info"
+            return $null
+        }
+
         # Install dependencies if needed
         if (-not (Test-Path "node_modules")) {
             Write-Status "Installing dependencies..." -Level "Info"
@@ -512,7 +539,17 @@ function Start-Dashboard {
             -WorkingDirectory $dashboardDir -NoNewWindow -PassThru
 
         Start-Sleep -Seconds 3
-        Write-Status "✅ Dashboard starting at http://localhost:$dashboardPort" -Level "Success"
+        if ($process.HasExited) {
+            Write-Status "❌ Dashboard process exited immediately (ExitCode: $($process.ExitCode)). See npm output above." -Level "Error"
+            return $null
+        }
+
+        if (Test-PortInUse -Port $dashboardPort) {
+            Write-Status "✅ Dashboard running at http://localhost:$dashboardPort" -Level "Success"
+        }
+        else {
+            Write-Status "⚠️ Dashboard process started, but port $dashboardPort is not listening yet. Check terminal output for errors." -Level "Warning"
+        }
 
         return $process
     }

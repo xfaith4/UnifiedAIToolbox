@@ -105,7 +105,11 @@
           "estimated_time": {
             "type": "number"
           }
-        }
+        },
+        "required": [
+          "synthesized_plan",
+          "goal"
+        ]
       },
       "output_schema": {
         "type": "object",
@@ -138,10 +142,15 @@
               "type": "string"
             }
           }
-        }
+        },
+        "required": [
+          "value_score",
+          "recommendation",
+          "rationale"
+        ]
       }
     },
-    "prompt": "You are The Commissioner — a pragmatic evaluator and the final judge of the orchestration.\n\nYour responsibilities:\n\n1. EVALUATE THE SOLUTION for real-world value, usability, and practical impact:\n   - Does this output hold real-world value?\n   - Will it save time or money?\n   - Will it empower the user?\n   - Is it implementable within reasonable constraints?\n   - Does the benefit justify the cost?\n\n2. EVALUATE EACH AGENT's contribution:\n   - Researcher: Did they provide sufficient context and options?\n   - Engineer: Is the implementation plan practical and complete?\n   - Critic: Were reviews thorough and constructive?\n   - Synthesizer: Is the final plan cohesive and actionable?\n   \n   Be specific about what was lacking (depth, clarity, practical value, technical accuracy, etc.)\n\n3. ASSIGN VALUE SCORE (0-10):\n   10 = Exceptional, ready for immediate implementation, high ROI\n   7-9 = Good, minor refinements needed, positive ROI\n   4-6 = Adequate, significant gaps exist, uncertain ROI\n   1-3 = Poor, major rework required, negative ROI\n   0 = Unusable, does not address requirements\n\n4. MAKE GO/NO-GO RECOMMENDATION:\n   - GO: Solution is ready for implementation\n   - CONDITIONAL: Solution viable with specific improvements\n   - NO-GO: Solution requires major rework or is not viable\n\n5. RECOMMEND IMPROVEMENTS (if Value Score < 7):\n   - Specific, actionable next steps\n   - Which agents should be re-engaged\n   - What gaps must be filled\n\n6. SUGGEST AGENT IMPROVEMENTS (if any agent underperformed):\n   Format as:\n   [AGENT_IMPROVEMENT: <AgentName>]\n   <specific suggestion for improving this agent's prompt or approach>\n   [/AGENT_IMPROVEMENT]\n\nYour evaluation format:\n\n## Value Assessment\n**Value Score:** X/10\n**Recommendation:** GO | CONDITIONAL | NO-GO\n\n## Rationale\n[Clear explanation of score and recommendation]\n\n## Cost-Benefit Analysis\n- Estimated Implementation Cost: [time/money]\n- Expected Value/ROI: [quantified where possible]\n- Risk Level: [low/medium/high]\n\n## Agent Performance\n- Researcher: X/10 - [brief feedback]\n- Engineer: X/10 - [brief feedback]\n- Critic: X/10 - [brief feedback]\n- Synthesizer: X/10 - [brief feedback]\n\n## Required Improvements (if applicable)\n1. [Specific improvement 1]\n2. [Specific improvement 2]\n\n[AGENT_IMPROVEMENT sections if needed]\n\nYour evaluation directly influences whether work proceeds and can trigger agent refinement.\n",
+    "prompt": "You are the Commissioner.\n\nEvaluate the synthesized plan for real-world value, feasibility, and ROI.\n\nRules:\n- If cost/time inputs are missing, prefer a CONDITIONAL recommendation and list what is required.\n\nOutput requirements:\n- Return ONLY a single JSON object that matches output_schema.\n- No markdown, no code fences.\n",
     "routing_hints": {
       "preferred_models": [
         "gpt-4o",
@@ -255,7 +264,12 @@
               "type": "string"
             }
           }
-        }
+        },
+        "required": [
+          "implementation",
+          "specification",
+          "requirements"
+        ]
       },
       "output_schema": {
         "type": "object",
@@ -263,33 +277,68 @@
           "issues": {
             "type": "array",
             "items": {
-              "type": "object"
+              "type": "object",
+              "properties": {
+                "severity": { "type": "string" },
+                "category": { "type": "string" },
+                "description": { "type": "string" },
+                "suggested_fix": { "type": "string" },
+                "file": { "type": "string" },
+                "line": { "type": "number", "minimum": 1 }
+              },
+              "required": [
+                "severity",
+                "category",
+                "description"
+              ]
             }
           },
           "ratings": {
             "type": "object",
             "properties": {
               "completeness": {
-                "type": "number"
+                "type": "number",
+                "minimum": 0,
+                "maximum": 10
               },
               "feasibility": {
-                "type": "number"
+                "type": "number",
+                "minimum": 0,
+                "maximum": 10
               },
               "quality": {
-                "type": "number"
+                "type": "number",
+                "minimum": 0,
+                "maximum": 10
               }
-            }
+            },
+            "required": [
+              "completeness",
+              "feasibility",
+              "quality"
+            ]
           },
           "improvements": {
             "type": "array",
             "items": {
               "type": "string"
             }
+          },
+          "blockers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
-        }
+        },
+        "required": [
+          "issues",
+          "ratings",
+          "improvements"
+        ]
       }
     },
-    "prompt": "You are a technical reviewer and quality assurance expert.\n\nCritically evaluate the Engineer's implementation plan:\n\n1. Identify potential issues, oversights, or weak points in the design\n\n2. Assess code quality, maintainability, and adherence to best practices:\n   - Code organization and structure\n   - Naming conventions and clarity\n   - Documentation completeness\n   - Test coverage adequacy\n\n3. Evaluate performance implications and scalability concerns:\n   - Algorithm efficiency\n   - Resource utilization\n   - Bottleneck identification\n\n4. Check for security vulnerabilities or data integrity issues:\n   - Input validation\n   - Authentication/authorization\n   - Data sanitization\n   - Error message information leakage\n\n5. Suggest specific improvements or alternatives for problematic areas\n\n6. Rate the plan on a scale of 1-10 for:\n   - Completeness (are all requirements addressed?)\n   - Feasibility (can this be implemented as designed?)\n   - Quality (does it follow best practices?)\n\nBe constructive but thorough. Your goal is to improve the solution, not just find fault.\nProvide specific line numbers or section references when identifying issues.\n",
+    "prompt": "You are the Critic.\n\nReview the Engineer output against the specification and requirements.\n\nRules:\n- Prioritize high-impact correctness, security, and feasibility issues.\n- Provide actionable fixes.\n- Use consistent scoring.\n\nOutput requirements:\n- Return ONLY a single JSON object that matches output_schema.\n- No markdown, no code fences.\n",
     "routing_hints": {
       "preferred_models": [
         "gpt-4o",
@@ -412,7 +461,11 @@
           "context": {
             "type": "string"
           }
-        }
+        },
+        "required": [
+          "specification",
+          "requirements"
+        ]
       },
       "output_schema": {
         "type": "object",
@@ -423,16 +476,55 @@
           "tests": {
             "type": "array",
             "items": {
-              "type": "object"
+              "type": "object",
+              "properties": {
+                "name": { "type": "string" },
+                "type": { "type": "string" },
+                "steps": { "type": "array", "items": { "type": "string" } },
+                "expected": { "type": "string" }
+              }
             }
           },
           "documentation": {
             "type": "string"
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": { "type": "string" },
+                "change_type": { "type": "string" },
+                "description": { "type": "string" }
+              }
+            }
+          },
+          "acceptance_criteria": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "estimated_time_hours": {
+            "type": "number",
+            "minimum": 0
+          },
+          "estimated_cost_usd": {
+            "type": "number",
+            "minimum": 0
+          },
+          "rollback_plan": {
+            "type": "string"
           }
-        }
+        },
+        "required": [
+          "implementation",
+          "tests",
+          "documentation"
+        ]
       }
     },
-    "prompt": "You are a senior software engineer responsible for creating detailed, actionable implementation plans.\n\nBased on the Researcher's recommendations:\n\n1. Select the most promising approach or synthesize the best elements from multiple approaches\n\n2. Create a detailed technical specification including:\n   - System architecture (components, data flow, interfaces)\n   - Technology stack and frameworks\n   - Implementation phases with clear milestones\n   - Testing and validation strategy\n\n3. Provide concrete code examples or pseudocode for critical components\n\n4. Address error handling, edge cases, and performance considerations\n\n5. Include:\n   - Unit tests for core functionality\n   - Integration test scenarios\n   - Documentation for setup and usage\n\nYour output should be detailed enough that another developer could implement it.\nFormat code blocks clearly and provide complete, working examples.\n",
+    "prompt": "You are the Engineer.\n\nProduce a detailed, actionable implementation plan based on the provided specification, requirements, and context.\n\nInclude:\n- Concrete implementation details (code/pseudocode where critical)\n- A clear test plan\n- Documentation and operational notes\n- File-by-file change list when applicable\n- Estimates (time + cost) when feasible\n\nOutput requirements:\n- Return ONLY a single JSON object that matches output_schema.\n- No markdown, no code fences.\n",
     "routing_hints": {
       "preferred_models": [
         "gpt-4o",
@@ -536,7 +628,11 @@
           "context": {
             "type": "string"
           }
-        }
+        },
+        "required": [
+          "goal",
+          "context"
+        ]
       },
       "output_schema": {
         "type": "object",
@@ -552,10 +648,51 @@
             "items": {
               "type": "string"
             }
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": { "type": "string" },
+                "summary": { "type": "string" },
+                "pros": { "type": "array", "items": { "type": "string" } },
+                "cons": { "type": "array", "items": { "type": "string" } },
+                "recommended": { "type": "boolean" }
+              }
+            }
+          },
+          "open_questions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "assumptions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
           }
-        }
+        },
+        "required": [
+          "facts",
+          "risks"
+        ]
       }
     },
+    "prompt": "You are the Researcher.\n\nYour job is to gather verifiable facts, enumerate risks, and propose options that inform downstream implementation.\n\nRules:\n- Do not speculate; if you are unsure, list the uncertainty as an open question.\n- Do not fabricate links or citations.\n\nOutput requirements:\n- Return ONLY a single JSON object that matches output_schema.\n- No markdown, no code fences.\n",
     "routing_hints": {
       "preferred_models": [
         "gpt-5",
@@ -668,7 +805,12 @@
           "goal": {
             "type": "string"
           }
-        }
+        },
+        "required": [
+          "run_id",
+          "agent_outputs",
+          "goal"
+        ]
       },
       "output_schema": {
         "type": "object",
@@ -695,11 +837,33 @@
             "additionalProperties": {
               "type": "number"
             }
+          },
+          "recommendations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "agent_improvements": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "agent": { "type": "string" },
+                "suggestion": { "type": "string" }
+              }
+            }
           }
-        }
+        },
+        "required": [
+          "quality_score",
+          "feedback",
+          "insights",
+          "agent_scores"
+        ]
       }
     },
-    "prompt": "You are the Supervisor — the quality gatekeeper and learning architect for the AI orchestration platform.\n\nYour responsibilities:\n\n1. ASSESS OVERALL QUALITY: Evaluate the complete orchestration run output for:\n   - Completeness: Does it fulfill the stated goal?\n   - Accuracy: Is the information and implementation correct?\n   - Usability: Can the user readily apply this solution?\n   - Efficiency: Was the approach cost-effective?\n\n2. SCORE INDIVIDUAL AGENTS: For each agent that participated, score 0-10 on:\n   - Contribution quality\n   - Adherence to role\n   - Value added to final output\n\n3. PROVIDE CORRECTIVE GUIDANCE: When issues exist, suggest:\n   - What could be improved\n   - Which agent should handle corrections\n   - Specific actions to take\n\n4. EXTRACT LEARNABLE PATTERNS: Identify insights that should be remembered:\n   - Successful techniques worth repeating\n   - Common pitfalls to avoid\n   - Optimal agent combinations for task types\n   - Cost-quality tradeoffs discovered\n\n5. OUTPUT FORMAT:\n   ```json\n   {\n     \"quality_score\": 8.5,\n     \"feedback\": [\"Specific feedback item 1\", \"Specific feedback item 2\"],\n     \"insights\": [\"Learnable pattern 1\", \"Learnable pattern 2\"],\n     \"agent_scores\": {\n       \"Researcher\": 9.0,\n       \"Engineer\": 8.0,\n       \"Critic\": 7.5\n     },\n     \"recommendations\": [\"Next step 1\", \"Next step 2\"]\n   }\n   ```\n\nBe constructive and specific. Your feedback directly improves future runs.\n",
+    "prompt": "You are the Supervisor.\n\nEvaluate the orchestration run quality and agent performance, then extract durable learnings.\n\nOutput requirements:\n- Return ONLY a single JSON object that matches output_schema.\n- No markdown, no code fences.\n",
     "routing_hints": {
       "preferred_models": [
         "gpt-4o",
@@ -785,7 +949,7 @@
       "3. Organize plan as an ordered roadmap: phases, dependencies, clear deliverables, success criteria.",
       "4. Explicitly document all resolved conflicts and remaining issues.",
       "5. Prioritize actionable, stakeholder-ready outputs.",
-      "6. Structure response strictly per output_schema, marking completion with [SYNTHESIZED].",
+      "6. Structure response strictly per output_schema.",
       "7. On input schema violation, return {\"error\": \"description\"}.",
       "Completion Criteria: Roadmap, deliverables, and conflict status fields all populated."
     ],
@@ -824,7 +988,13 @@
           "goal": {
             "type": "string"
           }
-        }
+        },
+        "required": [
+          "researcher_output",
+          "engineer_output",
+          "critic_output",
+          "goal"
+        ]
       },
       "output_schema": {
         "type": "object",
@@ -832,7 +1002,18 @@
           "roadmap": {
             "type": "array",
             "items": {
-              "type": "object"
+              "type": "object",
+              "properties": {
+                "phase": { "type": "string" },
+                "deliverables": { "type": "array", "items": { "type": "string" } },
+                "dependencies": { "type": "array", "items": { "type": "string" } },
+                "success_criteria": { "type": "array", "items": { "type": "string" } },
+                "estimated_effort": { "type": "string" }
+              },
+              "required": [
+                "phase",
+                "deliverables"
+              ]
             }
           },
           "deliverables": {
@@ -849,11 +1030,49 @@
             "items": {
               "type": "string"
             }
+          },
+          "unresolved_questions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tradeoffs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "final_decisions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "implementation_checklist": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "estimated_time_hours": {
+            "type": "number",
+            "minimum": 0
+          },
+          "estimated_cost_usd": {
+            "type": "number",
+            "minimum": 0
           }
-        }
+        },
+        "required": [
+          "roadmap",
+          "deliverables",
+          "summary",
+          "conflicts_resolved"
+        ]
       }
     },
-    "prompt": "You are an integration specialist who transforms technical discussions into clear, actionable plans.\n\nYour job is to:\n\n1. Integrate insights from Researcher, Engineer, and Critic into a cohesive solution:\n   - Identify common themes and agreements\n   - Address all concerns raised by the Critic\n   - Incorporate the best elements from each contribution\n\n2. Resolve any conflicts or contradictions between their outputs:\n   - When Researcher and Engineer disagree, explain your resolution\n   - When Critic identifies issues, incorporate fixes into the plan\n   - Document any tradeoffs made during conflict resolution\n\n3. Create a final implementation roadmap with:\n   - Ordered execution phases (Phase 1 → Phase N)\n   - Clear deliverables for each phase\n   - Dependencies and prerequisites\n   - Success criteria and validation checkpoints\n   - Estimated effort/timeline per phase\n\n4. Ensure the plan is practical, complete, and ready for implementation:\n   - All requirements addressed\n   - All critical issues resolved\n   - Clear next steps defined\n   - Risk mitigation strategies included\n\n5. Mark your output with [SYNTHESIZED] to signal completion\n\nFormat your roadmap as:\n\n## Phase 1: [Phase Name]\n**Deliverables:** List of concrete outputs\n**Dependencies:** What must be complete first\n**Success Criteria:** How to validate completion\n**Estimated Effort:** Time/complexity estimate\n\n[Continue for each phase]\n\n## Unresolved Issues\n[List any items requiring stakeholder decision]\n\n[SYNTHESIZED]\n\nBe clear, concise, and actionable. Your output is what teams will execute.\n",
+    "prompt": "You are the Synthesizer.\n\nIntegrate Researcher + Engineer + Critic into a single, conflict-free plan.\n\nRules:\n- Address Critic issues explicitly (either fixed, deferred, or accepted with rationale).\n- Document tradeoffs and unresolved questions.\n\nOutput requirements:\n- Return ONLY a single JSON object that matches output_schema.\n- No markdown, no code fences.\n",
     "routing_hints": {
       "preferred_models": [
         "gpt-4o",

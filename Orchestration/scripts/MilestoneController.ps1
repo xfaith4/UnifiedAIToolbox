@@ -49,12 +49,286 @@ param(
     [switch]$DryRun,
 
     [Parameter(Mandatory = $false)]
-    [string]$LogLevel = "Info"
+    [string]$LogLevel = "Info",
+
+    [Parameter(Mandatory = $false)]
+    [switch]$EnforceContracts,
+
+    [Parameter(Mandatory = $false)]
+    [string]$LearningPatternsPath,
+
+    [Parameter(Mandatory = $false)]
+    [int]$LearningTopN = 10,
+
+    [Parameter(Mandatory = $false)]
+    [int]$LearningMaxRuns = 200,
+
+    [Parameter(Mandatory = $false)]
+    [switch]$DisableLearning
 )
 
 # Script configuration
 $ErrorActionPreference = "Stop"
 $script:StartTime = Get-Date
+$script:RunId = $null
+$script:AgentLibrary = $null
+$script:AgentLibraryPath = (Join-Path $PSScriptRoot "..\\agents\\agent-library.json")
+$script:LearningPatterns = @()
+$script:LearningPatternsPath = $null
+
+function Get-RepoRoot {
+    return (Resolve-Path (Join-Path $PSScriptRoot "..\\..")).Path
+}
+
+function Initialize-LearningPatterns {
+    if ($DisableLearning) {
+        return
+    }
+
+    if ([string]::IsNullOrWhiteSpace($LearningPatternsPath)) {
+        $script:LearningPatternsPath = Join-Path (Join-Path (Get-RepoRoot) ".uaitoolbox") "learning_patterns.json"
+    }
+    else {
+        $script:LearningPatternsPath = $LearningPatternsPath
+    }
+
+    $dir = Split-Path -Parent $script:LearningPatternsPath
+    if (-not (Test-Path -Path $dir -PathType Container)) {
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    }
+
+    if (-not (Test-Path -Path $script:LearningPatternsPath -PathType Leaf)) {
+        $script:LearningPatterns = @()
+        return
+    }
+
+    try {
+        $loaded = Get-Content -Raw -Path $script:LearningPatternsPath | ConvertFrom-Json -ErrorAction Stop
+        if ($loaded -is [System.Collections.IEnumerable]) {
+            $script:LearningPatterns = @($loaded)
+        }
+        else {
+            $script:LearningPatterns = @()
+        }
+    }
+    catch {
+        Write-Log "Failed to parse learning patterns at $script:LearningPatternsPath; continuing with empty learning set: $_" -Level "WARN"
+        $script:LearningPatterns = @()
+    }
+}
+
+function Save-LearningPatterns {
+    if ($DisableLearning) {
+        return
+    }
+
+    $dir = Split-Path -Parent $script:LearningPatternsPath
+    if (-not (Test-Path -Path $dir -PathType Container)) {
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    }
+
+    $tmp = Join-Path $dir ("learning_patterns_{0}.tmp" -f ([Guid]::NewGuid().ToString("N")))
+    @($script:LearningPatterns) | ConvertTo-Json -Depth 30 | Set-Content -Path $tmp -Encoding UTF8
+    Move-Item -Force -Path $tmp -Destination $script:LearningPatternsPath
+}
+
+function Get-LearningContextBlock {
+    if ($DisableLearning) {
+        return ""
+    }
+
+    if (-not $script:LearningPatterns -or $script:LearningPatterns.Count -eq 0) {
+        return ""
+    }
+
+    $insights = @()
+    foreach ($entry in ($script:LearningPatterns | Select-Object -Last 30)) {
+        if ($entry -and $entry.insights) {
+            foreach ($i in @($entry.insights)) {
+                if (-not [string]::IsNullOrWhiteSpace([string]$i)) {
+                    $insights += [string]$i
+                }
+            }
+        }
+    }
+
+    if (-not $insights -or $insights.Count -eq 0) {
+        return ""
+    }
+
+    $deduped = @()
+    $seen = @{}
+    foreach ($i in $insights) {
+        $key = $i.Trim()
+        if (-not $seen.ContainsKey($key)) {
+            $seen[$key] = $true
+            $deduped += $key
+        }
+    }
+
+    $top = @($deduped | Select-Object -First $LearningTopN)
+    if ($top.Count -eq 0) {
+        return ""
+    }
+
+    $lines = @("LEARNING PATTERNS (from recent Supervisor runs):")
+    foreach ($t in $top) {
+        $lines += "- $t"
+    }
+    return ($lines -join "`n")
+}
+
+function Update-LearningFromSupervisor {
+    param(
+        [Parameter(Mandatory = $true)][string]$SupervisorRawJson,
+        [Parameter(Mandatory = $true)][string]$GoalText,
+        [Parameter(Mandatory = $true)][string]$Model,
+        [Parameter(Mandatory = $true)][string]$OutputDir
+    )
+
+    if ($DisableLearning) {
+        return
+    }
+
+    $parsed = $null
+    try {
+        $parsed = $SupervisorRawJson | ConvertFrom-Json -ErrorAction Stop
+    }
+    catch {
+        Write-Log "Supervisor output could not be parsed as JSON; skipping learning update: $_" -Level "WARN"
+        return
+    }
+
+    $record = [pscustomobject]@{
+        timestamp        = (Get-Date).ToUniversalTime().ToString("o")
+        run_id           = $script:RunId
+        goal             = $GoalText
+        model            = $Model
+        output_dir       = $OutputDir
+        quality_score    = $parsed.quality_score
+        agent_scores     = $parsed.agent_scores
+        feedback         = $parsed.feedback
+        insights         = $parsed.insights
+        recommendations  = $parsed.recommendations
+        agent_improvements = $parsed.agent_improvements
+    }
+
+    $script:LearningPatterns = @($script:LearningPatterns + @($record))
+    if ($LearningMaxRuns -gt 0 -and $script:LearningPatterns.Count -gt $LearningMaxRuns) {
+        $script:LearningPatterns = @($script:LearningPatterns | Select-Object -Last $LearningMaxRuns)
+    }
+
+    Save-LearningPatterns
+    Write-Log "Learning patterns updated: $script:LearningPatternsPath"
+}
+
+function Get-AgentDefinition {
+    param([Parameter(Mandatory = $true)][string]$AgentName)
+
+    if (-not $EnforceContracts) {
+        return $null
+    }
+
+    if (-not $script:AgentLibrary) {
+        if (Test-Path $script:AgentLibraryPath) {
+            try {
+                $script:AgentLibrary = Get-Content -Raw -Path $script:AgentLibraryPath | ConvertFrom-Json
+            }
+            catch {
+                Write-Log "Failed to load agent library at $script:AgentLibraryPath: $_" -Level "WARN"
+                $script:AgentLibrary = @()
+            }
+        }
+        else {
+            Write-Log "Agent library not found at $script:AgentLibraryPath; contract enforcement disabled." -Level "WARN"
+            $script:AgentLibrary = @()
+            $script:EnforceContracts = $false
+        }
+    }
+
+    return $script:AgentLibrary | Where-Object { $_.name -eq $AgentName } | Select-Object -First 1
+}
+
+function Assert-AgentOutputContract {
+    param(
+        [Parameter(Mandatory = $true)][string]$AgentName,
+        [Parameter(Mandatory = $true)][string]$RawOutput
+    )
+
+    if (-not $EnforceContracts) {
+        return @{ ok = $true; parsed = $null; error = $null }
+    }
+
+    $agentDef = Get-AgentDefinition -AgentName $AgentName
+    if (-not $agentDef) {
+        return @{ ok = $true; parsed = $null; error = $null }
+    }
+
+    $parsed = $null
+    try {
+        $parsed = $RawOutput | ConvertFrom-Json -ErrorAction Stop
+    }
+    catch {
+        return @{ ok = $false; parsed = $null; error = "Output is not valid JSON: $($_.Exception.Message)" }
+    }
+
+    $required = @()
+    try {
+        $required = @($agentDef.io_contract.output_schema.required)
+    }
+    catch {
+        $required = @()
+    }
+
+    foreach ($field in $required) {
+        if (-not ($parsed.PSObject.Properties.Name -contains $field)) {
+            return @{ ok = $false; parsed = $parsed; error = "Missing required output field: $field" }
+        }
+    }
+
+    return @{ ok = $true; parsed = $parsed; error = $null }
+}
+
+function New-StubFromSchema {
+    param(
+        [Parameter(Mandatory = $true)][object]$Schema,
+        [int]$Depth = 0
+    )
+
+    if ($Depth -gt 6 -or -not $Schema) {
+        return $null
+    }
+
+    $type = $Schema.type
+    switch ($type) {
+        "string" { return "" }
+        "number" { return 0 }
+        "integer" { return 0 }
+        "boolean" { return $false }
+        "array" {
+            return @()
+        }
+        "object" {
+            $obj = @{}
+            $props = $Schema.properties
+            $required = @()
+            if ($Schema.required) { $required = @($Schema.required) }
+
+            foreach ($name in $required) {
+                if ($props -and $props.PSObject.Properties.Name -contains $name) {
+                    $obj[$name] = New-StubFromSchema -Schema $props.$name -Depth ($Depth + 1)
+                }
+                else {
+                    $obj[$name] = $null
+                }
+            }
+            return $obj
+        }
+        default {
+            return $null
+        }
+    }
+}
 
 function Write-Log {
     param([string]$Message, [string]$Level = "INFO")
@@ -72,11 +346,18 @@ function Initialize-Orchestration {
     Write-Log "Initializing AI Orchestration"
     Write-Log "Goal: $GoalText"
     Write-Log "Model: $Model"
+
+    if (-not $script:RunId) {
+        $script:RunId = "{0}_{1}" -f (Get-Date).ToUniversalTime().ToString("yyyyMMddTHHmmssZ"), ([Guid]::NewGuid().ToString("N").Substring(0, 8))
+    }
+    Write-Log "RunId: $($script:RunId)"
     
     # Create output directory if needed
     if (-not (Test-Path $OutputDir)) {
         New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
     }
+
+    Initialize-LearningPatterns
     
     # Initialize log file
     $script:LogFile = Join-Path $OutputDir "orchestration.log"
@@ -85,6 +366,7 @@ function Initialize-Orchestration {
     return @{
         Goal       = $GoalText
         Model      = $Model
+        RunId      = $script:RunId
         StartTime  = $script:StartTime
         Status     = "initialized"
         Milestones = @()
@@ -96,56 +378,70 @@ function Split-GoalIntoMilestones {
     
     Write-Log "Analyzing goal and generating milestones..."
     
-    # Simple keyword-based milestone generation
-    $milestones = @()
-    
+    # Canonical pipeline (ensures downstream agents have upstream context).
+    $pipeline = @(
+        @{ Key = "Researcher";   Name = "Research Phase";        Description = "Gather and analyze relevant information" },
+        @{ Key = "Engineer";     Name = "Implementation Phase";  Description = "Build the solution based on research findings" },
+        @{ Key = "Critic";       Name = "Validation Phase";      Description = "Test and validate the implementation" },
+        @{ Key = "Synthesizer";  Name = "Synthesis Phase";       Description = "Merge outputs into a cohesive plan" },
+        @{ Key = "Commissioner"; Name = "Decision Phase";        Description = "Evaluate business value and approve next steps" },
+        @{ Key = "Supervisor";   Name = "Quality Phase";         Description = "Score the run and extract learnings" }
+    )
+
     $goalLower = $Goal.ToLower()
-    
-    if ($goalLower -match "research|analyze|investigate") {
-        $milestones += @{
-            Name        = "Research Phase"
-            Description = "Gather and analyze relevant information"
-            Agent       = "Researcher"
-            Status      = "pending"
+
+    $matchAny = $goalLower -match "research|analyze|investigate|implement|build|create|code|develop|test|validate|verify|review|document|report|summarize"
+    if (-not $matchAny) {
+        # Default to full pipeline if we cannot infer intent.
+        $milestones = $pipeline
+    }
+    else {
+        # Preserve keyword intent, but include prerequisite stages and always run Commissioner/Supervisor.
+        $include = [ordered]@{}
+
+        if ($goalLower -match "research|analyze|investigate") {
+            $include["Researcher"] = $true
+        }
+        if ($goalLower -match "implement|build|create|code|develop") {
+            $include["Researcher"] = $true
+            $include["Engineer"] = $true
+        }
+        if ($goalLower -match "test|validate|verify|review") {
+            $include["Researcher"] = $true
+            $include["Engineer"] = $true
+            $include["Critic"] = $true
+        }
+        if ($goalLower -match "document|report|summarize") {
+            $include["Researcher"] = $true
+            $include["Engineer"] = $true
+            $include["Critic"] = $true
+            $include["Synthesizer"] = $true
+        }
+
+        # If any pipeline stage was inferred, ensure Synthesizer exists before Commissioner/Supervisor.
+        if ($include.Keys.Count -gt 0) {
+            $include["Synthesizer"] = $true
+            $include["Commissioner"] = $true
+            $include["Supervisor"] = $true
+        }
+
+        $milestones = @()
+        foreach ($step in $pipeline) {
+            if ($include.Contains($step.Key) -and $include[$step.Key]) {
+                $milestones += $step
+            }
         }
     }
-    
-    if ($goalLower -match "implement|build|create|code|develop") {
-        $milestones += @{
-            Name        = "Implementation Phase"
-            Description = "Build the solution based on research findings"
-            Agent       = "Engineer"
+
+    # Normalize structure expected by downstream execution.
+    $milestones = @($milestones | ForEach-Object {
+        @{
+            Name        = $_.Name
+            Description = $_.Description
+            Agent       = $_.Key
             Status      = "pending"
         }
-    }
-    
-    if ($goalLower -match "test|validate|verify|review") {
-        $milestones += @{
-            Name        = "Validation Phase"
-            Description = "Test and validate the implementation"
-            Agent       = "Critic"
-            Status      = "pending"
-        }
-    }
-    
-    if ($goalLower -match "document|report|summarize") {
-        $milestones += @{
-            Name        = "Documentation Phase"
-            Description = "Create documentation and reports"
-            Agent       = "Synthesizer"
-            Status      = "pending"
-        }
-    }
-    
-    # Default milestone if no specific patterns matched
-    if ($milestones.Count -eq 0) {
-        $milestones += @{
-            Name        = "Execution Phase"
-            Description = "Execute the goal"
-            Agent       = "Commissioner"
-            Status      = "pending"
-        }
-    }
+    })
     
     Write-Log "Generated $($milestones.Count) milestone(s)"
     return $milestones
@@ -165,6 +461,12 @@ function Invoke-OrchestrationLlm {
 
     $apiKey = $env:OPENAI_API_KEY
     if (-not $apiKey) {
+        if ($DryRun) {
+            return @{
+                Output      = "[SIMULATED:$Model] $UserPrompt"
+                RawResponse = @{ simulated = $true; model = $Model }
+            }
+        }
         throw "OPENAI_API_KEY environment variable is not set. Cannot call OpenAI."
     }
 
@@ -267,6 +569,9 @@ function Invoke-MilestoneAgent {
         [Parameter(Mandatory = $true)]
         [pscustomobject]$Milestone,     # One milestone (Name, Description, Agent, Status)
 
+        [Parameter(Mandatory = $false)]
+        [hashtable]$Upstream = @{},     # Prior milestone outputs for context
+
         [Parameter(Mandatory = $true)]
         [string]$Model,
 
@@ -274,53 +579,57 @@ function Invoke-MilestoneAgent {
         [string]$OutputDir
     )
 
-    # Map agent names to "roles" / system prompts
-    $agentSystemPrompts = @{
-        "Researcher"   = @"
-You are an expert technical researcher.
-Clarify requirements, identify constraints, and surface relevant considerations.
-Focus on router health monitoring and PowerShell-specific concerns.
-"@
-
-        "Engineer"     = @"
-You are a senior PowerShell and networking engineer.
-Design and implement robust, production-ready PowerShell code.
-Prefer clear functions, input validation, and inline comments.
-"@
-
-        "Critic"       = @"
-You are a rigorous test and review engineer.
-Identify risks, edge cases, and missing coverage.
-Propose concrete test scenarios and improvements.
-"@
-
-        "Synthesizer"  = @"
-You are a technical writer and synthesizer.
-Produce clear documentation, examples, and step-by-step guidance.
-Assume the reader is a capable engineer but new to this module.
-"@
-
-        "Commissioner" = @"
-You are a project owner / commissioner.
-Summarize progress, outcomes, and next steps.
-Highlight trade-offs, open questions, and follow-up work.
-"@
-    }
-
     $agentName = if ($Milestone.Agent) { $Milestone.Agent } else { "Commissioner" }
 
-    $systemPrompt = $agentSystemPrompts[$agentName]
-    if (-not $systemPrompt) {
-        # Fallback if we ever get an unknown agent type
-        $systemPrompt = @"
-You are a helpful senior engineer assisting with this project.
+    $agentDef = Get-AgentDefinition -AgentName $agentName
+    $systemPrompt = if ($agentDef -and $agentDef.prompt) { [string]$agentDef.prompt } else { "You are a helpful senior engineer assisting with this project." }
+
+    # Build the user-side prompt that the model sees for this phase
+    $upstreamSummary = ""
+    if ($Upstream -and $Upstream.Count -gt 0) {
+        $summaryLines = @()
+        foreach ($key in $Upstream.Keys) {
+            $item = $Upstream[$key]
+            $excerpt = $null
+            if ($item -and $item.Output) {
+                $excerpt = $item.Output.Substring(0, [Math]::Min(600, $item.Output.Length))
+            }
+            $summaryLines += @(
+                "=== Upstream: $key ==="
+                "OutputPath: $($item.OutputPath)"
+                "Excerpt:"
+                ($excerpt ? $excerpt : "<no output>")
+                ""
+            )
+        }
+        $upstreamSummary = ($summaryLines -join "`n")
+    }
+
+    $contractBlock = ""
+    if ($EnforceContracts -and $agentDef -and $agentDef.io_contract) {
+        $schemaJson = $agentDef.io_contract.output_schema | ConvertTo-Json -Depth 30
+        $requiredOut = @()
+        if ($agentDef.io_contract.output_schema.required) {
+            $requiredOut = @($agentDef.io_contract.output_schema.required)
+        }
+        $contractBlock = @"
+
+OUTPUT CONTRACT:
+- Return ONLY valid JSON (no markdown, no code fences).
+- Must conform to this JSON Schema:
+$schemaJson
+- Required fields: $($requiredOut -join ', ')
 "@
     }
 
-    # Build the user-side prompt that the model sees for this phase
     $userPrompt = @"
+$((Get-LearningContextBlock))
+
 High-level goal:
 $GoalText
+
+Upstream context (prior milestone outputs):
+$upstreamSummary
 
 You are working on the following milestone in a multi-agent orchestration:
 
@@ -333,20 +642,33 @@ Your task:
 - Produce concrete, actionable output that advances this milestone.
 - If relevant, include bullet lists, code blocks, and explicit next steps.
 
-Respond in Markdown.
+$contractBlock
 "@
 
     # Call the LLM
-    $llmResult = Invoke-OrchestrationLlm `
-        -Model        $Model `
-        -SystemPrompt $systemPrompt `
-        -UserPrompt   $userPrompt
+    $llmResult = $null
+    if ($DryRun -and $EnforceContracts -and $agentDef -and $agentDef.io_contract -and $agentDef.io_contract.output_schema) {
+        $stub = New-StubFromSchema -Schema $agentDef.io_contract.output_schema
+        $content = $stub | ConvertTo-Json -Depth 20
+        $llmResult = @{ RawResponse = @{ simulated = $true } }
+    }
+    else {
+        $llmResult = Invoke-OrchestrationLlm `
+            -Model        $Model `
+            -SystemPrompt $systemPrompt `
+            -UserPrompt   $userPrompt
 
-    $content = $llmResult.Output
+        $content = $llmResult.Output
+    }
+
+    $contractCheck = Assert-AgentOutputContract -AgentName $agentName -RawOutput $content
+    if (-not $contractCheck.ok) {
+        Write-Log "Contract violation for agent ${agentName}: $($contractCheck.error)" -Level "WARN"
+    }
 
     # Persist the milestone output to disk for inspection
     $safeName = [Regex]::Replace($Milestone.Name, "[^\w\-]+", "_")
-    $fileName = "milestone_{0}.md" -f $safeName
+    $fileName = if ($EnforceContracts) { "milestone_{0}.json" -f $safeName } else { "milestone_{0}.md" -f $safeName }
     $outputPath = Join-Path -Path $OutputDir -ChildPath $fileName
 
     $content | Out-File -FilePath $outputPath -Encoding UTF8
@@ -355,6 +677,10 @@ Respond in Markdown.
         Output     = $content
         OutputPath = $outputPath
         Raw        = $llmResult.RawResponse
+        SystemPrompt = $systemPrompt
+        UserPrompt   = $userPrompt
+        ContractOk   = $contractCheck.ok
+        ContractError = $contractCheck.error
     }
 }
 
@@ -374,8 +700,10 @@ function Execute-MilestonePipeline {
     )
 
     $results = @()                 # Collect structured results for JSON summary
+    $upstream = @{}
 
     foreach ($milestone in $Milestones) {
+        $milestoneStart = Get-Date
         Write-Log "Executing milestone: $($milestone.Name)"
         Write-Log "  Agent: $($milestone.Agent)"
         Write-Log "  Description: $($milestone.Description)"
@@ -384,8 +712,11 @@ function Execute-MilestonePipeline {
         $agentResult = Invoke-MilestoneAgent `
             -GoalText   $GoalText `
             -Milestone  $milestone `
+            -Upstream   $upstream `
             -Model      $Model `
             -OutputDir  $OutputDir
+
+        $milestoneEnd = Get-Date
 
         # Record the result in a simple object for the final orchestration_results JSON
         $excerpt = ""
@@ -398,8 +729,30 @@ function Execute-MilestonePipeline {
             Agent       = $milestone.Agent
             Description = $milestone.Description
             Status      = "completed"
+            StartedAt   = $milestoneStart.ToString("o")
+            CompletedAt = $milestoneEnd.ToString("o")
+            DurationSeconds = [math]::Round(($milestoneEnd - $milestoneStart).TotalSeconds, 2)
+            Inputs      = [pscustomobject]@{
+                Goal = $GoalText
+                Model = $Model
+                UpstreamAgents = @($upstream.Keys)
+            }
             OutputPath  = $agentResult.OutputPath
             Excerpt     = $excerpt
+            Output      = $agentResult.Output
+            ContractOk  = $agentResult.ContractOk
+            ContractError = $agentResult.ContractError
+        }
+
+        # Make current output available to downstream milestones.
+        $upstream[$milestone.Agent] = $agentResult
+
+        if ($milestone.Agent -eq "Supervisor" -and $agentResult.ContractOk) {
+            Update-LearningFromSupervisor `
+                -SupervisorRawJson $agentResult.Output `
+                -GoalText $GoalText `
+                -Model $Model `
+                -OutputDir $OutputDir
         }
 
         Write-Log "  Milestone completed: $($milestone.Name)"
@@ -465,37 +818,28 @@ function Complete-Orchestration {
         CompletedMilestones = ($Context.Milestones | Where-Object { $_.Status -eq "completed" }).Count
         Status              = "completed"
     }
-    ### BEGIN: RawLLMResponseStorage
-
-    # Base directory for orchestration artifacts (rooted at the script location)
-    $orchestrationRoot = Join-Path -Path $PSScriptRoot -ChildPath 'RunArtifacts'
-
-    # Subfolder just for raw LLM responses
-    $llmResponseDir = Join-Path -Path $orchestrationRoot -ChildPath 'LLMResponses'
-
-    # Ensure the directory exists before we try to write into it
-    if (-not (Test-Path -Path $llmResponseDir -PathType Container)) {
-        $null = New-Item -Path $llmResponseDir -ItemType Directory -Force
-    }
-
-    # Build a timestamped file name for this run
-    $timestamp = Get-Date
-    $fileName = 'raw_llm_response_{0:yyyyMMdd_HHmmss}.json' -f $timestamp
-    $rawOutputPath = Join-Path -Path $llmResponseDir -ChildPath $fileName
-
-    # Actually write the raw LLM response to disk as JSON
-    
-    $llmResponse | ConvertTo-Json -Depth 10 |
-    Set-Content -Path $rawOutputPath -Encoding UTF8
-
-    Write-Host "[INFO] Saved raw LLM response to: $rawOutputPath"
-
-    ### END: RawLLMResponseStorage
 
     # Save summary
     $summaryPath = Join-Path $OutputDir "orchestration-summary.json"
     $summary | ConvertTo-Json -Depth 10 | Set-Content -Path $summaryPath
     Write-Log "Summary saved to: $summaryPath"
+
+    # Save full results (including per-milestone inputs/outputs) for audit/replay.
+    $resultsPath = Join-Path $OutputDir ("orchestration_results_{0}.json" -f (Get-Date -Format 'yyyyMMdd_HHmmss'))
+    $full = @{
+        Goal = $Context.Goal
+        Model = $Context.Model
+        RunId = $Context.RunId
+        StartTime = $Context.StartTime.ToString("o")
+        EndTime = $endTime.ToString("o")
+        DurationSeconds = [math]::Round($duration.TotalSeconds, 2)
+        Status = "completed"
+        LearningPatternsPath = $(if ($DisableLearning) { $null } else { $script:LearningPatternsPath })
+        LearningTopN = $LearningTopN
+        Milestones = @($Context.Milestones)
+    }
+    $full | ConvertTo-Json -Depth 20 | Set-Content -Path $resultsPath -Encoding UTF8
+    Write-Log "Results saved to: $resultsPath"
     
     return $summary
 }
@@ -524,30 +868,23 @@ try {
     # Initialize orchestration
     $context = Initialize-Orchestration -GoalText $goalText
     
+    # If a real API key isn't available, automatically fall back to a simulated run so the pipeline stays auditable.
+    if (-not $DryRun -and [string]::IsNullOrWhiteSpace($env:OPENAI_API_KEY)) {
+        Write-Log "OPENAI_API_KEY not set; running in simulation mode (-DryRun implied)." -Level "WARN"
+        $DryRun = $true
+    }
+
     # Generate milestones
     $milestones = Split-GoalIntoMilestones -Goal $goalText
     
-    # Execute milestones with AI-backed pipeline (if DryRun, fallback to old behavior)
-    if ($DryRun) {
-        # Use old behavior for DryRun mode
-        $context.Milestones = @()
-        foreach ($milestone in $milestones) {
-            if ($null -ne $milestone) {
-                $result = Invoke-Milestone -Milestone $milestone -Context $context
-                $context.Milestones += $result
-            }
-        }
-    }
-    else {
-        # Use new AI-backed pipeline
-        $pipelineResults = Execute-MilestonePipeline `
-            -Milestones $milestones `
-            -GoalText   $goalText `
-            -Model      $Model `
-            -OutputDir  $OutputDir
-        
-        $context.Milestones = $pipelineResults
-    }
+    # Execute milestones with the AI-backed pipeline (simulated when -DryRun is set).
+    $pipelineResults = Execute-MilestonePipeline `
+        -Milestones $milestones `
+        -GoalText   $goalText `
+        -Model      $Model `
+        -OutputDir  $OutputDir
+    
+    $context.Milestones = $pipelineResults
     
     # Complete orchestration
     $summary = Complete-Orchestration -Context $context

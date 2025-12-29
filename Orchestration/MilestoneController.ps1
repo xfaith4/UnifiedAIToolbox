@@ -17,7 +17,26 @@ param(
     [switch]$DryRun,
 
     [Parameter(Mandatory = $false)]
-    [string]$LogLevel = "Info"
+    [string]$LogLevel = "Info",
+
+    [Parameter(Mandatory = $false)]
+    [switch]$EnforceContracts
+
+    ,
+    [Parameter(Mandatory = $false)]
+    [string]$LearningPatternsPath
+
+    ,
+    [Parameter(Mandatory = $false)]
+    [int]$LearningTopN = 10
+
+    ,
+    [Parameter(Mandatory = $false)]
+    [int]$LearningMaxRuns = 200
+
+    ,
+    [Parameter(Mandatory = $false)]
+    [switch]$DisableLearning
 )
 
 ### BEGIN: OutputDirDefaults
@@ -50,7 +69,12 @@ Write-Verbose "Dispatching to inner orchestrator: $innerScript"
     -Model $Model `
     -OutputDir $OutputDir `
     -DryRun:$DryRun `
-    -LogLevel $LogLevel
+    -LogLevel $LogLevel `
+    -EnforceContracts:$EnforceContracts `
+    -LearningPatternsPath $LearningPatternsPath `
+    -LearningTopN $LearningTopN `
+    -LearningMaxRuns $LearningMaxRuns `
+    -DisableLearning:$DisableLearning
 
 # Preserve exit code for the caller (Python / uvicorn side)
 exit $LASTEXITCODE
