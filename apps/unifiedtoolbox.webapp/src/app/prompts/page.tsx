@@ -427,6 +427,7 @@ function PromptEditor({
   const [aiRubric, setAiRubric] = useState<PromptQualitySubscores | null>(null)
   const [aiSecretConsent, setAiSecretConsent] = useState(false)
   const [keyVersion, setKeyVersion] = useState(0)
+  const [aiIterations, setAiIterations] = useState(3)
 
   useEffect(() => {
     setPrompt(value)
@@ -621,6 +622,7 @@ function PromptEditor({
           goals: prompt.description,
           constraints: prompt.context,
           outputFormat: prompt.outputFormat,
+          iterations: aiIterations,
           apiKey: storedKey ?? undefined,
         }),
       })
@@ -963,6 +965,24 @@ function PromptEditor({
               <span>
                 Last revision: {prompt.refine?.lastRefinedAt ? formatDate(prompt.refine.lastRefinedAt) : 'N/A'}
               </span>
+              {refinerMode === 'ai' && (
+                <label className="flex items-center gap-2 text-[11px] text-slate-400">
+                  <span className="uppercase tracking-wide">Iterations</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={aiIterations}
+                    onChange={(event) => {
+                      const raw = Number(event.target.value)
+                      const next = Number.isFinite(raw) ? Math.max(1, Math.min(10, Math.floor(raw))) : 1
+                      setAiIterations(next)
+                    }}
+                    className="w-16 rounded-md border border-slate-700 bg-slate-950/60 px-2 py-1 text-[11px] text-slate-200"
+                    title="Run the Critic + Engineer refinement loop multiple times."
+                  />
+                </label>
+              )}
               <button
                 className="rounded-full border border-slate-700 px-2 py-0.5 text-[11px]"
                 onClick={handleGenerateImprovements}

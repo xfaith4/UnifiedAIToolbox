@@ -1,13 +1,22 @@
 import type { PromptQuality, PromptQualitySubscores } from '@/lib/types/prompts'
 
-const REFINER_VERSION = 'local-heuristic-v1'
+const REFINER_VERSION = 'local-heuristic-v2'
 
-const claritySignals = ['role', 'objectiv', 'task', 'goal', 'mission']
-const constraintSignals = ['must', 'required', 'do not', 'avoid', 'only', 'limit', 'constraint', 'rule']
-const outputFormatSignals = ['json', 'markdown', 'table', 'csv', 'xml', 'yaml', 'format', 'template']
-const exampleSignals = ['example', 'sample', 'test case', 'input/output', 'scenario']
-const safetySignals = ['safe', 'ethic', 'no harm', 'respectful', 'guardrail', 'avoid', 'prevent']
-const reusabilitySignals = ['{{', 'placeholder', 'variable', 'input', 'context', 'data', 'parameter']
+const claritySignals = [
+  'role:',
+  'objective:',
+  'purpose:',
+  'goal',
+  'task',
+  'mission',
+  'you are',
+  'persona',
+]
+const constraintSignals = ['constraints:', 'must', 'required', 'do not', "don't", 'avoid', 'only', 'limit', 'rule']
+const outputFormatSignals = ['output format:', 'json', 'markdown', 'table', 'csv', 'xml', 'yaml', 'format', 'schema']
+const exampleSignals = ['examples:', 'example', 'sample', 'test case', 'scenario', 'input:', 'output:', 'input/output']
+const safetySignals = ['safe', 'safety', 'ethic', 'no harm', 'respectful', 'guardrail', 'avoid', 'prevent']
+const reusabilitySignals = ['inputs:', '{{', '${{', '${', 'placeholder', 'variable', 'context', 'parameter', 'fields']
 
 const refinementSections = [
   { name: 'Role', placeholder: 'Describe the persona or assistant style to adopt.' },
@@ -35,6 +44,17 @@ function scoreFromSignals(text: string, signals: string[]): number {
   return clampScore((hits.length / signals.length) * 10)
 }
 
+function scoreReusability(text: string): number {
+  const placeholderRx = /(\{\{[^}]+\}\}|\$\{\{[^}]+\}\}|\$\{[^}]+\})/g
+  const placeholderCount = (text.match(placeholderRx) || []).length
+
+  const keywordScore = scoreFromSignals(text, reusabilitySignals)
+  if (placeholderCount >= 3) return Math.max(8, keywordScore)
+  if (placeholderCount === 2) return Math.max(7, keywordScore)
+  if (placeholderCount === 1) return Math.max(6, keywordScore)
+  return keywordScore
+}
+
 export function evaluatePromptQuality(template: string, context?: string): PromptQuality {
   const combined = [context, template].filter(Boolean).join('\n\n').toLowerCase()
   const clarityScore = clampScore(scoreFromSignals(combined, claritySignals))
@@ -43,7 +63,7 @@ export function evaluatePromptQuality(template: string, context?: string): Promp
   const rawExampleScore = scoreFromSignals(combined, exampleSignals)
   const examplesScore = rawExampleScore > 0 ? clampScore(rawExampleScore + 1) : 0
   const safetyScore = clampScore(scoreFromSignals(combined, safetySignals))
-  const reusabilityScore = clampScore(scoreFromSignals(combined, reusabilitySignals))
+  const reusabilityScore = clampScore(scoreReusability(combined))
 
   const subscores: PromptQualitySubscores = {
     clarity: clarityScore,

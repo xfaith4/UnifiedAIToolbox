@@ -13,5 +13,11 @@
         "button-name": "off"
       }
     ]
-  }
+  },
+  "browserslist": [
+    "defaults",
+    "not ie 11",
+    "not ios_saf <= 26",
+    "not safari <= 26"
+  ]
 }

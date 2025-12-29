@@ -1,6 +1,6 @@
 'use server'
 
-import { evaluatePromptQuality, getPromptQualityCriteria } from '@/lib/utils/promptQuality'
+import { evaluatePromptQuality, generateRefinementDraft, getPromptQualityCriteria } from '@/lib/utils/promptQuality'
 import { extractSummaryFromChange } from '@/lib/utils/promptRefiner'
 import { PromptQualitySubscores } from '@/lib/types/prompts'
 import { callOpenAIChat, type ChatUsage, type ChatMessage } from '@/lib/services/serverOpenAI'
@@ -16,6 +16,8 @@ type PromptRefinerPayload = {
   goals?: string
   constraints?: string
   outputFormat?: string
+  iterations?: number
+  engineerInstruction?: string
   apiKey?: string
 }
 
@@ -26,6 +28,18 @@ type CriticResponse = {
 type EngineerResponse = {
   refinedTemplate?: string
   changeSummary?: string[]
+}
+
+type IterationReport = {
+  iteration: number
+  critiqueBullets: string[]
+  changeSummary: string[]
+  rubricBreakdown: PromptQualitySubscores
+  overallScore: number
+  deltaFromOriginal: number
+  deltaFromPrevious: number
+  usedAlignedTemplate: boolean
+  keptPreviousTemplate: boolean
 }
 
 function formatCriteriaForPrompt(): string {
@@ -120,6 +134,11 @@ function accumulateUsage(target: ChatUsage, usage?: ChatUsage) {
   target.total_tokens = (target.total_tokens ?? 0) + (usage.total_tokens ?? 0)
 }
 
+function clampIterations(value: number | undefined): number {
+  if (!value || Number.isNaN(value)) return 1
+  return Math.max(1, Math.min(10, Math.floor(value)))
+}
+
 async function runCritic(payload: PromptRefinerPayload, apiKey: string): Promise<{ bullets: string[]; usage: ChatUsage }> {
   const metadata = buildMetadata(payload)
   const criteriaText = formatCriteriaForPrompt()
@@ -127,7 +146,7 @@ async function runCritic(payload: PromptRefinerPayload, apiKey: string): Promise
     {
       role: 'system',
       content:
-        'You are a Prompt Critic. Identify ambiguities, missing constraints, missing output formats, and placeholder issues using the local evaluation criteria.',
+        'You are a Prompt Critic. Identify ambiguities, missing constraints, missing output formats, missing examples, and placeholder preservation issues using the local evaluation criteria.',
     },
     {
       role: 'user',
@@ -144,18 +163,35 @@ async function runCritic(payload: PromptRefinerPayload, apiKey: string): Promise
   return { bullets, usage: response.usage ?? {} }
 }
 
-async function runEngineer(payload: PromptRefinerPayload, apiKey: string): Promise<{ result: EngineerResponse; usage: ChatUsage }> {
+async function runEngineer(
+  payload: PromptRefinerPayload,
+  apiKey: string,
+  options: { originalTemplate: string; currentTemplate: string; critiqueBullets: string[]; iteration: number; iterations: number }
+): Promise<{ result: EngineerResponse; usage: ChatUsage }> {
   const metadata = buildMetadata(payload)
   const criteriaText = formatCriteriaForPrompt()
+  const engineerInstruction =
+    payload.engineerInstruction?.trim() ||
+    'Improve the prompt to raise the rubric score by adding missing sections, constraints, output format, and examples, while preserving placeholders.'
   const messages: ChatMessage[] = [
     {
       role: 'system',
       content:
-        'You are a Prompt Engineer. Improve the prompt by clarifying intent, constraints, and output format without inventing new requirements. Align the output with the local evaluation criteria.',
+        [
+          'You are a Prompt Engineer.',
+          '',
+          'Task: Improve the prompt by clarifying intent, constraints, and output format WITHOUT inventing new requirements.',
+          'Alignment: Optimize for the local evaluation criteria (sections + keyword signals).',
+          '',
+          'Hard rules:',
+          '- Preserve ALL existing placeholders/tokens exactly (e.g., {{name}}, ${{name}}, ${name}). Do not rename or delete them.',
+          '- If the prompt is missing section headers, add them EXACTLY as: Role:, Objective:, Inputs:, Constraints:, Output Format:, Examples:, Success Criteria:',
+          '- Include at least one example (even a minimal Input:/Output: pair).',
+        ].join('\n'),
     },
     {
       role: 'user',
-      content: `Prompt metadata:\n${metadata}\n\nLocal evaluation criteria:\n${criteriaText}\n\nTemplate:\n${payload.template}\n\nReturn JSON with keys: refinedTemplate (the improved prompt text) and changeSummary (array of bullet points summarizing changes).`,
+      content: `Prompt metadata:\n${metadata}\n\nLocal evaluation criteria:\n${criteriaText}\n\nIteration ${options.iteration} of ${options.iterations}\n\nEngineer instruction:\n${engineerInstruction}\n\nOriginal template (baseline; do not ignore):\n${options.originalTemplate}\n\nCurrent template (refine this):\n${options.currentTemplate}\n\nCritic notes (address these):\n${options.critiqueBullets.map((b) => `- ${b}`).join('\n')}\n\nReturn JSON with keys: refinedTemplate (the improved prompt text) and changeSummary (array of bullet points summarizing changes).`,
     },
   ]
 
@@ -189,16 +225,78 @@ export async function POST(request: Request) {
 
     const originalQuality = evaluatePromptQuality(payload.template, payload.context)
 
-    const critic = await runCritic(payload, apiKey)
-    const engineer = await runEngineer(payload, apiKey)
-
-    const refinedTemplate = (engineer.result.refinedTemplate ?? payload.template).trim()
-    const refinedQuality = evaluatePromptQuality(refinedTemplate, payload.context)
-    const qualityScoreDelta = Number((refinedQuality.overallScore - originalQuality.overallScore).toFixed(1))
+    const iterations = clampIterations(payload.iterations)
+    const originalTemplate = payload.template
 
     const tokens: ChatUsage = {}
-    accumulateUsage(tokens, critic.usage)
-    accumulateUsage(tokens, engineer.usage)
+    const iterationReports: IterationReport[] = []
+
+    let currentTemplate = originalTemplate
+    let previousQuality = originalQuality
+    let lastCritique: string[] = []
+    let lastChangeSummary: string[] = []
+
+    for (let i = 1; i <= iterations; i += 1) {
+      const critic = await runCritic({ ...payload, template: currentTemplate }, apiKey)
+      accumulateUsage(tokens, critic.usage)
+      lastCritique = critic.bullets
+
+      const engineer = await runEngineer(payload, apiKey, {
+        originalTemplate,
+        currentTemplate,
+        critiqueBullets: critic.bullets,
+        iteration: i,
+        iterations,
+      })
+      accumulateUsage(tokens, engineer.usage)
+
+      const engineerTemplate = (engineer.result.refinedTemplate ?? currentTemplate).trim()
+      const engineerQuality = evaluatePromptQuality(engineerTemplate, payload.context)
+
+      const alignedTemplate = generateRefinementDraft(engineerTemplate, payload.context)
+      const alignedQuality = evaluatePromptQuality(alignedTemplate, payload.context)
+
+      const usedAlignedTemplate = alignedQuality.overallScore >= engineerQuality.overallScore
+      const candidateTemplate = usedAlignedTemplate ? alignedTemplate : engineerTemplate
+      const candidateQuality = usedAlignedTemplate ? alignedQuality : engineerQuality
+
+      const keptPreviousTemplate = candidateQuality.overallScore + 0.1 < previousQuality.overallScore
+      const nextTemplate = keptPreviousTemplate ? currentTemplate : candidateTemplate
+      const nextQuality = keptPreviousTemplate ? previousQuality : candidateQuality
+
+      let changeSummary =
+        engineer.result.changeSummary?.map((entry) => entry.toString()) ??
+        extractSummaryFromChange(engineer.result.refinedTemplate ?? '')
+      if (changeSummary.length === 0 && nextTemplate === currentTemplate) {
+        changeSummary = ['No substantive changes produced this iteration.']
+      }
+      if (keptPreviousTemplate) {
+        changeSummary = [
+          ...changeSummary,
+          'Refinement was rejected because it lowered the local quality score; previous draft retained.',
+        ]
+      }
+      lastChangeSummary = changeSummary
+
+      iterationReports.push({
+        iteration: i,
+        critiqueBullets: critic.bullets,
+        changeSummary,
+        rubricBreakdown: nextQuality.subscores,
+        overallScore: nextQuality.overallScore,
+        deltaFromOriginal: Number((nextQuality.overallScore - originalQuality.overallScore).toFixed(1)),
+        deltaFromPrevious: Number((nextQuality.overallScore - previousQuality.overallScore).toFixed(1)),
+        usedAlignedTemplate,
+        keptPreviousTemplate,
+      })
+
+      currentTemplate = nextTemplate
+      previousQuality = nextQuality
+    }
+
+    const refinedTemplate = currentTemplate
+    const refinedQuality = previousQuality
+    const qualityScoreDelta = Number((refinedQuality.overallScore - originalQuality.overallScore).toFixed(1))
     const cost =
       COST_PER_THOUSAND > 0 && tokens.total_tokens
         ? Number(((tokens.total_tokens / 1000) * COST_PER_THOUSAND).toFixed(5))
@@ -206,13 +304,8 @@ export async function POST(request: Request) {
 
     const rubricBreakdown: PromptQualitySubscores = refinedQuality.subscores
 
-    const critiqueBullets = critic.bullets
-    let changeSummary =
-      engineer.result.changeSummary?.map((entry) => entry.toString()) ??
-      extractSummaryFromChange(engineer.result.refinedTemplate ?? '')
-    if (changeSummary.length === 0 && refinedTemplate === payload.template) {
-      changeSummary = ['AI returned critique only; no draft changes were produced.']
-    }
+    const critiqueBullets = lastCritique
+    const changeSummary = lastChangeSummary.length ? lastChangeSummary : ['No changes were produced.']
 
     return new Response(
       JSON.stringify({
@@ -221,6 +314,9 @@ export async function POST(request: Request) {
         changeSummary,
         qualityScoreDelta,
         rubricBreakdown,
+        iterationsRequested: iterations,
+        iterationsPerformed: iterationReports.length,
+        iterationReports,
         tokens,
         cost,
       }),
