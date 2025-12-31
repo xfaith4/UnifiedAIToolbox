@@ -3,7 +3,7 @@
 const fs = require('node:fs/promises')
 const path = require('node:path')
 
-const WEBAPP_ROOT = process.cwd()
+const WEBAPP_ROOT = process.cwd() // eslint-disable-line no-undef
 const REPO_ROOT = path.resolve(WEBAPP_ROOT, '..', '..')
 const ARTIFACTS_DIR = path.join(REPO_ROOT, 'artifacts', 'ux-simulations')
 

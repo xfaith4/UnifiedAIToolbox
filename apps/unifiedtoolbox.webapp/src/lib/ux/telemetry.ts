@@ -28,7 +28,7 @@ let sessionId: string | null = null
 let events: UxEvent[] = []
 let subscribers: Subscriber[] = []
 let inflightFetches = 0
-let lastPageHideAt = 0
+const lastPageHideAt = 0
 
 function getOrCreateSessionId() {
   if (sessionId) return sessionId
@@ -125,14 +125,17 @@ export function installUxInstrumentation(options: {
 
   const getRoute = options.getRoute
 
-  const markPageHiding = () => {
-    lastPageHideAt = Date.now()
+  // Track when the page is unloading/hidden so we can avoid logging noisy "api_error"
+  // events caused by navigation/unmount cancellations.
+  let pageUnloading = false
+  const markUnloading = () => {
+    pageUnloading = true
   }
 
-  window.addEventListener('pagehide', markPageHiding)
-  window.addEventListener('beforeunload', markPageHiding)
+  window.addEventListener('pagehide', markUnloading)
+  window.addEventListener('beforeunload', markUnloading)
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') markPageHiding()
+    if (document.visibilityState === 'hidden') markUnloading()
   })
 
   // Time to interactive (rough)
@@ -147,10 +150,6 @@ export function installUxInstrumentation(options: {
   const originalFetch = window.fetch.bind(window)
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
 
-      let pageUnloading = false
-      window.addEventListener('pagehide', () => {
-        pageUnloading = true
-      })
     const startedAt = performance.now()
     inflightFetches += 1
     notify()
@@ -158,38 +157,28 @@ export function installUxInstrumentation(options: {
       const response = await originalFetch(input, init)
       const durationMs = Math.round(performance.now() - startedAt)
       if (!response.ok) {
-        trackUxEvent('api_error', {
-          route: getRoute(),
-          details: {
-            url: typeof input === 'string' ? input : (input as URL).toString?.() ?? 'request',
-            status: response.status,
-            durationMs,
-          },
-        })
+        // Only track API errors if the page isn't unloading
+        if (!pageUnloading) {
+          trackUxEvent('api_error', {
+            route: getRoute(),
+            details: {
+              url: typeof input === 'string' ? input : (input as URL).toString?.() ?? 'request',
+              status: response.status,
+              durationMs,
+            },
+          })
+        }
       }
       return response
     } catch (error) {
-      const durationMs = Math.round(performance.now() - startedAt)
+      const aborted = Boolean(init?.signal?.aborted)
+      const hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden'
 
-      const isAbortError =
-        (error instanceof DOMException && error.name === 'AbortError') ||
-          const aborted = Boolean(init?.signal?.aborted)
-          const hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden'
-
-          // Ignore fetch failures caused by navigation/unmount aborts or page unloading.
-          // This keeps synthetic navigation runs from producing noisy "Failed to fetch" api_error events.
-          if (!aborted && !pageUnloading && !hidden) {
-        (error instanceof Error && error.name === 'AbortError') ||
-        Boolean(init?.signal && init.signal.aborted)
-
-      const isLikelyNavigationCancellation =
-        !isAbortError &&
-        (error instanceof TypeError && (error.message === 'Failed to fetch' || error.message.includes('Failed to fetch'))) &&
-        Date.now() - lastPageHideAt < 1500
-
-      if (!isAbortError && !isLikelyNavigationCancellation) {
+      // Ignore fetch failures caused by navigation/unmount aborts or page unloading.
+      // This keeps synthetic navigation runs from producing noisy "Failed to fetch" api_error events.
+      if (!aborted && !pageUnloading && !hidden) {
+        const durationMs = Math.round(performance.now() - startedAt)
         trackUxEvent('api_error', {
-          }
           route: getRoute(),
           details: {
             url: typeof input === 'string' ? input : (input as URL).toString?.() ?? 'request',
@@ -199,6 +188,7 @@ export function installUxInstrumentation(options: {
           },
         })
       }
+
       throw error
     } finally {
       inflightFetches = Math.max(0, inflightFetches - 1)
@@ -206,18 +196,18 @@ export function installUxInstrumentation(options: {
     }
   }
 
-  // Rage-click detector
+  // Click instrumentation (rage/dead clicks, CTA clicks)
   const recentClicks: Array<{ ts: number; signature: string }> = []
   window.addEventListener(
     'click',
-    (e) => {
-      const target = e.target as HTMLElement | null
-      if (!target) return
+    (event) => {
+      const target = event.target as HTMLElement
+      const cta = target.closest('[data-cta]')
+      if (!cta) return
 
-      const el = target.closest('button, [role="button"], a') as HTMLElement | null
-      if (!el) return
+      const signature = cta.getAttribute('data-cta') || cta.textContent?.trim() || 'unknown_cta'
+      if (!signature) return
 
-      const signature = `${el.tagName}:${el.getAttribute('aria-label') ?? ''}:${(el.textContent ?? '').trim().slice(0, 48)}`
       const now = Date.now()
       recentClicks.push({ ts: now, signature })
 

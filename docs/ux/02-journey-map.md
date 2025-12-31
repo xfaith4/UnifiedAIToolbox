@@ -3,6 +3,7 @@
 These are the current “money paths” in the Next.js web portal (`apps/unifiedtoolbox.webapp`).
 
 ## J1 — First run / orientation
+
 - Goal: Understand what the toolbox is and where to start.
 - Entry: `/`.
 - Steps: Land → pick a sidebar tool.
@@ -10,6 +11,7 @@ These are the current “money paths” in the Next.js web portal (`apps/unified
 - Failure modes: Blank/unclear landing, missing state indicators.
 
 ## J2 — Dashboard metrics scan
+
 - Goal: Get a quick operational snapshot.
 - Entry: `/dashboard`.
 - Steps: View KPIs → scan charts → interpret cost/impact.
@@ -17,6 +19,7 @@ These are the current “money paths” in the Next.js web portal (`apps/unified
 - Failure modes: Loading forever; unclear units; unreadable chart tooltips.
 
 ## J3 — Prompt library search & edit
+
 - Goal: Find a prompt, edit, save, and export.
 - Entry: `/prompts`.
 - Steps: Search → filter → select → edit → save → export JSON.
@@ -24,6 +27,7 @@ These are the current “money paths” in the Next.js web portal (`apps/unified
 - Failure modes: Confusing edit state; loss of work; import/export confusion.
 
 ## J4 — Agent library curation
+
 - Goal: Create/update agent instructions; import/export.
 - Entry: `/agents`.
 - Steps: Search → select → edit → save → export/import.
@@ -31,6 +35,7 @@ These are the current “money paths” in the Next.js web portal (`apps/unified
 - Failure modes: “Did it save?” ambiguity; `alert()`-style errors; keyboard traps.
 
 ## J5 — Orchestrator: create run
+
 - Goal: Launch a run and monitor its progress.
 - Entry: `/orchestrator`.
 - Steps: Choose mode → set goal → pick agents/prompts → start → monitor logs.
@@ -38,6 +43,7 @@ These are the current “money paths” in the Next.js web portal (`apps/unified
 - Failure modes: API disconnected with unclear recovery; unclear required fields; long page with poor hierarchy.
 
 ## J6 — Orchestrator: repo orchestration
+
 - Goal: Run orchestration against a repo.
 - Entry: `/orchestrator` (repo section).
 - Steps: Enter repo + goal → start → watch events → cancel if needed.
@@ -45,6 +51,7 @@ These are the current “money paths” in the Next.js web portal (`apps/unified
 - Failure modes: Unclear allowed paths; no progress feedback; cancellation ambiguity.
 
 ## J7 — Milestones overview
+
 - Goal: Understand milestone health + gating thresholds.
 - Entry: `/milestones`.
 - Steps: Pick time window → interpret metrics → see deltas.
@@ -52,6 +59,7 @@ These are the current “money paths” in the Next.js web portal (`apps/unified
 - Failure modes: Missing explanation for “why did this fail?”
 
 ## J8 — GitHub integration
+
 - Goal: Validate configuration and run GitHub workflows.
 - Entry: `/github`.
 - Steps: Connect/configure → run action → review results.
@@ -59,6 +67,7 @@ These are the current “money paths” in the Next.js web portal (`apps/unified
 - Failure modes: Token/config errors with unclear remediation.
 
 ## J9 — Settings
+
 - Goal: Adjust environment + defaults.
 - Entry: `/settings`.
 - Steps: View settings → change → confirm.

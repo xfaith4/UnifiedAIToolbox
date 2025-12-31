@@ -3,6 +3,7 @@
 This runbook is optimized for repeatable UX testing + simulations on Windows.
 
 ## Prereqs
+
 - Node.js 18+
 - Python 3.12+
 - PowerShell 7+ recommended
@@ -47,9 +48,11 @@ Open:
 Note: `Start-Toolbox.ps1 -Mode <X> -NoWait` currently stops started processes due to a `finally` cleanup block. For automation/simulations use manual commands above.
 
 ## Stop
+
 - Stop either server with Ctrl+C in its terminal.
 
 ## Quality Gate
+
 From repo root:
 
 ```powershell
