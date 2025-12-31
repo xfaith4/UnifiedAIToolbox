@@ -37,27 +37,27 @@ def build_file_tree(
 ) -> Dict[str, Any]:
     """
     Recursively build a file tree dictionary from a directory path.
-    
+
     Args:
         path: Root path to start building tree from
         max_depth: Maximum depth to traverse
         current_depth: Current recursion depth (internal use)
         skip_hidden: Whether to skip hidden files/directories
         allow_github_dir: Whether to allow .github directory when skip_hidden is True
-        
+
     Returns:
         Dictionary representing the file tree structure
     """
     if current_depth >= max_depth:
         return {'name': path.name, 'type': 'directory', 'truncated': True}
-    
+
     if path.is_file():
         return {
             'name': path.name,
             'type': 'file',
             'size': path.stat().st_size
         }
-    
+
     children = []
     try:
         for item in sorted(path.iterdir(), key=lambda x: (not x.is_dir(), x.name)):
@@ -76,7 +76,7 @@ def build_file_tree(
             )
     except PermissionError:
         pass
-    
+
     return {
         'name': path.name,
         'type': 'directory',
@@ -87,10 +87,10 @@ def build_file_tree(
 def list_repo_branches(repo_path: Path) -> List[str]:
     """
     List all branches in a cloned repository.
-    
+
     Args:
         repo_path: Path to the cloned repository
-        
+
     Returns:
         List of branch names
     """
@@ -105,11 +105,11 @@ def list_repo_branches(repo_path: Path) -> List[str]:
 def switch_repo_branch(repo_path: Path, branch: str) -> bool:
     """
     Switch to a different branch in a cloned repository.
-    
+
     Args:
         repo_path: Path to the cloned repository
         branch: Branch name to switch to
-        
+
     Returns:
         True if successful, False otherwise
     """
@@ -126,10 +126,10 @@ def switch_repo_branch(repo_path: Path, branch: str) -> bool:
 def cleanup_repository(clone_path: Path) -> bool:
     """
     Remove a cloned repository directory.
-    
+
     Args:
         clone_path: Path to the cloned repository
-        
+
     Returns:
         True if cleanup was successful, False otherwise
     """
@@ -147,26 +147,36 @@ def cleanup_repository(clone_path: Path) -> bool:
 def get_authenticated_clone_url(repo_url: str, token: Optional[str]) -> str:
     """
     Add authentication to a clone URL if a token is provided.
-    
+
     Args:
         repo_url: Original repository URL
         token: GitHub personal access token
-        
+
     Returns:
         URL with embedded authentication (if token provided)
     """
     if not token:
         return repo_url
-    
-    if repo_url.startswith('https://github.com/'):
-        return repo_url.replace(
-            'https://github.com/',
-            f'https://{token}@github.com/'
-        )
-    elif repo_url.startswith('https://'):
-        return repo_url.replace('https://', f'https://{token}@')
-    
-    return repo_url
+
+    if not repo_url.startswith(("http://", "https://")):
+        return repo_url
+
+    parsed = urllib.parse.urlsplit(repo_url)
+
+    # Drop any embedded userinfo to avoid leaking/stacking credentials.
+    netloc = parsed.netloc.split("@", 1)[1] if "@" in parsed.netloc else parsed.netloc
+
+    host = netloc.lower()
+    encoded_token = urllib.parse.quote(token, safe="")
+
+    # GitHub accepts tokens via username/password userinfo: x-access-token:<token>
+    if host == "github.com":
+        userinfo = f"x-access-token:{encoded_token}"
+    else:
+        userinfo = encoded_token
+
+    with_auth = parsed._replace(netloc=f"{userinfo}@{netloc}")
+    return urllib.parse.urlunsplit(with_auth)
 
 
 def _strip_embedded_auth(repo_url: str) -> str:
@@ -232,10 +242,10 @@ def get_clone_url_for_repo(repo_url: str, token: Optional[str]) -> str:
 def parse_repo_url(repo_url: str) -> "tuple[str, str]":
     """
     Parse a repository URL to extract owner and repo name.
-    
+
     Args:
         repo_url: Repository URL or owner/repo format
-        
+
     Returns:
         Tuple of (owner, repo_name)
     """
@@ -244,13 +254,13 @@ def parse_repo_url(repo_url: str) -> "tuple[str, str]":
         parts = repo_url.split('/')
         if len(parts) >= 2:
             return parts[-2], parts[-1].replace('.git', '')
-    
+
     # Handle full URL format
     url = repo_url.rstrip('/')
     parts = url.split('/')
     repo_name = parts[-1].replace('.git', '')
     owner = parts[-2] if len(parts) >= 2 else ''
-    
+
     return owner, repo_name
 
 
@@ -319,7 +329,7 @@ class GitHubClientMixin:
         """Initialize GitHub API client."""
         # use_auth_class retained for backward compatibility; creation is centralized
         return create_github_client(token=token, per_page=per_page)
-    
+
     def _fetch_repo_metadata(
         self,
         github_client: Github,
@@ -330,17 +340,17 @@ class GitHubClientMixin:
     ) -> Dict[str, Any]:
         """
         Fetch repository metadata from GitHub API.
-        
+
         Args:
             github_client: Initialized Github client
             owner: Repository owner
             repo_name: Repository name
             include_branches: Whether to include branch list
             include_extended: Whether to include extended fields (ssh_url, created_at, open_issues)
-            
+
         Returns:
             Dictionary with repository metadata
-            
+
         Raises:
             GithubException: If API call fails
         """
@@ -348,7 +358,7 @@ class GitHubClientMixin:
             lambda: github_client.get_repo(f"{owner}/{repo_name}"),
             description=f"Get repo {owner}/{repo_name}",
         )
-        
+
         metadata = {
             'full_name': repo.full_name,
             'name': repo.name,
@@ -366,17 +376,17 @@ class GitHubClientMixin:
             'private': repo.private,
             'archived': repo.archived,
         }
-        
+
         if include_branches:
             metadata['branches'] = [branch.name for branch in repo.get_branches()]
-        
+
         if include_extended:
             metadata['ssh_url'] = repo.ssh_url
             metadata['created_at'] = repo.created_at.isoformat() if repo.created_at else None
             metadata['open_issues'] = repo.open_issues_count
-        
+
         return metadata
-    
+
     def _search_repos(
         self,
         github_client: Github,
@@ -387,14 +397,14 @@ class GitHubClientMixin:
     ) -> List[Dict[str, Any]]:
         """
         Search for repositories on GitHub.
-        
+
         Args:
             github_client: Initialized Github client
             query: Search query string
             limit: Maximum number of results
             include_topics: Whether to include topics (slower)
             include_private: Whether to include private field
-            
+
         Returns:
             List of repository metadata dictionaries
         """
@@ -403,7 +413,7 @@ class GitHubClientMixin:
             description="Search repositories",
         )
         results = []
-        
+
         for repo in repos[:limit]:
             result = {
                 'full_name': repo.full_name,
@@ -413,21 +423,21 @@ class GitHubClientMixin:
                 'size': repo.size,
                 'html_url': repo.html_url,
             }
-            
+
             if include_topics:
                 result['topics'] = repo.get_topics()
-            
+
             if include_private:
                 result['private'] = repo.private
-            
+
             results.append(result)
-        
+
         return results
 
 
 class FileTreeMixin:
     """Mixin providing file tree generation capabilities."""
-    
+
     def _build_file_tree(
         self,
         repo_path: Path,
@@ -436,12 +446,12 @@ class FileTreeMixin:
     ) -> Dict[str, Any]:
         """
         Get a tree structure of files in the repository.
-        
+
         Args:
             repo_path: Path to the cloned repository
             max_depth: Maximum depth to traverse
             skip_git_dir: Whether to skip .git directory
-            
+
         Returns:
             Dictionary representing the file tree
         """
@@ -455,27 +465,27 @@ class FileTreeMixin:
 
 class CloneUrlMixin:
     """Mixin providing clone URL handling capabilities."""
-    
+
     def _get_auth_url(self, repo_url: str, token: Optional[str]) -> str:
         """
         Get authenticated clone URL.
-        
+
         Args:
             repo_url: Original repository URL
             token: GitHub personal access token
-            
+
         Returns:
             URL with embedded authentication if token provided
         """
         return get_clone_url_for_repo(repo_url, token)
-    
+
     def _parse_repo_url(self, repo_url: str) -> "tuple[str, str]":
         """
         Parse repository URL to extract owner and repo name.
-        
+
         Args:
             repo_url: Repository URL or owner/repo format
-            
+
         Returns:
             Tuple of (owner, repo_name)
         """

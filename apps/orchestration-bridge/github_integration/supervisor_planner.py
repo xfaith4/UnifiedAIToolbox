@@ -1,6 +1,7 @@
 """Supervisor planner that turns an IntakeReport into a TaskGraph artifact."""
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -53,6 +54,7 @@ class SupervisorPlanner:
         validation_commands = self._build_validation_commands(build_signals)
 
         tasks = self._build_tasks(
+            run_id=run_id,
             allowed_paths=allowed_paths,
             user_goal=user_goal,
             validation_commands=validation_commands,
@@ -103,6 +105,7 @@ class SupervisorPlanner:
 
     def _build_tasks(
         self,
+        run_id: str,
         allowed_paths: List[str],
         user_goal: str,
         validation_commands: List[str],
@@ -112,11 +115,14 @@ class SupervisorPlanner:
         path_scope = allowed_paths or ["."]
         validation_steps = validation_commands or ["git status --short", "pytest || true"]
 
+        run_suffix = self._run_suffix(run_id)
+
         tasks: List[Dict[str, Any]] = []
 
         tasks.append(
             {
                 "id": "t1_context",
+                "branch": self._task_branch(run_suffix, "t1_context"),
                 "title": "Review repository context",
                 "rationale": "Understand repository structure and constraints before planning implementation.",
                 "file_scope": [],
@@ -130,6 +136,7 @@ class SupervisorPlanner:
         tasks.append(
             {
                 "id": "t2_plan",
+                "branch": self._task_branch(run_suffix, "t2_plan"),
                 "title": "Design approach for goal",
                 "rationale": f"Design a minimal set of changes to accomplish: {user_goal}",
                 "file_scope": path_scope,
@@ -143,6 +150,7 @@ class SupervisorPlanner:
         tasks.append(
             {
                 "id": "t3_execute",
+                "branch": self._task_branch(run_suffix, "t3_execute"),
                 "title": "Implement and validate changes",
                 "rationale": "Apply the planned modifications and run project validations.",
                 "file_scope": path_scope,
@@ -159,6 +167,7 @@ class SupervisorPlanner:
             tasks.append(
                 {
                     "id": "t4_parallel_validation",
+                    "branch": self._task_branch(run_suffix, "t4_parallel_validation"),
                     "title": "Parallel validation passes",
                     "rationale": "Run additional validations concurrently for faster feedback.",
                     "file_scope": path_scope,
@@ -170,3 +179,29 @@ class SupervisorPlanner:
             )
 
         return tasks
+
+    def _run_suffix(self, run_id: str) -> str:
+        """Create a short, stable suffix for branch names."""
+        if not run_id:
+            return "run"
+
+        parts = run_id.rsplit("-", 1)
+        candidate = parts[-1] if parts else run_id
+        candidate = self._sanitize_branch_component(candidate)
+        return candidate[:12] or "run"
+
+    def _task_branch(self, run_suffix: str, task_id: str) -> str:
+        component_task = self._sanitize_branch_component(task_id)
+        component_suffix = self._sanitize_branch_component(run_suffix)
+        branch = f"orchestrator/{component_suffix}/{component_task}"
+        return branch[:120]
+
+    def _sanitize_branch_component(self, value: str) -> str:
+        """Keep only characters that are safe in git ref names."""
+        if not value:
+            return ""
+        value = value.strip().lower()
+        value = re.sub(r"[^a-z0-9._/-]+", "-", value)
+        value = re.sub(r"-+", "-", value)
+        value = value.strip("-./")
+        return value

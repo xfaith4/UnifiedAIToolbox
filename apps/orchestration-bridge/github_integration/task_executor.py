@@ -2,6 +2,8 @@
 
 import asyncio
 import json
+import os
+import re
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -114,6 +116,7 @@ class TaskExecutor:
         cancel_event: Optional[asyncio.Event] = None,
     ) -> Dict[str, Any]:
         task_id = task["id"]
+        branch = self._normalize_branch_name(task.get("branch") or f"{run_id}-{task_id}")
         allowed_paths = task.get("file_scope") or ["."]
         task_dir = self.runs_dir / run_id / "tasks" / task_id
         task_dir.mkdir(parents=True, exist_ok=True)
@@ -124,7 +127,24 @@ class TaskExecutor:
         worktree_path = worktrees_dir / task_id
         if worktree_path.exists():
             shutil.rmtree(worktree_path)
-        self._run_cmd(["git", "-C", str(repo_path), "worktree", "add", str(worktree_path), "HEAD"])
+
+        # Never allow interactive git credential prompts in headless runs.
+        os.environ.setdefault("GIT_TERMINAL_PROMPT", "0")
+
+        # Create or reset a task branch and attach a worktree to it.
+        self._run_cmd(
+            [
+                "git",
+                "-C",
+                str(repo_path),
+                "worktree",
+                "add",
+                "-B",
+                branch,
+                str(worktree_path),
+                "HEAD",
+            ]
+        )
 
         log_lines: List[str] = []
         findings: List[Dict[str, Any]] = []
@@ -169,7 +189,7 @@ class TaskExecutor:
                 status = "failed"
             log_lines.append(f"[error] {exc}")
 
-        # Capture diff and enforce scope
+        # Capture diff (before any commit) and enforce scope
         diff_text, touched_paths = self._collect_diff(worktree_path)
         diff_file = task_dir / "task_diff.patch"
         diff_file.write_text(diff_text, encoding="utf-8")
@@ -182,6 +202,11 @@ class TaskExecutor:
                 json.dumps({"task_id": task_id, "violations": violation_paths}, indent=2),
                 encoding="utf-8",
             )
+
+        # If successful and changes exist, commit them on the task branch.
+        if status == "completed" and not violation_paths:
+            if self._has_changes(worktree_path):
+                self._commit_changes(worktree_path, task_id)
 
         # Write findings and log
         findings_file = task_dir / "task_findings.json"
@@ -197,8 +222,14 @@ class TaskExecutor:
             violation_file=violation_file,
         )
 
+        # Remove the worktree to keep the run directory tidy.
+        self._run_cmd(["git", "-C", str(repo_path), "worktree", "remove", "--force", str(worktree_path)], check=False)
+        if worktree_path.exists():
+            shutil.rmtree(worktree_path, ignore_errors=True)
+
         return {
             "task_id": task_id,
+            "branch": branch,
             "status": status,
             "codex_run_id": codex_run_id,
             "artifacts": {
@@ -208,6 +239,36 @@ class TaskExecutor:
                 "violation": str(artifacts.violation_file) if artifacts.violation_file else None,
             },
         }
+
+    def _normalize_branch_name(self, branch: str) -> str:
+        branch = (branch or "task").strip().lower()
+        branch = re.sub(r"[^a-z0-9._/-]+", "-", branch)
+        branch = re.sub(r"-+", "-", branch)
+        branch = branch.strip("-./")
+        return branch[:120] or "task"
+
+    def _has_changes(self, repo_path: Path) -> bool:
+        proc = self._run_cmd(["git", "-C", str(repo_path), "status", "--porcelain"], check=False)
+        return bool((proc.stdout or "").strip())
+
+    def _commit_changes(self, repo_path: Path, task_id: str) -> None:
+        self._run_cmd(["git", "-C", str(repo_path), "add", "-A"], check=True)
+        msg = f"Orchestration: {task_id}"
+        self._run_cmd(
+            [
+                "git",
+                "-C",
+                str(repo_path),
+                "-c",
+                "user.email=orchestration-bridge@local",
+                "-c",
+                "user.name=Orchestration Bridge",
+                "commit",
+                "-m",
+                msg,
+            ],
+            check=False,
+        )
 
     def _collect_diff(self, worktree_path: Path) -> (str, List[str]):
         """Return diff patch text and list of touched paths."""
