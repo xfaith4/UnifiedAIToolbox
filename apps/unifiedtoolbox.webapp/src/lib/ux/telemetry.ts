@@ -146,6 +146,11 @@ export function installUxInstrumentation(options: {
   // Fetch instrumentation
   const originalFetch = window.fetch.bind(window)
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+
+      let pageUnloading = false
+      window.addEventListener('pagehide', () => {
+        pageUnloading = true
+      })
     const startedAt = performance.now()
     inflightFetches += 1
     notify()
@@ -168,6 +173,12 @@ export function installUxInstrumentation(options: {
 
       const isAbortError =
         (error instanceof DOMException && error.name === 'AbortError') ||
+          const aborted = Boolean(init?.signal?.aborted)
+          const hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden'
+
+          // Ignore fetch failures caused by navigation/unmount aborts or page unloading.
+          // This keeps synthetic navigation runs from producing noisy "Failed to fetch" api_error events.
+          if (!aborted && !pageUnloading && !hidden) {
         (error instanceof Error && error.name === 'AbortError') ||
         Boolean(init?.signal && init.signal.aborted)
 
@@ -178,6 +189,7 @@ export function installUxInstrumentation(options: {
 
       if (!isAbortError && !isLikelyNavigationCancellation) {
         trackUxEvent('api_error', {
+          }
           route: getRoute(),
           details: {
             url: typeof input === 'string' ? input : (input as URL).toString?.() ?? 'request',
