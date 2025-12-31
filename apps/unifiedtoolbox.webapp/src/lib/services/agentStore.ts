@@ -39,10 +39,10 @@ export function normalizeAgent(agent: Partial<AgentInstruction>): AgentInstructi
   }
 }
 
-async function fetchDefaultAgents(): Promise<AgentInstruction[]> {
+async function fetchDefaultAgents(signal?: AbortSignal): Promise<AgentInstruction[]> {
   if (typeof fetch === 'undefined') return []
   try {
-    const resp = await fetch('/api/agents')
+    const resp = await fetch('/api/agents', { signal })
     if (!resp.ok) return []
     const payload = (await resp.json()) as Partial<AgentInstruction>[]
     if (!Array.isArray(payload)) return []
@@ -70,13 +70,13 @@ async function loadFromLocalStorage(): Promise<AgentInstruction[] | null> {
   }
 }
 
-export async function fetchAgentLibrary(): Promise<AgentInstruction[]> {
+export async function fetchAgentLibrary(options?: { signal?: AbortSignal }): Promise<AgentInstruction[]> {
   const local = await loadFromLocalStorage()
   if (local && local.length > 0) {
     return local
   }
 
-  const defaults = await fetchDefaultAgents()
+  const defaults = await fetchDefaultAgents(options?.signal)
   if (defaults.length > 0) {
     saveToLocalStorage(defaults)
   }

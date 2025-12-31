@@ -2,7 +2,7 @@
 
 import './globals.css'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
 import {
   BarChart3,
   Settings,
@@ -14,7 +14,9 @@ import {
   Sparkles,
   type LucideIcon,
 } from 'lucide-react'
-import { type ReactNode, useState, useCallback } from 'react'
+import { type ReactNode, useCallback, useEffect, useState } from 'react'
+import { installUxInstrumentation, trackUxEvent } from '@/lib/ux/telemetry'
+import { UxDebugOverlay } from '@/components/ux/UxDebugOverlay'
 
 const navSections: NavSection[] = [
   {
@@ -54,9 +56,32 @@ type NavSection = { title: string; isSettings?: boolean; items: NavItem[] }
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [uxDebugEnabled, setUxDebugEnabled] = useState(false)
   const pathname = usePathname()
+  const searchParams = useSearchParams()
 
   const closeSidebar = useCallback(() => setSidebarOpen(false), [])
+
+  useEffect(() => {
+    installUxInstrumentation({
+      getRoute: () => window.location.pathname,
+    })
+  }, [])
+
+  useEffect(() => {
+    trackUxEvent('page_view', { route: pathname })
+  }, [pathname])
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'production') return
+    const qsEnabled = searchParams.get('uxdebug') === '1'
+    const stored = typeof window !== 'undefined' ? window.localStorage.getItem('utb_uxdebug') === '1' : false
+    const enabled = qsEnabled || stored
+    setUxDebugEnabled(enabled)
+    if (qsEnabled) {
+      window.localStorage.setItem('utb_uxdebug', '1')
+    }
+  }, [searchParams])
 
   return (
     <html lang="en">
@@ -85,7 +110,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                 onClick={() => setSidebarOpen((prev) => !prev)}
                 className="rounded-md border border-slate-700 bg-slate-800/60 px-3 py-1 text-sm font-medium text-slate-100 shadow-sm"
                 aria-controls="sidebar-nav"
-                aria-expanded={sidebarOpen}
               >
                 {sidebarOpen ? 'Close' : 'Menu'}
               </button>
@@ -118,11 +142,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 
               <nav className="space-y-5">
                 {navSections.map((section) => (
-                  <div
-                    key={section.title}
-                    className={section.isSettings ? 'border-t border-slate-800 pt-4' : undefined}
-                    role={section.isSettings ? 'separator' : undefined}
-                  >
+                  <div key={section.title}>
+                    {section.isSettings && <hr className="mb-4 border-slate-800" />}
                     <div className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                       {section.title}
                     </div>
@@ -151,6 +172,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             </main>
           </div>
         </div>
+
+        <UxDebugOverlay enabled={uxDebugEnabled} />
       </body>
     </html>
   )

@@ -31,6 +31,9 @@ export default function PromptsPage() {
   const [editing, setEditing] = useState<PromptItem | null>(null)
   const [activeId, setActiveId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null)
   const [importReport, setImportReport] = useState<PromptImportReport | null>(null)
   const initialized = useRef(false)
 
@@ -52,7 +55,15 @@ export default function PromptsPage() {
 
   useEffect(() => {
     if (!initialized.current) return
+    setIsSaving(true)
+    setSaveError(null)
     void persistPromptLibrary(items)
+      .then(() => setLastSavedAt(new Date().toISOString()))
+      .catch((error) => {
+        console.error('[promptLibrary] Failed to persist library:', error)
+        setSaveError(error instanceof Error ? error.message : 'Failed to save changes')
+      })
+      .finally(() => setIsSaving(false))
   }, [items])
 
   const allCategories = useMemo(() => {
@@ -189,6 +200,16 @@ export default function PromptsPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {isSaving && (
+            <span className="text-xs text-slate-400" aria-live="polite">
+              Saving...
+            </span>
+          )}
+          {!isSaving && lastSavedAt && !saveError && (
+            <span className="text-xs text-slate-500" aria-live="polite">
+              Saved {new Date(lastSavedAt).toLocaleTimeString()}
+            </span>
+          )}
           <button
             className="rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-1.5 text-sm hover:bg-slate-700/80"
             onClick={exportJson}
@@ -215,6 +236,24 @@ export default function PromptsPage() {
           </button>
         </div>
       </div>
+
+      {saveError && (
+        <div className="rounded-xl border border-amber-800 bg-amber-950/30 p-4 text-sm text-amber-200">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <div className="font-semibold">Some changes may not be saved</div>
+              <div className="mt-1 text-xs text-amber-200/90">{saveError}</div>
+            </div>
+            <button
+              type="button"
+              className="text-xs text-slate-300 hover:text-white"
+              onClick={() => setSaveError(null)}
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
 
       {importReport && (
         <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 text-sm text-slate-200">
@@ -339,33 +378,30 @@ function PromptCard({
       className={`rounded-xl border p-3 transition ${
         active ? 'border-blue-500 bg-slate-800' : 'border-transparent hover:border-slate-700'
       }`}
-      role="button"
-      tabIndex={0}
-      onClick={onEdit}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault()
-          onEdit()
-        }
-      }}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="font-semibold text-white">{prompt.title}</div>
-          <div className="mt-1 text-xs text-slate-400">{prompt.context || prompt.description}</div>
+      <button
+        type="button"
+        className="w-full text-left"
+        onClick={onEdit}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="font-semibold text-white">{prompt.title}</div>
+            <div className="mt-1 text-xs text-slate-400">{prompt.context || prompt.description}</div>
+          </div>
+          <div className="flex flex-col items-end gap-1 text-right">
+            <span
+              className={`rounded-full px-3 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${badge.bg} ${badge.text}`}
+              title={isRated ? `Rated ${score.toFixed(1)} · ${formatDate(prompt.quality!.lastRatedAt)}` : 'Not rated yet'}
+            >
+              {isRated ? score.toFixed(1) : 'NR'}
+            </span>
+            {prompt.category && (
+              <span className="text-[10px] rounded bg-slate-700 px-2 py-0.5">{prompt.category}</span>
+            )}
+          </div>
         </div>
-        <div className="flex flex-col items-end gap-1 text-right">
-          <span
-            className={`rounded-full px-3 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${badge.bg} ${badge.text}`}
-            title={isRated ? `Rated ${score.toFixed(1)} · ${formatDate(prompt.quality!.lastRatedAt)}` : 'Not rated yet'}
-          >
-            {isRated ? score.toFixed(1) : 'NR'}
-          </span>
-          {prompt.category && (
-            <span className="text-[10px] rounded bg-slate-700 px-2 py-0.5">{prompt.category}</span>
-          )}
-        </div>
-      </div>
+      </button>
       <div className="mt-3 flex flex-wrap gap-2">
         <button
           className="rounded-lg bg-slate-700/80 px-2 py-1 text-xs hover:bg-slate-700"

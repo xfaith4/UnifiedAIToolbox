@@ -153,18 +153,22 @@ export default function OrchestratorPage() {
   const [apiConnected, setApiConnected] = useState<boolean | null>(null) // null = checking, true = connected, false = disconnected
   const [apiError, setApiError] = useState<string>('')
 
+  const checkConnection = useCallback(async () => {
+    setApiConnected(null)
+    const result = await validateApiConnection()
+    setApiConnected(result.ok)
+    if (!result.ok) {
+      setApiError(result.error || 'Unknown error')
+      console.error('[Orchestrator] API connection failed:', result.error)
+    } else {
+      setApiError('')
+    }
+  }, [])
+
   // Check API connection on mount
   useEffect(() => {
-    async function checkConnection() {
-      const result = await validateApiConnection()
-      setApiConnected(result.ok)
-      if (!result.ok) {
-        setApiError(result.error || 'Unknown error')
-        console.error('[Orchestrator] API connection failed:', result.error)
-      }
-    }
     void checkConnection()
-  }, [validateApiConnection])
+  }, [checkConnection])
 
   // Load libraries on mount
   useEffect(() => {
@@ -590,8 +594,28 @@ export default function OrchestratorPage() {
                   <li>Check that the API URL is correct in <code className="rounded bg-red-950 px-1 py-0.5 font-mono">.env.local</code></li>
                   <li>For Docker: Ensure both services are on the same network</li>
                 </ul>
+                <div className="mt-2 rounded-lg border border-red-800 bg-red-950/40 p-2 font-mono text-[11px] text-red-100">
+                  <div className="text-red-200/90">Local start (Windows):</div>
+                  <div>cd apps\\UnifiedPromptApp\\services\\prompt-api</div>
+                  <div>.\\.venv\\Scripts\\python.exe -m uvicorn app:app --reload --host 0.0.0.0 --port 8000</div>
+                </div>
                 <div className="mt-2">
                   <strong>Note:</strong> Orchestrations will run in simulation mode until the API connection is restored.
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void checkConnection()}
+                    className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-500"
+                  >
+                    Retry connection
+                  </button>
+                  <a
+                    href="/settings"
+                    className="rounded-lg border border-red-700 px-3 py-1.5 text-xs font-medium text-red-100 hover:bg-red-900/30"
+                  >
+                    Check settings
+                  </a>
                 </div>
               </div>
             </div>

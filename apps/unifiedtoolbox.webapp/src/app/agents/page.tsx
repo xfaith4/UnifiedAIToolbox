@@ -10,6 +10,7 @@ import {
 } from '@/lib/services/agentStore'
 import type { AgentInstruction, AgentStatus } from '@/lib/types/agents'
 import { computeDiff, computeHash } from '@/lib/utils/textHelpers'
+import { trackUxEvent } from '@/lib/ux/telemetry'
 
 const statusLabels: Record<AgentStatus, string> = {
   draft: 'Draft',
@@ -55,16 +56,36 @@ export default function AgentsPage() {
   const [filter, setFilter] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [importError, setImportError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
+    const controller = new AbortController()
+
     ;(async () => {
       setLoading(true)
-      const data = await fetchAgentLibrary()
-      setAgents(data)
-      setSelectedId(data[0]?.id ?? null)
-      setLoading(false)
+      setImportError(null)
+      try {
+        const data = await fetchAgentLibrary({ signal: controller.signal })
+        setAgents(data)
+        setSelectedId(data[0]?.id ?? null)
+      } catch (error) {
+        if (controller.signal.aborted) return
+        setImportError('Failed to load agent library. Try refreshing the page or re-importing your library.')
+        trackUxEvent('api_error', {
+          route: '/agents',
+          details: {
+            url: '/api/agents',
+            status: 'network_error',
+            message: error instanceof Error ? error.message : String(error),
+          },
+        })
+      } finally {
+        if (!controller.signal.aborted) setLoading(false)
+      }
     })()
+
+    return () => controller.abort()
   }, [])
 
   const filteredAgents = useMemo(() => {
@@ -151,6 +172,7 @@ export default function AgentsPage() {
   async function handleImport(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
     if (!file) return
+    setImportError(null)
     try {
       const text = await file.text()
       const payload = JSON.parse(text)
@@ -163,7 +185,9 @@ export default function AgentsPage() {
       await persist(normalized)
     } catch (error) {
       console.error('[agentLibrary] Failed to import agents:', error)
-      window.alert('Import failed. Please verify the JSON structure.')
+      const message = error instanceof Error ? error.message : 'Import failed. Please verify the JSON structure.'
+      setImportError(message)
+      trackUxEvent('validation_error', { route: '/agents', details: { action: 'import_agents', message } })
     } finally {
       if (fileInputRef.current) {
         fileInputRef.current.value = ''
@@ -182,7 +206,9 @@ export default function AgentsPage() {
         </div>
         <div className="flex items-center gap-2">
           {saving && (
-            <span className="text-xs text-slate-400">Saving&hellip;</span>
+            <span className="text-xs text-slate-400" aria-live="polite">
+              Saving&hellip;
+            </span>
           )}
           <button
             className="rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-1.5 text-sm hover:bg-slate-700/80"
@@ -212,6 +238,27 @@ export default function AgentsPage() {
           </button>
         </div>
       </div>
+
+      {importError && (
+        <div className="rounded-xl border border-red-800 bg-red-950/40 p-4 text-sm text-red-200">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <div className="font-semibold">Import failed</div>
+              <div className="mt-1 text-xs text-red-200/90">{importError}</div>
+              <div className="mt-2 text-xs text-slate-300">
+                Expected format: a JSON array of agent objects.
+              </div>
+            </div>
+            <button
+              type="button"
+              className="text-xs text-slate-300 hover:text-white"
+              onClick={() => setImportError(null)}
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-[320px_1fr]">
         <div className="space-y-3">
