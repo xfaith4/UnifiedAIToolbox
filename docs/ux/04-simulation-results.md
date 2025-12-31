@@ -10,6 +10,7 @@ npm run ux:simulate
 ```
 
 Artifacts:
+
 - `artifacts/ux-simulations/runs/*.json`
 - `artifacts/ux-simulations/screenshots/*.png`
 - `artifacts/ux-simulations/traces/*.zip`

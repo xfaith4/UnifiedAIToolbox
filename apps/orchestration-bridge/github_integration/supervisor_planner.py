@@ -94,6 +94,25 @@ class SupervisorPlanner:
             for cmd in cmds:
                 commands.append(cmd)
 
+        # Filter out long-running dev/start commands (they are not validations).
+        def _is_validation_command(cmd: str) -> bool:
+            normalized = (cmd or "").strip().lower()
+            if not normalized:
+                return False
+            # Node ecosystem
+            if re.search(r"\b(npm|pnpm|yarn)\b.*\brun\b\s+(dev|start)\b", normalized):
+                return False
+            if re.search(r"\b(npm|pnpm|yarn)\b\s+start\b", normalized):
+                return False
+            if re.search(r"\bnext\s+dev\b", normalized):
+                return False
+            # Dotnet watch / other watchers
+            if re.search(r"\bdotnet\b.*\bwatch\b", normalized):
+                return False
+            return True
+
+        commands = [c for c in commands if _is_validation_command(c)]
+
         # Deduplicate while preserving order
         seen = set()
         unique_cmds: List[str] = []
@@ -128,7 +147,7 @@ class SupervisorPlanner:
                 "file_scope": [],
                 "conflict_group": "analysis",
                 "dependencies": [],
-                "validation": ["ls -la runs/*/intake.md | head -n 5"],
+                "validation": ["git status --porcelain"],
                 "rollback": "No changes performed; no rollback required.",
             }
         )

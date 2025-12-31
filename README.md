@@ -11,6 +11,14 @@ The Unified AI Toolbox is a comprehensive platform that unifies prompt managemen
 
 **✨ [View Animated Demo](demo-animated.html)** - Experience a visual journey through the toolbox's capabilities, from high-level ideas to fully designed software applications!
 
+## Orchestration workflow
+
+For Codex-driven changes, keep the loop short and local:
+
+- Intake: restate the goal, identify required files/scripts, and call out missing inputs before execution.
+- Plan: propose the smallest viable plan using existing scripts/templates.
+- Execute: make targeted changes and keep artifacts local (store in `.uaitoolbox/` or `runs/`).
+
 ## ✨ Key Features
 
 ### 🎯 Prompt Management

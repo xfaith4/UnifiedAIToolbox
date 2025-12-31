@@ -173,21 +173,47 @@ class TaskExecutor:
 
             # Consume the async generator to completion
             async def _consume():
+                last_event: Dict[str, Any] | None = None
                 async for _ in self.codex_service.execute_codex_run(codex_run_id):
+                    last_event = _
                     if cancel_event and cancel_event.is_set():
                         await self.codex_service.cancel_run(codex_run_id)
                         raise TaskExecutionError("cancelled")
                     if progress_callback:
                         progress_callback({**_, "task_id": task_id})
 
+                # If Codex reports a terminal failure status, treat that as a task failure.
+                if last_event and last_event.get("status") in (CodexRunStatus.FAILED, CodexRunStatus.CANCELLED):
+                    message = last_event.get("message") or last_event.get("error") or "Codex run failed"
+                    return_code = last_event.get("return_code")
+                    detail = f"{message}" + (f" (return_code={return_code})" if return_code is not None else "")
+                    raise TaskExecutionError(detail)
+
             asyncio.run(_consume())
+
+            # Double-check persisted status in case the stream didn't include a terminal event.
+            status_info = self.codex_service.get_run_status(codex_run_id) or {}
+            if status_info.get("status") in (CodexRunStatus.FAILED, CodexRunStatus.CANCELLED):
+                message = status_info.get("error") or status_info.get("message") or "Codex run failed"
+                raise TaskExecutionError(message)
+
             findings = self.codex_service.get_findings(codex_run_id) or []
         except (GithubException, Exception) as exc:
             if isinstance(exc, TaskExecutionError) and str(exc) == "cancelled":
                 status = "cancelled"
             else:
                 status = "failed"
-            log_lines.append(f"[error] {exc}")
+            err_text = str(exc) or exc.__class__.__name__
+            log_lines.append(f"[error] {err_text}")
+            if progress_callback and status == "failed":
+                progress_callback(
+                    {
+                        "task_id": task_id,
+                        "event": "task_failed",
+                        "message": err_text,
+                        "codex_run_id": codex_run_id,
+                    }
+                )
 
         # Capture diff (before any commit) and enforce scope
         diff_text, touched_paths = self._collect_diff(worktree_path)

@@ -7,6 +7,8 @@ import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch
 import sys
+import subprocess
+import json
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -17,52 +19,6 @@ from github_integration.repo_intake_service import RepoIntakeService, RepoIntake
 from github_integration.supervisor_planner import SupervisorPlanner, SupervisorPlannerError
 from github_integration.task_executor import TaskExecutor, TaskExecutionError
 from github_integration.merge_coordinator import MergeCoordinator, MergeCoordinatorError
-import subprocess
-import json
-from github import GithubException
-import pytest
-import tempfile
-from pathlib import Path
-from unittest.mock import Mock, patch
-import sys
-
-# Add parent directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from github_integration.clone_service import GitHubCloneService, RepositoryCloneError, CloneProgress
-from github_integration.codex_service import CodexSwarmService, CodexRunStatus
-from github_integration.repo_intake_service import RepoIntakeService, RepoIntakeError
-from github_integration.supervisor_planner import SupervisorPlanner, SupervisorPlannerError
-from github_integration.task_executor import TaskExecutor, TaskExecutionError
-import subprocess
-import json
-from github import GithubException
-import pytest
-import tempfile
-from pathlib import Path
-from unittest.mock import Mock, patch
-import sys
-
-# Add parent directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from github_integration.clone_service import GitHubCloneService, RepositoryCloneError, CloneProgress
-from github_integration.codex_service import CodexSwarmService, CodexRunStatus
-from github_integration.repo_intake_service import RepoIntakeService, RepoIntakeError
-from github_integration.supervisor_planner import SupervisorPlanner, SupervisorPlannerError
-from github import GithubException
-import pytest
-import tempfile
-from pathlib import Path
-from unittest.mock import Mock, patch
-import sys
-
-# Add parent directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from github_integration.clone_service import GitHubCloneService, RepositoryCloneError, CloneProgress
-from github_integration.codex_service import CodexSwarmService, CodexRunStatus
-from github_integration.repo_intake_service import RepoIntakeService, RepoIntakeError
 from github import GithubException
 
 

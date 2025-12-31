@@ -37,7 +37,7 @@ npm run dev -- --hostname 0.0.0.0 --port 3000
 ```
 
 Open:
-- http://localhost:3000
+- <http://localhost:3000>
 
 ## Start via unified launcher (interactive)
 
