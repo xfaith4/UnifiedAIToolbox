@@ -7,7 +7,7 @@ from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Union
-from pydantic import BaseModel, Field, HttpUrl, validator
+from pydantic import AnyUrl, BaseModel, Field, validator
 
 
 class PromptSpec(BaseModel):
@@ -110,3 +110,66 @@ class TelemetryData(BaseModel):
         json_encoders = {
             datetime: lambda v: v.isoformat()
         }
+
+
+class MCPAuthConfig(BaseModel):
+    """Authentication configuration for MCP servers."""
+    type: str = Field(default="none", description="Auth strategy (none, token_env, basic)")
+    env_var: Optional[str] = Field(default=None, description="Environment variable containing a token or credential")
+    header: Optional[str] = Field(default=None, description="Header name to use when sending the credential")
+
+
+class MCPServer(BaseModel):
+    """Definition of a discoverable MCP server."""
+    id: str = Field(..., description="Stable identifier for the MCP server")
+    name: str = Field(..., description="Human readable name for the MCP server")
+    url: AnyUrl = Field(..., description="Base URL for the MCP endpoint")
+    transport: str = Field(default="sse", description="Transport type (sse, stdio, ws)")
+    description: Optional[str] = Field(default=None, description="What the MCP server provides")
+    tags: List[str] = Field(default_factory=list, description="Tags used for routing/filtering")
+    capabilities: List[str] = Field(default_factory=list, description="Capabilities exposed by the MCP server")
+    owner: Optional[str] = Field(default=None, description="Owner or team responsible for the server")
+    status: str = Field(default="available", description="Availability hint (available, experimental, offline)")
+    auth: MCPAuthConfig = Field(default_factory=MCPAuthConfig, description="Authentication configuration")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata for the server")
+
+    @validator("url")
+    def ensure_http_scheme(cls, value: AnyUrl) -> AnyUrl:
+        """Restrict MCP servers to HTTP/HTTPS while allowing localhost."""
+        if value.scheme not in {"http", "https"}:
+            raise ValueError("MCP servers must use http/https endpoints")
+        return value
+
+
+class MCPRegistry(BaseModel):
+    """Container for MCP server definitions."""
+    servers: List[MCPServer] = Field(default_factory=list, description="Registered MCP servers")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Registry metadata")
+
+    def get(self, server_id: str) -> Optional[MCPServer]:
+        """Return a server by id if present."""
+        for server in self.servers:
+            if server.id == server_id:
+                return server
+        return None
+
+    def filter(
+        self,
+        tags: Optional[List[str]] = None,
+        capabilities: Optional[List[str]] = None,
+    ) -> List[MCPServer]:
+        """Filter servers by tags and capabilities."""
+        servers = self.servers
+        if tags:
+            tag_set = {t.lower() for t in tags}
+            servers = [
+                s for s in servers
+                if tag_set.issubset({t.lower() for t in s.tags})
+            ]
+        if capabilities:
+            cap_set = {c.lower() for c in capabilities}
+            servers = [
+                s for s in servers
+                if cap_set.issubset({c.lower() for c in s.capabilities})
+            ]
+        return servers

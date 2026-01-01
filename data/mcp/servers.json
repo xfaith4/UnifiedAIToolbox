@@ -1,0 +1,50 @@
+{
+  "metadata": {
+    "description": "Curated MCP servers available to orchestration agents.",
+    "updated": "2026-01-01T00:47:00Z"
+  },
+  "servers": [
+    {
+      "id": "local-filesystem",
+      "name": "Local Filesystem MCP",
+      "url": "http://localhost:5174/mcp",
+      "transport": "sse",
+      "description": "Local file system and search MCP used for on-box orchestration runs.",
+      "capabilities": [
+        "filesystem",
+        "search"
+      ],
+      "tags": [
+        "default",
+        "local",
+        "safe"
+      ],
+      "owner": "platform",
+      "status": "available",
+      "auth": {
+        "type": "none"
+      }
+    },
+    {
+      "id": "stagehand-browser",
+      "name": "Stagehand Browser MCP",
+      "url": "http://localhost:3000/mcp",
+      "transport": "sse",
+      "description": "Stagehand browser automation MCP exposing Playwright-like tools for UI agents.",
+      "capabilities": [
+        "browser-automation",
+        "playwright"
+      ],
+      "tags": [
+        "demo",
+        "ui"
+      ],
+      "owner": "platform",
+      "status": "experimental",
+      "auth": {
+        "type": "token_env",
+        "env_var": "STAGEHAND_MCP_TOKEN"
+      }
+    }
+  ]
+}

@@ -10,6 +10,20 @@ The orchestration bridge provides run tracking and API endpoints for managing AI
 - **File-based Storage**: Simple JSON storage with fast index
 - **Human Equivalence**: Compare machine vs. human costs and time
 
+## MCP Resource Center
+
+The bridge now ships with a file-backed MCP registry so orchestration agents can reuse shared MCP servers.
+
+- Registry location: `data/mcp/servers.json`
+- Access helpers: `src/utils/mcp_registry.py`
+
+```python
+from src.utils.mcp_registry import resolve_servers
+
+default_servers = resolve_servers(tags=["default"])
+browser_servers = resolve_servers(capabilities=["browser-automation"])
+```
+
 ## Quick Start
 
 ### 1. Install Dependencies

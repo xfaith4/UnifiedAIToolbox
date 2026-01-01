@@ -5,7 +5,7 @@ This module provides configuration management using environment variables with s
 """
 from pathlib import Path
 from typing import Optional, Dict, Any
-from pydantic import BaseSettings, Field, validator, HttpUrl
+from pydantic import BaseSettings, Field, validator
 import logging
 import os
 
@@ -49,6 +49,11 @@ class Settings(BaseSettings):
         default_factory=lambda: Path(__file__).parent.parent / "state",
         description="Directory for storing state files"
     )
+
+    mcp_registry_path: Path = Field(
+        default_factory=lambda: Path(__file__).resolve().parents[3] / "data" / "mcp" / "servers.json",
+        description="Path to the MCP server registry used by orchestration agents"
+    )
     
     # API settings
     prompt_api_url: str = Field(
@@ -84,6 +89,13 @@ class Settings(BaseSettings):
         """Ensure the directory exists."""
         v.mkdir(parents=True, exist_ok=True)
         return v
+
+    @validator('mcp_registry_path', pre=True)
+    def ensure_registry_parent(cls, v: Path) -> Path:
+        """Ensure the MCP registry directory exists and expand user paths."""
+        path = Path(v).expanduser()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return path
     
     @validator('log_level')
     def validate_log_level(cls, v: str) -> str:
