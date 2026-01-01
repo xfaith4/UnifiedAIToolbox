@@ -7,7 +7,7 @@ import pytest
 # Make src importable
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.models import MCPRegistry, MCPServer  # noqa: E402
+from src.models import MCPAuthConfig, MCPRegistry, MCPServer  # noqa: E402
 from src.utils.mcp_registry import (  # noqa: E402
     load_registry,
     resolve_servers,
@@ -90,7 +90,7 @@ def test_upsert_persists_changes(tmp_path: Path) -> None:
         transport="sse",
         tags=["default"],
         capabilities=["filesystem"],
-        auth={"type": "none"},  # type: ignore[arg-type]
+        auth=MCPAuthConfig(type="none"),
     )
 
     updated = MCPServer(
@@ -101,7 +101,7 @@ def test_upsert_persists_changes(tmp_path: Path) -> None:
         tags=["default", "local"],
         capabilities=["filesystem", "search"],
         description="updated",
-        auth={"type": "none"},  # type: ignore[arg-type]
+        auth=MCPAuthConfig(type="none"),
     )
 
     after_first = upsert_server(first, path=registry_path)
