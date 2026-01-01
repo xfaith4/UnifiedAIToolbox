@@ -5,7 +5,7 @@ This module provides configuration management using environment variables with s
 """
 from pathlib import Path
 from typing import Optional, Dict, Any
-from pydantic import BaseSettings, Field, validator, HttpUrl
+from pydantic import BaseSettings, Field, validator
 import logging
 import os
 

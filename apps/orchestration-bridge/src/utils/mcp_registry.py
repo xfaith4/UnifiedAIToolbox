@@ -19,6 +19,20 @@ def _normalize_path(path: Optional[Path] = None) -> Path:
     return registry_path
 
 
+def _registry_from_data(data: dict) -> MCPRegistry:
+    """Parse registry payload into a model with forward compatibility."""
+    if hasattr(MCPRegistry, "model_validate"):
+        return MCPRegistry.model_validate(data)  # type: ignore[attr-defined]
+    return MCPRegistry.parse_obj(data)
+
+
+def _registry_to_dict(registry: MCPRegistry) -> dict:
+    """Serialize a registry to a plain dictionary."""
+    if hasattr(registry, "model_dump"):
+        return registry.model_dump()  # type: ignore[attr-defined]
+    return registry.dict()
+
+
 def load_registry(path: Optional[Path] = None, allow_missing: bool = True) -> MCPRegistry:
     """
     Load the MCP registry from disk.
@@ -34,7 +48,7 @@ def load_registry(path: Optional[Path] = None, allow_missing: bool = True) -> MC
         raise FileNotFoundError(f"MCP registry not found at {registry_path}")
 
     data = read_json_file(registry_path)
-    registry = MCPRegistry.parse_obj(data)
+    registry = _registry_from_data(data)
     registry.metadata.setdefault("source", str(registry_path))
     return registry
 
@@ -42,7 +56,7 @@ def load_registry(path: Optional[Path] = None, allow_missing: bool = True) -> MC
 def save_registry(registry: MCPRegistry, path: Optional[Path] = None) -> Path:
     """Persist an MCP registry to disk."""
     registry_path = _normalize_path(path)
-    write_json_file(registry.dict(), registry_path)
+    write_json_file(_registry_to_dict(registry), registry_path)
     return registry_path
 
 

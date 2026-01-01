@@ -133,6 +133,13 @@ class MCPServer(BaseModel):
     auth: MCPAuthConfig = Field(default_factory=MCPAuthConfig, description="Authentication configuration")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata for the server")
 
+    @validator("url")
+    def ensure_http_scheme(cls, value: AnyUrl) -> AnyUrl:
+        """Restrict MCP servers to HTTP/HTTPS while allowing localhost."""
+        if value.scheme not in {"http", "https"}:
+            raise ValueError("MCP servers must use http/https endpoints")
+        return value
+
 
 class MCPRegistry(BaseModel):
     """Container for MCP server definitions."""
