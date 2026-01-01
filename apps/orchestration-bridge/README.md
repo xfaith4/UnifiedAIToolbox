@@ -24,6 +24,22 @@ default_servers = resolve_servers(tags=["default"])
 browser_servers = resolve_servers(capabilities=["browser-automation"])
 ```
 
+**Curated MCP catalog (top 10)**  
+Each entry ships in `data/mcp/servers.json` with `metadata.repo_url` linkages so you can self-host or point to an existing deployment:
+
+| ID | Purpose | Capabilities | Link |
+| --- | --- | --- | --- |
+| `local-filesystem` | Safe on-box file/search ops | filesystem, search | n/a (bundled) |
+| `stagehand-browser` | UI automation via Stagehand | browser-automation, playwright | https://github.com/browserbase/mcp-server-browserbase |
+| `firecrawl` | Web crawling, scraping, search | web-crawl, scrape, search | https://github.com/firecrawl/firecrawl-mcp-server |
+| `git-ingest` | GitHub repo auditing & summaries | repo-audit, code-discovery | https://github.com/adhikasp/mcp-git-ingest |
+| `composio-rube` | 500+ SaaS connectors for orchestration | saas-connectors, workflow | https://github.com/ComposioHQ/Rube |
+| `postgres-sql` | SQL/Postgres data access | sql, postgres | https://github.com/ahmedmustahid/postgres-mcp-server |
+| `context-forge` | Gateway + prompt/tool federation | prompt-management, routing | https://github.com/IBM/mcp-context-forge |
+| `prompt-server` | Prompt templates/refiners | prompt-library, prompt-refinement | https://github.com/gdli6177/mcp-prompt-server |
+| `context-optimizer` | Trim noisy logs/outputs | context-trimming, log-review | https://github.com/malaksedarous/context-optimizer-mcp-server |
+| `aks-mcp` | Kubernetes/AKS operations | kubernetes, devops | https://github.com/Azure/aks-mcp |
+
 ## Quick Start
 
 ### 1. Install Dependencies
