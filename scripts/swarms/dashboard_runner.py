@@ -55,9 +55,10 @@ def main() -> int:
         from swarms import Agent  # type: ignore
 
         model_name = args.model or os.environ.get("SWARM_MODEL") or DEFAULT_MODEL
+        described_agents = ", ".join(agents) if agents else "default swarm configuration"
         agent = Agent(
             agent_name="UnifiedAIToolbox-Swarm",
-            agent_description="Dashboard-triggered swarm run",
+            agent_description=f"Dashboard-triggered swarm run with agents: {described_agents}",
             model_name=model_name,
             max_loops=1,
             dynamic_temperature_enabled=True,

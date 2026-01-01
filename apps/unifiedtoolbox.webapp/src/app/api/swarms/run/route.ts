@@ -111,17 +111,15 @@ export async function POST(req: Request) {
   const startedAt = new Date().toISOString()
   try {
     const { code, stdout, stderr } = await runPythonSwarm(goal, agents, model, resolved.swarmsRoot, resolved.runnerPath)
-    const lastLine = stdout
-      .trim()
-      .split('\n')
-      .filter(Boolean)
-      .pop() || '{}'
-
+    const stdoutLines = stdout.trim().split('\n').filter(Boolean).reverse()
     let parsed: ParsedRunnerPayload | null = null
-    try {
-      parsed = JSON.parse(lastLine) as ParsedRunnerPayload
-    } catch {
-      parsed = null
+    for (const line of stdoutLines) {
+      try {
+        parsed = JSON.parse(line) as ParsedRunnerPayload
+        break
+      } catch {
+        continue
+      }
     }
 
     const completedAtSeconds =
