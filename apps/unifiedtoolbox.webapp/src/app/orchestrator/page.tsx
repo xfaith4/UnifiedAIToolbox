@@ -32,6 +32,7 @@ import {
   updateLocalRun,
   createNewRun,
 } from '@/lib/services/orchestratorStore'
+import { runLocalSwarm } from '@/lib/services/swarmRunner'
 
 // Default agents for multi-agent orchestration
 const DEFAULT_ORCHESTRATOR_AGENTS: OrchestratorAgent[] = [
@@ -134,6 +135,9 @@ export default function OrchestratorPage() {
   const [repoRunning, setRepoRunning] = useState(false)
   const [cancelRepoHandler, setCancelRepoHandler] = useState<(() => void) | null>(null)
   const [repoError, setRepoError] = useState<string>('')
+  const [swarmStatus, setSwarmStatus] = useState<'idle' | 'running' | 'completed' | 'failed'>('idle')
+  const [swarmOutput, setSwarmOutput] = useState('')
+  const [swarmError, setSwarmError] = useState('')
 
   // Modal state
   const [showAgentCreator, setShowAgentCreator] = useState(false)
@@ -250,7 +254,7 @@ export default function OrchestratorPage() {
     }
   }, [swarmRun])
 
-  const handleRunSampleSwarm = () => {
+  const handleRunSampleSwarm = async () => {
     const availableAgents = new Set(orchestratorAgents.map((agent) => agent.name))
     const selected = swarmRunDisplay.agents.filter((agent) => availableAgents.has(agent))
     setLegacyMode(false)
@@ -262,6 +266,59 @@ export default function OrchestratorPage() {
       model: swarmRunDisplay.model || '',
     }))
     setSelectedAgents(selected)
+
+    const runModel = swarmRunDisplay.model || form.model || ''
+    const seededRun: OrchestrationRun = {
+      ...createNewRun(swarmRunDisplay.goal, {
+        runMode: 'codex-swarm',
+        agents: selected,
+        model: runModel,
+      }),
+      status: 'running',
+      startedAt: new Date().toISOString(),
+    }
+    setSwarmStatus('running')
+    setSwarmOutput('Launching swarm via scripts/swarms…')
+    setSwarmError('')
+    addLocalRun(seededRun)
+    setRuns((prev) => [seededRun, ...prev])
+
+    try {
+      const result = await runLocalSwarm({
+        goal: swarmRunDisplay.goal,
+        agents: selected,
+        model: runModel || undefined,
+      })
+      const completedAt = result.completedAt || new Date().toISOString()
+      const output =
+        typeof result.output === 'string'
+          ? result.output
+          : JSON.stringify(result.output ?? result.status ?? 'completed', null, 2)
+      const completedRun: OrchestrationRun = {
+        ...seededRun,
+        status: result.status || 'completed',
+        completedAt,
+        output,
+        mode: 'executed',
+      }
+      updateLocalRun(seededRun.id, completedRun)
+      setRuns((prev) => prev.map((r) => (r.id === seededRun.id ? completedRun : r)))
+      setSwarmStatus(result.status === 'failed' ? 'failed' : 'completed')
+      setSwarmOutput(output)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to run swarm'
+      const failedRun: OrchestrationRun = {
+        ...seededRun,
+        status: 'failed',
+        completedAt: new Date().toISOString(),
+        output: message,
+        mode: 'executed',
+      }
+      updateLocalRun(seededRun.id, failedRun)
+      setRuns((prev) => prev.map((r) => (r.id === seededRun.id ? failedRun : r)))
+      setSwarmStatus('failed')
+      setSwarmError(message)
+    }
   }
 
   const swarmCostEstimates = useMemo(() => {
@@ -1129,6 +1186,22 @@ export default function OrchestratorPage() {
                   >
                     Run this swarm
                   </button>
+                  {swarmStatus !== 'idle' && (
+                    <div className="rounded-lg border border-slate-800 bg-slate-900/70 px-3 py-2 text-xs text-slate-200">
+                      <div className="flex items-center justify-between">
+                        <span>Status: {swarmStatus}</span>
+                        {swarmRunDisplay.model && (
+                          <span className="text-slate-400">Model: {swarmRunDisplay.model}</span>
+                        )}
+                      </div>
+                      {swarmError && <div className="mt-1 text-red-300">{swarmError}</div>}
+                      {swarmOutput && (
+                        <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-[11px] text-slate-100">
+                          {swarmOutput}
+                        </pre>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
