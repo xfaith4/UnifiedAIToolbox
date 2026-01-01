@@ -124,7 +124,7 @@ mkdir -p "\$repodir"
 mkdir -p "\$(dirname "\$log")"
 
 log_msg() {
-  ts=\$(Get-date -Is)
+  ts=\$(date -Is)
   printf '[%s] %s\n' "\$ts" "\$1" | tee -a "\$log"
 }
 
