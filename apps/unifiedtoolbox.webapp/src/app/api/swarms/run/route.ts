@@ -13,6 +13,14 @@ type SwarmRequest = {
   model?: string
 }
 
+type ParsedRunnerPayload = {
+  status?: string
+  runId?: string
+  result?: unknown
+  error?: string
+  completedAt?: number
+}
+
 const TIMEOUT_MS = 120_000
 
 function resolvePaths() {
@@ -23,8 +31,7 @@ function resolvePaths() {
   return { repoRoot, swarmsRoot, runnerPath, requirementsPath }
 }
 
-async function runPythonSwarm(goal: string, agents: string[], model?: string) {
-  const { swarmsRoot, runnerPath } = resolvePaths()
+async function runPythonSwarm(goal: string, agents: string[], model: string | undefined, swarmsRoot: string, runnerPath: string) {
   const pythonBin = process.env.PYTHON_BIN || 'python3'
   const args = ['-u', runnerPath, '--goal', goal]
   if (agents.length) args.push('--agents', agents.join(','))
@@ -43,8 +50,10 @@ async function runPythonSwarm(goal: string, agents: string[], model?: string) {
     const proc = spawn(pythonBin, args, { cwd: swarmsRoot, env })
     let stdout = ''
     let stderr = ''
+    let killTimer: NodeJS.Timeout | null = null
     const timer = setTimeout(() => {
-      proc.kill('SIGKILL')
+      proc.kill('SIGTERM')
+      killTimer = setTimeout(() => proc.kill('SIGKILL'), 5000)
       reject(new Error(`Swarm runner timed out after ${TIMEOUT_MS / 1000}s`))
     }, TIMEOUT_MS)
 
@@ -60,6 +69,7 @@ async function runPythonSwarm(goal: string, agents: string[], model?: string) {
     })
     proc.on('close', (code) => {
       clearTimeout(timer)
+      if (killTimer) clearTimeout(killTimer)
       resolve({ code, stdout, stderr })
     })
   })
@@ -85,8 +95,8 @@ export async function POST(req: Request) {
   const agents = Array.isArray(payload.agents) ? payload.agents.map(String) : []
   const model = typeof payload.model === 'string' ? payload.model.trim() || undefined : undefined
 
-  const { runnerPath } = resolvePaths()
-  if (!fs.existsSync(runnerPath)) {
+  const resolved = resolvePaths()
+  if (!fs.existsSync(resolved.runnerPath)) {
     return NextResponse.json(
       {
         error: 'Swarm runner script is missing. Expected at scripts/swarms/dashboard_runner.py',
@@ -97,16 +107,16 @@ export async function POST(req: Request) {
 
   const startedAt = new Date().toISOString()
   try {
-    const { code, stdout, stderr } = await runPythonSwarm(goal, agents, model)
+    const { code, stdout, stderr } = await runPythonSwarm(goal, agents, model, resolved.swarmsRoot, resolved.runnerPath)
     const lastLine = stdout
       .trim()
       .split('\n')
       .filter(Boolean)
       .pop() || '{}'
 
-    let parsed: Record<string, unknown> | null = null
+    let parsed: ParsedRunnerPayload | null = null
     try {
-      parsed = JSON.parse(lastLine)
+      parsed = JSON.parse(lastLine) as ParsedRunnerPayload
     } catch {
       parsed = null
     }
@@ -129,7 +139,7 @@ export async function POST(req: Request) {
       (stderr ? `Swarm runner reported stderr: ${stderr}` : undefined)
     const dependencyHint =
       status === 'failed'
-        ? `Ensure scripts/swarms dependencies are installed (pip install -r ${resolvePaths().requirementsPath}) and required model API keys are set.`
+        ? `Ensure scripts/swarms dependencies are installed (pip install -r ${resolved.requirementsPath}) and required model API keys are set.`
         : undefined
     const errorMessage =
       baseError && dependencyHint ? `${baseError} | ${dependencyHint}` : baseError || dependencyHint

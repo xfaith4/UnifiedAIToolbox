@@ -20,7 +20,10 @@ import time
 import traceback
 from typing import List
 
+from pathlib import Path
+
 DEFAULT_MODEL = "gpt-4o-mini"
+REQUIREMENTS_PATH = Path(__file__).resolve().with_name("requirements.txt")
 
 
 def parse_args() -> argparse.Namespace:
@@ -72,7 +75,7 @@ def main() -> int:
         payload.update(
             {
                 "status": "failed",
-                "error": f"{type(exc).__name__}: {exc}. Install swarm dependencies via pip install -r scripts/swarms/requirements.txt",
+                "error": f"{type(exc).__name__}: {exc}. Install swarm dependencies via pip install -r {REQUIREMENTS_PATH}",
                 "traceback": traceback.format_exc(),
             }
         )
