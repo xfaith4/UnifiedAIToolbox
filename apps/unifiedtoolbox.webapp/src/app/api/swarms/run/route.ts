@@ -19,7 +19,8 @@ function resolvePaths() {
   const repoRoot = path.resolve(process.cwd(), '..', '..')
   const swarmsRoot = path.join(repoRoot, 'scripts', 'swarms')
   const runnerPath = path.join(swarmsRoot, 'dashboard_runner.py')
-  return { repoRoot, swarmsRoot, runnerPath }
+  const requirementsPath = path.join(swarmsRoot, 'requirements.txt')
+  return { repoRoot, swarmsRoot, runnerPath, requirementsPath }
 }
 
 async function runPythonSwarm(goal: string, agents: string[], model?: string) {
@@ -128,7 +129,7 @@ export async function POST(req: Request) {
       (stderr ? `Swarm runner reported stderr: ${stderr}` : undefined)
     const dependencyHint =
       status === 'failed'
-        ? 'Ensure scripts/swarms dependencies are installed (pip install -r scripts/swarms/requirements.txt) and required model API keys are set.'
+        ? `Ensure scripts/swarms dependencies are installed (pip install -r ${resolvePaths().requirementsPath}) and required model API keys are set.`
         : undefined
     const errorMessage =
       baseError && dependencyHint ? `${baseError} | ${dependencyHint}` : baseError || dependencyHint

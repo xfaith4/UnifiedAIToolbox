@@ -100,6 +100,7 @@ const SWARM_COST_BASELINE = {
 }
 
 const SWARM_COST_MODELS = ['gpt-4o-mini', 'gpt-4-turbo', 'claude-3.5-sonnet'] as const
+const SWARM_LAUNCH_NOTE = 'Launching swarm via scripts/swarms…'
 
 export default function OrchestratorPage() {
   // Libraries
@@ -278,7 +279,7 @@ export default function OrchestratorPage() {
       startedAt: new Date().toISOString(),
     }
     setSwarmStatus('running')
-    setSwarmOutput('Launching swarm via scripts/swarms…')
+    setSwarmOutput(SWARM_LAUNCH_NOTE)
     setSwarmError('')
     addLocalRun(seededRun)
     setRuns((prev) => [seededRun, ...prev])

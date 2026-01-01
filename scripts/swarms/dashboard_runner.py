@@ -20,6 +20,8 @@ import time
 import traceback
 from typing import List
 
+DEFAULT_MODEL = "gpt-4o-mini"
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run a swarm task for the dashboard.")
@@ -49,7 +51,7 @@ def main() -> int:
     try:
         from swarms import Agent  # type: ignore
 
-        model_name = args.model or os.environ.get("SWARM_MODEL") or "gpt-4o-mini"
+        model_name = args.model or os.environ.get("SWARM_MODEL") or DEFAULT_MODEL
         agent = Agent(
             agent_name="UnifiedAIToolbox-Swarm",
             agent_description="Dashboard-triggered swarm run",
@@ -64,6 +66,14 @@ def main() -> int:
             {
                 "status": "completed",
                 "result": result,
+            }
+        )
+    except ImportError as exc:
+        payload.update(
+            {
+                "status": "failed",
+                "error": f"{type(exc).__name__}: {exc}. Install swarm dependencies via pip install -r scripts/swarms/requirements.txt",
+                "traceback": traceback.format_exc(),
             }
         )
     except Exception as exc:  # pragma: no cover - best effort runner
