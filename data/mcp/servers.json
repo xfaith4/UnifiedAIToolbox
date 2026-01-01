@@ -1,7 +1,7 @@
 {
   "metadata": {
     "description": "Curated MCP servers available to orchestration agents.",
-    "updated": "2026-01-01T00:47:00Z"
+    "updated": "2026-01-01T01:30:00Z"
   },
   "servers": [
     {
@@ -23,6 +23,10 @@
       "status": "available",
       "auth": {
         "type": "none"
+      },
+      "metadata": {
+        "repo_url": "https://github.com/modelcontextprotocol/servers/tree/main/filesystem",
+        "endpoint_hint": "http://localhost:5174/mcp"
       }
     },
     {
@@ -44,6 +48,221 @@
       "auth": {
         "type": "token_env",
         "env_var": "STAGEHAND_MCP_TOKEN"
+      },
+      "metadata": {
+        "repo_url": "https://github.com/browserbase/mcp-server-browserbase",
+        "endpoint_hint": "http://localhost:3000/mcp"
+      }
+    },
+    {
+      "id": "firecrawl",
+      "name": "Firecrawl Web Research MCP",
+      "url": "https://github.com/firecrawl/firecrawl-mcp-server",
+      "transport": "sse",
+      "description": "Official Firecrawl MCP server exposing web crawling, scraping, and search tools.",
+      "capabilities": [
+        "web-crawl",
+        "scrape",
+        "search"
+      ],
+      "tags": [
+        "catalog",
+        "web",
+        "research"
+      ],
+      "owner": "firecrawl",
+      "status": "reference",
+      "auth": {
+        "type": "token_env",
+        "env_var": "FIRECRAWL_API_KEY"
+      },
+      "metadata": {
+        "repo_url": "https://github.com/firecrawl/firecrawl-mcp-server",
+        "endpoint_hint": "http://localhost:3002/mcp"
+      }
+    },
+    {
+      "id": "git-ingest",
+      "name": "Git Ingest Repo Auditor MCP",
+      "url": "https://github.com/adhikasp/mcp-git-ingest",
+      "transport": "sse",
+      "description": "Reads GitHub repositories, produces structured summaries, and surfaces key files for audits.",
+      "capabilities": [
+        "repo-audit",
+        "code-discovery",
+        "documentation"
+      ],
+      "tags": [
+        "catalog",
+        "github",
+        "audit"
+      ],
+      "owner": "community",
+      "status": "reference",
+      "auth": {
+        "type": "token_env",
+        "env_var": "GITHUB_TOKEN"
+      },
+      "metadata": {
+        "repo_url": "https://github.com/adhikasp/mcp-git-ingest",
+        "endpoint_hint": "http://localhost:5175/mcp"
+      }
+    },
+    {
+      "id": "composio-rube",
+      "name": "Composio Rube SaaS MCP",
+      "url": "https://github.com/ComposioHQ/Rube",
+      "transport": "sse",
+      "description": "Connects orchestration agents to 500+ SaaS apps (GitHub, Slack, Notion, Jira) via MCP tools.",
+      "capabilities": [
+        "saas-connectors",
+        "workflow",
+        "multimodal"
+      ],
+      "tags": [
+        "catalog",
+        "protocols",
+        "automation"
+      ],
+      "owner": "ComposioHQ",
+      "status": "reference",
+      "auth": {
+        "type": "token_env",
+        "env_var": "COMPOSIO_API_KEY"
+      },
+      "metadata": {
+        "repo_url": "https://github.com/ComposioHQ/Rube",
+        "endpoint_hint": "http://localhost:8000/mcp"
+      }
+    },
+    {
+      "id": "postgres-sql",
+      "name": "Postgres Database MCP",
+      "url": "https://github.com/ahmedmustahid/postgres-mcp-server",
+      "transport": "sse",
+      "description": "Model Context Protocol server for querying PostgreSQL with schema-aware SQL helpers.",
+      "capabilities": [
+        "sql",
+        "postgres",
+        "data-access"
+      ],
+      "tags": [
+        "catalog",
+        "database",
+        "app-dev"
+      ],
+      "owner": "community",
+      "status": "reference",
+      "auth": {
+        "type": "token_env",
+        "env_var": "DATABASE_URL"
+      },
+      "metadata": {
+        "repo_url": "https://github.com/ahmedmustahid/postgres-mcp-server",
+        "endpoint_hint": "http://localhost:7800/mcp"
+      }
+    },
+    {
+      "id": "context-forge",
+      "name": "IBM Context Forge MCP Gateway",
+      "url": "https://github.com/IBM/mcp-context-forge",
+      "transport": "sse",
+      "description": "Gateway MCP server that federates tools, prompts, and resources with protocol bridging and observability.",
+      "capabilities": [
+        "prompt-management",
+        "routing",
+        "protocol-bridge"
+      ],
+      "tags": [
+        "catalog",
+        "prompt",
+        "governance"
+      ],
+      "owner": "IBM",
+      "status": "reference",
+      "auth": {
+        "type": "token_env",
+        "env_var": "CONTEXT_FORGE_TOKEN"
+      },
+      "metadata": {
+        "repo_url": "https://github.com/IBM/mcp-context-forge",
+        "endpoint_hint": "http://localhost:7420/mcp"
+      }
+    },
+    {
+      "id": "prompt-server",
+      "name": "MCP Prompt Template Server",
+      "url": "https://github.com/gdli6177/mcp-prompt-server",
+      "transport": "sse",
+      "description": "Provides curated prompt templates and refiners as MCP tools for IDE agents.",
+      "capabilities": [
+        "prompt-library",
+        "prompt-refinement"
+      ],
+      "tags": [
+        "catalog",
+        "prompt"
+      ],
+      "owner": "community",
+      "status": "reference",
+      "auth": {
+        "type": "none"
+      },
+      "metadata": {
+        "repo_url": "https://github.com/gdli6177/mcp-prompt-server",
+        "endpoint_hint": "http://localhost:7410/mcp"
+      }
+    },
+    {
+      "id": "context-optimizer",
+      "name": "Context Optimizer MCP",
+      "url": "https://github.com/malaksedarous/context-optimizer-mcp-server",
+      "transport": "sse",
+      "description": "Context optimization MCP server that slices large logs/output for code assistants.",
+      "capabilities": [
+        "context-trimming",
+        "log-review",
+        "repo-audit"
+      ],
+      "tags": [
+        "catalog",
+        "observability"
+      ],
+      "owner": "community",
+      "status": "reference",
+      "auth": {
+        "type": "none"
+      },
+      "metadata": {
+        "repo_url": "https://github.com/malaksedarous/context-optimizer-mcp-server",
+        "endpoint_hint": "http://localhost:7430/mcp"
+      }
+    },
+    {
+      "id": "aks-mcp",
+      "name": "AKS & Kubernetes MCP",
+      "url": "https://github.com/Azure/aks-mcp",
+      "transport": "sse",
+      "description": "Enables AI assistants to inspect and operate Azure Kubernetes Service clusters through MCP tools.",
+      "capabilities": [
+        "kubernetes",
+        "devops",
+        "infrastructure"
+      ],
+      "tags": [
+        "catalog",
+        "platform",
+        "app-dev"
+      ],
+      "owner": "Azure",
+      "status": "reference",
+      "auth": {
+        "type": "token_env",
+        "env_var": "AZURE_CREDENTIALS"
+      },
+      "metadata": {
+        "repo_url": "https://github.com/Azure/aks-mcp",
+        "endpoint_hint": "http://localhost:7450/mcp"
       }
     }
   ]
