@@ -291,10 +291,11 @@ export default function OrchestratorPage() {
         model: runModel || undefined,
       })
       const completedAt = result.completedAt || new Date().toISOString()
+      const fallbackOutput = 'Swarm completed successfully'
       const output =
         typeof result.output === 'string'
           ? result.output
-          : JSON.stringify(result.output ?? result.status ?? 'completed', null, 2)
+          : JSON.stringify(result.output ?? result.status ?? fallbackOutput, null, 2)
       const completedRun: OrchestrationRun = {
         ...seededRun,
         status: result.status || 'completed',

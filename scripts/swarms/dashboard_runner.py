@@ -75,7 +75,7 @@ def main() -> int:
         payload.update(
             {
                 "status": "failed",
-                "error": f"{type(exc).__name__}: {exc}. Install swarm dependencies via pip install -r {REQUIREMENTS_PATH}",
+                "error": f"{type(exc).__name__}: {exc}. Install swarm dependencies via pip install -r {str(REQUIREMENTS_PATH)}",
                 "traceback": traceback.format_exc(),
             }
         )

@@ -53,8 +53,10 @@ async function runPythonSwarm(goal: string, agents: string[], model: string | un
     let killTimer: NodeJS.Timeout | null = null
     const timer = setTimeout(() => {
       proc.kill('SIGTERM')
-      killTimer = setTimeout(() => proc.kill('SIGKILL'), 5000)
-      reject(new Error(`Swarm runner timed out after ${TIMEOUT_MS / 1000}s`))
+      killTimer = setTimeout(() => {
+        proc.kill('SIGKILL')
+        reject(new Error(`Swarm runner timed out after ${TIMEOUT_MS / 1000}s`))
+      }, 5000)
     }, TIMEOUT_MS)
 
     proc.stdout.on('data', (data) => {
@@ -96,6 +98,7 @@ export async function POST(req: Request) {
   const model = typeof payload.model === 'string' ? payload.model.trim() || undefined : undefined
 
   const resolved = resolvePaths()
+  const requirementsPathDisplay = path.relative(resolved.repoRoot, resolved.requirementsPath)
   if (!fs.existsSync(resolved.runnerPath)) {
     return NextResponse.json(
       {
@@ -139,7 +142,7 @@ export async function POST(req: Request) {
       (stderr ? `Swarm runner reported stderr: ${stderr}` : undefined)
     const dependencyHint =
       status === 'failed'
-        ? `Ensure scripts/swarms dependencies are installed (pip install -r ${resolved.requirementsPath}) and required model API keys are set.`
+        ? `Ensure swarm dependencies are installed (pip install -r ${requirementsPathDisplay}) and required model API keys are set.`
         : undefined
     const errorMessage =
       baseError && dependencyHint ? `${baseError} | ${dependencyHint}` : baseError || dependencyHint
