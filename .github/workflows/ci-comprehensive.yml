@@ -1,7 +1,7 @@
 name: CI - Comprehensive
 
 # Triggers: pushes to main/feature branches and pull requests
-on:
+'on':
   push:
     branches:
       - main

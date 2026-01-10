@@ -1,7 +1,7 @@
 name: AI Snapshot - Weekly
 
 # Runs weekly on Monday at 6 AM UTC to generate AI summaries
-on:
+'on':
   schedule:
     # Weekly on Monday at 6:00 AM UTC
     - cron: '0 6 * * 1'
@@ -12,7 +12,7 @@ on:
       include_pr_snapshot:
         description: 'Include PR snapshot in report'
         required: false
-        default: true
+        default: 'true'
         type: boolean
 
 permissions:
