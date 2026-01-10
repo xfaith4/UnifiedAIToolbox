@@ -834,6 +834,10 @@ Quality-adjusted cost index: Excellent (high quality, low cost)`,
                 document.getElementById('progressText').textContent = 'Complete';
                 document.getElementById('activeAgent').textContent = 'None';
                 document.getElementById('agentRole').textContent = 'All agents finished';
+            } else {
+                document.getElementById('progressText').textContent = 'Not started';
+                document.getElementById('activeAgent').textContent = 'None';
+                document.getElementById('agentRole').textContent = '—';
             }
             
             document.getElementById('costValue').textContent = `$${totalCost.toFixed(3)}`;
@@ -841,6 +845,8 @@ Quality-adjusted cost index: Excellent (high quality, low cost)`,
             
             if (currentStep >= simulationSteps.length) {
                 document.getElementById('qualityValue').textContent = '8.7/10';
+            } else {
+                document.getElementById('qualityValue').textContent = '—';
             }
         }
 
@@ -948,8 +954,9 @@ Quality-adjusted cost index: Excellent (high quality, low cost)`,
             });
             
             document.getElementById('summary-section').style.display = 'none';
-            updateMetrics();
+            document.getElementById('playBtn').textContent = '▶ Start Simulation';
             document.getElementById('playBtn').disabled = false;
+            updateMetrics();
         }
 
         function completeSimulation() {
