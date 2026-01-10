@@ -55,15 +55,38 @@ export default function PromptsPage() {
 
   useEffect(() => {
     if (!initialized.current) return
-    setIsSaving(true)
-    setSaveError(null)
-    void persistPromptLibrary(items)
-      .then(() => setLastSavedAt(new Date().toISOString()))
-      .catch((error) => {
+    
+    // Use a flag to track if the component is still mounted
+    let cancelled = false
+    
+    const save = async () => {
+      if (!cancelled) {
+        setIsSaving(true)
+        setSaveError(null)
+      }
+      
+      try {
+        await persistPromptLibrary(items)
+        if (!cancelled) {
+          setLastSavedAt(new Date().toISOString())
+        }
+      } catch (error) {
         console.error('[promptLibrary] Failed to persist library:', error)
-        setSaveError(error instanceof Error ? error.message : 'Failed to save changes')
-      })
-      .finally(() => setIsSaving(false))
+        if (!cancelled) {
+          setSaveError(error instanceof Error ? error.message : 'Failed to save changes')
+        }
+      } finally {
+        if (!cancelled) {
+          setIsSaving(false)
+        }
+      }
+    }
+    
+    void save()
+    
+    return () => {
+      cancelled = true
+    }
   }, [items])
 
   const allCategories = useMemo(() => {

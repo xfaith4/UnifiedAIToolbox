@@ -14,7 +14,7 @@ import {
   Sparkles,
   type LucideIcon,
 } from 'lucide-react'
-import { type ReactNode, useCallback, useEffect, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 import { installUxInstrumentation, trackUxEvent } from '@/lib/ux/telemetry'
 import { UxDebugOverlay } from '@/components/ux/UxDebugOverlay'
 
@@ -56,7 +56,6 @@ type NavSection = { title: string; isSettings?: boolean; items: NavItem[] }
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [uxDebugEnabled, setUxDebugEnabled] = useState(false)
   const pathname = usePathname()
   const searchParams = useSearchParams()
 
@@ -72,15 +71,16 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     trackUxEvent('page_view', { route: pathname })
   }, [pathname])
 
-  useEffect(() => {
-    if (process.env.NODE_ENV === 'production') return
+  const uxDebugEnabled = useMemo(() => {
+    if (process.env.NODE_ENV === 'production') return false
     const qsEnabled = searchParams.get('uxdebug') === '1'
     const stored = typeof window !== 'undefined' ? window.localStorage.getItem('utb_uxdebug') === '1' : false
-    const enabled = qsEnabled || stored
-    setUxDebugEnabled(enabled)
-    if (qsEnabled) {
+    
+    if (qsEnabled && typeof window !== 'undefined') {
       window.localStorage.setItem('utb_uxdebug', '1')
     }
+    
+    return qsEnabled || stored
   }, [searchParams])
 
   return (

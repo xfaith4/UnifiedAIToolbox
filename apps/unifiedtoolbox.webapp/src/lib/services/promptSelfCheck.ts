@@ -24,7 +24,6 @@ export function runPromptLibrarySelfChecks() {
     const summary = extractSummaryFromChange('line1\nline2')
     if (summary.length !== 2) throw new Error('Summary extractor broken')
   } catch (error) {
-    // eslint-disable-next-line no-console
     console.error('Prompt library self-check failed', error)
   }
 }
