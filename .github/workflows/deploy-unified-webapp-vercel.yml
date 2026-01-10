@@ -2,8 +2,9 @@ name: Deploy Unified Web Portal (Vercel)
 
 on:
   workflow_dispatch:
-  push:
-    branches: ["main"]
+  # Disabled until Vercel deployment is configured
+  # push:
+  #   branches: ["main"]
 
 permissions:
   contents: read
@@ -47,4 +48,3 @@ jobs:
           fi
 
           npx vercel@latest "${args[@]}"
-
