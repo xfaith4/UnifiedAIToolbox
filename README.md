@@ -36,18 +36,24 @@ For Codex-driven changes, keep the loop short and local:
 - **Rate Limiting**: Built-in protection against quota exhaustion
 
 ### 🔄 Orchestration & Automation
+<img width="1911" height="903" alt="Screenshot 2025-12-02 224242" src="https://github.com/user-attachments/assets/805d27a9-b2ec-428b-a6d9-afab27bc9698" />
 
 - **Multi-Agent System**: 6 baseline agents (Supervisor, Researcher, Engineer, Critic, Synthesizer, Commissioner)
 - **Run Tracking & Analytics**: Comprehensive tracking of orchestration runs with cost analysis, resource monitoring, and environmental impact calculations
 - **Quality & Outcome Tracking**: Track success rates, quality scores, and cost efficiency with human ratings and automated test integration
 - **Cost Transparency**: Track API, compute, storage costs with human-equivalent comparisons
 - **Environmental Metrics**: Monitor energy consumption (kWh) and water usage (L)
+  <img width="1904" height="896" alt="Screenshot 2025-12-02 224357" src="https://github.com/user-attachments/assets/9d40727f-c3fa-419e-886e-ba07c857dd3c" />
+
 - **Cost-Quality Analysis**: Compute cost per successful run, cost per high-quality run, and quality-adjusted cost index
 - **Learning Loop**: Run feedback storage and pattern extraction for continuous improvement
 - **GitHub Integration**: Clone repos, run code analysis, create PRs automatically
 - **Codex Swarm**: Multi-agent code review (security, linting, testing, refactoring)
+  <img width="1911" height="913" alt="Screenshot 2025-12-06 143905" src="https://github.com/user-attachments/assets/883e5948-ca4c-4e59-8496-03ba3131c79d" />
+
 - **Workflow Automation**: PowerShell-based orchestration pipeline
 - **Real-time Monitoring**: Live log streaming and progress tracking
+<img width="1914" height="895" alt="Screenshot 2025-12-02 224448" src="https://github.com/user-attachments/assets/4ae6bd06-3b44-4473-90b8-889e8173446e" />
 
 ### 💻 Multiple Interfaces
 
@@ -435,3 +441,4 @@ Built with modern tools and frameworks:
 ---
 
 **Ready to transform your AI workflows?** Get started with our [Quick Start Guide](docs/help/quick-start.md) today! 🚀
+
