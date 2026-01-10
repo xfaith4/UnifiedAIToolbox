@@ -80,7 +80,7 @@ export default function ConfigPanel({ node, onClose, onUpdate }: ConfigPanelProp
                             try {
                                 const parsed = JSON.parse(e.target.value);
                                 setConfig({ ...config, config: parsed });
-                            } catch (error) {
+                            } catch {
                                 // Invalid JSON, ignore
                             }
                         }}

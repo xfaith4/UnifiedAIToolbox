@@ -63,7 +63,7 @@ describe('Component Edge Cases', () => {
         { Timestamp: '2024-01-03', Score: null, Cost: undefined },
       ];
 
-      const { container } = render(<TrendChart runs={runs} />);
+      render(<TrendChart runs={runs} />);
       
       // Should not crash with invalid data
       expect(screen.getByText(/Performance Trend/i)).toBeInTheDocument();
