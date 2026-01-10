@@ -1,103 +1,74 @@
 # Unified AI Toolbox
 
-> **Enterprise-grade AI orchestration platform** for managing prompts, agents, and AI workflows across multiple providers.
+> **AI orchestration platform** for managing prompts, agents, and AI workflows with OpenAI.
 
 [![Version](https://img.shields.io/badge/version-1.5-blue.svg)](https://github.com/xfaith4/UnifiedAIToolbox)
-[![Status](https://img.shields.io/badge/status-production-green.svg)](https://github.com/xfaith4/UnifiedAIToolbox)
 
 ## 🌟 Overview
 
-The Unified AI Toolbox is a comprehensive platform that unifies prompt management, agent orchestration, and AI provider integration into a single, powerful toolkit. Whether you're building AI workflows, managing prompt libraries, or orchestrating complex multi-agent systems, this toolbox provides the infrastructure you need.
+The Unified AI Toolbox is a platform that provides prompt management, agent orchestration, and OpenAI integration. It includes a web portal for managing AI workflows, a prompt library with YAML-based storage, and PowerShell-based orchestration scripts.
 
-**✨ [View Animated Demo](demo-animated.html)** - Experience a visual journey through the toolbox's capabilities, from high-level ideas to fully designed software applications!
+**✨ [View Animated Demo](demo-animated.html)** - Experience a visual journey through the toolbox's capabilities!
 
 ## Orchestration workflow
 
 For Codex-driven changes, keep the loop short and local:
 
-- Intake: restate the goal, identify required files/scripts, and call out missing inputs before execution.
-- Plan: propose the smallest viable plan using existing scripts/templates.
-- Execute: make targeted changes and keep artifacts local (store in `.uaitoolbox/` or `runs/`).
+- **Intake**: restate the goal, identify required files/scripts, and call out missing inputs before execution.
+- **Plan**: propose the smallest viable plan using existing scripts/templates.
+- **Execute**: make targeted changes and keep artifacts local (store in `.uaitoolbox/` or `runs/`).
 
 ## ✨ Key Features
 
 ### 🎯 Prompt Management
 
-- **Searchable Library**: Fast SQLite-backed full-text search across thousands of prompts
-- **YAML-based Storage**: Simple, version-controllable prompt definitions
+- **YAML-based Prompt Library**: 40+ prompts stored as version-controllable YAML files
+- **SQLite Database**: Fast full-text search and prompt metadata storage
 - **Template Rendering**: Dynamic prompt generation with variable substitution
-- **Prompt Refinement**: Iterative AI-powered prompt optimization
+- **Prompt Refinement**: AI-powered prompt optimization workflow
 
 ### 🤖 AI Provider Integration
 
-- **Multiple Providers**: OpenAI (GPT-4, GPT-3.5) today, with Anthropic (Claude 3.5) and Azure OpenAI rolling out in Phase 3
-- **Provider Abstraction**: Unified interface for all providers
-- **Cost Tracking**: Real-time token usage and cost monitoring
-- **Rate Limiting**: Built-in protection against quota exhaustion
+- **OpenAI Support**: GPT-4, GPT-4o, GPT-4o-mini, GPT-3.5-turbo
+- **Cost Tracking**: Real-time token usage and cost monitoring with detailed analytics
+- **Cost Metrics API**: Track API costs, compute costs, and cost-per-run analysis
 
 ### 🔄 Orchestration & Automation
+
 <img width="1911" height="903" alt="Screenshot 2025-12-02 224242" src="https://github.com/user-attachments/assets/805d27a9-b2ec-428b-a6d9-afab27bc9698" />
 
-- **Multi-Agent System**: 6 baseline agents (Supervisor, Researcher, Engineer, Critic, Synthesizer, Commissioner)
-- **Run Tracking & Analytics**: Comprehensive tracking of orchestration runs with cost analysis, resource monitoring, and environmental impact calculations
-- **Quality & Outcome Tracking**: Track success rates, quality scores, and cost efficiency with human ratings and automated test integration
-- **Cost Transparency**: Track API, compute, storage costs with human-equivalent comparisons
-- **Environmental Metrics**: Monitor energy consumption (kWh) and water usage (L)
-  <img width="1904" height="896" alt="Screenshot 2025-12-02 224357" src="https://github.com/user-attachments/assets/9d40727f-c3fa-419e-886e-ba07c857dd3c" />
-
-- **Cost-Quality Analysis**: Compute cost per successful run, cost per high-quality run, and quality-adjusted cost index
-- **Learning Loop**: Run feedback storage and pattern extraction for continuous improvement
-- **GitHub Integration**: Clone repos, run code analysis, create PRs automatically
-- **Codex Swarm**: Multi-agent code review (security, linting, testing, refactoring)
-  <img width="1911" height="913" alt="Screenshot 2025-12-06 143905" src="https://github.com/user-attachments/assets/883e5948-ca4c-4e59-8496-03ba3131c79d" />
-
-- **Workflow Automation**: PowerShell-based orchestration pipeline
+- **Multi-Agent System**: Agent library with 15+ specialized agents (Supervisor, Researcher, Engineer, Critic, Synthesizer, Commissioner, etc.)
+- **Run Tracking**: Track orchestration runs with cost analysis, quality metrics, and environmental impact
+- **PowerShell Orchestration**: Automated workflows with `Start-Toolbox.ps1` and orchestration scripts
+- **GitHub Integration**: Clone repos, analyze code, create PRs automatically via GitHub API
 - **Real-time Monitoring**: Live log streaming and progress tracking
-<img width="1914" height="895" alt="Screenshot 2025-12-02 224448" src="https://github.com/user-attachments/assets/4ae6bd06-3b44-4473-90b8-889e8173446e" />
 
-### 💻 Multiple Interfaces
+<img width="1904" height="896" alt="Screenshot 2025-12-02 224357" src="https://github.com/user-attachments/assets/9d40727f-c3fa-419e-886e-ba07c857dd3c" />
 
-- **Web Dashboard**: Modern React/Vite interface for browser-based access
-- **Desktop App**: Native WPF application for Windows with rich UI
-- **CLI Tools**: PowerShell modules for scripting and automation
-- **REST API**: FastAPI backend for programmatic access
+### 💻 Interfaces
 
-### 🔒 Enterprise-Ready
+- **Web Portal**: Next.js application for prompt management and orchestration
+- **Desktop App**: WPF application for Windows
+- **REST API**: FastAPI backend with OpenAPI documentation
+- **PowerShell Modules**: CLI tools for automation and scripting
 
-- **Authentication**: JWT-based auth with role-based access control
-- **Security Scanning**: Integrated CodeQL for vulnerability detection
-- **Audit Logging**: Comprehensive activity tracking
-- **CI/CD Pipeline**: Comprehensive GitHub Actions workflows with automated testing, building, and artifact management
-- **Webhook Integration**: GitHub webhook support for automated orchestration triggers
-- **PR Review Dashboard**: Collaborative pull request review with CI status tracking
-- **Scheduled Analysis**: Automated daily repository health checks and code quality metrics
+### 🔒 Security & CI/CD
 
-### 🔔 Monitoring & Alerts
+- **Authentication**: JWT-based auth with GitHub OAuth support
+- **GitHub Actions**: CI workflows for testing, building, and artifact management
+- **Telemetry**: JSONL-based event tracking and monitoring
+- **Webhook Support**: GitHub webhook integration for automated orchestration
 
-- **Telemetry System**: JSONL-based event tracking with pluggable sinks
-- **Alert Rules**: Threshold-based, pattern-based, and custom alert conditions
-- **Alert Monitoring**: Real-time alerting for failures, performance issues, and anomalies
-- **Unified CLI**: Single entry point (`tools/utb.ps1`) for all toolbox operations
-- **Template Versioning**: Semantic versioning and changelog support for CI/CD templates
+## 🎬 Demo
 
-### 🛣️ Coming in Phase 3 (v2.0)
+**Experience AI orchestration** with the interactive animated demo:
 
-- **Multi-Tenancy**: Tenant isolation with PostgreSQL + Row-Level Security and per-tenant quotas
-- **Cloud-Native Runtime**: Kubernetes + Helm deployment with Prometheus/Grafana monitoring
-- **Performance Layer**: Redis caching and pgvector-backed semantic search
-- **Enterprise Readiness**: SSO/SAML, tenant-level audit logging, and webhook/notification integrations
-
-## 🎬 Demo & Showcase
-
-**Experience the power of AI orchestration** with our interactive animated demo:
-
-🌟 **[View Animated Demo](demo-animated.html)** - A visual fly-through journey showcasing:
+🌟 **[View Demo](demo-animated.html)** - Visual showcase of:
 - High-level idea → AI Supervisor → Multi-agent orchestration
-- 9+ specialized AI agents working in harmony
+- Specialized AI agents working together
 - Prompt refinement and quality assessment
-- Real-time cost tracking and learning loops
-- From concept to fully-designed software application
-- Live GitHub Pages preview: https://xfaith4.github.io/UnifiedAIToolbox/demo-animated.html (auto-loads from the repo root)
+- Real-time cost tracking
+- GitHub Pages: https://xfaith4.github.io/UnifiedAIToolbox/demo-animated.html
 
 **Quick Launch:**
 ```bash
@@ -108,179 +79,217 @@ For Codex-driven changes, keep the loop short and local:
 .\Launch-Demo.ps1
 ```
 
-The demo captures the imagination of what's possible with AI-powered development workflows! See [Demo Guide](docs/DEMO.md) for more details.
+See [Demo Guide](docs/DEMO.md) for more details.
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 
-- **Node.js 18+** - [Download](https://nodejs.org/)
 - **Python 3.12+** - [Download](https://www.python.org/)
-- **PowerShell 7.4+** - [Download](https://github.com/PowerShell/PowerShell/releases) *(for orchestration)*
-- **.NET 8 SDK** - [Download](https://dotnet.microsoft.com/download) *(for desktop app)*
+- **Node.js 18+** - [Download](https://nodejs.org/)
+- **PowerShell 7+** (for Windows orchestration) - [Download](https://github.com/PowerShell/PowerShell/releases)
+- **.NET 8 SDK** (for desktop app) - [Download](https://dotnet.microsoft.com/download)
+- **OpenAI API Key** - [Get yours](https://platform.openai.com/api-keys)
 
-### Launch in 30 Seconds
+### Environment Setup
 
-**Windows (PowerShell):**
+1. **Copy environment file:**
+   ```bash
+   cp .env.example .env
+   ```
+
+2. **Add your OpenAI API key:**
+   ```bash
+   # Edit .env and add:
+   OPENAI_API_KEY=sk-proj-your-key-here
+   OPENAI_MODEL=gpt-4o-mini
+   ```
+
+### Launch Options
+
+Choose the method that works for your environment:
+
+
+**Option 1: Interactive Menu (Windows)**
 
 ```powershell
 .\Start-Toolbox.ps1   # Interactive menu to launch services
 ```
 
-**Windows (Bash/WSL):**
+**Option 2: Automated Launch (Linux/Mac/WSL)**
 
 ```bash
-./launch.sh   # Automated launch with verification
+./launch.sh           # Starts API + Web Portal with verification
+./launch.sh --docker  # Launch via Docker Compose
 ```
 
-**WSL Prompt API (recommended for GitHub PR orchestration):**
-
-```bash
-./scripts/start-prompt-api.sh
-```
-
-> The WSL launcher bootstraps `GITHUB_TOKEN` from `gh auth token` without logging or persisting it.
-
-**Linux/Mac:**
-
-```bash
-./launch.sh
-```
-
-**Docker:**
+**Option 3: Docker Compose (All Platforms)**
 
 ```bash
 docker compose up -d
 ```
 
-> Running `./launch.sh` sets `NEXT_PUBLIC_API_BASE`, forces the orchestrator script path to the Windows MilestoneController.ps1, and runs a post-launch verification script so you see whether the API, dashboard, portal, and orchestrator handshake are healthy.
->
-> The new `Start-Toolbox.ps1` provides an interactive menu to launch individual services or the full stack.
-
 ### Access Your Services
 
-- 🌐 **Web Portal**: <http://localhost:3001>
+After launching, access:
 
-**📖 Need more details?** See the [Launch Guide](docs/help/launch-guide.md) for comprehensive setup instructions.
+- 🌐 **Web Portal**: http://localhost:3000
+- 🔧 **API Docs**: http://localhost:8000/docs
+- 💊 **Health Check**: http://localhost:8000/health
 
-### 🔧 Orchestration Configuration (Frontend ↔ Backend)
+**Need help?** See the [Launch Guide](docs/help/launch-guide.md) for detailed setup instructions.
 
-The Unified AI Toolbox features seamless integration between the Next.js web portal and the Prompt API backend for orchestration. This connection is now **pre-configured** and requires no manual setup for local development.
+### Configuration
 
-**What's Configured:**
+The toolbox uses environment variables for configuration. Key settings:
 
-- ✅ `.env.local` in `apps/unifiedtoolbox.webapp` with `NEXT_PUBLIC_API_BASE=http://localhost:8000`
-- ✅ Docker Compose sets `NEXT_PUBLIC_API_BASE=http://localhost:8000` so the browser can reach the Prompt API through the published port
-- ✅ API health checks and connection validation built into the UI
-- ✅ Automatic fallback to simulation mode if backend is unavailable
+```env
+# API Keys
+OPENAI_API_KEY=your-openai-key
+OPENAI_MODEL=gpt-4o-mini
 
-**Verify Configuration:**
+# Service Ports
+API_PORT=8000                # FastAPI backend
+WEB_PORT=3000                # Next.js web portal
 
-```bash
-python3 test-orchestration-config.py
+# Web Portal Configuration
+NEXT_PUBLIC_API_BASE=http://localhost:8000
+
+# Database
+PROMPT_API_DB_PATH=./apps/UnifiedPromptApp/services/prompt-api/workbench.db
+
+# GitHub Integration (optional)
+GITHUB_TOKEN=your-github-token
 ```
 
-This script validates that all environment variables and configuration files are properly set up.
+See `.env.example` for all available options.
 
-**Troubleshooting:**
+## 🧭 Using the Toolbox
 
-If the orchestrator page shows a red "Cannot connect to Prompt API" banner:
-
-1. Verify the backend is running: `curl http://localhost:8000/health`
-2. Check `.env.local` in `apps/unifiedtoolbox.webapp` contains `NEXT_PUBLIC_API_BASE=http://localhost:8000`
-3. Restart the Next.js dev server after changing `.env.local`
-
-For more details, see [apps/unifiedtoolbox.webapp/README.md](apps/unifiedtoolbox.webapp/README.md).
-
-## 🧭 Orchestration Workflow
+### Orchestration Workflow
 
 Use a simple intake → plan → execute loop for repository automation:
 
-1. **Intake**: Capture the goal (issue, ticket, or `Goals/CurrentGoal.txt`).
-2. **Plan**: Define the smallest viable steps and pick a runner (for example `scripts/Unified-Orchestration.ps1`).
-3. **Execute**: Run the orchestration and review outputs before packaging results.
+1. **Intake**: Define the goal in `Goals/CurrentGoal.txt` or via issue/ticket
+2. **Plan**: Define the smallest viable steps using orchestration scripts
+3. **Execute**: Run orchestration and review outputs
 
-Artifacts are kept local in directories like `runs/`, `apps/orchestration-bridge/runs/`, `.uaitoolbox/`, and `artifacts/`. These locations are ignored by git so orchestration outputs stay local.
+Orchestration artifacts are kept local in:
+- `runs/` - Orchestration run outputs
+- `apps/orchestration-bridge/runs/` - Bridge execution logs
+- `.uaitoolbox/` - Local toolbox state
+- `artifacts/` - Build and analysis artifacts
+
+These directories are git-ignored to keep outputs local.
+
+### PowerShell Modules
+
+The toolbox includes PowerShell modules for scripting:
+
+```powershell
+# Import prompt library module
+Import-Module ./modules/PromptLibrary
+
+# Search prompts
+Search-Prompts -Query "refactoring"
+
+# Render a prompt template
+Invoke-PromptTemplate -TemplateId "code-review" -Variables @{language="Python"}
+```
+
+### Python API
+
+Access the REST API programmatically:
+
+```python
+import requests
+
+# Search prompts
+response = requests.get("http://localhost:8000/prompts/search?q=testing")
+prompts = response.json()
+
+# Generate with OpenAI
+response = requests.post("http://localhost:8000/api/generate", json={
+    "template_id": "code-review",
+    "model": "gpt-4o-mini",
+    "variables": {"code": "def hello(): print('hi')"}
+})
+result = response.json()
+```
 
 ## 📁 Project Structure
 
 ```
 UnifiedAIToolbox/
 ├── apps/
-│   ├── OrchestrationDesktop/             # WPF desktop application
-│   ├── OrchestrationDesktopLauncher/     # Desktop launcher utility
+│   ├── OrchestrationDesktop/             # WPF desktop application (C#/.NET)
 │   ├── PromptRefiner/                    # Prompt refinement tools
-│   ├── UnifiedPromptApp/                 # Prompt API service & utilities
-│   ├── orchestration-bridge/             # Python bridge for external agents
+│   ├── UnifiedPromptApp/                 # FastAPI backend service
+│   │   └── services/prompt-api/          # Main API implementation
+│   ├── orchestration-bridge/             # Python bridge for orchestration
 │   └── unifiedtoolbox.webapp/            # Next.js web portal
 ├── modules/
-│   └── PromptLibrary/          # PowerShell prompt management
+│   ├── PromptLibrary/                    # PowerShell prompt management
+│   ├── GitHubRepoManager/                # GitHub integration module
+│   ├── Telemetry/                        # Event tracking module
+│   └── Alerting/                         # Alert monitoring module
 ├── data/
-│   ├── prompts/                # YAML prompt definitions
-│   ├── agents/                 # Agent configurations
-│   └── artifacts/              # Generated outputs
-├── docs/
-│   └── help/                   # User documentation
-└── scripts/                    # Orchestration scripts
+│   ├── prompts/                          # YAML prompt definitions (40+)
+│   └── agents/                           # Agent configurations (15+)
+├── docs/                                 # Documentation
+│   └── help/                             # User guides
+├── scripts/                              # Orchestration and utility scripts
+├── .github/workflows/                    # CI/CD workflows
+└── launch.sh / Start-Toolbox.ps1        # Launch scripts
 ```
 
 ## 📚 Documentation
 
 ### Getting Started
-
-- **[Quick Start Guide](docs/help/quick-start.md)** - Get up and running in minutes
+- **[Quick Start Guide](docs/help/quick-start.md)** - Get up and running
 - **[Launch Guide](docs/help/launch-guide.md)** - Detailed deployment instructions
 - **[Architecture Overview](docs/help/architecture.md)** - System design and components
 
-### CI/CD & Automation
-
-- **[Workflow Guide](docs/WORKFLOW_GUIDE.md)** - ✨ Complete guide to GitHub Actions workflows, artifacts, and local testing
-- **[Telemetry & AI Insights](docs/TELEMETRY_AND_AI_INSIGHTS.md)** - 🆕 Usage metrics and AI-powered analysis summaries
-- **[CI/CD Blueprint](templates/ci-cd-blueprint/README.md)** - 🆕 Reusable workflow templates for other repos
-- **[Unified CLI Guide](docs/UNIFIED_CLI.md)** - 🆕 Single command-line interface for all toolbox operations
-- **[Alerting System](docs/ALERTING_SYSTEM.md)** - 🆕 Configure and monitor alerts for telemetry events
-- **[Webhook Setup](docs/WEBHOOK_SETUP.md)** - Configure GitHub webhooks for automated orchestration
-- **[GitHub Integration](docs/GITHUB_INTEGRATION.md)** - Complete guide to GitHub authentication and repo operations
-
-### Features & Capabilities
-
-- **[Project Roadmap](docs/PROJECT_ROADMAP.md)** - Current status, next steps, and future plans
-- **[Orchestration Run Tracking](docs/ORCHESTRATION_RUN_TRACKING.md)** - Comprehensive run tracking with cost & environmental analytics
-- **[Quality & Outcome Tracking](docs/QUALITY_TRACKING.md)** - 🆕 Track success rates, quality scores, and cost efficiency
-- **[Orchestrator Enhancements](docs/ORCHESTRATOR_ENHANCEMENTS.md)** - Agent library, feedback/learning, cost tracking
+### User Guides
+- **[Demo Guide](docs/DEMO.md)** - Interactive demo walkthrough
 - **[Prompt Refiner Guide](docs/help/prompt-refiner.md)** - Prompt optimization workflows
+- **[GitHub Integration](docs/GITHUB_INTEGRATION.md)** - GitHub API and repo operations
+
+### Operations & Monitoring
+- **[Orchestration Run Tracking](docs/ORCHESTRATION_RUN_TRACKING.md)** - Run tracking with cost analytics
+- **[Quality & Outcome Tracking](docs/QUALITY_TRACKING.md)** - Success rates and quality scores
+- **[Telemetry & AI Insights](docs/TELEMETRY_AND_AI_INSIGHTS.md)** - Usage metrics and analysis
+- **[Alerting System](docs/ALERTING_SYSTEM.md)** - Configure and monitor alerts
+
+### CI/CD & Automation
+- **[Workflow Guide](docs/WORKFLOW_GUIDE.md)** - GitHub Actions workflows and artifacts
+- **[Webhook Setup](docs/WEBHOOK_SETUP.md)** - GitHub webhook configuration
 
 ### Reference
-
 - **[API Reference](docs/help/api-reference.md)** - REST API documentation
-- **[Deployment Guide](docs/help/deployment.md)** - Production deployment checklist
+- **[Project Roadmap](docs/PROJECT_ROADMAP.md)** - Current status and plans
 
 ## 🛠️ Development
 
-### Quick Launch (API + Portal)
+### Running Services Individually
 
+**API Service:**
 ```bash
-./launch.sh                # runs the FastAPI backend and the Next.js portal
-./launch.sh --no-open      # skip opening the browser after services start
-./launch.sh --frontend-only  # launch only the web portal (Next.js)
+cd apps/UnifiedPromptApp/services/prompt-api
+python -m pip install -r requirements.txt
+python app.py
 ```
 
-> Requires Node.js 18+ and Python 3.12.1+ (checked automatically).
-
-### Build the Project
-
-**Unified Web Portal (Next.js):**
-
+**Web Portal:**
 ```bash
 cd apps/unifiedtoolbox.webapp
 npm install
-npm run dev         # Development server
+npm run dev         # Development server on port 3000
 npm run build       # Production build
-npm test            # Runs lint checks
+npm test            # Run tests
 ```
 
-**Desktop App:**
-
+**Desktop App (Windows):**
 ```bash
 cd apps/OrchestrationDesktop
 dotnet restore
@@ -288,157 +297,91 @@ dotnet build
 dotnet run
 ```
 
-**API Service:**
-
-```bash
-cd apps/UnifiedPromptApp/services/prompt-api
-python -m pip install -r requirements.txt
-python app.py
-```
-
-### Run Tests
+### Testing
 
 ```bash
 # PowerShell module tests
 pwsh tests/Schema.Tests.ps1
 
 # Python API tests
-cd apps/UnifiedPromptApp/services/prompt-api && pytest
+cd apps/UnifiedPromptApp/services/prompt-api
+pytest
 
-# JavaScript/TypeScript tests
-cd apps/unifiedtoolbox.webapp && npm test
+# TypeScript/React tests
+cd apps/unifiedtoolbox.webapp
+npm test
 ```
 
-## 🔄 CI/CD & Automation
+### Building
+
+```bash
+# Build web portal for production
+cd apps/unifiedtoolbox.webapp
+npm run build
+
+# Build desktop app
+cd apps/OrchestrationDesktop
+dotnet build --configuration Release
+```
+
+## 🔄 CI/CD
 
 ### GitHub Actions Workflows
 
-The project includes comprehensive CI/CD workflows:
+**Continuous Integration:**
+- `ci-comprehensive.yml` - Runs on every push/PR
+  - Tests PowerShell, Python, TypeScript, and C# code
+  - Builds web portal and desktop applications
+  - Uploads build artifacts (30-day retention)
+  - Generates CI summary reports
 
-**Continuous Integration (`ci-comprehensive.yml`):**
+**Scheduled Tasks:**
+- `repo-analysis-scheduled.yml` - Daily at 6 AM UTC
+  - Repository health analysis
+  - Code quality metrics
+  - Prompt library statistics
+  - Generates JSON and HTML reports (90-day retention)
 
-- Runs on every push and pull request
-- Tests PowerShell, Python, TypeScript, and C# code
-- Builds dashboard, web app, and desktop applications
-- Uploads build artifacts (30-day retention)
-- Runs smoke tests and generates CI summary
+### Artifacts
 
-**Scheduled Repository Analysis (`repo-analysis-scheduled.yml`):**
-
-- Runs daily at 6 AM UTC
-- Analyzes repository health, code quality, and prompt library
-- Generates JSON and HTML reports
-- Uploads analysis artifacts (90-day retention)
-
-### Webhook Integration
-
-Set up GitHub webhooks to trigger automated orchestration:
-
-```bash
-# Configure webhook secret
-export GITHUB_WEBHOOK_SECRET=your-secure-secret
-
-# Webhook endpoint
-POST https://your-api-domain.com/webhooks/github
-```
-
-Webhooks automatically trigger:
-
-- Repository analysis on push
-- Code review on PR open/update
-- Security scans on new PRs
-
-See [Webhook Setup Guide](docs/WEBHOOK_SETUP.md) for detailed configuration.
-
-### Artifact Management
-
-Build artifacts are automatically collected and organized:
-
-```bash
-# Collect artifacts locally
-pwsh scripts/Collect-BuildArtifacts.ps1 -Clean -Manifest
-
-# Run repository analysis
-pwsh scripts/Run-RepoAnalysis.ps1 -AnalysisType full
-
-# Generate HTML report
-pwsh scripts/Convert-RepoAnalysisToHtml.ps1 -JsonPath artifacts/repo-analysis/report.json
-```
-
-Artifacts are stored in standardized directories:
-
-- `artifacts/builds/` - Build outputs (dashboard, webapp, desktop)
+Build artifacts are automatically organized:
+- `artifacts/builds/` - Compiled applications
 - `artifacts/reports/` - Analysis and health reports
 - `artifacts/logs/` - Build and runtime logs
-- `artifacts/packages/` - Packaged artifacts (databases, etc.)
 
-See [Workflow Guide](docs/WORKFLOW_GUIDE.md) for comprehensive documentation.
+```bash
+# Run repository analysis locally
+pwsh scripts/Run-RepoAnalysis.ps1 -AnalysisType full
 
-### PR Review Dashboard
-
-Access the collaborative PR review dashboard at `/github` in the web dashboard:
-
-- View all open/closed pull requests
-- Check CI status for each PR
-- Filter by state, label, or author
-- Sort by recent updates or creation date
-- View PR statistics and metrics
-
-## 🔧 Configuration
-
-Create a `.env` file in the root directory:
-
-```env
-# API Keys
-OPENAI_API_KEY=your-openai-key
-ANTHROPIC_API_KEY=your-anthropic-key
-
-# Service Configuration
-API_PORT=8000
-FRONTEND_PORT=5173
-WEB_PORT=3000
-
-# Web portal / orchestrator endpoint
-NEXT_PUBLIC_API_BASE=http://localhost:8000
-
-# Database
-PROMPT_API_DB_PATH=./services/prompt-api/workbench.db
-
-# Authentication
-JWT_SECRET_KEY=your-secret-key-here
-
-# GitHub Integration (optional)
-GITHUB_TOKEN=your-github-personal-access-token
-GITHUB_WEBHOOK_SECRET=your-webhook-secret
+# Collect build artifacts
+pwsh scripts/Collect-BuildArtifacts.ps1 -Clean -Manifest
 ```
 
-The Next.js portal uses `NEXT_PUBLIC_API_BASE` (default `http://localhost:8000`) to reach the prompt API so orchestrations run against the backend instead of the simulation fallback.
+See [Workflow Guide](docs/WORKFLOW_GUIDE.md) for details.
 
 ## 🤝 Contributing
 
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the LICENSE file for details.
 
-## 🙏 Acknowledgments
+## 🙏 Built With
 
-Built with modern tools and frameworks:
-
-- React, Vite, TypeScript
-- FastAPI, Python
-- PowerShell Core
-- .NET 8, WPF
-- SQLite, Docker
+- **Frontend**: React 19, Next.js 16, TypeScript, TailwindCSS
+- **Backend**: Python, FastAPI, SQLite
+- **Desktop**: .NET 8, WPF (C#)
+- **Automation**: PowerShell 7+
+- **Infrastructure**: Docker, GitHub Actions
 
 ## 📞 Support
 
-- **Documentation**: Browse the [help docs](docs/help/)
+- **Documentation**: [docs/help/](docs/help/)
 - **Issues**: [GitHub Issues](https://github.com/xfaith4/UnifiedAIToolbox/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/xfaith4/UnifiedAIToolbox/discussions)
 
 ---
 
-**Ready to transform your AI workflows?** Get started with our [Quick Start Guide](docs/help/quick-start.md) today! 🚀
+**Ready to get started?** Follow the [Quick Start](#-quick-start) guide above! 🚀
 
