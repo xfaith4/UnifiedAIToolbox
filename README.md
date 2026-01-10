@@ -61,14 +61,21 @@ For Codex-driven changes, keep the loop short and local:
 
 ## 🎬 Demo
 
-**Experience AI orchestration** with the interactive animated demo:
+**Experience AI orchestration** with our interactive demos:
 
-🌟 **[View Demo](demo-animated.html)** - Visual showcase of:
+### 🎯 Orchestration Simulation
+**[Watch Live Simulation](demo-orchestration-sim.html)** - See a real orchestration run in action:
+- Watch agents collaborate to build a Task Management API
+- Step-by-step agent workflow with live progress
+- Real-time cost and quality metrics
+- Complete deliverables showcase
+
+### 🌟 Animated Overview
+**[View Animated Demo](demo-animated.html)** - Visual showcase of platform capabilities:
 - High-level idea → AI Supervisor → Multi-agent orchestration
 - Specialized AI agents working together
 - Prompt refinement and quality assessment
-- Real-time cost tracking
-- GitHub Pages: https://xfaith4.github.io/UnifiedAIToolbox/demo-animated.html
+- Enterprise-grade features
 
 **Quick Launch:**
 ```bash
@@ -78,6 +85,8 @@ For Codex-driven changes, keep the loop short and local:
 # Windows PowerShell
 .\Launch-Demo.ps1
 ```
+
+**Note:** To view demos via GitHub Pages, enable GitHub Pages in repository settings (Settings → Pages → Source: main branch).
 
 See [Demo Guide](docs/DEMO.md) for more details.
 

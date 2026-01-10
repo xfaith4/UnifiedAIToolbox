@@ -1,6 +1,132 @@
-# Animated Demo Guide
+# Demo Guide
 
 ## Overview
+
+The Unified AI Toolbox provides two interactive demos to showcase the platform's capabilities:
+
+1. **Orchestration Simulation Demo** (`demo-orchestration-sim.html`) - Watch a real orchestration run with agents collaborating to build a Task Management API
+2. **Animated Overview Demo** (`demo-animated.html`) - Visual journey through the platform's features and capabilities
+
+---
+
+## Orchestration Simulation Demo
+
+### What It Shows
+
+The Orchestration Simulation Demo provides a realistic simulation of an actual orchestration run, showing how multiple AI agents collaborate to build a production-ready Task Management API.
+
+**Live Demo:** [demo-orchestration-sim.html](../demo-orchestration-sim.html)
+
+### Features
+
+#### 🎯 Realistic Goal
+Watch agents work on a real-world project:
+> "Build a RESTful Task Management API with user authentication, CRUD operations for tasks, data persistence using SQLite, comprehensive unit tests, API documentation, and deployment instructions for both development and production environments."
+
+#### 👥 Multi-Agent Collaboration
+See 5 specialized agents in action:
+1. **Supervisor** - Analyzes goals, coordinates team, scores quality
+2. **Researcher** - Analyzes requirements and recommends tech stack
+3. **Engineer** - Implements code, database models, API endpoints
+4. **Critic** - Performs code review and security analysis
+5. **Synthesizer** - Creates documentation and deployment guides
+
+#### 📊 Real-Time Metrics
+Track orchestration progress with live metrics:
+- **Progress**: Visual percentage and step tracking
+- **Cost**: Running total of API costs and token usage
+- **Quality Score**: Final assessment score (8.7/10)
+- **Active Agent**: Current agent and their role
+
+#### 🎬 Interactive Controls
+- **Play/Pause**: Control simulation playback
+- **Reset**: Restart from the beginning
+- **Auto-progression**: Watch agents work sequentially
+
+#### 📦 Deliverables Showcase
+See the complete output:
+- ✅ Clean, typed FastAPI source code
+- ✅ 87% test coverage with pytest
+- ✅ Comprehensive documentation (API, deployment, contributing)
+- ✅ Security features (JWT, password hashing, validation)
+- ✅ Docker deployment configuration
+- ✅ Quality score with detailed feedback
+
+### How It Works
+
+The simulation demonstrates a complete orchestration workflow:
+
+1. **Goal Analysis** (Supervisor)
+   - Analyzes complexity and requirements
+   - Selects optimal agent team
+   - Estimates completion time
+
+2. **Research Phase** (Researcher)
+   - Analyzes requirements
+   - Recommends tech stack (FastAPI, SQLite, JWT)
+   - Defines architecture pattern
+
+3. **Implementation** (Engineer)
+   - Creates project structure
+   - Implements 7 RESTful endpoints
+   - Adds authentication and database models
+
+4. **Quality Review** (Critic)
+   - Performs code review (4/4 stars)
+   - Conducts security analysis
+   - Validates 87% test coverage
+
+5. **Documentation & Integration** (Synthesizer)
+   - Creates comprehensive documentation
+   - Adds deployment artifacts
+   - Provides integration tests
+
+6. **Final Assessment** (Supervisor)
+   - Overall quality score: 8.7/10
+   - Individual agent scores
+   - Extracts learnings for future runs
+   - Cost analysis: $0.268 total
+
+### Technical Details
+
+- **Self-contained**: No external dependencies or API calls
+- **Pure JavaScript**: Runs entirely in the browser
+- **Responsive Design**: Works on desktop, tablet, and mobile
+- **No Backend Required**: Static HTML file
+
+### Usage
+
+**Method 1: Direct Browser Access**
+```bash
+# Open directly in browser
+open demo-orchestration-sim.html    # macOS
+xdg-open demo-orchestration-sim.html  # Linux
+start demo-orchestration-sim.html   # Windows
+```
+
+**Method 2: Local Web Server**
+```bash
+# Python
+python3 -m http.server 8080
+
+# Node.js
+npx http-server
+
+# Then navigate to:
+http://localhost:8080/demo-orchestration-sim.html
+```
+
+**Method 3: GitHub Pages**
+Once GitHub Pages is enabled:
+```
+https://xfaith4.github.io/UnifiedAIToolbox/demo-orchestration-sim.html
+```
+
+---
+
+## Animated Overview Demo
+
+### What It Shows
 
 The Unified AI Toolbox Animated Demo (`demo-animated.html`) is an interactive, visually stunning showcase of the platform's capabilities. It takes viewers on a journey from a high-level idea through multi-agent orchestration to a fully designed software application.
 
@@ -118,7 +244,13 @@ npx http-server
 http://localhost:8080/demo-animated.html
 ```
 
-**Method 3: Via Launch Portal**
+**Method 3: Via GitHub Pages**
+Once GitHub Pages is enabled for the repository (Settings → Pages → Source: main branch):
+```
+https://xfaith4.github.io/UnifiedAIToolbox/demo-animated.html
+```
+
+**Method 4: Via Launch Portal**
 The demo is linked from the main [Launch Portal](../launch-portal.html) for easy access.
 
 ### Navigation
@@ -224,12 +356,37 @@ Potential improvements for future versions:
 - [ ] Multiple language support
 - [ ] Downloadable PDF version
 
+---
+
+## GitHub Pages Setup
+
+To make the demos accessible via GitHub Pages (e.g., `https://xfaith4.github.io/UnifiedAIToolbox/demo-orchestration-sim.html`):
+
+1. **Enable GitHub Pages:**
+   - Go to repository Settings
+   - Navigate to Pages section
+   - Under "Source", select "main" branch
+   - Click Save
+
+2. **Access the Demos:**
+   - Orchestration Simulation: `https://xfaith4.github.io/UnifiedAIToolbox/demo-orchestration-sim.html`
+   - Animated Overview: `https://xfaith4.github.io/UnifiedAIToolbox/demo-animated.html`
+
+3. **Verification:**
+   - Wait a few minutes for GitHub Pages to deploy
+   - Visit the URLs to confirm they work
+   - Both demos are self-contained and require no backend
+
+**Note:** If you see a 404 error, ensure GitHub Pages is enabled and the branch is set to `main`. The deployment can take 1-5 minutes after enabling.
+
+---
+
 ## Feedback
 
 Found an issue or have suggestions for the demo? Please [open an issue](https://github.com/xfaith4/UnifiedAIToolbox/issues) on GitHub.
 
 ---
 
-**Version**: 1.0  
-**Last Updated**: December 2025  
+**Version**: 1.1  
+**Last Updated**: January 2026  
 **Status**: Production Ready
