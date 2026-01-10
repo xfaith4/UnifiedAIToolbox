@@ -49,6 +49,65 @@
             color: #b0b0b0;
         }
 
+        /* Input section for typing simulation */
+        .input-section {
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.15) 0%, rgba(118, 75, 162, 0.15) 100%);
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 30px;
+            border: 2px solid rgba(102, 126, 234, 0.4);
+        }
+
+        .input-section h2 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 1.5em;
+        }
+
+        .input-wrapper {
+            position: relative;
+            margin-bottom: 20px;
+        }
+
+        .idea-input {
+            width: 100%;
+            padding: 18px 20px;
+            font-size: 1.1em;
+            background: rgba(0, 0, 0, 0.5);
+            border: 2px solid rgba(102, 126, 234, 0.5);
+            border-radius: 10px;
+            color: #ffffff;
+            font-family: inherit;
+            transition: all 0.3s;
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .idea-input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .idea-input::placeholder {
+            color: #666;
+        }
+
+        .cursor-blink {
+            animation: blink 1s step-end infinite;
+        }
+
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+
+        .input-section .description {
+            color: #b0b0b0;
+            font-size: 0.95em;
+            margin-bottom: 20px;
+        }
+
         .controls {
             display: flex;
             justify-content: center;
@@ -97,6 +156,14 @@
             grid-template-columns: 300px 1fr;
             gap: 20px;
             margin-bottom: 30px;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: opacity 0.5s, transform 0.5s;
+        }
+
+        .simulation-layout.visible {
+            opacity: 1;
+            transform: translateY(0);
         }
 
         @media (max-width: 1024px) {
@@ -408,11 +475,28 @@
             <p>Watch AI agents collaborate to build a Task Management API</p>
         </div>
 
-        <div class="controls">
-            <button class="btn btn-primary" id="playBtn" onclick="startSimulation()">▶ Start Simulation</button>
+        <!-- Input Section for Typing Simulation -->
+        <div class="input-section">
+            <h2>💡 Enter Your Idea</h2>
+            <p class="description">Type your software development idea below and watch the AI orchestration come to life!</p>
+            <div class="input-wrapper">
+                <textarea 
+                    class="idea-input" 
+                    id="ideaInput" 
+                    placeholder="e.g., Build a RESTful Task Management API with authentication, testing, and documentation..."
+                    readonly
+                ></textarea>
+            </div>
+            <div class="controls">
+                <button class="btn btn-primary" id="startTypingBtn" onclick="startTypingAnimation()">🎬 Watch Demo</button>
+                <button class="btn btn-secondary" onclick="window.location.href='demo-animated.html'">🎨 View Animated Overview</button>
+            </div>
+        </div>
+
+        <!-- Simulation Controls -->
+        <div class="controls" id="simulationControls" style="display: none;">
             <button class="btn btn-secondary" id="pauseBtn" onclick="pauseSimulation()" disabled>⏸ Pause</button>
             <button class="btn btn-secondary" id="resetBtn" onclick="resetSimulation()">↻ Reset</button>
-            <button class="btn btn-secondary" onclick="window.location.href='demo-animated.html'">🎨 View Animated Demo</button>
         </div>
 
         <div class="simulation-layout">
@@ -910,8 +994,10 @@ Quality-adjusted cost index: Excellent (high quality, low cost)`,
             }
             
             isPlaying = true;
-            document.getElementById('playBtn').disabled = true;
-            document.getElementById('pauseBtn').disabled = false;
+            const pauseBtn = document.getElementById('pauseBtn');
+            if (pauseBtn) {
+                pauseBtn.disabled = false;
+            }
             
             if (currentStep < 0) {
                 currentStep = 0;
@@ -927,8 +1013,10 @@ Quality-adjusted cost index: Excellent (high quality, low cost)`,
                 clearTimeout(timeoutId);
                 timeoutId = null;
             }
-            document.getElementById('playBtn').disabled = false;
-            document.getElementById('pauseBtn').disabled = true;
+            const pauseBtn = document.getElementById('pauseBtn');
+            if (pauseBtn) {
+                pauseBtn.disabled = true;
+            }
         }
 
         function resetSimulation() {
@@ -961,14 +1049,124 @@ Quality-adjusted cost index: Excellent (high quality, low cost)`,
 
         function completeSimulation() {
             isPlaying = false;
-            document.getElementById('playBtn').textContent = '↻ Replay';
-            document.getElementById('playBtn').disabled = false;
             document.getElementById('pauseBtn').disabled = true;
             document.getElementById('summary-section').style.display = 'block';
             updateMetrics();
             
             // Scroll to summary
             document.getElementById('summary-section').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        // Typing animation functionality
+        const ideaText = "Build a RESTful Task Management API with user authentication, CRUD operations for tasks, data persistence using SQLite, comprehensive unit tests, API documentation, and deployment instructions for both development and production environments.";
+        let typingInProgress = false;
+
+        function startTypingAnimation() {
+            if (typingInProgress) return;
+            
+            typingInProgress = true;
+            const input = document.getElementById('ideaInput');
+            const startBtn = document.getElementById('startTypingBtn');
+            
+            // Disable button and update text
+            startBtn.disabled = true;
+            startBtn.textContent = '⏳ Typing...';
+            
+            // Clear input
+            input.value = '';
+            let charIndex = 0;
+            
+            // Typing animation
+            const typingInterval = setInterval(() => {
+                if (charIndex < ideaText.length) {
+                    input.value += ideaText[charIndex];
+                    charIndex++;
+                    
+                    // Auto-scroll textarea
+                    input.scrollTop = input.scrollHeight;
+                } else {
+                    clearInterval(typingInterval);
+                    
+                    // Update button
+                    startBtn.textContent = '✓ Idea Entered';
+                    
+                    // Wait a moment, then show simulation
+                    setTimeout(() => {
+                        showSimulation();
+                    }, 1000);
+                }
+            }, 50); // 50ms per character for realistic typing speed
+        }
+
+        function showSimulation() {
+            // Hide input section
+            const inputSection = document.querySelector('.input-section');
+            inputSection.style.opacity = '0';
+            inputSection.style.transform = 'translateY(-20px)';
+            
+            setTimeout(() => {
+                inputSection.style.display = 'none';
+                
+                // Show simulation layout
+                const simulationLayout = document.querySelector('.simulation-layout');
+                simulationLayout.classList.add('visible');
+                
+                // Show simulation controls
+                document.getElementById('simulationControls').style.display = 'flex';
+                
+                // Auto-start simulation after showing
+                setTimeout(() => {
+                    startSimulation();
+                }, 500);
+            }, 500);
+        }
+
+        function resetSimulation() {
+            pauseSimulation();
+            currentStep = -1;
+            totalCost = 0;
+            totalTokens = 0;
+            
+            // Hide all outputs and reset classes
+            simulationSteps.forEach((step, index) => {
+                const stepElement = document.getElementById(`step-${index}`);
+                stepElement.classList.remove('active', 'completed');
+                document.getElementById(`output-${index}`).style.display = 'none';
+                document.getElementById(`status-${index}`).className = 'status-badge status-pending';
+                document.getElementById(`status-${index}`).textContent = 'Pending';
+                
+                // Remove any typing indicators
+                const descElement = document.getElementById(`description-${index}`);
+                const typingIndicator = descElement.querySelector('.typing-indicator');
+                if (typingIndicator) {
+                    typingIndicator.remove();
+                }
+            });
+            
+            document.getElementById('summary-section').style.display = 'none';
+            updateMetrics();
+            
+            // Reset to input section
+            const inputSection = document.querySelector('.input-section');
+            const simulationLayout = document.querySelector('.simulation-layout');
+            const startBtn = document.getElementById('startTypingBtn');
+            
+            simulationLayout.classList.remove('visible');
+            document.getElementById('simulationControls').style.display = 'none';
+            
+            setTimeout(() => {
+                inputSection.style.display = 'block';
+                setTimeout(() => {
+                    inputSection.style.opacity = '1';
+                    inputSection.style.transform = 'translateY(0)';
+                }, 50);
+                
+                // Reset input
+                document.getElementById('ideaInput').value = '';
+                startBtn.disabled = false;
+                startBtn.textContent = '🎬 Watch Demo';
+                typingInProgress = false;
+            }, 300);
         }
 
         // Initialize on load
