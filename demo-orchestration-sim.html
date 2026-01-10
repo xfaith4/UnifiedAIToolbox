@@ -102,6 +102,18 @@
             51%, 100% { opacity: 0; }
         }
 
+        /* Respect user's motion preferences */
+        @media (prefers-reduced-motion: reduce) {
+            .cursor-blink,
+            .input-section,
+            .simulation-layout,
+            * {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+
         .input-section .description {
             color: #b0b0b0;
             font-size: 0.95em;
@@ -478,13 +490,15 @@
         <!-- Input Section for Typing Simulation -->
         <div class="input-section">
             <h2>💡 Enter Your Idea</h2>
-            <p class="description">Type your software development idea below and watch the AI orchestration come to life!</p>
+            <p class="description" id="inputDescription">Type your software development idea below and watch the AI orchestration come to life!</p>
             <div class="input-wrapper">
                 <textarea 
                     class="idea-input" 
                     id="ideaInput" 
                     placeholder="e.g., Build a RESTful Task Management API with authentication, testing, and documentation..."
                     readonly
+                    aria-label="Demonstration text input showing AI orchestration idea being typed"
+                    aria-describedby="inputDescription"
                 ></textarea>
             </div>
             <div class="controls">
@@ -1039,13 +1053,21 @@ Quality-adjusted cost index: Excellent (high quality, low cost)`,
         const TRANSITION_DELAY_MS = 1000; // Delay before showing simulation
         
         let typingInProgress = false;
+        let typingIntervalId = null;
 
         function startTypingAnimation() {
             if (typingInProgress) return;
             
-            typingInProgress = true;
             const input = document.getElementById('ideaInput');
             const startBtn = document.getElementById('startTypingBtn');
+            
+            // Validate DOM elements exist
+            if (!input || !startBtn) {
+                console.error('Required DOM elements not found');
+                return;
+            }
+            
+            typingInProgress = true;
             
             // Disable button and update text
             startBtn.disabled = true;
@@ -1056,7 +1078,7 @@ Quality-adjusted cost index: Excellent (high quality, low cost)`,
             let charIndex = 0;
             
             // Typing animation
-            const typingInterval = setInterval(() => {
+            typingIntervalId = setInterval(() => {
                 if (charIndex < DEMO_IDEA_TEXT.length) {
                     input.value += DEMO_IDEA_TEXT[charIndex];
                     charIndex++;
@@ -1064,7 +1086,10 @@ Quality-adjusted cost index: Excellent (high quality, low cost)`,
                     // Auto-scroll textarea
                     input.scrollTop = input.scrollHeight;
                 } else {
-                    clearInterval(typingInterval);
+                    if (typingIntervalId) {
+                        clearInterval(typingIntervalId);
+                        typingIntervalId = null;
+                    }
                     
                     // Update button
                     startBtn.textContent = '✓ Idea Entered';
@@ -1080,6 +1105,15 @@ Quality-adjusted cost index: Excellent (high quality, low cost)`,
         function showSimulation() {
             // Hide input section
             const inputSection = document.querySelector('.input-section');
+            const simulationLayout = document.querySelector('.simulation-layout');
+            const simulationControls = document.getElementById('simulationControls');
+            
+            // Validate DOM elements exist
+            if (!inputSection || !simulationLayout || !simulationControls) {
+                console.error('Required DOM elements not found for simulation');
+                return;
+            }
+            
             inputSection.style.opacity = '0';
             inputSection.style.transform = 'translateY(-20px)';
             
@@ -1102,6 +1136,13 @@ Quality-adjusted cost index: Excellent (high quality, low cost)`,
 
         function resetSimulation() {
             pauseSimulation();
+            
+            // Clean up typing animation if in progress
+            if (typingIntervalId) {
+                clearInterval(typingIntervalId);
+                typingIntervalId = null;
+            }
+            
             currentStep = -1;
             totalCost = 0;
             totalTokens = 0;
@@ -1109,20 +1150,33 @@ Quality-adjusted cost index: Excellent (high quality, low cost)`,
             // Hide all outputs and reset classes
             simulationSteps.forEach((step, index) => {
                 const stepElement = document.getElementById(`step-${index}`);
-                stepElement.classList.remove('active', 'completed');
-                document.getElementById(`output-${index}`).style.display = 'none';
-                document.getElementById(`status-${index}`).className = 'status-badge status-pending';
-                document.getElementById(`status-${index}`).textContent = 'Pending';
+                if (stepElement) {
+                    stepElement.classList.remove('active', 'completed');
+                }
+                const outputElement = document.getElementById(`output-${index}`);
+                if (outputElement) {
+                    outputElement.style.display = 'none';
+                }
+                const statusElement = document.getElementById(`status-${index}`);
+                if (statusElement) {
+                    statusElement.className = 'status-badge status-pending';
+                    statusElement.textContent = 'Pending';
+                }
                 
                 // Remove any typing indicators
                 const descElement = document.getElementById(`description-${index}`);
-                const typingIndicator = descElement.querySelector('.typing-indicator');
-                if (typingIndicator) {
-                    typingIndicator.remove();
+                if (descElement) {
+                    const typingIndicator = descElement.querySelector('.typing-indicator');
+                    if (typingIndicator) {
+                        typingIndicator.remove();
+                    }
                 }
             });
             
-            document.getElementById('summary-section').style.display = 'none';
+            const summarySection = document.getElementById('summary-section');
+            if (summarySection) {
+                summarySection.style.display = 'none';
+            }
             updateMetrics();
             
             // Reset to input section
