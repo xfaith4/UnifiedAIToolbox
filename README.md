@@ -259,6 +259,10 @@ UnifiedAIToolbox/
 - **[Launch Guide](docs/help/launch-guide.md)** - Detailed deployment instructions
 - **[Architecture Overview](docs/help/architecture.md)** - System design and components
 
+### Recreate This Project
+- **[Prompt Chain Recreation Guide](docs/PROMPT_CHAIN_RECREATION.md)** - 🔥 **NEW!** Recreate UnifiedAIToolbox using AI prompt chaining
+- **[Quick Start: Prompt Chain](docs/PROMPT_CHAIN_QUICK_START.md)** - Fast-track guide to using the prompt chain
+
 ### User Guides
 - **[Demo Guide](docs/DEMO.md)** - Interactive demo walkthrough
 - **[Prompt Refiner Guide](docs/help/prompt-refiner.md)** - Prompt optimization workflows
