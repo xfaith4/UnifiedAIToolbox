@@ -1019,37 +1019,12 @@ Quality-adjusted cost index: Excellent (high quality, low cost)`,
             }
         }
 
-        function resetSimulation() {
-            pauseSimulation();
-            currentStep = -1;
-            totalCost = 0;
-            totalTokens = 0;
-            
-            // Hide all outputs and reset classes
-            simulationSteps.forEach((step, index) => {
-                const stepElement = document.getElementById(`step-${index}`);
-                stepElement.classList.remove('active', 'completed');
-                document.getElementById(`output-${index}`).style.display = 'none';
-                document.getElementById(`status-${index}`).className = 'status-badge status-pending';
-                document.getElementById(`status-${index}`).textContent = 'Pending';
-                
-                // Remove any typing indicators
-                const descElement = document.getElementById(`description-${index}`);
-                const typingIndicator = descElement.querySelector('.typing-indicator');
-                if (typingIndicator) {
-                    typingIndicator.remove();
-                }
-            });
-            
-            document.getElementById('summary-section').style.display = 'none';
-            document.getElementById('playBtn').textContent = '▶ Start Simulation';
-            document.getElementById('playBtn').disabled = false;
-            updateMetrics();
-        }
-
         function completeSimulation() {
             isPlaying = false;
-            document.getElementById('pauseBtn').disabled = true;
+            const pauseBtn = document.getElementById('pauseBtn');
+            if (pauseBtn) {
+                pauseBtn.disabled = true;
+            }
             document.getElementById('summary-section').style.display = 'block';
             updateMetrics();
             
