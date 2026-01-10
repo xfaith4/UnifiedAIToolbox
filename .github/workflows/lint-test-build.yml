@@ -19,7 +19,7 @@ jobs:
         pwsh: ["7.4"]
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Install PowerShell modules
         shell: pwsh
         run: |
@@ -27,36 +27,37 @@ jobs:
           Install-Module Pester -Scope CurrentUser -Force -MinimumVersion 5.5.0
           Install-Module PSScriptAnalyzer -Scope CurrentUser -Force
           Install-Module powershell-yaml -Scope CurrentUser -Force
-      
+
       - name: Lint PowerShell
         shell: pwsh
         run: |
           Invoke-ScriptAnalyzer -Path modules -Recurse -Severity Warning -EnableExit
-      
+
       - name: Run PowerShell tests
         shell: pwsh
         run: |
           # Add modules directory to PSModulePath for tests
           $env:PSModulePath = "$PWD/modules" + [IO.Path]::PathSeparator + $env:PSModulePath
           Invoke-Pester -Path tests -CI -Output Detailed
-      
+
       - name: Build prompt index
         shell: pwsh
         run: |
-          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/Build-Index.ps1
-      
-      - name: Verify prompt index
+          ./scripts/Build-Index.ps1
+
+      # --- Verify (Linux) ---
+      - name: Verify prompt index (Linux)
+        if: matrix.os == 'ubuntu-latest'
         shell: bash
         run: |
-          # Install sqlite3 if not available
           if ! command -v sqlite3 &> /dev/null; then
             echo "Installing sqlite3..."
             sudo apt-get update && sudo apt-get install -y sqlite3
           fi
-          
+
           echo "=== Database Info ==="
           ls -lh data/prompts.db || echo "Database file not found"
-          
+
           if [ -f "data/prompts.db" ]; then
             echo ""
             echo "=== Table Counts ==="
@@ -65,12 +66,62 @@ jobs:
             echo "=== FTS Test Search ==="
             sqlite3 data/prompts.db "SELECT COUNT(*) FROM prompts_fts JOIN prompts p ON prompts_fts.id = p.id WHERE prompts_fts MATCH 'powershell';" || echo "Warning: FTS query failed"
           fi
-      
+
+      # --- Verify (macOS) ---
+      - name: Verify prompt index (macOS)
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+          if ! command -v sqlite3 &> /dev/null; then
+            echo "Installing sqlite3..."
+            brew update && brew install sqlite
+          fi
+
+          echo "=== Database Info ==="
+          ls -lh data/prompts.db || echo "Database file not found"
+
+          if [ -f "data/prompts.db" ]; then
+            echo ""
+            echo "=== Table Counts ==="
+            sqlite3 data/prompts.db "SELECT (SELECT COUNT(*) FROM prompts) as prompts, (SELECT COUNT(*) FROM agents) as agents;" || echo "Warning: Could not query database"
+            echo ""
+            echo "=== FTS Test Search ==="
+            sqlite3 data/prompts.db "SELECT COUNT(*) FROM prompts_fts JOIN prompts p ON prompts_fts.id = p.id WHERE prompts_fts MATCH 'powershell';" || echo "Warning: FTS query failed"
+          fi
+
+      # --- Verify (Windows) ---
+      - name: Verify prompt index (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          if (-not (Get-Command sqlite3 -ErrorAction SilentlyContinue)) {
+            Write-Host "Installing sqlite3 (choco)..."
+            choco install sqlite -y
+            refreshenv | Out-Null
+          }
+
+          Write-Host "=== Database Info ==="
+          if (Test-Path "data/prompts.db") {
+            Get-Item "data/prompts.db" | Format-List Name,Length,LastWriteTime
+          } else {
+            Write-Host "Database file not found"
+          }
+
+          if (Test-Path "data/prompts.db") {
+            Write-Host ""
+            Write-Host "=== Table Counts ==="
+            sqlite3 data/prompts.db "SELECT (SELECT COUNT(*) FROM prompts) as prompts, (SELECT COUNT(*) FROM agents) as agents;" 2>$null
+            Write-Host ""
+            Write-Host "=== FTS Test Search ==="
+            sqlite3 data/prompts.db "SELECT COUNT(*) FROM prompts_fts JOIN prompts p ON prompts_fts.id = p.id WHERE prompts_fts MATCH 'powershell';" 2>$null
+          }
+
       - name: Upload prompt database
         uses: actions/upload-artifact@v4
         with:
           name: prompt-index-${{ matrix.os }}-${{ matrix.pwsh }}
           path: data/prompts.db
+          if-no-files-found: warn
           retention-days: 7
 
   python:
@@ -118,14 +169,13 @@ jobs:
             if [ -d "$d" ]; then
               echo "✓ Found prompt-api at: $d"
               echo "path=$d" >> "$GITHUB_OUTPUT"
-              
-              # Validate requirements.txt exists
+
               if [ ! -f "$d/requirements.txt" ]; then
                 echo "⚠️  Warning: requirements.txt not found in $d"
               else
                 echo "✓ requirements.txt found"
               fi
-              
+
               exit 0
             fi
           done
@@ -170,30 +220,29 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
           cache-dependency-path: apps/unifiedtoolbox.webapp/package-lock.json
-      
+
       - name: Install dependencies
         working-directory: apps/unifiedtoolbox.webapp
         run: npm ci
-      
+
       - name: Lint
         working-directory: apps/unifiedtoolbox.webapp
         run: npm run lint
-      
+
       - name: Build web app
         working-directory: apps/unifiedtoolbox.webapp
         run: npm run build
-      
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: unified-webapp-build
           path: apps/unifiedtoolbox.webapp/.next
           retention-days: 7
-
