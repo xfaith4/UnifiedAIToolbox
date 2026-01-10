@@ -22,7 +22,7 @@ For Codex-driven changes, keep the loop short and local:
 
 ### 🎯 Prompt Management
 
-- **YAML-based Prompt Library**: 40 prompts stored as version-controllable YAML files
+- **YAML-based Prompt Library**: Extensive prompt collection stored as version-controllable YAML files
 - **SQLite Database**: Fast full-text search and prompt metadata storage
 - **Template Rendering**: Dynamic prompt generation with variable substitution
 - **Prompt Refinement**: AI-powered prompt optimization workflow
@@ -37,7 +37,7 @@ For Codex-driven changes, keep the loop short and local:
 
 <img width="1911" height="903" alt="Screenshot 2025-12-02 224242" src="https://github.com/user-attachments/assets/805d27a9-b2ec-428b-a6d9-afab27bc9698" />
 
-- **Multi-Agent System**: Agent library with 20+ specialized agents (Supervisor, Researcher, Engineer, Critic, Synthesizer, Commissioner, etc.)
+- **Multi-Agent System**: Agent library with specialized agents including Supervisor, Researcher, Engineer, Critic, Synthesizer, Commissioner, and more
 - **Run Tracking**: Track orchestration runs with cost analysis, quality metrics, and environmental impact
 - **PowerShell Orchestration**: Automated workflows with `Start-Toolbox.ps1` and orchestration scripts
 - **GitHub Integration**: Clone repos, analyze code, create PRs automatically via GitHub API
@@ -234,8 +234,8 @@ UnifiedAIToolbox/
 │   ├── Telemetry/                        # Event tracking module
 │   └── Alerting/                         # Alert monitoring module
 ├── data/
-│   ├── prompts/                          # YAML prompt definitions (40)
-│   └── agents/                           # Agent configurations (20)
+│   ├── prompts/                          # YAML prompt definitions
+│   └── agents/                           # Agent configurations
 ├── docs/                                 # Documentation
 │   └── help/                             # User guides
 ├── scripts/                              # Orchestration and utility scripts
