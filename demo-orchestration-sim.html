@@ -1033,7 +1033,11 @@ Quality-adjusted cost index: Excellent (high quality, low cost)`,
         }
 
         // Typing animation functionality
-        const ideaText = "Build a RESTful Task Management API with user authentication, CRUD operations for tasks, data persistence using SQLite, comprehensive unit tests, API documentation, and deployment instructions for both development and production environments.";
+        // Configuration constants
+        const DEMO_IDEA_TEXT = "Build a RESTful Task Management API with user authentication, CRUD operations for tasks, data persistence using SQLite, comprehensive unit tests, API documentation, and deployment instructions for both development and production environments.";
+        const TYPING_SPEED_MS = 50; // Milliseconds per character
+        const TRANSITION_DELAY_MS = 1000; // Delay before showing simulation
+        
         let typingInProgress = false;
 
         function startTypingAnimation() {
@@ -1053,8 +1057,8 @@ Quality-adjusted cost index: Excellent (high quality, low cost)`,
             
             // Typing animation
             const typingInterval = setInterval(() => {
-                if (charIndex < ideaText.length) {
-                    input.value += ideaText[charIndex];
+                if (charIndex < DEMO_IDEA_TEXT.length) {
+                    input.value += DEMO_IDEA_TEXT[charIndex];
                     charIndex++;
                     
                     // Auto-scroll textarea
@@ -1068,9 +1072,9 @@ Quality-adjusted cost index: Excellent (high quality, low cost)`,
                     // Wait a moment, then show simulation
                     setTimeout(() => {
                         showSimulation();
-                    }, 1000);
+                    }, TRANSITION_DELAY_MS);
                 }
-            }, 50); // 50ms per character for realistic typing speed
+            }, TYPING_SPEED_MS);
         }
 
         function showSimulation() {
