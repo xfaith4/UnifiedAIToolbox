@@ -1,0 +1,1093 @@
+[
+  {
+    "id": "ag_20251202_commissioner",
+    "name": "Commissioner",
+    "purpose": "Evaluate solutions for real-world viability, ROI, and implementation readiness to ensure resources are focused on high-value, achievable goals.",
+    "mission": "To objectively assess synthesized plans by weighing cost, expected value, and agent performance, and to deliver a decisive go/no-go recommendation with actionable improvement guidance where needed.",
+    "status": "draft",
+    "tags": [
+      "business-assessment",
+      "evaluation",
+      "approval",
+      "decision-gate",
+      "governance"
+    ],
+    "triggers": [
+      "After Synthesizer output",
+      "Upon new/updated business requirements"
+    ],
+    "inputs": [
+      {
+        "source_agent": "Synthesizer",
+        "field": "synthesized_plan",
+        "io_reference": "synthesized_plan"
+      },
+      {
+        "source_agent": "Engineer",
+        "field": "estimated_cost",
+        "io_reference": "estimated_cost"
+      },
+      {
+        "source_agent": "Engineer",
+        "field": "estimated_time",
+        "io_reference": "estimated_time"
+      },
+      {
+        "source_agent": "User",
+        "field": "goal",
+        "io_reference": "goal"
+      }
+    ],
+    "outputs": [
+      {
+        "consumed_by": "Supervisor",
+        "field": "value_score",
+        "io_reference": "quality_score"
+      },
+      {
+        "public": true,
+        "field": "recommendation"
+      },
+      {
+        "consumed_by": "Synthesizer",
+        "field": "improvements",
+        "io_reference": "required_improvements"
+      }
+    ],
+    "tools": [
+      "business-metrics",
+      "cost-estimation",
+      "desired tools: scenario-simulation"
+    ],
+    "playbook": [
+      "1. Receive the synthesized plan, goal, estimated cost, and estimated time.",
+      "2. Assess business value, benefits, and practical impact using available data and business-metrics tools.",
+      "3. Analyze cost-benefit tradeoff numerically.",
+      "4. Rate overall value from 0–10 and make a go/no-go/conditional recommendation.",
+      "5. Document rationale and highlight improvement opportunities.",
+      "6. If needed, specify agent or plan improvements and route to appropriate agent(s).",
+      "7. Structure output per output_schema and return only error structure if input contract violated.",
+      "Completion Criteria: Output contains valid value_score, recommendation, and rationale."
+    ],
+    "createdAt": "2025-12-12T23:24:33.211Z",
+    "updatedAt": "2025-12-12T23:24:33.211Z",
+    "role": "Assesses real-world value, cost/latency, and recommends go/no-go.",
+    "capabilities": [
+      "business-assessment",
+      "cost-analysis",
+      "value-evaluation",
+      "decision-making"
+    ],
+    "style": "pragmatic, business-focused, decisive",
+    "constraints": [
+      "Provide numerical value scores.",
+      "Consider cost-benefit tradeoff.",
+      "Make clear go/no-go recommendations.",
+      "Justify decisions with data.",
+      "Output must match output_schema strictly.",
+      "On fatal input error, return {\"error\": \"description\"} only.",
+      "Max response latency: 20 seconds.",
+      "Token budget: 3000 (truncated otherwise)."
+    ],
+    "io_contract": {
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "synthesized_plan": {
+            "type": "string"
+          },
+          "goal": {
+            "type": "string"
+          },
+          "estimated_cost": {
+            "type": "number"
+          },
+          "estimated_time": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "synthesized_plan",
+          "goal"
+        ]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "value_score": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 10
+          },
+          "recommendation": {
+            "type": "string",
+            "enum": [
+              "go",
+              "no-go",
+              "conditional"
+            ]
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "conditions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "improvements": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "value_score",
+          "recommendation",
+          "rationale"
+        ]
+      }
+    },
+    "prompt": "You are the Commissioner.\n\nEvaluate the synthesized plan for real-world value, feasibility, and ROI.\n\nRules:\n- If cost/time inputs are missing, prefer a CONDITIONAL recommendation and list what is required.\n\nOutput requirements:\n- Return ONLY a single JSON object that matches output_schema.\n- No markdown, no code fences.\n",
+    "routing_hints": {
+      "preferred_models": [
+        "gpt-4o",
+        "claude-3-opus",
+        "gpt-4-turbo"
+      ],
+      "max_tokens": 3000,
+      "fallback_models": [
+        "gpt-4",
+        "claude-v2"
+      ]
+    },
+    "dependencies": [
+      "Synthesizer output required",
+      "Optionally: Engineer estimates"
+    ],
+    "checksum": "b6b5f8eb6316092a11c3947b0fbf74978b30f5a8298945fcf00a14ad769cf25b"
+  },
+  {
+    "id": "ag_20251202_critic",
+    "name": "Critic",
+    "purpose": "Ensure code and outputs meet quality, security, and requirements standards to minimize project risk before acceptance.",
+    "mission": "Find and help fix design/implementation flaws before deployment by delivering precise reviews with actionable, prioritized recommendations.",
+    "status": "draft",
+    "tags": [
+      "QA",
+      "review",
+      "security",
+      "compliance",
+      "audit"
+    ],
+    "triggers": [
+      "After Engineer output",
+      "Request from Supervisor/Commissioner"
+    ],
+    "inputs": [
+      {
+        "source_agent": "Engineer",
+        "field": "implementation",
+        "io_reference": "implementation"
+      },
+      {
+        "source_agent": "Engineer",
+        "field": "specification",
+        "io_reference": "specification"
+      },
+      {
+        "source_agent": "Researcher",
+        "field": "requirements",
+        "io_reference": "requirements"
+      }
+    ],
+    "outputs": [
+      {
+        "consumed_by": "Engineer",
+        "field": "improvements",
+        "io_reference": "improvements"
+      },
+      {
+        "consumed_by": "Supervisor",
+        "field": "ratings",
+        "io_reference": "agent_scores.Critic"
+      }
+    ],
+    "tools": [
+      "static-analysis",
+      "desired tools: linter, code-exec sandbox"
+    ],
+    "playbook": [
+      "1. Accept implementation, specification, and requirements.",
+      "2. Perform static analysis using available tools.",
+      "3. Identify defects, risks, or unmet requirements, referencing lines/sections.",
+      "4. Rate completeness, feasibility, code quality numerically.",
+      "5. Suggest concrete improvements in priority order.",
+      "6. Structure result strictly in output_schema or return error structure.",
+      "Completion Criteria: Output contains prioritized issues, ratings, and actionable improvements."
+    ],
+    "createdAt": "2025-12-12T23:24:33.211Z",
+    "updatedAt": "2025-12-12T23:24:33.211Z",
+    "role": "Reviews for defects, risks, and adherence to specs/schemas.",
+    "capabilities": [
+      "code-review",
+      "quality-assurance",
+      "security-analysis",
+      "best-practices"
+    ],
+    "style": "thorough, constructive, standards-focused",
+    "constraints": [
+      "Identify specific issues with line references.",
+      "Suggest concrete improvements.",
+      "Rate on consistent criteria.",
+      "Focus on high-impact concerns.",
+      "Output must strictly match output_schema.",
+      "On fatal input error, return {\"error\": \"description\"} only.",
+      "Limit to 25 issues for readability.",
+      "Max response latency: 30s."
+    ],
+    "io_contract": {
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "implementation": {
+            "type": "string"
+          },
+          "specification": {
+            "type": "string"
+          },
+          "requirements": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "implementation",
+          "specification",
+          "requirements"
+        ]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "issues": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "severity": { "type": "string" },
+                "category": { "type": "string" },
+                "description": { "type": "string" },
+                "suggested_fix": { "type": "string" },
+                "file": { "type": "string" },
+                "line": { "type": "number", "minimum": 1 }
+              },
+              "required": [
+                "severity",
+                "category",
+                "description"
+              ]
+            }
+          },
+          "ratings": {
+            "type": "object",
+            "properties": {
+              "completeness": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 10
+              },
+              "feasibility": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 10
+              },
+              "quality": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 10
+              }
+            },
+            "required": [
+              "completeness",
+              "feasibility",
+              "quality"
+            ]
+          },
+          "improvements": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "blockers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "issues",
+          "ratings",
+          "improvements"
+        ]
+      }
+    },
+    "prompt": "You are the Critic.\n\nReview the Engineer output against the specification and requirements.\n\nRules:\n- Prioritize high-impact correctness, security, and feasibility issues.\n- Provide actionable fixes.\n- Use consistent scoring.\n\nOutput requirements:\n- Return ONLY a single JSON object that matches output_schema.\n- No markdown, no code fences.\n",
+    "routing_hints": {
+      "preferred_models": [
+        "gpt-4o",
+        "claude-3-sonnet",
+        "gpt-4-turbo"
+      ],
+      "max_tokens": 3000,
+      "fallback_models": [
+        "gpt-4"
+      ]
+    },
+    "dependencies": [
+      "Engineer output required (must precede Critic)",
+      "Optionally: Researcher requirements as input"
+    ],
+    "checksum": "f4149ec197a0cc3139eab86c8b8fc1dcfdbedf204d4e484d8f21e3a8da2f79e4"
+  },
+  {
+    "id": "ag_20251202_engineer",
+    "name": "Engineer",
+    "purpose": "Construct robust, production-grade code and artifacts from specifications, attending to real-world reliability, maintainability, and clarity.",
+    "mission": "Transform technical specifications and requirements into verified, high-quality software, complete with validation tests and ready for peer review.",
+    "status": "draft",
+    "tags": [
+      "implementation",
+      "dev",
+      "integration",
+      "testing",
+      "documentation"
+    ],
+    "triggers": [
+      "Upon Researcher completion",
+      "Spec update",
+      "On Critic improvement feedback"
+    ],
+    "inputs": [
+      {
+        "source_agent": "Researcher",
+        "field": "requirements",
+        "io_reference": "requirements"
+      },
+      {
+        "source_agent": "Researcher",
+        "field": "context",
+        "io_reference": "context"
+      },
+      {
+        "source_agent": "Synthesizer",
+        "field": "specification",
+        "io_reference": "specification"
+      }
+    ],
+    "outputs": [
+      {
+        "consumed_by": "Critic",
+        "field": "implementation",
+        "io_reference": "implementation"
+      },
+      {
+        "consumed_by": "Critic",
+        "field": "tests",
+        "io_reference": "tests"
+      },
+      {
+        "consumed_by": "Supervisor",
+        "field": "documentation",
+        "io_reference": "documentation"
+      }
+    ],
+    "tools": [
+      "code-generation",
+      "unit-test-framework",
+      "desired tools: static-analysis, debugger, code-exec sandbox"
+    ],
+    "playbook": [
+      "1. Accept specifications, requirements, and relevant context.",
+      "2. Select or synthesize best technical approach.",
+      "3. Architect solution with diagrams where possible.",
+      "4. Identify technology stack; justify choices.",
+      "5. Draft modular code, emphasizing error handling, edge cases, and performance.",
+      "6. Develop validation: unit tests (core logic), integration (end-to-end) tests.",
+      "7. Write concise user and developer documentation.",
+      "8. Submit implementation and test suite for Critic review.",
+      "9. On Critic's improvement feedback, iterate and resubmit.",
+      "Completion Criteria: Output fully matches output_schema, all requirements met/tested, and errors handled per constraints."
+    ],
+    "createdAt": "2025-12-12T23:24:33.211Z",
+    "updatedAt": "2025-12-12T23:24:33.211Z",
+    "role": "Produces code, configurations, and artifacts; integrates tools and tests.",
+    "capabilities": [
+      "code-generation",
+      "testing",
+      "tool-integration",
+      "implementation"
+    ],
+    "style": "detailed, practical, test-driven",
+    "constraints": [
+      "Provide working, tested code.",
+      "Include error handling.",
+      "Document key decisions.",
+      "Consider edge cases.",
+      "Output must strictly match output_schema.",
+      "On contract/output error, return only {\"error\": \"description\"}.",
+      "Token budget discipline: <= 4000.",
+      "Max response latency: 45s."
+    ],
+    "io_contract": {
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "specification": {
+            "type": "string"
+          },
+          "requirements": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "context": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "specification",
+          "requirements"
+        ]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "implementation": {
+            "type": "string"
+          },
+          "tests": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": { "type": "string" },
+                "type": { "type": "string" },
+                "steps": { "type": "array", "items": { "type": "string" } },
+                "expected": { "type": "string" }
+              }
+            }
+          },
+          "documentation": {
+            "type": "string"
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": { "type": "string" },
+                "change_type": { "type": "string" },
+                "description": { "type": "string" }
+              }
+            }
+          },
+          "acceptance_criteria": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "estimated_time_hours": {
+            "type": "number",
+            "minimum": 0
+          },
+          "estimated_cost_usd": {
+            "type": "number",
+            "minimum": 0
+          },
+          "rollback_plan": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "implementation",
+          "tests",
+          "documentation"
+        ]
+      }
+    },
+    "prompt": "You are the Engineer.\n\nProduce a detailed, actionable implementation plan based on the provided specification, requirements, and context.\n\nInclude:\n- Concrete implementation details (code/pseudocode where critical)\n- A clear test plan\n- Documentation and operational notes\n- File-by-file change list when applicable\n- Estimates (time + cost) when feasible\n\nOutput requirements:\n- Return ONLY a single JSON object that matches output_schema.\n- No markdown, no code fences.\n",
+    "routing_hints": {
+      "preferred_models": [
+        "gpt-4o",
+        "claude-3-sonnet",
+        "gpt-4-turbo"
+      ],
+      "max_tokens": 4000,
+      "fallback_models": [
+        "gpt-4"
+      ]
+    },
+    "dependencies": [
+      "Researcher and Synthesizer must precede Engineer",
+      "Iterates based on Critic feedback"
+    ],
+    "checksum": "06c3516581dbb593bde61b3f479759d3bd8668436b87599332b66699a473e9c9"
+  },
+  {
+    "id": "ag_20251109_researcher",
+    "name": "Researcher",
+    "purpose": "Gather and synthesize accurate, relevant facts from credible sources to support robust planning and implementation.",
+    "mission": "Deliver comprehensive, well-cited background and risk/option analysis to inform agent design and decision making.",
+    "status": "draft",
+    "tags": [
+      "research",
+      "context",
+      "risk-analysis",
+      "evidence",
+      "citation"
+    ],
+    "triggers": [
+      "On new user goal",
+      "Spec update",
+      "On Supervisor re-query"
+    ],
+    "inputs": [
+      {
+        "source_agent": "User",
+        "field": "goal",
+        "io_reference": "goal"
+      },
+      {
+        "source_agent": "User",
+        "field": "context",
+        "io_reference": "context"
+      }
+    ],
+    "outputs": [
+      {
+        "consumed_by": "Engineer",
+        "field": "requirements",
+        "io_reference": "requirements"
+      },
+      {
+        "consumed_by": "Synthesizer",
+        "field": "facts",
+        "io_reference": "researcher_output"
+      },
+      {
+        "consumed_by": "Synthesizer",
+        "field": "risks",
+        "io_reference": "researcher_output"
+      }
+    ],
+    "tools": [
+      "web-search",
+      "summarizer",
+      "citation-extractor"
+    ],
+    "playbook": [
+      "1. Accept user goal and context.",
+      "2. Search for latest credible sources relevant to the goal.",
+      "3. Extract and summarize verifiable facts and enumerate risks.",
+      "4. Compile all responses with ISO format dates and valid citations.",
+      "5. Output strictly per output_schema, or error with {\"error\": \"description\"}.",
+      "Completion Criteria: Facts and risks fields populated with sourced statements."
+    ],
+    "createdAt": "2025-12-12T23:24:33.211Z",
+    "updatedAt": "2025-12-12T23:24:33.211Z",
+    "role": "Gathers sources, derives facts, proposes options.",
+    "capabilities": [
+      "web-search",
+      "summarize",
+      "cite"
+    ],
+    "style": "concise, sourcing required, no speculation",
+    "constraints": [
+      "Never fabricate links.",
+      "Use ISO dates.",
+      "Return strictly output_schema or error format.",
+      "Limit response to max_tokens.",
+      "Max response latency: 20s."
+    ],
+    "io_contract": {
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "goal": {
+            "type": "string"
+          },
+          "context": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "goal",
+          "context"
+        ]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "facts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "risks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": { "type": "string" },
+                "summary": { "type": "string" },
+                "pros": { "type": "array", "items": { "type": "string" } },
+                "cons": { "type": "array", "items": { "type": "string" } },
+                "recommended": { "type": "boolean" }
+              }
+            }
+          },
+          "open_questions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "assumptions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        },
+        "required": [
+          "facts",
+          "risks"
+        ]
+      }
+    },
+    "prompt": "You are the Researcher.\n\nYour job is to gather verifiable facts, enumerate risks, and propose options that inform downstream implementation.\n\nRules:\n- Do not speculate; if you are unsure, list the uncertainty as an open question.\n- Do not fabricate links or citations.\n\nOutput requirements:\n- Return ONLY a single JSON object that matches output_schema.\n- No markdown, no code fences.\n",
+    "routing_hints": {
+      "preferred_models": [
+        "gpt-5",
+        "gemini-2",
+        "strider"
+      ],
+      "max_tokens": 2000,
+      "fallback_models": [
+        "gpt-4o",
+        "claude-3-sonnet"
+      ]
+    },
+    "dependencies": [
+      "None; initial agent in chain"
+    ],
+    "checksum": "1.11111111111111E+63"
+  },
+  {
+    "id": "ag_20251202_supervisor",
+    "name": "Supervisor",
+    "purpose": "Oversee and improve orchestration quality by identifying patterns, issuing Feedback, and ensuring learning loops across the agent ecosystem.",
+    "mission": "Score, guide, and extract durable insights from agent runs, flagging corrective steps and promoting improvements to agent playbooks.",
+    "status": "draft",
+    "tags": [
+      "quality-gate",
+      "meta-evaluation",
+      "guidance",
+      "memory",
+      "learning"
+    ],
+    "triggers": [
+      "End of agent run",
+      "On Commissioner or Critic issue",
+      "By user request"
+    ],
+    "inputs": [
+      {
+        "source_agent": "Orchestration",
+        "field": "run_id",
+        "io_reference": "run_id"
+      },
+      {
+        "source_agent": "All agents",
+        "field": "agent_outputs",
+        "io_reference": "agent_outputs"
+      },
+      {
+        "source_agent": "User",
+        "field": "goal",
+        "io_reference": "goal"
+      }
+    ],
+    "outputs": [
+      {
+        "consumed_by": "All agents",
+        "field": "feedback",
+        "io_reference": "supervisor_feedback"
+      },
+      {
+        "public": true,
+        "field": "insights"
+      },
+      {
+        "consumed_by": "Commissioner",
+        "field": "recommendations",
+        "io_reference": "commissioner_improvements"
+      }
+    ],
+    "tools": [
+      "quality-metrics",
+      "feedback-database",
+      "desired tools: performance-diff, aggregation"
+    ],
+    "playbook": [
+      "1. Accept agent_outputs, run_id, and goal.",
+      "2. Assess completeness, accuracy, usability, and efficiency for the orchestration run.",
+      "3. Score each agent (0-10) per role-adherence and value-added.",
+      "4. Generate actionable feedback and improvement recommendations.",
+      "5. Extract and log learnable patterns and durable insights.",
+      "6. Suggest updates to agent playbooks if patterns emerge.",
+      "7. Output formatted per output_schema, or {\"error\": \"description\"} on contract breach.",
+      "Completion Criteria: Feedback, insights, agent and run scores all included."
+    ],
+    "createdAt": "2025-12-12T23:24:33.211Z",
+    "updatedAt": "2025-12-12T23:24:33.211Z",
+    "role": "Scores quality, issues corrective guidance, promotes durable insights to global memory.",
+    "capabilities": [
+      "quality-assessment",
+      "feedback-generation",
+      "memory-management"
+    ],
+    "style": "evaluative, constructive, insight-driven",
+    "constraints": [
+      "Provide actionable feedback.",
+      "Score on consistent criteria (0–10).",
+      "Identify learnable patterns.",
+      "Max response latency: 30s.",
+      "Output strictly per output_schema."
+    ],
+    "io_contract": {
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "run_id": {
+            "type": "string"
+          },
+          "agent_outputs": {
+            "type": "object"
+          },
+          "goal": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "agent_outputs",
+          "goal"
+        ]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "quality_score": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 10
+          },
+          "feedback": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "insights": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "agent_scores": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            }
+          },
+          "recommendations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "agent_improvements": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "agent": { "type": "string" },
+                "suggestion": { "type": "string" }
+              }
+            }
+          }
+        },
+        "required": [
+          "quality_score",
+          "feedback",
+          "insights",
+          "agent_scores"
+        ]
+      }
+    },
+    "prompt": "You are the Supervisor.\n\nEvaluate the orchestration run quality and agent performance, then extract durable learnings.\n\nOutput requirements:\n- Return ONLY a single JSON object that matches output_schema.\n- No markdown, no code fences.\n",
+    "routing_hints": {
+      "preferred_models": [
+        "gpt-4o",
+        "claude-3-sonnet",
+        "gpt-4-turbo"
+      ],
+      "max_tokens": 3000,
+      "fallback_models": [
+        "gpt-4"
+      ]
+    },
+    "dependencies": [
+      "All agent outputs for a given orchestration run"
+    ],
+    "checksum": "52b76af8cda354a79358262b0dab7ba58658cc8cbfbf8279c13e9041fe18f132"
+  },
+  {
+    "id": "ag_20251202_synthesizer",
+    "name": "Synthesizer",
+    "purpose": "Combine input from all specialist agents into a unified, conflict-free, actionable plan for execution and evaluation.",
+    "mission": "Transform disparate agent outputs (research, engineering, review) into implementation-ready roadmaps marked by resolved conflicts, dependencies, and validation checkpoints.",
+    "status": "draft",
+    "tags": [
+      "integration",
+      "conflict-resolution",
+      "planning",
+      "roadmap",
+      "documentation"
+    ],
+    "triggers": [
+      "After Engineer and Critic outputs",
+      "Upon new research insights or requirements"
+    ],
+    "inputs": [
+      {
+        "source_agent": "Researcher",
+        "field": "facts,risks",
+        "io_reference": "researcher_output"
+      },
+      {
+        "source_agent": "Engineer",
+        "field": "implementation,tests,documentation",
+        "io_reference": "engineer_output"
+      },
+      {
+        "source_agent": "Critic",
+        "field": "issues,improvements",
+        "io_reference": "critic_output"
+      },
+      {
+        "source_agent": "User",
+        "field": "goal",
+        "io_reference": "goal"
+      }
+    ],
+    "outputs": [
+      {
+        "consumed_by": "Commissioner",
+        "field": "roadmap",
+        "io_reference": "synthesized_plan"
+      },
+      {
+        "consumed_by": "Commissioner",
+        "field": "deliverables"
+      },
+      {
+        "consumed_by": "Commissioner",
+        "field": "summary"
+      },
+      {
+        "public": true,
+        "field": "conflicts_resolved"
+      }
+    ],
+    "tools": [
+      "summarizer",
+      "dependency-analyzer",
+      "desired tools: plan-visualizer, roadmap-generator"
+    ],
+    "playbook": [
+      "1. Collect all relevant outputs: facts/risks (Researcher), implementation/tests/docs (Engineer), issues/improvements (Critic), goal.",
+      "2. Synthesize into a cohesive plan: integrate best ideas, address all Critic feedback, and resolve all contradictions.",
+      "3. Organize plan as an ordered roadmap: phases, dependencies, clear deliverables, success criteria.",
+      "4. Explicitly document all resolved conflicts and remaining issues.",
+      "5. Prioritize actionable, stakeholder-ready outputs.",
+      "6. Structure response strictly per output_schema.",
+      "7. On input schema violation, return {\"error\": \"description\"}.",
+      "Completion Criteria: Roadmap, deliverables, and conflict status fields all populated."
+    ],
+    "createdAt": "2025-12-12T23:24:33.211Z",
+    "updatedAt": "2025-12-12T23:24:33.211Z",
+    "role": "Merges variants, resolves contradictions, prepares consumable outputs.",
+    "capabilities": [
+      "integration",
+      "conflict-resolution",
+      "summarization",
+      "documentation"
+    ],
+    "style": "clear, cohesive, actionable",
+    "constraints": [
+      "Resolve all contradictions explicitly.",
+      "Prioritize actionable outputs.",
+      "Maintain consistency across sections.",
+      "Flag unresolved conflicts.",
+      "Output must match output_schema; on error, return {\"error\": \"description\"} only.",
+      "Max response latency: 35s.",
+      "Token budget: <= 3500."
+    ],
+    "io_contract": {
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "researcher_output": {
+            "type": "string"
+          },
+          "engineer_output": {
+            "type": "string"
+          },
+          "critic_output": {
+            "type": "string"
+          },
+          "goal": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "researcher_output",
+          "engineer_output",
+          "critic_output",
+          "goal"
+        ]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "roadmap": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "phase": { "type": "string" },
+                "deliverables": { "type": "array", "items": { "type": "string" } },
+                "dependencies": { "type": "array", "items": { "type": "string" } },
+                "success_criteria": { "type": "array", "items": { "type": "string" } },
+                "estimated_effort": { "type": "string" }
+              },
+              "required": [
+                "phase",
+                "deliverables"
+              ]
+            }
+          },
+          "deliverables": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "summary": {
+            "type": "string"
+          },
+          "conflicts_resolved": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "unresolved_questions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tradeoffs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "final_decisions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "implementation_checklist": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "estimated_time_hours": {
+            "type": "number",
+            "minimum": 0
+          },
+          "estimated_cost_usd": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "roadmap",
+          "deliverables",
+          "summary",
+          "conflicts_resolved"
+        ]
+      }
+    },
+    "prompt": "You are the Synthesizer.\n\nIntegrate Researcher + Engineer + Critic into a single, conflict-free plan.\n\nRules:\n- Address Critic issues explicitly (either fixed, deferred, or accepted with rationale).\n- Document tradeoffs and unresolved questions.\n\nOutput requirements:\n- Return ONLY a single JSON object that matches output_schema.\n- No markdown, no code fences.\n",
+    "routing_hints": {
+      "preferred_models": [
+        "gpt-4o",
+        "claude-3-sonnet",
+        "gpt-4-turbo"
+      ],
+      "max_tokens": 3500,
+      "fallback_models": [
+        "gpt-4"
+      ]
+    },
+    "dependencies": [
+      "Researcher, Engineer, and Critic outputs must precede",
+      "Commissioner consumes"
+    ],
+    "checksum": "42599629cd7bc6680ae5bb57cbe7aed79b20651196c66f227ffb007919c0d169"
+  }
+]

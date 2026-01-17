@@ -1,0 +1,75 @@
+{
+  "cases": [
+    {
+      "case_id": "case_001_simple_api",
+      "goal": "Build a simple REST API for managing tasks with create, read, update, delete operations.",
+      "expected_outcomes": [
+        "API endpoints created",
+        "Basic CRUD operations work",
+        "Valid response formats",
+        "No critical security issues"
+      ],
+      "context": {
+        "preferred_language": "Python",
+        "framework": "FastAPI"
+      }
+    },
+    {
+      "case_id": "case_002_react_app",
+      "goal": "Create a React application with a list view and detail view for displaying items from an API.",
+      "expected_outcomes": [
+        "React app structure created",
+        "Components render without errors",
+        "API integration works",
+        "Basic styling applied"
+      ],
+      "context": {
+        "framework": "React",
+        "state_management": "hooks"
+      }
+    },
+    {
+      "case_id": "case_003_full_stack",
+      "goal": "Build a full-stack application with a Node.js backend API and React frontend for a simple blog.",
+      "expected_outcomes": [
+        "Frontend and backend created",
+        "Stack consistency maintained",
+        "API and frontend integrated",
+        "Docker compose configuration valid"
+      ],
+      "context": {
+        "frontend": "React",
+        "backend": "Node.js/Express",
+        "db": "PostgreSQL"
+      }
+    },
+    {
+      "case_id": "case_004_data_pipeline",
+      "goal": "Design a Python data pipeline that reads CSV files, processes data, and outputs JSON summaries.",
+      "expected_outcomes": [
+        "Pipeline script created",
+        "Data validation included",
+        "Error handling implemented",
+        "Output format is valid JSON"
+      ],
+      "context": {
+        "language": "Python",
+        "libraries": ["pandas"]
+      }
+    },
+    {
+      "case_id": "case_005_auth_system",
+      "goal": "Implement a JWT-based authentication system with login, logout, and protected routes.",
+      "expected_outcomes": [
+        "Auth endpoints created",
+        "JWT generation and validation works",
+        "Protected routes enforce authentication",
+        "No obvious security vulnerabilities"
+      ],
+      "context": {
+        "auth_method": "JWT",
+        "backend": "Python/FastAPI"
+      }
+    }
+  ]
+}

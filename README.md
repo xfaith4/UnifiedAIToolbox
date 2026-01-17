@@ -59,7 +59,7 @@ For Codex-driven changes, keep the loop short and local:
 - **Telemetry**: JSONL-based event tracking and monitoring
 - **Webhook Support**: GitHub webhook integration for automated orchestration
 
-### 📊 Orchestrator Decision Logging
+### 📊 Orchestrator Decision Logging & PromptOps
 
 The toolbox includes deterministic, machine-readable tracing for orchestration runs:
 
@@ -76,10 +76,33 @@ The toolbox includes deterministic, machine-readable tracing for orchestration r
 - `steps.jsonl` - Agent execution trace (one JSON object per line)
 - `decisions.jsonl` - Decision history
 - `conflicts.jsonl` - Conflict resolution log
+- `stack_lock.json` - Locked technology stack (frontend, backend, db)
 - `artifacts.json` - Manifest of generated files
 - `verification.json` - Build/test results (if verification was run)
 
-See [Orchestrator Logging Guide](docs/ORCHESTRATOR_LOGGING.md) for details on interpreting logs.
+### 🔄 PromptOps: Closed-Loop Prompt Improvement
+
+**NEW**: Automatic prompt improvement with gated deployment:
+
+- **Post-Run Review**: Analyzes run traces and proposes structured patches to fix schema failures, stack drift, and output issues
+- **Prompt Versioning**: Treats prompts as code with immutable versions, changelog, and atomic activation
+- **Stack Validator**: Prevents incoherent technology combinations (e.g., Vue when React is locked)
+- **Gated Auto-Apply**: CI-style validation gates (schema validity, output format, schema drift detection)
+- **Risk-Based Deployment**: Auto-applies low-risk changes; requires approval for medium/high risk
+
+**Usage**:
+```powershell
+# Review most recent orchestration run
+.\scripts\Run-PromptOpsReview.ps1
+
+# Create candidate library and auto-apply if safe
+.\scripts\Run-PromptOpsReview.ps1 -CreateCandidate -AutoApply
+
+# Manually approve a candidate
+.\scripts\Approve-PromptCandidate.ps1 -CandidatePath "prompts/candidates/candidate_*.json"
+```
+
+See [PromptOps Guide](docs/PROMPTOPS.md) for complete documentation.
 
 ## 🎬 Demo
 
@@ -267,6 +290,12 @@ UnifiedAIToolbox/
 ├── data/
 │   ├── prompts/                          # YAML prompt definitions
 │   └── agents/                           # Agent configurations
+├── prompts/                              # PromptOps versioned prompt library
+│   ├── agent-library.active.json         # Active agent library
+│   ├── versions/                         # Immutable version history
+│   ├── candidates/                       # Pending candidates for approval
+│   ├── changelog.md                      # Version changelog
+│   └── evals/                            # Evaluation test cases
 ├── docs/                                 # Documentation
 │   └── help/                             # User guides
 ├── scripts/                              # Orchestration and utility scripts
@@ -292,6 +321,7 @@ UnifiedAIToolbox/
 
 ### Operations & Monitoring
 - **[Orchestration Run Tracking](docs/ORCHESTRATION_RUN_TRACKING.md)** - Run tracking with cost analytics
+- **[PromptOps Guide](docs/PROMPTOPS.md)** - 🔥 **NEW!** Closed-loop prompt improvement system
 - **[Quality & Outcome Tracking](docs/QUALITY_TRACKING.md)** - Success rates and quality scores
 - **[Telemetry & AI Insights](docs/TELEMETRY_AND_AI_INSIGHTS.md)** - Usage metrics and analysis
 - **[Alerting System](docs/ALERTING_SYSTEM.md)** - Configure and monitor alerts
