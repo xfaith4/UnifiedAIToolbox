@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 # Import orchestrator logging utilities
 try:
-    from orchestrator_logger import OrchestratorLogger, compute_prompt_hash, detect_stacks
+    from orchestrator_logger import OrchestratorLogger, compute_prompt_hash, detect_stacks, compute_file_hash
     from orchestrator_verifier import OrchestratorVerifier
     ORCHESTRATOR_LOGGING_AVAILABLE = True
 except ImportError:
@@ -2909,7 +2909,6 @@ def orchestrate_run(req: OrchestrationRequest):
                         for file_path in out_dir.rglob("*"):
                             if file_path.is_file() and file_path.name not in ["run.json", "steps.jsonl", "decisions.jsonl", "conflicts.jsonl"]:
                                 try:
-                                    from orchestrator_logger import compute_file_hash
                                     generated_files.append({
                                         "path": str(file_path.relative_to(out_dir)),
                                         "sha256": compute_file_hash(file_path),

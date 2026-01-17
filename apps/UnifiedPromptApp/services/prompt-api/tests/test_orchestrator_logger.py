@@ -76,7 +76,7 @@ class TestSecretRedaction:
         assert result == ''
     
     def test_redact_none(self):
-        """Test redaction of None."""
+        """Test redaction of None returns None."""
         result = redact_secrets(None)
         assert result is None
 

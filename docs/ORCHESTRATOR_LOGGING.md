@@ -353,9 +353,10 @@ run_id = response.json()["run_id"]
 
 ### No logs generated
 
-- Check that `ORCHESTRATOR_LOGGING_AVAILABLE = True` in app.py
-- Verify that orchestrator_logger.py is in the Python path
-- Check application logs for import errors
+- Check application logs for import errors when the server starts
+- Verify that orchestrator_logger.py and orchestrator_schemas.py are in the correct directory
+- Ensure all dependencies (pydantic, etc.) are installed
+- Check that the artifacts directory has write permissions
 
 ### Secrets not redacted
 

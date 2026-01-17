@@ -53,15 +53,15 @@ SECRET_PATTERNS = [
 ]
 
 
-def redact_secrets(text: str) -> str:
+def redact_secrets(text: Optional[str]) -> Optional[str]:
     """
     Redact common secret patterns from text.
     
     Args:
-        text: Input text that may contain secrets
+        text: Input text that may contain secrets (or None)
         
     Returns:
-        Text with secrets replaced by [REDACTED]
+        Text with secrets replaced by [REDACTED], or None if input is None
     """
     if not text:
         return text
