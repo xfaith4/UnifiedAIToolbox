@@ -22,6 +22,15 @@ from auth_github import ensure_github_token
 # Configure logging at module level
 logger = logging.getLogger(__name__)
 
+# Import orchestrator logging utilities
+try:
+    from orchestrator_logger import OrchestratorLogger, compute_prompt_hash, detect_stacks
+    from orchestrator_verifier import OrchestratorVerifier
+    ORCHESTRATOR_LOGGING_AVAILABLE = True
+except ImportError:
+    ORCHESTRATOR_LOGGING_AVAILABLE = False
+    logger.warning("Orchestrator logging modules not available")
+
 # Import migrations module
 try:
     from migrations import apply_migrations
@@ -2627,6 +2636,32 @@ def orchestrate_run(req: OrchestrationRequest):
     log_path = BRIDGE_RUN_DIR / f"{run_id}.log"
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    # Initialize orchestrator logger if available
+    orch_logger = None
+    if ORCHESTRATOR_LOGGING_AVAILABLE:
+        try:
+            artifacts_root = ROOT_DIR / "artifacts"
+            orch_logger = OrchestratorLogger(artifacts_root, run_id=run_id)
+            
+            # Log run metadata
+            prompt_library_hash = compute_prompt_hash(str(PROMPT_SYNC_FILE.read_text() if PROMPT_SYNC_FILE.exists() else ""))
+            orch_logger.log_run_metadata(
+                orchestrator_version="1.5.0",
+                prompt_library_hash=prompt_library_hash,
+                user_goal=req.goal or req.prompt_id or "Orchestration run",
+                context_payload={
+                    "prompt_id": req.prompt_id,
+                    "model": req.model or DEFAULT_MODEL,
+                    "run_mode": req.run_mode or "default",
+                    "repo_root": req.repo_root or REPO_ROOT_DEFAULT,
+                    "agents": req.agents or [],
+                },
+                definition_of_done=["Complete orchestration execution", "Generate artifacts", "Log final synthesis"],
+            )
+        except Exception as e:
+            logger.warning(f"Failed to initialize orchestrator logger: {e}")
+            orch_logger = None
+
     manifest = {
         "run_id": run_id,
         "prompt_id": req.prompt_id,
@@ -2702,6 +2737,24 @@ def orchestrate_run(req: OrchestrationRequest):
                         "message": rec.get("status") or "",
                     }
                 )
+                
+                # Log agent step if orchestrator logger is available
+                if orch_logger and rec.get("agent"):
+                    try:
+                        step_id = f"{run_id}_step_{processed + line_num}"
+                        orch_logger.log_step(
+                            step_id=step_id,
+                            agent_id=rec.get("agent", "unknown"),
+                            model=manifest.get("model", DEFAULT_MODEL),
+                            prompt_text=rec.get("prompt", ""),
+                            input_payload={"status": rec.get("status"), "timestamp": rec.get("timestamp")},
+                            raw_output=rec.get("output", ""),
+                            parsed_output=rec if isinstance(rec, dict) else None,
+                            timing_ms=rec.get("duration_ms"),
+                        )
+                    except Exception as log_err:
+                        logger.warning(f"Failed to log step: {log_err}")
+                
             except json.JSONDecodeError as e:
                 print(f"[orchestrate] Invalid JSON in {status_file} at line {line_num}: {e.msg} - Content: {line[:100]}", file=sys.stderr)
                 continue
@@ -2715,6 +2768,8 @@ def orchestrate_run(req: OrchestrationRequest):
         return processed
 
     def _execute(path: pathlib.Path, manifest: Dict[str, Any]):
+        nonlocal orch_logger
+        start_time = time.time()
         try:
             data = safe_json_load(path, context=f"execute_start:{run_id}")
             data["status"] = "running"
@@ -2844,6 +2899,56 @@ def orchestrate_run(req: OrchestrationRequest):
             data["completed_at"] = now_iso()
             data.setdefault("events", []).append({"ts": data["completed_at"], "type": "status", "message": "completed"})
             path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            
+            # Log artifact manifest and run verification if logger is available
+            if orch_logger:
+                try:
+                    # Collect generated files
+                    generated_files = []
+                    if out_dir.exists():
+                        for file_path in out_dir.rglob("*"):
+                            if file_path.is_file() and file_path.name not in ["run.json", "steps.jsonl", "decisions.jsonl", "conflicts.jsonl"]:
+                                try:
+                                    from orchestrator_logger import compute_file_hash
+                                    generated_files.append({
+                                        "path": str(file_path.relative_to(out_dir)),
+                                        "sha256": compute_file_hash(file_path),
+                                        "size_bytes": file_path.stat().st_size,
+                                    })
+                                except Exception:
+                                    pass
+                    
+                    # Detect stacks
+                    detected = detect_stacks(out_dir)
+                    
+                    # Find entrypoints
+                    entrypoints = []
+                    for common_entry in ["main.py", "index.js", "app.py", "server.js", "index.html"]:
+                        if (out_dir / common_entry).exists():
+                            entrypoints.append(common_entry)
+                    
+                    # Log artifact manifest
+                    orch_logger.log_artifact_manifest(
+                        files=generated_files,
+                        detected_stacks=detected,
+                        entrypoints_found=entrypoints,
+                        warnings=[],
+                    )
+                    
+                    # Run verification (optional)
+                    try:
+                        verifier = OrchestratorVerifier(out_dir)
+                        verification_results = verifier.run_all_verifications()
+                        orch_logger.log_verification(**verification_results)
+                    except Exception as verify_err:
+                        logger.warning(f"Verification failed: {verify_err}")
+                        
+                except Exception as log_err:
+                    logger.warning(f"Failed to log artifacts/verification: {log_err}")
+            
+            elapsed_ms = (time.time() - start_time) * 1000
+            logger.info(f"Orchestration run {run_id} completed in {elapsed_ms:.2f}ms")
+            
         except Exception as exc:
             error_detail = f"orchestrator failed: {exc}"
             print(f"[orchestrate] {error_detail}", file=sys.stderr)
