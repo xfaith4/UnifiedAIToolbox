@@ -360,6 +360,16 @@ class PromptGates:
         """
         Run evaluation suite.
         
+        NOTE: V1 IMPLEMENTATION LIMITATION
+        This is a placeholder implementation. In production, this should:
+        1. Spin up a test orchestrator with the candidate library
+        2. Execute each eval case's goal
+        3. Check outcomes against expected results
+        4. Return actual pass/fail results
+        
+        TODO: Implement live eval execution by integrating with orchestration engine
+        Tracking: Consider creating GitHub issue for this enhancement
+        
         Args:
             library: Candidate library
             
@@ -375,21 +385,15 @@ class PromptGates:
         results = []
         
         for case in cases:
-            # For now, we can't actually run the orchestrator in this context
-            # In a real implementation, this would:
-            # 1. Spin up a test orchestrator with the candidate library
-            # 2. Run the goal
-            # 3. Check outcomes
-            #
-            # For v1, we'll create placeholder results
-            # The actual implementation would integrate with the orchestrator
+            # PLACEHOLDER: Real implementation would run orchestrator
+            # For v1, mark as passed with warning in details
             
             result = EvalResult(
                 case_id=case.case_id,
                 passed=True,  # Placeholder
                 outcomes_met=case.expected_outcomes,
                 outcomes_failed=[],
-                details="Eval execution not implemented in v1 - manual verification required"
+                details="PLACEHOLDER: Eval execution not implemented in v1 - manual verification required"
             )
             results.append(result)
         

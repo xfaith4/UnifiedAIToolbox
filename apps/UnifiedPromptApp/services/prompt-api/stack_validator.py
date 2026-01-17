@@ -19,6 +19,20 @@ from pydantic import BaseModel, Field
 logger = logging.getLogger(__name__)
 
 
+# Frontend file extension patterns for detection
+FRONTEND_PATTERNS = {
+    'vue': ['.vue'],
+    'react': ['.jsx', '.tsx'],
+    'angular': ['.component.ts', '.component.html']
+}
+
+# Backend file patterns for detection
+BACKEND_PATTERNS = {
+    'python': ['app.py', 'main.py', 'wsgi.py', 'asgi.py'],
+    'nodejs': ['server.js', 'app.js', 'index.js']
+}
+
+
 class StackLock(BaseModel):
     """Stack lock definition for a run."""
     run_id: str = Field(..., description="Associated run ID")
@@ -208,7 +222,7 @@ class StackValidator:
         violations = []
         
         # Vue files when React/Next.js is locked
-        if expected_frontend.lower() in ["react", "next.js"] and artifact_name.endswith(".vue"):
+        if expected_frontend.lower() in ["react", "next.js"] and artifact_name.endswith(tuple(FRONTEND_PATTERNS['vue'])):
             violations.append(StackViolation(
                 artifact_path=str(artifact_path),
                 violation_type="frontend_mismatch",
@@ -218,7 +232,7 @@ class StackValidator:
             ))
         
         # React/JSX files when Vue is locked
-        if expected_frontend.lower() == "vue" and (artifact_name.endswith(".jsx") or artifact_name.endswith(".tsx")):
+        if expected_frontend.lower() == "vue" and artifact_name.endswith(tuple(FRONTEND_PATTERNS['react'])):
             if "from 'react'" in content or 'from "react"' in content:
                 violations.append(StackViolation(
                     artifact_path=str(artifact_path),
@@ -229,12 +243,12 @@ class StackValidator:
                 ))
         
         # Angular files when React/Vue is locked
-        if expected_frontend.lower() in ["react", "vue"] and artifact_name.endswith(".component.ts"):
+        if expected_frontend.lower() in ["react", "vue"] and any(artifact_name.endswith(ext) for ext in FRONTEND_PATTERNS['angular']):
             violations.append(StackViolation(
                 artifact_path=str(artifact_path),
                 violation_type="frontend_mismatch",
                 expected=expected_frontend,
-                actual="Angular (detected .component.ts file)",
+                actual="Angular (detected Angular component)",
                 severity="critical"
             ))
         
@@ -252,7 +266,7 @@ class StackValidator:
         
         # Flask/Django when Node.js is locked
         if "node" in expected_backend.lower() or "express" in expected_backend.lower():
-            if artifact_name in ["app.py", "wsgi.py", "asgi.py"]:
+            if artifact_name in BACKEND_PATTERNS['python']:
                 if "flask" in content.lower() or "django" in content.lower() or "fastapi" in content.lower():
                     violations.append(StackViolation(
                         artifact_path=str(artifact_path),
@@ -264,7 +278,7 @@ class StackValidator:
         
         # Node.js when Python is locked
         if "python" in expected_backend.lower():
-            if artifact_name in ["server.js", "index.js", "app.js"]:
+            if artifact_name in BACKEND_PATTERNS['nodejs']:
                 if "express" in content.lower() or "require(" in content or 'from "express"' in content:
                     violations.append(StackViolation(
                         artifact_path=str(artifact_path),
