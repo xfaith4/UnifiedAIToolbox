@@ -1,0 +1,580 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Orchestration Contract Demo</title>
+  <style>
+    :root { --bg:#0b0f14; --card:#121924; --muted:#8aa0b7; --text:#e7f0ff; --line:#223044; --accent:#78a6ff; --bad:#ff6b6b; --ok:#49d17c; }
+    * { box-sizing: border-box; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; }
+    body { margin:0; background:var(--bg); color:var(--text); }
+    .wrap { max-width: 1100px; margin: 24px auto; padding: 0 16px; }
+    h1 { font-size: 20px; margin: 0 0 10px; }
+    .grid { display:grid; grid-template-columns: 1.1fr .9fr; gap: 14px; }
+    @media (max-width: 980px) { .grid { grid-template-columns: 1fr; } }
+    .card { background:var(--card); border:1px solid var(--line); border-radius: 14px; padding: 14px; }
+    .muted { color: var(--muted); font-size: 13px; line-height: 1.4; }
+    label { display:block; margin: 12px 0 6px; font-size: 13px; color: var(--muted); }
+    input[type="text"], textarea, select {
+      width: 100%; padding: 10px 10px; border-radius: 10px; border: 1px solid var(--line);
+      background: #0f1520; color: var(--text); outline: none;
+    }
+    textarea { min-height: 110px; resize: vertical; }
+    .row { display:flex; gap: 10px; flex-wrap: wrap; }
+    .row > div { flex: 1 1 190px; }
+    .checks { display:flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+    .check { display:flex; gap: 8px; align-items:center; padding: 8px 10px; border:1px solid var(--line); border-radius: 999px; background: #0f1520; }
+    .check input { accent-color: var(--accent); }
+    .btns { display:flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+    button {
+      border: 1px solid var(--line); background: #0f1520; color: var(--text); padding: 10px 12px;
+      border-radius: 12px; cursor: pointer;
+    }
+    button.primary { border-color: transparent; background: var(--accent); color:#06101f; font-weight: 700; }
+    button.danger { border-color: transparent; background: var(--bad); color:#200; font-weight: 700; }
+    button:disabled { opacity: .5; cursor:not-allowed; }
+    .pill { display:inline-flex; align-items:center; gap: 8px; padding: 6px 10px; border-radius: 999px; border:1px solid var(--line); background:#0f1520; font-size: 12px; color: var(--muted); }
+    .pill .dot { width: 9px; height: 9px; border-radius: 99px; background: var(--muted); }
+    .pill.ok .dot { background: var(--ok); }
+    .pill.bad .dot { background: var(--bad); }
+    .step { border-top:1px solid var(--line); padding-top: 12px; margin-top: 12px; }
+    .step h3 { margin: 0 0 8px; font-size: 14px; }
+    .timeline { display:flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 0; }
+    .t { padding: 7px 10px; border: 1px solid var(--line); border-radius: 999px; font-size: 12px; color: var(--muted); background:#0f1520; }
+    .t.active { color: var(--text); border-color: var(--accent); }
+    .t.done { color:#bfe8cc; border-color: rgba(73,209,124,.4); }
+    .t.skipped { color:#ffd1d1; border-color: rgba(255,107,107,.35); }
+    pre {
+      margin: 0; padding: 12px; border-radius: 12px; border: 1px solid var(--line);
+      background: #0a0f18; overflow:auto; max-height: 420px;
+      font-size: 12px; line-height: 1.4;
+    }
+    .mini { font-size: 12px; color: var(--muted); }
+    .warn { color: #ffd18a; }
+    .ok { color: #bfe8cc; }
+    .bad { color: #ffd1d1; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Orchestration Contract Demo</h1>
+    <div class="muted">A tiny, deterministic workflow: Intake → (Clarify?) → Plan → Retrieve? → Draft → Critique → Verify? → Finalize → Manifest.</div>
+
+    <div class="grid" style="margin-top:14px;">
+      <div class="card">
+        <div class="row">
+          <div>
+            <label>High-level request</label>
+            <textarea id="task" placeholder="e.g., 'Summarize our incident report and propose remediation steps.'"></textarea>
+          </div>
+        </div>
+
+        <div class="row">
+          <div>
+            <label>Output type</label>
+            <select id="outputType">
+              <option value="analysis">Analysis</option>
+              <option value="doc">Doc / Write-up</option>
+              <option value="code">Code</option>
+              <option value="config">Config / YAML / JSON</option>
+              <option value="email">Email</option>
+              <option value="creative">Creative</option>
+            </select>
+          </div>
+          <div>
+            <label>Audience</label>
+            <select id="audience">
+              <option value="">(choose)</option>
+              <option value="engineer">Engineer</option>
+              <option value="exec">Executive</option>
+              <option value="customer">Customer</option>
+              <option value="internal">Internal team</option>
+            </select>
+          </div>
+          <div>
+            <label>Risk if wrong</label>
+            <select id="risk">
+              <option value="low">Low</option>
+              <option value="med">Medium</option>
+              <option value="high">High</option>
+            </select>
+          </div>
+        </div>
+
+        <label>Success criteria (one sentence)</label>
+        <input id="success" type="text" placeholder="e.g., 'Provide a 1-page summary with 5 actionable remediation steps.'" />
+
+        <div class="checks">
+          <div class="check"><input id="hasSources" type="checkbox" /><span class="mini">I have authoritative sources (docs/logs/links)</span></div>
+          <div class="check"><input id="allowWeb" type="checkbox" /><span class="mini">Allow web retrieval (if no sources)</span></div>
+          <div class="check"><input id="strictMode" type="checkbox" checked /><span class="mini">Strict contract mode (reject missing gates)</span></div>
+        </div>
+
+        <div class="btns">
+          <button class="primary" id="start">Start Orchestration</button>
+          <button id="reset">Reset</button>
+        </div>
+
+        <div class="step">
+          <h3>Clarification Dialog (appears only if gates trigger)</h3>
+          <div id="clarifyBox" class="muted">No questions yet.</div>
+          <div id="clarifyInputs"></div>
+          <div class="btns">
+            <button id="continue" disabled>Continue</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+          <div class="pill" id="statusPill"><span class="dot"></span><span id="statusText">Idle</span></div>
+          <div class="pill" id="gatePill"><span class="dot"></span><span id="gateText">Gates: unknown</span></div>
+        </div>
+
+        <div class="timeline" id="timeline"></div>
+
+        <div class="step">
+          <h3>Run Log (simulated)</h3>
+          <pre id="log"></pre>
+        </div>
+
+        <div class="step">
+          <h3>Run Manifest (machine-checkable)</h3>
+          <pre id="manifest"></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  // --- Deterministic phases ---
+  const PHASES = ["intake","clarify","plan","retrieve","draft","critique","verify","finalize","log"];
+  const $ = (id) => document.getElementById(id);
+
+  // --- Simple "policy as code" rules ---
+  function needsClarification(intake) {
+    // Trigger clarification only when something *material* is missing or risk is high.
+    const missing = [];
+    if (!intake.task?.trim()) missing.push("task");
+    if (!intake.audience) missing.push("audience");
+    if (!intake.success?.trim()) missing.push("success");
+
+    const highStakes = intake.risk === "high";
+    const ambiguous = intake.task && intake.task.trim().length < 20; // toy heuristic
+
+    // Clarify if missing required fields, or high risk, or too-short task implies ambiguity.
+    return { needed: missing.length > 0 || highStakes || ambiguous, missing, highStakes, ambiguous };
+  }
+
+  function needsRetrieval(intake) {
+    // If the output is factual-ish, retrieval helps. Creative doesn't *require* it.
+    const factualish = ["analysis","doc","email","config","code"].includes(intake.outputType);
+    return factualish;
+  }
+
+  function needsVerification(intake) {
+    // Code/config should be verified; analysis/doc optional.
+    return ["code","config"].includes(intake.outputType);
+  }
+
+  function strictGateFailures(intake) {
+    // In strict mode, missing task/audience/success blocks progression.
+    const failures = [];
+    if (!intake.task?.trim()) failures.push("Missing task");
+    if (!intake.audience) failures.push("Missing audience");
+    if (!intake.success?.trim()) failures.push("Missing success criteria");
+    return failures;
+  }
+
+  // --- UI helpers ---
+  function setStatus(type, text) {
+    const pill = $("statusPill");
+    pill.classList.remove("ok","bad");
+    if (type === "ok") pill.classList.add("ok");
+    if (type === "bad") pill.classList.add("bad");
+    $("statusText").textContent = text;
+  }
+
+  function setGateStatus(type, text) {
+    const pill = $("gatePill");
+    pill.classList.remove("ok","bad");
+    if (type === "ok") pill.classList.add("ok");
+    if (type === "bad") pill.classList.add("bad");
+    $("gateText").textContent = text;
+  }
+
+  function renderTimeline(state) {
+    const el = $("timeline");
+    el.innerHTML = "";
+    for (const p of PHASES) {
+      const tag = document.createElement("div");
+      tag.className = "t";
+      tag.textContent = p;
+      if (state.active === p) tag.classList.add("active");
+      if (state.done.has(p)) tag.classList.add("done");
+      if (state.skipped.has(p)) tag.classList.add("skipped");
+      el.appendChild(tag);
+    }
+  }
+
+  function logLine(s) {
+    const box = $("log");
+    box.textContent += s + "\n";
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function pretty(obj) { return JSON.stringify(obj, null, 2); }
+
+  function intakeFromUI() {
+    return {
+      task: $("task").value,
+      outputType: $("outputType").value,
+      audience: $("audience").value,
+      risk: $("risk").value,
+      success: $("success").value,
+      hasSources: $("hasSources").checked,
+      allowWeb: $("allowWeb").checked,
+      strictMode: $("strictMode").checked
+    };
+  }
+
+  // --- Clarification dialog generation (rule-based, minimal) ---
+  function buildClarifyQuestions(intake, clarifyMeta) {
+    const qs = [];
+
+    if (clarifyMeta.missing.includes("task")) {
+      qs.push({ id:"q_task", label:"Describe the task in 1–3 sentences (what, why, constraints).", placeholder:"..." });
+    }
+    if (clarifyMeta.missing.includes("audience")) {
+      qs.push({ id:"q_audience", label:"Who is the audience? (engineer/exec/customer/internal)", placeholder:"engineer" });
+    }
+    if (clarifyMeta.missing.includes("success")) {
+      qs.push({ id:"q_success", label:"Define success criteria in one sentence.", placeholder:"..." });
+    }
+
+    if (clarifyMeta.highStakes) {
+      qs.push({ id:"q_stakes", label:"What’s the consequence if this is wrong? (1 sentence)", placeholder:"..." });
+      qs.push({ id:"q_constraints", label:"Any hard constraints? (sources-only, time window, format, length)", placeholder:"..." });
+    }
+
+    if (clarifyMeta.ambiguous && !clarifyMeta.missing.includes("task")) {
+      qs.push({ id:"q_scope", label:"Clarify scope: what’s in vs out? (quick bullets ok)", placeholder:"In: ... | Out: ..." });
+    }
+
+    if (!intake.hasSources && needsRetrieval(intake)) {
+      qs.push({ id:"q_sources", label:"Do you have any sources to attach/link? If not, should we proceed as 'unverified best-effort'?", placeholder:"Proceed unverified / I will add sources" });
+    }
+
+    if (needsVerification(intake)) {
+      qs.push({ id:"q_verify", label:"What verification is acceptable? (lint/tests/schema validate/sample run)", placeholder:"lint + schema validate" });
+    }
+
+    return qs;
+  }
+
+  function renderClarifyDialog(qs) {
+    const box = $("clarifyBox");
+    const inputs = $("clarifyInputs");
+    inputs.innerHTML = "";
+
+    if (!qs.length) {
+      box.textContent = "No clarification needed. Gates allow orchestration to proceed.";
+      $("continue").disabled = true;
+      return;
+    }
+
+    box.innerHTML = `<div class="warn">Gates triggered. Please answer the minimal questions below.</div>`;
+    for (const q of qs) {
+      const wrap = document.createElement("div");
+      wrap.style.marginTop = "10px";
+      wrap.innerHTML = `
+        <label>${q.label}</label>
+        <input type="text" id="${q.id}" placeholder="${q.placeholder}" />
+      `;
+      inputs.appendChild(wrap);
+    }
+
+    const validate = () => {
+      const allFilled = qs.every(q => (document.getElementById(q.id).value || "").trim().length > 0);
+      $("continue").disabled = !allFilled;
+    };
+    inputs.addEventListener("input", validate, { once:false });
+    validate();
+  }
+
+  function collectClarifyAnswers(qs) {
+    const a = {};
+    for (const q of qs) a[q.id] = (document.getElementById(q.id).value || "").trim();
+    return a;
+  }
+
+  // --- Orchestrator state machine ---
+  function newState() {
+    return {
+      active: null,
+      done: new Set(),
+      skipped: new Set(),
+      manifest: {
+        mode: "standard",
+        task_type: null,
+        audience: null,
+        output_type: null,
+        risk: null,
+        success_criteria: null,
+        assumptions: [],
+        sources_used: [],
+        phases_executed: [],
+        skipped_phases: [],
+        notes: []
+      }
+    };
+  }
+
+  function phase(state, name) {
+    state.active = name;
+    renderTimeline(state);
+    state.manifest.phases_executed.push(name);
+  }
+
+  function complete(state, name) {
+    state.done.add(name);
+    state.active = null;
+    renderTimeline(state);
+  }
+
+  function skip(state, name, reason) {
+    state.skipped.add(name);
+    state.manifest.skipped_phases.push({ phase: name, reason });
+    renderTimeline(state);
+  }
+
+  function decideTaskType(intake) {
+    // toy mapping; real systems do better classification
+    if (["code","config"].includes(intake.outputType)) return "implementation";
+    if (intake.outputType === "creative") return "creative";
+    return "analysis";
+  }
+
+  function simulate(state, intake, clarifyAnswers) {
+    // Reset displays
+    $("log").textContent = "";
+    $("manifest").textContent = "";
+    setStatus("ok", "Running");
+    setGateStatus("", "Gates: evaluating…");
+
+    // --- INTAKE ---
+    phase(state, "intake");
+    logLine(`[intake] Capturing request + contract fields`);
+    state.manifest.mode = intake.risk === "high" ? "high-assurance" : "standard";
+    state.manifest.task_type = decideTaskType(intake);
+    state.manifest.audience = intake.audience || clarifyAnswers?.q_audience || null;
+    state.manifest.output_type = intake.outputType;
+    state.manifest.risk = intake.risk;
+    state.manifest.success_criteria = intake.success || clarifyAnswers?.q_success || null;
+
+    complete(state, "intake");
+
+    // --- CLARIFY (already done via UI if needed) ---
+    if (Object.keys(clarifyAnswers || {}).length) {
+      phase(state, "clarify");
+      logLine(`[clarify] Applied answers: ${Object.keys(clarifyAnswers).length} fields`);
+      // Record assumptions / constraints
+      if (clarifyAnswers.q_constraints) state.manifest.notes.push(`Constraints: ${clarifyAnswers.q_constraints}`);
+      if (clarifyAnswers.q_stakes) state.manifest.notes.push(`Stakes: ${clarifyAnswers.q_stakes}`);
+      if (clarifyAnswers.q_scope) state.manifest.notes.push(`Scope: ${clarifyAnswers.q_scope}`);
+      if (clarifyAnswers.q_sources) state.manifest.notes.push(`Sources note: ${clarifyAnswers.q_sources}`);
+      if (clarifyAnswers.q_verify) state.manifest.notes.push(`Verification: ${clarifyAnswers.q_verify}`);
+      complete(state, "clarify");
+    } else {
+      skip(state, "clarify", "No clarification required by gates");
+      logLine(`[clarify] Skipped (no gate triggers)`);
+    }
+
+    // --- PLAN ---
+    phase(state, "plan");
+    logLine(`[plan] Building a minimal plan from intake fields`);
+    const plan = [
+      "Restate the objective and success criteria",
+      needsRetrieval(intake) ? "Gather evidence/sources (or label unverified)" : "No retrieval required",
+      "Draft response in required format",
+      "Critique against rubric (factuality/completeness/ambiguity)",
+      needsVerification(intake) ? "Verify via tools/tests/schema checks" : "Verification optional",
+      "Finalize + emit manifest"
+    ];
+    logLine(`[plan] Plan:\n  - ${plan.join("\n  - ")}`);
+    complete(state, "plan");
+
+    // --- RETRIEVE ---
+    if (needsRetrieval(intake)) {
+      phase(state, "retrieve");
+      if (intake.hasSources) {
+        logLine(`[retrieve] Using user-provided sources (simulated)`);
+        state.manifest.sources_used.push("user_provided_sources");
+      } else if (intake.allowWeb) {
+        logLine(`[retrieve] Web retrieval allowed (simulated)`);
+        state.manifest.sources_used.push("web_retrieval_simulated");
+      } else {
+        logLine(`[retrieve] No sources. Marking output as unverified best-effort`);
+        state.manifest.assumptions.push("No authoritative sources provided; response will avoid firm claims.");
+      }
+      complete(state, "retrieve");
+    } else {
+      skip(state, "retrieve", "Task type does not require grounding");
+      logLine(`[retrieve] Skipped (not required)`);
+    }
+
+    // --- DRAFT ---
+    phase(state, "draft");
+    logLine(`[draft] Generating a draft (simulated placeholder)`);
+    const draft = {
+      header: `Draft for ${state.manifest.audience || "unknown audience"}`,
+      body: `Goal: ${state.manifest.success_criteria || "(missing)"}\n\n` +
+            `Response content would be generated here.\n` +
+            `Risk: ${state.manifest.risk}\n` +
+            `Sources: ${state.manifest.sources_used.length ? state.manifest.sources_used.join(", ") : "none"}`
+    };
+    state.manifest.notes.push(`Draft created (placeholder)`);
+    complete(state, "draft");
+
+    // --- CRITIQUE ---
+    phase(state, "critique");
+    logLine(`[critique] Rubric check (simulated)`);
+    const rubric = {
+      factuality: intake.hasSources || intake.allowWeb ? "ok-ish" : "caution",
+      completeness: state.manifest.success_criteria ? "ok" : "fail",
+      ambiguity: (intake.task.trim().length >= 20) ? "ok" : "caution",
+      format: "ok"
+    };
+    logLine(`[critique] Rubric results:\n${pretty(rubric)}`);
+    if (rubric.completeness === "fail") {
+      state.manifest.assumptions.push("Success criteria missing; response may not match expectations.");
+    }
+    complete(state, "critique");
+
+    // --- VERIFY ---
+    if (needsVerification(intake)) {
+      phase(state, "verify");
+      if (intake.outputType === "code") {
+        logLine(`[verify] Would run unit tests + lint (simulated)`);
+      } else {
+        logLine(`[verify] Would validate schema + sample parse (simulated)`);
+      }
+      state.manifest.notes.push("Verification simulated (no real tool execution in this demo)");
+      complete(state, "verify");
+    } else {
+      skip(state, "verify", "Verification not required for this output type");
+      logLine(`[verify] Skipped (not required)`);
+    }
+
+    // --- FINALIZE ---
+    phase(state, "finalize");
+    logLine(`[finalize] Producing final output (still placeholder in demo)`);
+    state.manifest.notes.push("Final output assembled (placeholder)");
+    complete(state, "finalize");
+
+    // --- LOG ---
+    phase(state, "log");
+    logLine(`[log] Emitting machine-checkable manifest`);
+    complete(state, "log");
+
+    setStatus("ok", "Completed");
+    setGateStatus("ok", "Gates: satisfied (or explicitly skipped)");
+    $("manifest").textContent = pretty({ ...state.manifest, draft_preview: draft });
+  }
+
+  // --- Wire up buttons ---
+  let state = newState();
+  renderTimeline(state);
+  $("log").textContent = "Log will appear here.\n";
+  $("manifest").textContent = "{\n  \"manifest\": \"will appear here\"\n}\n";
+
+  let pendingQs = [];
+  let lastIntake = null;
+
+  $("start").addEventListener("click", () => {
+    state = newState();
+    renderTimeline(state);
+
+    const intake = intakeFromUI();
+    lastIntake = intake;
+
+    // Evaluate strict gates
+    const strictFailures = intake.strictMode ? strictGateFailures(intake) : [];
+    if (strictFailures.length) {
+      setStatus("bad", "Blocked");
+      setGateStatus("bad", `Gates failed: ${strictFailures.join("; ")}`);
+      logLine(`[gate] Strict mode blocks progression: ${strictFailures.join("; ")}`);
+      // Still build clarification questions to fix failures
+      const meta = needsClarification(intake);
+      pendingQs = buildClarifyQuestions(intake, meta);
+      renderClarifyDialog(pendingQs);
+      return;
+    }
+
+    // Determine clarification needs
+    const meta = needsClarification(intake);
+    if (meta.needed) {
+      setStatus("", "Awaiting clarification");
+      setGateStatus("bad", "Gates triggered: clarification required");
+      logLine(`[gate] Clarification required (missing: ${meta.missing.join(", ") || "none"}; highStakes=${meta.highStakes}; ambiguous=${meta.ambiguous})`);
+      pendingQs = buildClarifyQuestions(intake, meta);
+      renderClarifyDialog(pendingQs);
+      return;
+    }
+
+    // No clarifications needed -> run orchestration immediately
+    renderClarifyDialog([]);
+    simulate(state, intake, {});
+  });
+
+  $("continue").addEventListener("click", () => {
+    if (!lastIntake) return;
+    const answers = collectClarifyAnswers(pendingQs);
+
+    // Apply "fixes" back into intake fields if user provided them
+    if (answers.q_task) $("task").value = answers.q_task;
+    if (answers.q_audience) $("audience").value = answers.q_audience;
+    if (answers.q_success) $("success").value = answers.q_success;
+
+    // Re-evaluate strict gates after clarification
+    const intake = intakeFromUI();
+    const strictFailures = intake.strictMode ? strictGateFailures(intake) : [];
+    if (strictFailures.length) {
+      setStatus("bad", "Blocked");
+      setGateStatus("bad", `Still failing: ${strictFailures.join("; ")}`);
+      logLine(`[gate] Still blocked after clarification: ${strictFailures.join("; ")}`);
+      return;
+    }
+
+    renderClarifyDialog([]);
+    simulate(state, intake, answers);
+  });
+
+  $("reset").addEventListener("click", () => {
+    $("task").value = "";
+    $("audience").value = "";
+    $("success").value = "";
+    $("risk").value = "low";
+    $("outputType").value = "analysis";
+    $("hasSources").checked = false;
+    $("allowWeb").checked = false;
+    $("strictMode").checked = true;
+
+    pendingQs = [];
+    lastIntake = null;
+
+    state = newState();
+    renderTimeline(state);
+    $("log").textContent = "Log will appear here.\n";
+    $("manifest").textContent = "{\n  \"manifest\": \"will appear here\"\n}\n";
+    $("clarifyBox").textContent = "No questions yet.";
+    $("clarifyInputs").innerHTML = "";
+    $("continue").disabled = true;
+    setStatus("", "Idle");
+    setGateStatus("", "Gates: unknown");
+  });
+})();
+</script>
+</body>
+</html>
