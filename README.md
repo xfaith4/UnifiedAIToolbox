@@ -59,6 +59,28 @@ For Codex-driven changes, keep the loop short and local:
 - **Telemetry**: JSONL-based event tracking and monitoring
 - **Webhook Support**: GitHub webhook integration for automated orchestration
 
+### 📊 Orchestrator Decision Logging
+
+The toolbox includes deterministic, machine-readable tracing for orchestration runs:
+
+- **Run-level metadata**: Tracks goals, context, and completion criteria for each orchestration run
+- **Step-level events**: JSONL logs capturing every agent call with inputs, outputs, and validation
+- **Decision ledger**: Records architectural decisions with rationale, confidence, and alternatives
+- **Conflict resolution**: Logs conflicts between artifacts and how they were resolved
+- **Artifact manifests**: Catalogs generated files with checksums and detected technology stacks
+- **Verification results**: Optional build, test, and lint verification with pass/fail status
+- **Secret redaction**: Automatic removal of API keys, tokens, and passwords from logs
+
+**Artifact Location**: All orchestration logs are stored in `./artifacts/runs/<run_id>/`:
+- `run.json` - Run metadata and context
+- `steps.jsonl` - Agent execution trace (one JSON object per line)
+- `decisions.jsonl` - Decision history
+- `conflicts.jsonl` - Conflict resolution log
+- `artifacts.json` - Manifest of generated files
+- `verification.json` - Build/test results (if verification was run)
+
+See [Orchestrator Logging Guide](docs/ORCHESTRATOR_LOGGING.md) for details on interpreting logs.
+
 ## 🎬 Demo
 
 **Experience AI orchestration** with our interactive demos:
