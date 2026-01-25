@@ -28,7 +28,7 @@ __pycache__/
 build/
 .codex_out/
 codex_out/
-codex-multiagent-swarm/
+swarm-output/
 runs/
 .uaitoolbox/
 *.db
