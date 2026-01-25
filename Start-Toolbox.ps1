@@ -56,9 +56,25 @@ Write-Host ""
 $venvPath = Join-Path $ProjectRoot ".venv"
 if (-not (Test-Path $venvPath)) {
     Write-Host "  → Creating Python virtual environment..." -ForegroundColor Gray
-    python -m venv $venvPath
+    # Create venv without pip to avoid ensurepip hang on Windows
+    python -m venv --without-pip $venvPath
+    
+    # Install pip using get-pip.py (more reliable on Windows)
+    Write-Host "  → Installing pip..." -ForegroundColor Gray
+    $venvPython = Join-Path $venvPath "Scripts\python.exe"
+    $getPipUrl = "https://bootstrap.pypa.io/get-pip.py"
+    $getPipPath = Join-Path $env:TEMP "get-pip.py"
+    try {
+        Invoke-WebRequest -Uri $getPipUrl -OutFile $getPipPath -UseBasicParsing
+        & $venvPython $getPipPath --quiet
+        Remove-Item $getPipPath -ErrorAction SilentlyContinue
+    } catch {
+        Write-Host "  ⚠️  Warning: Could not download get-pip.py, trying ensurepip..." -ForegroundColor Yellow
+        & $venvPython -m ensurepip --upgrade
+    }
 }
 
+# Activate virtual environment
 $activateScript = Join-Path $venvPath "Scripts\Activate.ps1"
 & $activateScript
 
