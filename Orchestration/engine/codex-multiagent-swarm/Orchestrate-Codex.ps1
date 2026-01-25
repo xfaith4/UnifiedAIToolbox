@@ -426,7 +426,13 @@ try {
     }
     
     # Create output directory
-    $resolvedOutputDir = Join-Path $RepoRoot $OutputDir
+    # If OutputDir is absolute, use it directly; otherwise join with RepoRoot
+    if ([System.IO.Path]::IsPathRooted($OutputDir)) {
+        $resolvedOutputDir = $OutputDir
+    }
+    else {
+        $resolvedOutputDir = Join-Path $RepoRoot $OutputDir
+    }
     New-Item -ItemType Directory -Path $resolvedOutputDir -Force | Out-Null
     Write-Log "Output directory created: $resolvedOutputDir"
     
