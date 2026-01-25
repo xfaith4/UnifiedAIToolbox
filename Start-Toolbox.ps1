@@ -61,15 +61,16 @@ if (-not (Test-Path $venvPath)) {
     
     # Install pip using get-pip.py (more reliable on Windows)
     Write-Host "  → Installing pip..." -ForegroundColor Gray
+    $venvPython = Join-Path $venvPath "Scripts\python.exe"
     $getPipUrl = "https://bootstrap.pypa.io/get-pip.py"
     $getPipPath = Join-Path $env:TEMP "get-pip.py"
     try {
         Invoke-WebRequest -Uri $getPipUrl -OutFile $getPipPath -UseBasicParsing
-        python $getPipPath --quiet
+        & $venvPython $getPipPath --quiet
         Remove-Item $getPipPath -ErrorAction SilentlyContinue
     } catch {
         Write-Host "  ⚠️  Warning: Could not download get-pip.py, trying ensurepip..." -ForegroundColor Yellow
-        python -m ensurepip --upgrade
+        & $venvPython -m ensurepip --upgrade
     }
 }
 
