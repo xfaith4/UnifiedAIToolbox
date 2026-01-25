@@ -178,9 +178,9 @@ def write_model_file(
     suffix = path.suffix.lower()
     
     if suffix == '.json':
-        return write_json_file(model.dict(), path, **kwargs)
+        return write_json_file(model.model_dump(), path, **kwargs)
     elif suffix in ('.yaml', '.yml'):
-        return write_yaml_file(model.dict(), path, **kwargs)
+        return write_yaml_file(model.model_dump(), path, **kwargs)
     else:
         raise ValueError(f"Unsupported file format: {suffix}")
 
@@ -191,7 +191,7 @@ def _json_serializer(obj: Any) -> Any:
     elif isinstance(obj, Path):
         return str(obj)
     elif hasattr(obj, 'dict'):
-        return obj.dict()
+        return obj.model_dump()
     raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 
 def find_files(

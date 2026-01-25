@@ -229,7 +229,7 @@ class PromptAPIClient:
     def send_telemetry(self, telemetry_data: Union[Dict[str, Any], TelemetryData]) -> bool:
         """Send telemetry data to the API."""
         if isinstance(telemetry_data, TelemetryData):
-            telemetry_data = telemetry_data.dict()
+            telemetry_data = telemetry_data.model_dump()
             
         try:
             self._request("POST", "/telemetry", json_data=telemetry_data)

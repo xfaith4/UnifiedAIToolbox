@@ -1,8 +1,0 @@
-# Global dependency constraints to keep shared packages aligned across services.
-numpy==1.26.4
-pillow==9.5.0
-torch==2.5.1
-torchvision==0.20.1
-torchaudio==2.5.1
-# Project uses Pydantic v2; keep fiddler-client (Pydantic v1) in a separate environment.
-pydantic==2.12.5
