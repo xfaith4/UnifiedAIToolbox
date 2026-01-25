@@ -9,7 +9,7 @@
 The Unified AI Toolbox is a streamlined platform that provides:
 
 - **Prompt Management**: YAML-based prompt library with full-text search
-- **AI Provider Integration**: OpenAI GPT-4, GPT-4o, GPT-4o-mini support with cost tracking
+- **AI Provider Integration**: OpenAI GPT-5.2, GPT-4, GPT-4o, GPT-4o-mini support with cost tracking
 - **Multi-Agent Orchestration**: Supervisor, Researcher, Engineer, and specialized agents
 - **Web Portal**: Modern Next.js application for prompt and agent management
 - **REST API**: FastAPI backend with OpenAPI documentation
@@ -72,7 +72,7 @@ That's it! The launcher will automatically:
 
 ### 🤖 AI Integration
 
-- **Multiple Models**: GPT-4, GPT-4o, GPT-4o-mini, GPT-3.5-turbo
+- **Multiple Models**: GPT-5.2 (default), GPT-4, GPT-4o, GPT-4o-mini, GPT-3.5-turbo
 - **Cost Tracking**: Real-time token usage and cost monitoring
 - **Cost Analytics**: Track API costs and cost-per-run analysis
 
@@ -118,7 +118,8 @@ The toolbox uses environment variables for configuration. Key settings in `.env`
 ```env
 # Required
 OPENAI_API_KEY=your-openai-key
-OPENAI_MODEL=gpt-4o-mini
+# Default model is GPT-5.2 for advanced AI orchestration
+OPENAI_MODEL=gpt-5.2
 
 # Optional (defaults shown)
 API_PORT=8000                # FastAPI backend port

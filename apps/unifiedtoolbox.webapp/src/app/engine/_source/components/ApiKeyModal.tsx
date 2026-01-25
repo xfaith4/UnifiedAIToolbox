@@ -10,7 +10,7 @@ const ApiKeyModal: React.FC = () => {
             <WarningIcon className="w-16 h-16 mx-auto text-yellow-400 mb-4" />
             <h2 className="text-2xl font-bold text-white mb-2">API Key Not Configured</h2>
             <p className="text-gray-300 mb-6">
-              The application requires a Google AI API key to function, but it has not been configured in your local environment.
+              The application requires an OpenAI API key to function, but it has not been configured in your local environment.
             </p>
             <div className="bg-gray-900 p-4 rounded-lg text-left space-y-4">
               <h3 className="font-semibold text-lg text-white">How to fix this:</h3>
@@ -19,7 +19,7 @@ const ApiKeyModal: React.FC = () => {
               </ol>
               <p className="mb-2">2. Add your API key to this file on a single line:</p>
               <div className="bg-gray-900 p-2 rounded mb-4 font-mono text-xs overflow-x-auto">
-                <code>NEXT_PUBLIC_API_KEY=AIzaSy...your...api...key...here</code>
+                <code>NEXT_PUBLIC_API_KEY=sk-proj-your...api...key...here</code>
               </div>
               <p className="text-xs text-gray-400">After saving the <span className="font-mono bg-gray-700 px-1 rounded">.env</span> file, you will need to **reload this page** for the changes to take effect.</p>
             </div>

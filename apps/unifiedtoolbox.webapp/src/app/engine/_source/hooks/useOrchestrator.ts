@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
+import OpenAI from 'openai';
 import type { Session, Task, Artifact } from '../types';
 import { TaskStatus, ArtifactType } from '../types';
 
@@ -9,10 +9,10 @@ const simpleId = () => `id_${Date.now()}_${Math.random().toString(36).substr(2, 
 const MAX_FILE_CONTEXT_LENGTH = 20000; // Approx 5k tokens for initial plan
 const MAX_ARTIFACT_CONTEXT_LENGTH = 8000; // Approx 2k tokens per artifact
 
-// Pricing per 1 million tokens (input/output)
+// Pricing per 1 million tokens (input/output) for GPT-5.2
 const PRICING = {
-  'gemini-2.5-pro': { input: 0.50 / 1_000_000, output: 1.50 / 1_000_000 },
-  'gemini-2.5-flash-image': { perImage: 0.0025 }, // Flat rate per image
+  'gpt-5.2': { input: 2.50 / 1_000_000, output: 10.00 / 1_000_000 },
+  'dall-e-3': { perImage: 0.040 }, // Standard quality 1024x1024
 };
 
 const STORAGE_KEY = 'orchestrator-session-history';
@@ -75,11 +75,11 @@ const persistLocalHistory = (history: Session[]) => {
 };
 
 const calculateCost = (model: keyof typeof PRICING, inputTokens: number, outputTokens: number, images: number = 0): number => {
-  if (model === 'gemini-2.5-flash-image') {
+  if (model === 'dall-e-3') {
     return images * PRICING[model].perImage;
   }
   const modelPricing = PRICING[model];
-  if (!modelPricing) return 0;
+  if (!modelPricing || !('input' in modelPricing)) return 0;
   return (inputTokens * modelPricing.input) + (outputTokens * modelPricing.output);
 };
 
@@ -236,7 +236,10 @@ const useOrchestrator = () => {
     setTasks(initialTasks); // Set initial tasks if any
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_API_KEY || process.env.API_KEY });
+      const openai = new OpenAI({ 
+        apiKey: process.env.NEXT_PUBLIC_API_KEY || process.env.OPENAI_API_KEY,
+        dangerouslyAllowBrowser: true 
+      });
 
       const planPrompt = `
         As a Supervisor AI, create a detailed, parallelizable plan to achieve the following goal: "${goal}".
@@ -249,12 +252,10 @@ const useOrchestrator = () => {
         ${fileContent ? 'The first task in your plan *must* depend on "task_file_analyst".' : ''}
       `;
 
-      const planSchema = {
-        type: Type.OBJECT, properties: { tasks: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { id: { type: Type.STRING }, name: { type: Type.STRING }, dependencies: { type: Type.ARRAY, items: { type: Type.STRING } }, agent: { type: Type.OBJECT, properties: { role: { type: Type.STRING }, specialization: { type: Type.STRING } }, required: ['role'] } }, required: ['id', 'name', 'dependencies', 'agent'] } } }, required: ['tasks']
-      };
-
-      const response: GenerateContentResponse = await ai.models.generateContent({
-        model: 'gemini-2.5-pro', contents: planPrompt, config: { responseMimeType: 'application/json', responseSchema: planSchema }
+      const response = await openai.chat.completions.create({
+        model: 'gpt-5.2',
+        messages: [{ role: 'user', content: planPrompt }],
+        response_format: { type: 'json_object' },
       });
 
       // Check if the run was cancelled while waiting for the plan.
@@ -265,13 +266,13 @@ const useOrchestrator = () => {
         return;
       }
 
-      const usage = (response as any).usageMetadata;
+      const usage = response.usage;
       if (usage) {
-        const planningCost = calculateCost('gemini-2.5-pro', usage.promptTokenCount, usage.candidatesTokenCount);
+        const planningCost = calculateCost('gpt-5.2', usage.prompt_tokens, usage.completion_tokens);
         setSession(s => s ? { ...s, planningCost } : null);
       }
 
-      const plan = JSON.parse(response.text || "{}");
+      const plan = JSON.parse(response.choices[0].message.content || "{}");
 
       const plannedTasks: Task[] = plan.tasks.map((t: any) => ({
         ...t, status: TaskStatus.PENDING, agent: { ...t.agent, log: [] }, artifacts: [],
@@ -291,7 +292,10 @@ const useOrchestrator = () => {
     appendToTaskLog(task.id, `Agent ${task.agent.role} is working...`);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_API_KEY || process.env.API_KEY });
+      const openai = new OpenAI({ 
+        apiKey: process.env.NEXT_PUBLIC_API_KEY || process.env.OPENAI_API_KEY,
+        dangerouslyAllowBrowser: true 
+      });
       let newArtifact: Artifact | null = null;
       let taskCost = 0;
       let inputTokens = 0;
@@ -313,33 +317,37 @@ const useOrchestrator = () => {
           throw new Error("File Analyst task was scheduled, but no file content was found in the session.");
         }
         const summaryPrompt = `Summarize the following content for a developer. Focus on key entities, structure, and purpose:\n\n${session.fileContent}`;
-        const response: GenerateContentResponse = await ai.models.generateContent({ model: 'gemini-2.5-pro', contents: summaryPrompt });
-        const fileSummary = response.text || "";
+        const response = await openai.chat.completions.create({
+          model: 'gpt-5.2',
+          messages: [{ role: 'user', content: summaryPrompt }],
+        });
+        const fileSummary = response.choices[0].message.content || "";
         newArtifact = { id: simpleId(), name: 'file_summary.md', type: ArtifactType.REPORT, content: fileSummary };
 
-        const usage = (response as any).usageMetadata;
+        const usage = response.usage;
         if (usage) {
-          inputTokens = usage.promptTokenCount;
-          outputTokens = usage.candidatesTokenCount;
-          taskCost = calculateCost('gemini-2.5-pro', inputTokens, outputTokens);
+          inputTokens = usage.prompt_tokens;
+          outputTokens = usage.completion_tokens;
+          taskCost = calculateCost('gpt-5.2', inputTokens, outputTokens);
         }
 
       } else if (task.agent.role === 'Image Generator') {
         const imagePrompt = `Based on the goal "${session?.goal}", generate a suitable image for the task: "${task.name}". ${context}`;
-        const imageResponse = await ai.models.generateContent({
-          model: 'gemini-2.5-flash-image',
-          contents: { parts: [{ text: imagePrompt }] },
-          config: { responseModalities: ['IMAGE'] },
+        const imageResponse = await openai.images.generate({
+          model: 'dall-e-3',
+          prompt: imagePrompt,
+          n: 1,
+          size: '1024x1024',
+          response_format: 'b64_json',
         });
-        taskCost = calculateCost('gemini-2.5-flash-image', 0, 0, 1);
+        taskCost = calculateCost('dall-e-3', 0, 0, 1);
         inputTokens = imagePrompt.length / 4; // Estimation for images
         outputTokens = 0;
 
-        const imagePart = imageResponse.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
-        if (imagePart?.inlineData) {
+        if (imageResponse.data && imageResponse.data[0]?.b64_json) {
           const filenameMatch = task.name.match(/\(([^)]+)\)/);
           const filename = filenameMatch ? filenameMatch[1] : `generated_image.png`;
-          newArtifact = { id: simpleId(), name: filename, type: ArtifactType.IMAGE, content: imagePart.inlineData?.data || "" };
+          newArtifact = { id: simpleId(), name: filename, type: ArtifactType.IMAGE, content: imageResponse.data[0].b64_json };
         }
       } else {
         const textPrompt = `
@@ -352,17 +360,22 @@ const useOrchestrator = () => {
           When you are finished, provide your final output as a single artifact prefixed with "ARTIFACT:". This is mandatory.
         `;
 
-        const response = await ai.models.generateContent({
-          model: 'gemini-2.5-pro',
-          contents: textPrompt,
-          config: { systemInstruction: `You must strictly follow the output format. Use "LOG:" for progress and "ARTIFACT:" for the final, complete output. Your final output must begin with ARTIFACT:.` }
+        const response = await openai.chat.completions.create({
+          model: 'gpt-5.2',
+          messages: [
+            { 
+              role: 'system', 
+              content: 'You must strictly follow the output format. Use "LOG:" for progress and "ARTIFACT:" for the final, complete output. Your final output must begin with ARTIFACT:.' 
+            },
+            { role: 'user', content: textPrompt }
+          ],
         });
 
         if (!isOrchestratingRef.current) {
           throw new Error("Execution canceled by user.");
         }
 
-        const fullResponseText = response.text || "";
+        const fullResponseText = response.choices[0].message.content || "";
 
         // Process the full response at once for robustness
         const lines = (fullResponseText || "").split('\n');
@@ -388,11 +401,11 @@ const useOrchestrator = () => {
           artifactContent = lines.filter(line => !line.startsWith('LOG:')).join('\n');
         }
 
-        const usage = (response as any).usageMetadata;
+        const usage = response.usage;
         if (usage) {
-          inputTokens = usage.promptTokenCount;
-          outputTokens = usage.candidatesTokenCount;
-          taskCost = calculateCost('gemini-2.5-pro', inputTokens, outputTokens);
+          inputTokens = usage.prompt_tokens;
+          outputTokens = usage.completion_tokens;
+          taskCost = calculateCost('gpt-5.2', inputTokens, outputTokens);
         }
 
         if (artifactContent.trim()) {
@@ -483,7 +496,10 @@ const useOrchestrator = () => {
   }, [clearServerHistory]);
 
   const runFeedback = useCallback(async (session: Session, feedback: string): Promise<string> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_API_KEY || process.env.API_KEY });
+    const openai = new OpenAI({ 
+      apiKey: process.env.NEXT_PUBLIC_API_KEY || process.env.OPENAI_API_KEY,
+      dangerouslyAllowBrowser: true 
+    });
     const context = session.tasks.map(t => `Task: ${t.name}, Agent: ${t.agent.role}, Status: ${t.status}`).join('\n');
 
     const feedbackPrompt = `
@@ -499,11 +515,11 @@ const useOrchestrator = () => {
       Finally, as an Update Proposer, format this into a clear "Agent Update Proposal" in Markdown.
     `;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-pro',
-      contents: feedbackPrompt
+    const response = await openai.chat.completions.create({
+      model: 'gpt-5.2',
+      messages: [{ role: 'user', content: feedbackPrompt }],
     });
-    return response.text || "";
+    return response.choices[0].message.content || "";
   }, []);
 
   return {
