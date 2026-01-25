@@ -10,6 +10,9 @@
     4. Synthesizes results from all agents
     5. Generates comprehensive reports
 
+    Note: In non-DryRun mode, the script currently creates placeholder results.
+    Full agent execution integration is planned for a future update.
+
 .PARAMETER RepoRoot
     Repository root directory to analyze.
 
@@ -56,7 +59,7 @@ param(
     [int]$MaxParallel,
 
     [Parameter(Mandatory = $false)]
-    [string]$OutputDir = ".\swarm-output",
+    [string]$OutputDir = "./swarm-output",
 
     [Parameter(Mandatory = $false)]
     [string]$WorkDir = ".codex_out",
@@ -156,9 +159,13 @@ function Get-RepositoryStructure {
     }
     
     # Analyze repository
+    # Directories to exclude from analysis
+    $excludeDirs = @('node_modules', '\.git', '\.venv', 'venv', 'bin', 'obj', 'dist', 'build')
+    $excludePattern = '[\\/](' + ($excludeDirs -join '|') + ')[\\/]'
+    
     try {
         $files = Get-ChildItem -Path $Path -Recurse -File -ErrorAction SilentlyContinue | 
-        Where-Object { $_.FullName -notmatch '[\\/](node_modules|\.git|\.venv|venv|bin|obj|dist|build)[\\/]' }
+        Where-Object { $_.FullName -notmatch $excludePattern }
         
         $structure.TotalFiles = $files.Count
         
