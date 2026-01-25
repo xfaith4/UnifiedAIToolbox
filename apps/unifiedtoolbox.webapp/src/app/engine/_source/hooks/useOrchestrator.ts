@@ -19,6 +19,9 @@ const STORAGE_KEY = 'orchestrator-session-history';
 const MAX_HISTORY_ITEMS = 50;
 const HISTORY_API_ENDPOINT = '/api/engine/history';
 
+const getBrowserApiKey = () =>
+  process.env.NEXT_PUBLIC_API_KEY || process.env.NEXT_PUBLIC_OPENAI_API_KEY || '';
+
 const parseHistoryDate = (value?: string) => {
   const timestamp = value ? Date.parse(value) : NaN;
   return Number.isFinite(timestamp) ? timestamp : 0;
@@ -236,8 +239,13 @@ const useOrchestrator = () => {
     setTasks(initialTasks); // Set initial tasks if any
 
     try {
+      const apiKey = getBrowserApiKey();
+      if (!apiKey) {
+        throw new Error("Missing API key (NEXT_PUBLIC_API_KEY / NEXT_PUBLIC_OPENAI_API_KEY).");
+      }
+
       const openai = new OpenAI({ 
-        apiKey: process.env.NEXT_PUBLIC_API_KEY || process.env.OPENAI_API_KEY,
+        apiKey,
         dangerouslyAllowBrowser: true 
       });
 
@@ -292,8 +300,13 @@ const useOrchestrator = () => {
     appendToTaskLog(task.id, `Agent ${task.agent.role} is working...`);
 
     try {
+      const apiKey = getBrowserApiKey();
+      if (!apiKey) {
+        throw new Error("Missing API key (NEXT_PUBLIC_API_KEY / NEXT_PUBLIC_OPENAI_API_KEY).");
+      }
+
       const openai = new OpenAI({ 
-        apiKey: process.env.NEXT_PUBLIC_API_KEY || process.env.OPENAI_API_KEY,
+        apiKey,
         dangerouslyAllowBrowser: true 
       });
       let newArtifact: Artifact | null = null;
@@ -496,8 +509,13 @@ const useOrchestrator = () => {
   }, [clearServerHistory]);
 
   const runFeedback = useCallback(async (session: Session, feedback: string): Promise<string> => {
+    const apiKey = getBrowserApiKey();
+    if (!apiKey) {
+      throw new Error("Missing API key (NEXT_PUBLIC_API_KEY / NEXT_PUBLIC_OPENAI_API_KEY).");
+    }
+
     const openai = new OpenAI({ 
-      apiKey: process.env.NEXT_PUBLIC_API_KEY || process.env.OPENAI_API_KEY,
+      apiKey,
       dangerouslyAllowBrowser: true 
     });
     const context = session.tasks.map(t => `Task: ${t.name}, Agent: ${t.agent.role}, Status: ${t.status}`).join('\n');

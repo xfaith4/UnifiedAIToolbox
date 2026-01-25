@@ -35,7 +35,17 @@ if (-not (Test-Path $envFile)) {
 # Load environment variables
 Get-Content $envFile | ForEach-Object {
     if ($_ -match '^([^#][^=]+)=(.*)$') {
-        [Environment]::SetEnvironmentVariable($matches[1].Trim(), $matches[2].Trim(), "Process")
+        $key = $matches[1].Trim()
+        $value = $matches[2].Trim()
+
+        # Support inline comments like: KEY=value  # comment
+        if (($value.StartsWith('"') -and $value.EndsWith('"')) -or ($value.StartsWith("'") -and $value.EndsWith("'"))) {
+            $value = $value.Substring(1, $value.Length - 2)
+        } else {
+            $value = ($value -replace '\s+#.*$', '').Trim()
+        }
+
+        [Environment]::SetEnvironmentVariable($key, $value, "Process")
     }
 }
 
@@ -107,11 +117,30 @@ $apiPath = Join-Path $ProjectRoot "apps\UnifiedPromptApp\services\prompt-api"
 $apiLog = Join-Path $logsDir "api.log"
 $env:PYTHONPATH = "$ProjectRoot;$env:PYTHONPATH"
 $apiJob = Start-Job -ScriptBlock {
-    param($apiPath, $apiLog, $venvPath)
+    param($apiPath, $apiLog, $venvPath, $projectRoot, $envFile)
+
+    if (Test-Path $envFile) {
+        Get-Content $envFile | ForEach-Object {
+            if ($_ -match '^([^#][^=]+)=(.*)$') {
+                $key = $matches[1].Trim()
+                $value = $matches[2].Trim()
+
+                if (($value.StartsWith('"') -and $value.EndsWith('"')) -or ($value.StartsWith("'") -and $value.EndsWith("'"))) {
+                    $value = $value.Substring(1, $value.Length - 2)
+                } else {
+                    $value = ($value -replace '\s+#.*$', '').Trim()
+                }
+
+                [Environment]::SetEnvironmentVariable($key, $value, "Process")
+            }
+        }
+    }
+
+    $env:PYTHONPATH = "$projectRoot;$env:PYTHONPATH"
     & "$venvPath\Scripts\Activate.ps1"
     Set-Location $apiPath
     python app.py *> $apiLog
-} -ArgumentList $apiPath, $apiLog, $venvPath
+} -ArgumentList $apiPath, $apiLog, $venvPath, $ProjectRoot, $envFile
 
 Start-Sleep -Seconds 3
 
@@ -121,11 +150,30 @@ $webLog = Join-Path $logsDir "webapp.log"
 $env:NEXT_PUBLIC_API_BASE = "http://localhost:$ApiPort"
 $env:PORT = $WebPort
 $webJob = Start-Job -ScriptBlock {
-    param($webappPath, $webLog, $port)
+    param($webappPath, $webLog, $port, $apiPort, $envFile)
+
+    if (Test-Path $envFile) {
+        Get-Content $envFile | ForEach-Object {
+            if ($_ -match '^([^#][^=]+)=(.*)$') {
+                $key = $matches[1].Trim()
+                $value = $matches[2].Trim()
+
+                if (($value.StartsWith('"') -and $value.EndsWith('"')) -or ($value.StartsWith("'") -and $value.EndsWith("'"))) {
+                    $value = $value.Substring(1, $value.Length - 2)
+                } else {
+                    $value = ($value -replace '\s+#.*$', '').Trim()
+                }
+
+                [Environment]::SetEnvironmentVariable($key, $value, "Process")
+            }
+        }
+    }
+
     Set-Location $webappPath
     $env:PORT = $port
+    $env:NEXT_PUBLIC_API_BASE = "http://localhost:$apiPort"
     npm run dev *> $webLog
-} -ArgumentList $webappPath, $webLog, $WebPort
+} -ArgumentList $webappPath, $webLog, $WebPort, $ApiPort, $envFile
 
 Start-Sleep -Seconds 5
 

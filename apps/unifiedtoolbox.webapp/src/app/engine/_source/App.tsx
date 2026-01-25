@@ -39,9 +39,10 @@ const App: React.FC = () => {
   const [isApiKeyMissing, setIsApiKeyMissing] = useState(false);
 
   useEffect(() => {
-    // Check if the API key is missing from the environment.
-    // This provides guidance for users running the app locally.
-    if (!process.env.NEXT_PUBLIC_API_KEY && !process.env.API_KEY) {
+    // Check if the client-side API key is available.
+    // In Next.js, only NEXT_PUBLIC_* vars are accessible in the browser bundle.
+    const browserApiKey = process.env.NEXT_PUBLIC_API_KEY || process.env.NEXT_PUBLIC_OPENAI_API_KEY;
+    if (!browserApiKey) {
       setIsApiKeyMissing(true);
     }
   }, []);
