@@ -26,6 +26,7 @@ The Unified AI Toolbox is a streamlined platform that provides:
 ### Installation (3 steps)
 
 1. **Clone and configure:**
+
    ```bash
    git clone https://github.com/xfaith4/UnifiedAIToolbox.git
    cd UnifiedAIToolbox
@@ -33,16 +34,18 @@ The Unified AI Toolbox is a streamlined platform that provides:
    ```
 
 2. **Add your OpenAI API key to `.env`:**
+
    ```bash
    # Edit .env and add:
    OPENAI_API_KEY=sk-proj-your-key-here
    ```
 
 3. **Launch:**
+
    ```bash
    # Linux/Mac/WSL
    ./launch.sh
-   
+
    # Windows PowerShell
    .\Start-Toolbox.ps1
    ```
@@ -51,11 +54,12 @@ The Unified AI Toolbox is a streamlined platform that provides:
 
 After launching, open:
 
-- 🌐 **Web Portal**: http://localhost:3000
-- 🔧 **API Docs**: http://localhost:8000/docs
-- 💊 **Health Check**: http://localhost:8000/health
+- 🌐 **Web Portal**: <http://localhost:3000>
+- 🔧 **API Docs**: <http://localhost:8000/docs>
+- 💊 **Health Check**: <http://localhost:8000/health>
 
 That's it! The launcher will automatically:
+
 - Install all Python and Node.js dependencies
 - Start the FastAPI backend
 - Start the Next.js web portal
@@ -86,6 +90,7 @@ That's it! The launcher will automatically:
 ### 💻 Web Portal
 
 Modern Next.js application featuring:
+
 - Prompt library browser and editor
 - Agent configuration and management
 - Orchestration designer with visual workflow
@@ -132,15 +137,18 @@ GITHUB_TOKEN=your-github-token
 ## 📚 Documentation
 
 ### Core Documentation
+
 - **Architecture Overview** - [docs/help/architecture.md](docs/help/architecture.md)
 - **API Reference** - [docs/help/api-reference.md](docs/help/api-reference.md)
 
 ### Advanced Features
+
 - **Orchestration Run Tracking** - [docs/ORCHESTRATION_RUN_TRACKING.md](docs/ORCHESTRATION_RUN_TRACKING.md)
 - **PromptOps Guide** - [docs/PROMPTOPS.md](docs/PROMPTOPS.md)
 - **GitHub Integration** - [docs/GITHUB_INTEGRATION.md](docs/GITHUB_INTEGRATION.md)
 
 ### Guides
+
 - **Demo Guide** - [docs/DEMO.md](docs/DEMO.md)
 - **Prompt Chain Recreation** - [docs/PROMPT_CHAIN_RECREATION.md](docs/PROMPT_CHAIN_RECREATION.md)
 
@@ -149,6 +157,7 @@ GITHUB_TOKEN=your-github-token
 ### Running Services Individually
 
 **API Service:**
+
 ```bash
 cd apps/UnifiedPromptApp/services/prompt-api
 python -m venv .venv
@@ -158,6 +167,7 @@ python app.py
 ```
 
 **Web Portal:**
+
 ```bash
 cd apps/unifiedtoolbox.webapp
 npm install
@@ -190,12 +200,14 @@ npm test
 - ✅ **Streamlined** environment configuration
 
 The focus is now on two core components:
+
 1. **FastAPI Backend** - Robust Python API for prompts and orchestration
 2. **Next.js Frontend** - Modern, feature-rich web interface
 
 ## 🤝 Contributing
 
 We welcome contributions! Please:
+
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
