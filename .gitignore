@@ -69,3 +69,11 @@ coverage/
 # Pester test artifacts
 tmp/
 tests/test-artifacts/
+
+# Next.js build artifacts
+.next/
+out/
+
+# Logs
+logs/
+*.log

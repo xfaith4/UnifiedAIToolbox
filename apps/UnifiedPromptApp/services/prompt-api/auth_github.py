@@ -32,6 +32,7 @@ def ensure_github_token() -> None:
     Ensure GITHUB_TOKEN is set for this process.
 
     Honors PROMPT_API_DISABLE_GH_TOKEN_BOOTSTRAP=1 to skip gh lookup.
+    If GitHub CLI is not available or not authenticated, logs a warning but continues.
     """
     if os.environ.get("PROMPT_API_DISABLE_GH_TOKEN_BOOTSTRAP") == "1":
         return
@@ -40,6 +41,10 @@ def ensure_github_token() -> None:
         LOGGER.info("GitHub token already present in environment.")
         return
 
-    token = _run_gh_token()
-    os.environ["GITHUB_TOKEN"] = token
-    LOGGER.info("GitHub token bootstrapped from gh auth.")
+    try:
+        token = _run_gh_token()
+        os.environ["GITHUB_TOKEN"] = token
+        LOGGER.info("GitHub token bootstrapped from gh auth.")
+    except RuntimeError as e:
+        LOGGER.warning(f"GitHub authentication not available: {e}")
+        LOGGER.warning("GitHub features will be disabled. Set GITHUB_TOKEN in .env to enable.")

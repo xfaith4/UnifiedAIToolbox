@@ -5,7 +5,8 @@ This module provides configuration management using environment variables with s
 """
 from pathlib import Path
 from typing import Optional, Dict, Any
-from pydantic import BaseSettings, Field, validator
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings
 import logging
 import os
 
@@ -84,20 +85,23 @@ class Settings(BaseSettings):
     )
     
     # Validation
-    @validator('runs_dir', 'runbooks_dir', 'state_dir', 'supervisor_queue_dir', pre=True)
+    @field_validator('runs_dir', 'runbooks_dir', 'state_dir', 'supervisor_queue_dir', mode='before')
+    @classmethod
     def ensure_directories_exist(cls, v: Path) -> Path:
         """Ensure the directory exists."""
         v.mkdir(parents=True, exist_ok=True)
         return v
 
-    @validator('mcp_registry_path', pre=True)
+    @field_validator('mcp_registry_path', mode='before')
+    @classmethod
     def ensure_registry_parent(cls, v: Path) -> Path:
         """Ensure the MCP registry directory exists and expand user paths."""
         path = Path(v).expanduser()
         path.parent.mkdir(parents=True, exist_ok=True)
         return path
     
-    @validator('log_level')
+    @field_validator('log_level')
+    @classmethod
     def validate_log_level(cls, v: str) -> str:
         """Validate the log level is valid."""
         valid_levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
@@ -105,8 +109,7 @@ class Settings(BaseSettings):
             raise ValueError(f"Invalid log level: {v}. Must be one of {valid_levels}")
         return v.upper()
     
-    class Config:
-        env_prefix = "BRIDGE_"
+    model_config = {"env_prefix": "BRIDGE_"}
         case_sensitive = False
         env_file = ".env"
         env_file_encoding = "utf-8"
@@ -137,7 +140,6 @@ configure_logging()
 if __name__ == "__main__":
     # Print current configuration for debugging
     import json
-    from pydantic.json import pydantic_encoder
     
     print("Current configuration:")
-    print(json.dumps(settings.dict(), indent=2, default=pydantic_encoder))
+    print(json.dumps(settings.model_dump(), indent=2, default=str))

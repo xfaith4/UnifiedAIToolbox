@@ -7,7 +7,7 @@ from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Union
-from pydantic import AnyUrl, BaseModel, Field, validator
+from pydantic import AnyUrl, BaseModel, Field, field_validator
 
 
 class PromptSpec(BaseModel):
@@ -17,11 +17,9 @@ class PromptSpec(BaseModel):
     path: Path = Field(..., description="Filesystem path to the prompt definition")
     raw: Dict[str, Any] = Field(default_factory=dict, description="Raw prompt data")
     
-    class Config:
-        arbitrary_types_allowed = True
-        json_encoders = {
-            Path: str
-        }
+    model_config = {
+        "arbitrary_types_allowed": True
+    }
 
 
 class RunStatus(str, Enum):
@@ -44,17 +42,12 @@ class RunManifest(BaseModel):
     review_policy: str = Field(default="default", description="Review policy for the run")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata for the run")
     
-    @validator('requested_at', pre=True)
+    @field_validator('requested_at', mode='before')
+    @classmethod
     def parse_requested_at(cls, v):
         if isinstance(v, str):
             return datetime.fromisoformat(v.replace('Z', '+00:00'))
         return v
-    
-    class Config:
-        json_encoders = {
-            Path: str,
-            datetime: lambda v: v.isoformat()
-        }
 
 
 class ReviewResult(BaseModel):
@@ -73,11 +66,6 @@ class CodexTask(BaseModel):
     work_dir: Path = Field(..., description="Working directory for the task")
     max_parallel: int = Field(default=3, description="Maximum parallel tasks")
     parameters: Dict[str, Any] = Field(default_factory=dict, description="Task parameters")
-    
-    class Config:
-        json_encoders = {
-            Path: str
-        }
 
 
 class SupervisorTask(BaseModel):
@@ -92,11 +80,6 @@ class SupervisorTask(BaseModel):
     completed_at: Optional[datetime] = Field(None, description="When the task was completed")
     result: Optional[Dict[str, Any]] = Field(None, description="Task result")
     error: Optional[str] = Field(None, description="Error message if the task failed")
-    
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat() if v else None
-        }
 
 
 class TelemetryData(BaseModel):
@@ -105,11 +88,6 @@ class TelemetryData(BaseModel):
     event_type: str = Field(..., description="Type of event")
     event_data: Dict[str, Any] = Field(default_factory=dict, description="Event-specific data")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
-    
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
 
 
 class MCPAuthConfig(BaseModel):
@@ -133,7 +111,8 @@ class MCPServer(BaseModel):
     auth: MCPAuthConfig = Field(default_factory=MCPAuthConfig, description="Authentication configuration")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata for the server")
 
-    @validator("url")
+    @field_validator("url")
+    @classmethod
     def ensure_http_scheme(cls, value: AnyUrl) -> AnyUrl:
         """Restrict MCP servers to HTTP/HTTPS while allowing localhost."""
         if value.scheme not in {"http", "https"}:
