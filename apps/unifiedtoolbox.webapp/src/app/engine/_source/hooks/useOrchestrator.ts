@@ -344,7 +344,7 @@ const useOrchestrator = () => {
         inputTokens = imagePrompt.length / 4; // Estimation for images
         outputTokens = 0;
 
-        if (imageResponse.data[0]?.b64_json) {
+        if (imageResponse.data && imageResponse.data[0]?.b64_json) {
           const filenameMatch = task.name.match(/\(([^)]+)\)/);
           const filename = filenameMatch ? filenameMatch[1] : `generated_image.png`;
           newArtifact = { id: simpleId(), name: filename, type: ArtifactType.IMAGE, content: imageResponse.data[0].b64_json };
