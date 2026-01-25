@@ -36,7 +36,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
         
         <div className="p-6 space-y-4">
            <div className="flex items-center justify-between bg-gray-700/50 p-4 rounded-lg">
-            <span className="font-medium text-gray-300">Google AI API Key Status</span>
+            <span className="font-medium text-gray-300">OpenAI API Key Status</span>
             {isApiKeyConfigured ? (
               <span className="px-3 py-1 text-sm font-semibold text-green-200 bg-green-500/20 rounded-full">
                 Configured
