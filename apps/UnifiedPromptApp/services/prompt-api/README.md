@@ -28,9 +28,9 @@ pip install -e ..\..\packages\prompt-registry   # registry helpers (editable ins
 # PROMPT_API_OPENAI_MODEL=gpt-4o-mini
 
 uvicorn app:app --reload --host 0.0.0.0 --port 8000
-
-> Tip: The root `Start-Toolbox.ps1` launcher (choose option 2 for API-only or option 1 for the full stack) sets `PROMPT_API_PORT=8000` and runs this exact command, so you can start all services from the workspace root without remembering the manual steps.
 ```
+
+> Tip: From the repo root, `.\Start-Toolbox.ps1` starts the API + web portal. It maps `.env`'s `API_PORT` to `PROMPT_API_PORT` for `prompt-api`, so changing `API_PORT` changes the port this service binds to.
 
 ### WSL recommended start (with GitHub CLI token bootstrap)
 

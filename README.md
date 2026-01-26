@@ -161,9 +161,12 @@ GITHUB_TOKEN=your-github-token
 ```bash
 cd apps/UnifiedPromptApp/services/prompt-api
 python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
+# Activate the venv:
+# - PowerShell: . .\.venv\Scripts\Activate.ps1
+# - cmd.exe:    .venv\Scripts\activate.bat
+# - bash/zsh:   source .venv/bin/activate
 pip install -r requirements.txt
-python app.py
+python app.py  # API at http://localhost:8000 (the Web Portal is a separate service)
 ```
 
 **Web Portal:**
