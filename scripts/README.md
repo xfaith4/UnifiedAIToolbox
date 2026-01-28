@@ -1,4 +1,5 @@
 # Scripts Directory
+
 ## Unified AI Toolbox Automation Scripts
 
 This directory contains automation scripts for deployment, testing, monitoring, and maintenance of the Unified AI Toolbox.
@@ -12,11 +13,13 @@ This directory contains automation scripts for deployment, testing, monitoring, 
 **Purpose**: Verify that all prerequisites are met before deploying to production.
 
 **Usage**:
+
 ```bash
 ./scripts/pre-deployment-check.sh
 ```
 
 **What it checks**:
+
 - ✅ System requirements (CPU, RAM, disk space)
 - ✅ Required software (Docker, Python, Node.js, Git)
 - ✅ Network configuration (firewall, port availability)
@@ -28,10 +31,12 @@ This directory contains automation scripts for deployment, testing, monitoring, 
 - ✅ Documentation completeness
 
 **Exit codes**:
+
 - `0` - All checks passed, ready for deployment
 - `1` - One or more critical checks failed, cannot proceed
 
 **Example output**:
+
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   Pre-Deployment Check Summary
@@ -52,6 +57,7 @@ Warnings: 3
 **Purpose**: Run smoke tests after deployment to verify system functionality.
 
 **Usage**:
+
 ```bash
 # Test local deployment
 ./scripts/post-deployment-smoketest.sh http://localhost
@@ -61,6 +67,7 @@ Warnings: 3
 ```
 
 **What it tests**:
+
 - ✅ Basic connectivity (API health, dashboard)
 - ✅ API endpoints (prompts, search, GitHub, auth)
 - ✅ Response times (health <500ms, prompts <1000ms)
@@ -75,10 +82,12 @@ Warnings: 3
 - ✅ Error handling (404, 405)
 
 **Exit codes**:
+
 - `0` - All smoke tests passed, system operational
 - `1` - One or more tests failed, needs investigation
 
 **Example output**:
+
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   Smoke Test Summary
@@ -102,11 +111,13 @@ Success Rate: 100%
 **Purpose**: Verify Phase 3 development environment is properly set up.
 
 **Usage**:
+
 ```bash
 ./scripts/verify-phase3-env.sh
 ```
 
 **What it checks**:
+
 - ✅ Milestone 1.5 prerequisites (Node.js, Python, Docker)
 - ✅ Phase 3 new requirements (PostgreSQL, Redis, kubectl, Helm, kind)
 - ✅ Python dependencies (FastAPI, SQLAlchemy, psycopg2, redis-py, Alembic, pytest)
@@ -116,10 +127,12 @@ Success Rate: 100%
 - ✅ Phase 3 documentation (Sprint 0 plan, ADRs, specs)
 
 **Exit codes**:
+
 - `0` - Environment ready for Phase 3 development
 - `1` - Critical components missing, cannot start development
 
 **Example output**:
+
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   Verification Summary
@@ -148,11 +161,13 @@ Next steps:
 **Purpose**: PowerShell module smoke test for local development.
 
 **Usage**:
+
 ```powershell
 pwsh ./Smoketest.ps1
 ```
 
 **What it does**:
+
 - Tests the PromptLibrary PowerShell module
 - Renders a sample prompt artifact
 - Validates module functionality
@@ -164,6 +179,7 @@ pwsh ./Smoketest.ps1
 **Purpose**: Run the orchestration pipeline directly.
 
 **Usage**:
+
 ```powershell
 pwsh ./scripts/Unified-Orchestration.ps1 `
   -RepoRoot $PWD `
@@ -175,6 +191,7 @@ pwsh ./scripts/Unified-Orchestration.ps1 `
 ```
 
 **Parameters**:
+
 - `-RepoRoot`: Repository root directory
 - `-GoalFile`: Path to goal file
 - `-Model`: AI model to use
@@ -192,6 +209,7 @@ pwsh ./scripts/Unified-Orchestration.ps1 `
 **Purpose**: Health check script for production monitoring.
 
 **Usage**:
+
 ```bash
 # Manual run
 ./scripts/monitor.sh
@@ -201,6 +219,7 @@ pwsh ./scripts/Unified-Orchestration.ps1 `
 ```
 
 **What it monitors**:
+
 - API health endpoint
 - Dashboard availability
 - Disk space usage
@@ -208,6 +227,7 @@ pwsh ./scripts/Unified-Orchestration.ps1 `
 - Recent error count
 
 **Output**:
+
 ```
 === Unified AI Toolbox Health Check ===
 
@@ -231,6 +251,7 @@ Errors in last hour: 0
 **Purpose**: Automated database backup with compression and retention.
 
 **Usage**:
+
 ```bash
 # Manual backup
 ./scripts/backup.sh
@@ -240,6 +261,7 @@ Errors in last hour: 0
 ```
 
 **What it does**:
+
 - Backs up all SQLite databases (prompts.db, auth.db, audit.db)
 - Compresses backups with gzip
 - Timestamps each backup
@@ -249,6 +271,7 @@ Errors in last hour: 0
 **Backup location**: `/opt/backups/unified-ai-toolbox/`
 
 **Restore procedure**:
+
 ```bash
 # Stop services
 sudo systemctl stop unified-ai-api
@@ -270,12 +293,14 @@ sudo systemctl start unified-ai-dashboard
 ## Best Practices
 
 ### Before Deployment
+
 1. Run `pre-deployment-check.sh` to verify readiness
 2. Review all warnings and failures
 3. Fix any critical issues
 4. Document any deviations from ideal configuration
 
 ### After Deployment
+
 1. Run `post-deployment-smoketest.sh` immediately
 2. Monitor logs for the first 24 hours
 3. Set up automated monitoring with `monitor.sh`
@@ -283,6 +308,7 @@ sudo systemctl start unified-ai-dashboard
 5. Test restore procedure within first week
 
 ### Regular Maintenance
+
 1. Review monitoring logs weekly
 2. Check backup completion daily
 3. Test restore procedure monthly
@@ -311,6 +337,7 @@ When adding new scripts to this directory:
 ## Troubleshooting
 
 ### Script won't run
+
 ```bash
 # Check if executable
 ls -la scripts/your-script.sh
@@ -320,6 +347,7 @@ chmod +x scripts/your-script.sh
 ```
 
 ### Permission denied
+
 ```bash
 # Run with sudo if needed
 sudo ./scripts/your-script.sh
@@ -329,6 +357,7 @@ sudo chown $USER:$USER scripts/your-script.sh
 ```
 
 ### Scripts not found in cron
+
 ```bash
 # Use absolute paths in crontab
 /opt/UnifiedAIToolbox/scripts/backup.sh
@@ -354,6 +383,7 @@ If you create a useful script for the Unified AI Toolbox:
 ## Support
 
 For issues with scripts:
+
 - Check script logs for error messages
 - Review documentation above
 - Open an issue on GitHub
@@ -361,6 +391,6 @@ For issues with scripts:
 
 ---
 
-**Last Updated**: November 18, 2025  
-**Scripts Version**: 1.0  
+**Last Updated**: November 18, 2025
+**Scripts Version**: 1.0
 **Compatible with**: Unified AI Toolbox v1.5+
