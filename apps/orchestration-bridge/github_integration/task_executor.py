@@ -64,6 +64,7 @@ class TaskExecutor:
             raise TaskExecutionError(f"TaskGraph not found: {taskgraph_path}")
 
         taskgraph = json.loads(taskgraph_path.read_text(encoding="utf-8"))
+        user_goal = (taskgraph.get("user_goal") or "").strip()
         tasks = taskgraph.get("tasks") or []
 
         results: List[Dict[str, Any]] = []
@@ -96,6 +97,7 @@ class TaskExecutor:
                 repo_path,
                 run_id,
                 task,
+                user_goal=user_goal,
                 progress_callback=progress_callback,
                 cancel_event=cancel_event,
             )
@@ -112,6 +114,7 @@ class TaskExecutor:
         repo_path: Path,
         run_id: str,
         task: Dict[str, Any],
+        user_goal: str = "",
         progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
         cancel_event: Optional[asyncio.Event] = None,
     ) -> Dict[str, Any]:
@@ -153,12 +156,22 @@ class TaskExecutor:
         violation_file: Optional[Path] = None
 
         try:
+            task_title = (task.get("title") or task_id).strip()
+            task_rationale = (task.get("rationale") or "").strip()
+            goal_parts = [f"Task: {task_title}"]
+            if user_goal:
+                goal_parts.append(f"User goal: {user_goal}")
+            if task_rationale:
+                goal_parts.append(f"Rationale: {task_rationale}")
+            task_goal = "\n".join(goal_parts).strip()
+
             codex_run_id = asyncio.run(
                 self.codex_service.start_codex_run(
                     repo_path=worktree_path,
                     model="gpt-5-codex",
                     max_parallel=1,
                     run_id=f"{run_id}-{task_id}",
+                    goal=task_goal,
                 )
             )
 
@@ -278,7 +291,21 @@ class TaskExecutor:
         return bool((proc.stdout or "").strip())
 
     def _commit_changes(self, repo_path: Path, task_id: str) -> None:
-        self._run_cmd(["git", "-C", str(repo_path), "add", "-A"], check=True)
+        # Avoid committing orchestration artifacts into the target repo.
+        self._run_cmd(
+            [
+                "git",
+                "-C",
+                str(repo_path),
+                "add",
+                "-A",
+                "--",
+                ".",
+                ":!swarm-output",
+                ":!agent_workspace",
+            ],
+            check=True,
+        )
         msg = f"Orchestration: {task_id}"
         self._run_cmd(
             [

@@ -594,7 +594,14 @@ class DummyCodexService:
     def __init__(self):
         self.runs = {}
 
-    async def start_codex_run(self, repo_path: Path, model: str = "gpt-4", max_parallel: int = 3, run_id: str | None = None) -> str:
+    async def start_codex_run(
+        self,
+        repo_path: Path,
+        model: str = "gpt-4",
+        max_parallel: int = 3,
+        run_id: str | None = None,
+        goal: str | None = None,
+    ) -> str:
         run_id = run_id or "run"
         self.runs[run_id] = {"repo_path": str(repo_path), "status": CodexRunStatus.PENDING}
         return run_id
@@ -606,6 +613,9 @@ class DummyCodexService:
         (repo_path / "outside.txt").write_text("change", encoding="utf-8")
         self.runs[run_id]["status"] = CodexRunStatus.COMPLETED
         yield {"run_id": run_id, "status": CodexRunStatus.COMPLETED}
+
+    def get_run_status(self, run_id: str):
+        return {"run_id": run_id, "status": self.runs.get(run_id, {}).get("status")}
 
     def get_findings(self, run_id: str):
         return [{"id": "1", "agent_role": "analyst", "shard": "0", "log_excerpt": "done"}]
@@ -734,12 +744,6 @@ class TestMergeCoordinator:
             assert result["pr"]["pr_number"] == 1
 
 
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
-            assert status['run_id'] == "test-run"
-            assert status['status'] == CodexRunStatus.COMPLETED
-
-
 class TestRepoIntakeService:
     """Tests for repository intake generation."""
 
@@ -822,7 +826,14 @@ class DummyCodexService:
     def __init__(self):
         self.runs = {}
 
-    async def start_codex_run(self, repo_path: Path, model: str = "gpt-4", max_parallel: int = 3, run_id: str | None = None) -> str:
+    async def start_codex_run(
+        self,
+        repo_path: Path,
+        model: str = "gpt-4",
+        max_parallel: int = 3,
+        run_id: str | None = None,
+        goal: str | None = None,
+    ) -> str:
         run_id = run_id or "run"
         self.runs[run_id] = {"repo_path": str(repo_path), "status": CodexRunStatus.PENDING}
         return run_id
@@ -834,6 +845,9 @@ class DummyCodexService:
         (repo_path / "outside.txt").write_text("change", encoding="utf-8")
         self.runs[run_id]["status"] = CodexRunStatus.COMPLETED
         yield {"run_id": run_id, "status": CodexRunStatus.COMPLETED}
+
+    def get_run_status(self, run_id: str):
+        return {"run_id": run_id, "status": self.runs.get(run_id, {}).get("status")}
 
     def get_findings(self, run_id: str):
         return [{"id": "1", "agent_role": "analyst", "shard": "0", "log_excerpt": "done"}]
@@ -900,12 +914,6 @@ class TestTaskExecutor:
             assert result["tasks"][0]["status"] == "failed"
             violation = result["tasks"][0]["artifacts"]["violation"]
             assert violation is not None
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
-            assert status['run_id'] == "test-run"
-            assert status['status'] == CodexRunStatus.COMPLETED
 
 
 class TestRepoIntakeService:
@@ -982,12 +990,6 @@ class TestSupervisorPlanner:
         planner = SupervisorPlanner(runs_dir=Path(tempfile.gettempdir()) / "runs")
         with pytest.raises(SupervisorPlannerError):
             planner.generate_taskgraph(run_id="", intake={}, user_goal="goal", constraints={})
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
-            assert status['run_id'] == "test-run"
-            assert status['status'] == CodexRunStatus.COMPLETED
 
 
 class TestRepoIntakeService:

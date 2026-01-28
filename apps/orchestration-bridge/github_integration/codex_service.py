@@ -121,7 +121,8 @@ class CodexSwarmService:
         repo_path: Path,
         model: str = "gpt-4",
         max_parallel: int = 3,
-        run_id: Optional[str] = None
+        run_id: Optional[str] = None,
+        goal: Optional[str] = None,
     ) -> str:
         """
         Start a Codex swarm analysis run.
@@ -151,15 +152,18 @@ class CodexSwarmService:
         run_dir.mkdir(parents=True, exist_ok=True)
 
         # Initialize run metadata
+        swarm_output_dir = run_dir / "swarm-output"
         self.active_runs[run_id] = {
             'run_id': run_id,
             'status': CodexRunStatus.PENDING,
             'repo_path': str(repo_path),
             'model': model,
             'max_parallel': max_parallel,
+            'goal': goal,
             'start_time': datetime.now(timezone.utc).isoformat(),
             'end_time': None,
             'output_dir': str(run_dir),
+            'swarm_output_dir': str(swarm_output_dir),
             'log_file': str(run_dir / 'codex_run.log'),
             'findings_file': str(run_dir / 'findings.json'),
             'process': None
@@ -190,6 +194,7 @@ class CodexSwarmService:
         run_info = self.active_runs[run_id]
         repo_path = Path(run_info['repo_path'])
         run_dir = Path(run_info['output_dir'])
+        swarm_output_dir = Path(run_info.get('swarm_output_dir') or (run_dir / "swarm-output"))
         log_file = Path(run_info['log_file'])
 
         # Update status
@@ -205,9 +210,15 @@ class CodexSwarmService:
             "-ExecutionPolicy", "Bypass",
             "-File", str(self.codex_script_path),
             "-RepoRoot", str(repo_path),
+        ]
+        goal = (run_info.get("goal") or "").strip()
+        if goal:
+            script_args += ["-Goal", goal]
+        script_args += [
             "-Model", run_info['model'],
             "-MaxParallel", str(run_info['max_parallel']),
-            "-WorkDir", str(run_dir / ".codex_out")
+            "-OutputDir", str(swarm_output_dir),
+            "-WorkDir", str(run_dir / ".codex_out"),
         ]
 
         try:
@@ -355,49 +366,86 @@ class CodexSwarmService:
         codex_out = run_dir / ".codex_out"
 
         if not codex_out.exists():
-            return findings
+            codex_out = None
 
         try:
-            # Iterate through agent output directories
-            for agent_dir in codex_out.iterdir():
-                if not agent_dir.is_dir():
-                    continue
+            if codex_out is not None:
+                # Iterate through agent output directories
+                for agent_dir in codex_out.iterdir():
+                    if not agent_dir.is_dir():
+                        continue
 
-                # Look for standard output files
-                log_file = agent_dir / "codex.log"
-                if log_file.exists():
-                    with open(log_file, 'r') as f:
-                        log_content = redact_text(f.read())
+                    # Look for standard output files
+                    log_file = agent_dir / "codex.log"
+                    if log_file.exists():
+                        with open(log_file, 'r', encoding='utf-8', errors='replace') as f:
+                            log_content = redact_text(f.read())
 
-                    # Extract finding info from directory name
-                    # Format: {role}_{shard}
-                    parts = agent_dir.name.split('_', 1)
-                    role = parts[0] if len(parts) > 0 else 'unknown'
-                    shard = parts[1] if len(parts) > 1 else 'unknown'
+                        # Extract finding info from directory name
+                        # Format: {role}_{shard}
+                        parts = agent_dir.name.split('_', 1)
+                        role = parts[0] if len(parts) > 0 else 'unknown'
+                        shard = parts[1] if len(parts) > 1 else 'unknown'
 
-                    patch_file = None
-                    for candidate in ("diff.patch", "patch.diff", "changes.patch"):
-                        candidate_path = agent_dir / candidate
-                        if candidate_path.exists():
-                            patch_file = candidate_path
-                            break
-                    if patch_file is None:
-                        # Fallback: any .patch in directory
-                        for maybe in agent_dir.glob("*.patch"):
-                            patch_file = maybe
-                            break
+                        patch_file = None
+                        for candidate in ("diff.patch", "patch.diff", "changes.patch"):
+                            candidate_path = agent_dir / candidate
+                            if candidate_path.exists():
+                                patch_file = candidate_path
+                                break
+                        if patch_file is None:
+                            # Fallback: any .patch in directory
+                            for maybe in agent_dir.glob("*.patch"):
+                                patch_file = maybe
+                                break
 
-                    findings.append({
-                        'id': str(uuid.uuid4()),
-                        'agent_role': role,
-                        'shard': shard,
-                        'log_excerpt': log_content[:1000],  # Limit size
-                        'log_file': str(log_file),
-                        'directory': str(agent_dir),
-                        'patch_file': str(patch_file) if patch_file else None,
-                    })
+                        findings.append({
+                            'id': str(uuid.uuid4()),
+                            'agent_role': role,
+                            'shard': shard,
+                            'log_excerpt': log_content[:1000],  # Limit size
+                            'log_file': str(log_file),
+                            'directory': str(agent_dir),
+                            'patch_file': str(patch_file) if patch_file else None,
+                        })
         except Exception as e:
-            logger.error(f"Failed to parse findings: {e}")
+            logger.error(f"Failed to parse codex_out findings: {e}")
+
+        # Swarms engine: Orchestrate-Codex.ps1 writes these into -OutputDir
+        try:
+            swarm_out = run_dir / "swarm-output"
+            summary_file = swarm_out / "orchestration-summary.json"
+            synthesis_file = swarm_out / "Final_Synthesis.txt"
+            swarm_result_file = swarm_out / "swarm-result.json"
+
+            if summary_file.exists() or synthesis_file.exists() or swarm_result_file.exists():
+                summary_obj: Dict[str, Any] = {}
+                if summary_file.exists():
+                    try:
+                        summary_obj = json.loads(summary_file.read_text(encoding="utf-8"))
+                    except Exception:
+                        summary_obj = {}
+
+                synthesis_excerpt = ""
+                if synthesis_file.exists():
+                    synthesis_excerpt = redact_text(synthesis_file.read_text(encoding="utf-8", errors="replace"))[:1200]
+
+                findings.append(
+                    {
+                        "id": str(uuid.uuid4()),
+                        "agent_role": "SwarmsEngine",
+                        "shard": "swarms",
+                        "log_excerpt": synthesis_excerpt or redact_text(json.dumps(summary_obj))[:1200],
+                        "directory": str(swarm_out),
+                        "summary_file": str(summary_file) if summary_file.exists() else None,
+                        "synthesis_file": str(synthesis_file) if synthesis_file.exists() else None,
+                        "swarm_result_file": str(swarm_result_file) if swarm_result_file.exists() else None,
+                        "status": summary_obj.get("Status") or summary_obj.get("status"),
+                        "model": summary_obj.get("Model") or summary_obj.get("model"),
+                    }
+                )
+        except Exception as e:
+            logger.error(f"Failed to parse swarms findings: {e}")
 
         return findings
 

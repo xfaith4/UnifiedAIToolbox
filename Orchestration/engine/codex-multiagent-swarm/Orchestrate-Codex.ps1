@@ -25,7 +25,8 @@
     Directory for outputs (default: ./swarm-output).
 
 .PARAMETER WorkDir
-    Working directory for codex operations (default: .codex_out).
+    Working directory for Swarms execution and any transient artifacts (default: .codex_out).
+    This helps keep directories like agent_workspace out of the target repository.
 
 .PARAMETER DryRun
     Skip actual execution for testing.
@@ -500,6 +501,7 @@ try {
     Write-Log "Max Agents: $MaxAgents"
     Write-Log "Output Directory: $OutputDir"
     Write-Log "Dry Run: $DryRun"
+    Write-Log "Work Directory: $WorkDir"
     
     # Validate repository path
     if (-not (Test-Path $RepoRoot)) {
@@ -516,6 +518,17 @@ try {
     }
     New-Item -ItemType Directory -Path $resolvedOutputDir -Force | Out-Null
     Write-Log "Output directory created: $resolvedOutputDir"
+
+    # Create work directory
+    # If WorkDir is absolute, use it directly; otherwise join with RepoRoot
+    if ([System.IO.Path]::IsPathRooted($WorkDir)) {
+        $resolvedWorkDir = $WorkDir
+    }
+    else {
+        $resolvedWorkDir = Join-Path $RepoRoot $WorkDir
+    }
+    New-Item -ItemType Directory -Path $resolvedWorkDir -Force | Out-Null
+    Write-Log "Work directory created: $resolvedWorkDir"
     
     # Step 1: Analyze repository
     Write-Log "Step 1: Analyzing repository structure"
@@ -529,20 +542,26 @@ try {
     Write-Log "Step 3: Executing Swarms engine" -Level Info
     Write-AgentStatusLine -OutputDir $resolvedOutputDir -Agent "SwarmsEngine" -Status "working" -Extra @{ model = $Model }
 
-    if ($DryRun) {
-        $swarmPayload = [pscustomobject]@{
-            ok = $true
-            status = "completed"
-            result = @{ message = "DryRun: Swarms engine not executed." }
+    Push-Location -Path $resolvedWorkDir
+    try {
+        if ($DryRun) {
+            $swarmPayload = [pscustomobject]@{
+                ok = $true
+                status = "completed"
+                result = @{ message = "DryRun: Swarms engine not executed." }
+            }
+        } else {
+            $agentNames = @($selectedAgents | ForEach-Object { $_.Type })
+            $swarmPayload = Invoke-SwarmsRun -ToolboxRoot (Resolve-Path (Join-Path $PSScriptRoot '..\\..\\..')).Path `
+                -RepoRoot $RepoRoot `
+                -Goal $Goal `
+                -Model $Model `
+                -OutputDir $resolvedOutputDir `
+                -Agents $agentNames
         }
-    } else {
-        $agentNames = @($selectedAgents | ForEach-Object { $_.Type })
-        $swarmPayload = Invoke-SwarmsRun -ToolboxRoot (Resolve-Path (Join-Path $PSScriptRoot '..\\..\\..')).Path `
-            -RepoRoot $RepoRoot `
-            -Goal $Goal `
-            -Model $Model `
-            -OutputDir $resolvedOutputDir `
-            -Agents $agentNames
+    }
+    finally {
+        Pop-Location
     }
 
     Write-AgentStatusLine -OutputDir $resolvedOutputDir -Agent "SwarmsEngine" -Status "complete"
