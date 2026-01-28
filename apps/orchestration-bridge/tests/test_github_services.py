@@ -717,11 +717,17 @@ class TestMergeCoordinator:
         with tempfile.TemporaryDirectory() as tmpdir:
             repo_path = self._init_repo(tmpdir)
             runs_dir = Path(tmpdir) / "runs"
+            base_branch = subprocess.run(
+                ["git", "-C", str(repo_path), "rev-parse", "--abbrev-ref", "HEAD"],
+                check=True,
+                stdout=subprocess.PIPE,
+                text=True,
+            ).stdout.strip()
             # create feature branch
             subprocess.run(["git", "-C", str(repo_path), "checkout", "-b", "feature/task1"], check=True, stdout=subprocess.PIPE, text=True)
             (repo_path / "README.md").write_text("hello world", encoding="utf-8")
             subprocess.run(["git", "-C", str(repo_path), "commit", "-am", "update"], check=True, stdout=subprocess.PIPE, text=True)
-            subprocess.run(["git", "-C", str(repo_path), "checkout", "master"], check=True, stdout=subprocess.PIPE, text=True)
+            subprocess.run(["git", "-C", str(repo_path), "checkout", base_branch], check=True, stdout=subprocess.PIPE, text=True)
 
             tg_path = self._write_taskgraph(runs_dir, "run1", "feature/task1")
 
@@ -736,12 +742,83 @@ class TestMergeCoordinator:
                 run_id="run1",
                 repo_owner="owner",
                 repo_name="repo",
-                base_branch="master",
+                base_branch=base_branch,
                 taskgraph_path=tg_path,
             )
 
             assert result["status"] == "merged"
             assert result["pr"]["pr_number"] == 1
+
+    def test_merge_no_changes_skips_pr(self, monkeypatch):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_path = self._init_repo(tmpdir)
+            runs_dir = Path(tmpdir) / "runs"
+            base_branch = subprocess.run(
+                ["git", "-C", str(repo_path), "rev-parse", "--abbrev-ref", "HEAD"],
+                check=True,
+                stdout=subprocess.PIPE,
+                text=True,
+            ).stdout.strip()
+
+            # Task branch points to base (no commits ahead).
+            tg_path = self._write_taskgraph(runs_dir, "run1", base_branch)
+
+            mc = MergeCoordinator(runs_dir=runs_dir, github_token="token")
+            monkeypatch.setattr(
+                "github_integration.merge_coordinator.GitHubPRService.create_pr_from_branch",
+                lambda *a, **k: (_ for _ in ()).throw(AssertionError("PR creation should be skipped")),
+            )
+
+            result = mc.merge_taskgraph(
+                repo_path=repo_path,
+                run_id="run1",
+                repo_owner="owner",
+                repo_name="repo",
+                base_branch=base_branch,
+                integration_branch="integration/no-changes",
+                taskgraph_path=tg_path,
+            )
+
+            assert result["status"] == "no_changes"
+
+    def test_run_validations_pytest_no_tests_is_ok(self, tmp_path):
+        mc = MergeCoordinator(runs_dir=tmp_path / "runs", github_token="token")
+        artifacts_dir = tmp_path / "runs" / "run1" / "merge"
+        artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+        def fake_run_cmd(cmd, shell=False, cwd=None, check=True):
+            # Simulate pytest exit code 5: no tests collected
+            if isinstance(cmd, str) and "pytest" in cmd:
+                return subprocess.CompletedProcess(
+                    args=cmd,
+                    returncode=5,
+                    stdout="collected 0 items\n\n============================ no tests ran in 0.01s ============================\n",
+                    stderr="",
+                )
+            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+        mc._run_cmd = fake_run_cmd  # type: ignore[method-assign]
+        res = mc._run_validations(tmp_path, "t3_execute", ["python -m pytest"], artifacts_dir)
+        assert res["failed"] is False
+
+    def test_run_validations_pytest_missing_is_skipped(self, tmp_path):
+        mc = MergeCoordinator(runs_dir=tmp_path / "runs", github_token="token")
+        artifacts_dir = tmp_path / "runs" / "run1" / "merge"
+        artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+        def fake_run_cmd(cmd, shell=False, cwd=None, check=True):
+            if isinstance(cmd, str) and "pytest" in cmd:
+                return subprocess.CompletedProcess(
+                    args=cmd,
+                    returncode=1,
+                    stdout="",
+                    stderr="python.exe: No module named pytest\n",
+                )
+            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+        mc._run_cmd = fake_run_cmd  # type: ignore[method-assign]
+        res = mc._run_validations(tmp_path, "t3_execute", ["python -m pytest"], artifacts_dir)
+        assert res["failed"] is False
 
 
 class TestRepoIntakeService:

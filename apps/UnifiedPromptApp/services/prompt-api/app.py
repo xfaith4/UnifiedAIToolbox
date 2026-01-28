@@ -184,6 +184,9 @@ DATA_DIR = settings.data_dir
 DEFAULT_MODEL = settings.openai_model
 OPENAI_API_KEY = settings.openai_api_key or ""
 OPENAI_API_BASE = settings.openai_api_base.rstrip("/")
+if OPENAI_API_BASE in ("https://api.openai.com", "http://api.openai.com"):
+    # OpenAI public API expects `/v1` (e.g. `/v1/responses`). Avoid 404s like `/responses`.
+    OPENAI_API_BASE = f"{OPENAI_API_BASE}/v1"
 PROVIDER = (settings.provider or "openai").lower()
 PROMPT_SYNC_FILE = DATA_DIR / "prompt-library.json"
 AGENT_SYNC_FILE = DATA_DIR / "agent-library.json"

@@ -800,6 +800,16 @@ class Agent:
         else:
             parallel_tool_calls = False
 
+        # Some models (e.g. gpt-5-codex) do not support parallel tool/function calling.
+        # Fall back to sequential tool calling instead of erroring mid-run.
+        if parallel_tool_calls and not supports_parallel_function_calling(current_model):
+            parallel_tool_calls = False
+            if self.verbose:
+                logger.warning(
+                    f"[Agent: {self.agent_name}] Model '{current_model}' does not support parallel tool calls; "
+                    "falling back to sequential tool calling."
+                )
+
         try:
             # Base configuration that's always included
             common_args = {

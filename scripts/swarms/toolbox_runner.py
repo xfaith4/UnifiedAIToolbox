@@ -36,6 +36,22 @@ def _default_agent_config_path() -> Path:
     return _toolbox_root() / "Orchestration" / "prompts" / "Agents.json"
 
 
+def _normalize_openai_api_base_env() -> None:
+    """
+    Normalize common OpenAI base URL env vars to include `/v1`.
+
+    If callers set `OPENAI_API_BASE=https://api.openai.com`, libraries may hit
+    endpoints like `https://api.openai.com/responses` which 404.
+    """
+    for key in ("OPENAI_API_BASE", "OPENAI_BASE_URL"):
+        value = os.environ.get(key)
+        if not value:
+            continue
+        trimmed = value.strip().rstrip("/")
+        if trimmed in ("https://api.openai.com", "http://api.openai.com"):
+            os.environ[key] = f"{trimmed}/v1"
+
+
 def _safe_json(obj: Any) -> str:
     return json.dumps(obj, ensure_ascii=False)
 
@@ -173,6 +189,7 @@ def main() -> int:
     }
 
     try:
+        _normalize_openai_api_base_env()
         selected_agents, model, swarm_type, max_loops, repo_root, output_dir, agent_config, rules = _resolve_config(args)
         payload.update(
             {

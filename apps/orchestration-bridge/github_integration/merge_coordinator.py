@@ -97,6 +97,18 @@ class MergeCoordinator:
                     "merged_tasks": merged_tasks,
                 }
 
+        # If there are no commits between base and integration, GitHub will reject PR creation.
+        ahead_count = self._ahead_count(repo_path, base_branch, integration_branch)
+        if ahead_count == 0:
+            return {
+                "status": "no_changes",
+                "merged_tasks": merged_tasks,
+                "validation_results": validation_results,
+                "base_branch": base_branch,
+                "integration_branch": integration_branch,
+                "message": "No commits between base and integration; PR creation skipped.",
+            }
+
         # Push integration branch and create PR
         pr_service = GitHubPRService(github_token=self.github_token)
         title = pr_title or f"Integration for {run_id}"
@@ -122,6 +134,18 @@ class MergeCoordinator:
             "pr": pr_info,
             "artifacts_dir": str(artifacts_dir),
         }
+
+    def _ahead_count(self, repo_path: Path, base_branch: str, integration_branch: str) -> int:
+        proc = self._run_cmd(
+            ["git", "-C", str(repo_path), "rev-list", "--count", f"{base_branch}..{integration_branch}"],
+            check=False,
+        )
+        if proc.returncode != 0:
+            return -1
+        try:
+            return int((proc.stdout or "").strip() or "0")
+        except Exception:
+            return -1
 
     def _detect_default_branch(self, repo_path: Path) -> str:
         proc = self._run_cmd(["git", "-C", str(repo_path), "symbolic-ref", "refs/remotes/origin/HEAD"], check=False)
@@ -150,16 +174,51 @@ class MergeCoordinator:
         results = []
         failed = False
         for cmd in commands:
-            proc = self._run_cmd(cmd, shell=True, cwd=repo_path, check=False)
+            cmd_str = (cmd or "").strip()
+            cmd_to_run = cmd_str
+            ignore_failure = False
+            note_parts: List[str] = []
+
+            # Back-compat: allow "… || true" to mean "ignore failures".
+            if "||" in cmd_to_run:
+                parts = [p.strip() for p in cmd_to_run.split("||", 1)]
+                if len(parts) == 2 and parts[1] == "true":
+                    cmd_to_run = parts[0]
+                    ignore_failure = True
+                    note_parts.append('ignored failure via "|| true"')
+
+            proc = self._run_cmd(cmd_to_run, shell=True, cwd=repo_path, check=False)
+            effective_returncode = proc.returncode
+
+            # Treat "no tests collected" (pytest exit code 5) as non-fatal by default.
+            if self._is_pytest_command(cmd_to_run) and proc.returncode == 5:
+                out = (proc.stdout or "").lower()
+                if "no tests ran" in out or "collected 0 items" in out or "no tests collected" in out:
+                    effective_returncode = 0
+                    note_parts.append("pytest reported no tests; treated as success")
+
+            # If pytest isn't installed in this execution environment, don't hard-fail a generic validation.
+            # This commonly happens when orchestrating non-Python repos from a toolbox venv.
+            if self._is_pytest_command(cmd_to_run) and proc.returncode != 0:
+                err = (proc.stderr or "")
+                if "No module named pytest" in err or "No module named 'pytest'" in err:
+                    effective_returncode = 0
+                    note_parts.append("pytest not installed; treated as skipped")
+
+            if ignore_failure and effective_returncode != 0:
+                effective_returncode = 0
             results.append(
                 {
-                    "command": cmd,
+                    "command": cmd_str,
+                    "executed": cmd_to_run,
                     "returncode": proc.returncode,
+                    "effective_returncode": effective_returncode,
                     "stdout": proc.stdout,
                     "stderr": proc.stderr,
+                    "note": "; ".join(note_parts) if note_parts else None,
                 }
             )
-            if proc.returncode != 0:
+            if effective_returncode != 0:
                 failed = True
                 break
 
@@ -167,6 +226,11 @@ class MergeCoordinator:
         val_path.write_text(json.dumps(results, indent=2), encoding="utf-8")
 
         return {"task_id": task_id, "results": results, "failed": failed, "artifact": str(val_path)}
+
+    @staticmethod
+    def _is_pytest_command(cmd: str) -> bool:
+        c = (cmd or "").strip().lower()
+        return c.startswith("pytest") or c.startswith("python -m pytest") or c.startswith("py -m pytest")
 
     def _write_conflict_report(self, artifacts_dir: Path, task_id: str, merge_result: Dict[str, Any]) -> Path:
         report = {

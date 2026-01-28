@@ -10,7 +10,9 @@ import litellm
 from pydantic import BaseModel
 import requests
 from litellm import completion, supports_vision
+from litellm.utils import supports_parallel_function_calling
 from loguru import logger
+from urllib.parse import urlparse
 
 
 class LiteLLMException(Exception):
@@ -293,7 +295,7 @@ class LiteLLM:
         self.functions = functions
         self.audio = audio
         self.return_all = return_all
-        self.base_url = base_url
+        self.base_url = self._normalize_base_url(base_url)
         self.api_key = api_key
         self.api_version = api_version
         self.reasoning_effort = reasoning_effort
@@ -327,6 +329,39 @@ class LiteLLM:
 
         # if self.reasoning_enabled is True:
         #     self.reasoning_check()
+
+    @staticmethod
+    def _normalize_base_url(base_url: Optional[str]) -> Optional[str]:
+        """
+        Normalize provider base URLs that are known to be versioned.
+
+        OpenAI's public API expects `/v1` (e.g. `/v1/responses`). If callers pass
+        `https://api.openai.com` (missing `/v1`), requests will 404.
+        """
+        if base_url is None:
+            return None
+
+        normalized = str(base_url).strip().rstrip("/")
+        if not normalized:
+            return None
+
+        try:
+            parsed = urlparse(normalized)
+        except Exception:
+            return normalized
+
+        host = (parsed.netloc or "").lower()
+        if host != "api.openai.com":
+            return normalized
+
+        path = parsed.path or ""
+        if path in ("", "/"):
+            return f"{parsed.scheme}://{parsed.netloc}/v1"
+        if path == "/v1" or path.startswith("/v1/"):
+            return normalized
+
+        # Avoid guessing for proxies/routers; only adjust OpenAI's public API host.
+        return f"{normalized}/v1"
 
     def reasoning_check(self):
         """
@@ -1060,6 +1095,18 @@ class LiteLLM:
 
             # Process additional args if any
             self._process_additional_args(completion_params, args)
+
+            # LiteLLM expects metadata to be a dict. Avoid passing explicit None,
+            # which can trip internal checks like: "model_group" in metadata.
+            if "metadata" in completion_params and completion_params.get("metadata") is None:
+                completion_params.pop("metadata", None)
+
+            # Some models don't support parallel tool calls (e.g. gpt-5-codex). Force
+            # sequential tool calling to avoid hard failures in LiteLLM/provider layers.
+            if completion_params.get("parallel_tool_calls") is True:
+                model = str(completion_params.get("model") or self.model_name or "")
+                if model and not supports_parallel_function_calling(model):
+                    completion_params["parallel_tool_calls"] = False
 
             # Make the completion call
             response = completion(**completion_params)

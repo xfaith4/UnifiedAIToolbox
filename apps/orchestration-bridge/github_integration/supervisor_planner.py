@@ -132,7 +132,8 @@ class SupervisorPlanner:
     ) -> List[Dict[str, Any]]:
         """Create a small set of chunky tasks with validation steps."""
         path_scope = allowed_paths or ["."]
-        validation_steps = validation_commands or ["git status --short", "pytest || true"]
+        # Keep defaults cross-platform: avoid shell-specific "|| true" patterns.
+        validation_steps = validation_commands or ["git status --short", "python -m pytest"]
 
         run_suffix = self._run_suffix(run_id)
 
