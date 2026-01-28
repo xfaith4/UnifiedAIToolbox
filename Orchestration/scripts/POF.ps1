@@ -116,6 +116,86 @@ function Write-AgentStatus {
     }
 }
 
+# --- SWARMS ENGINE INTEGRATION --------------------------------------------
+function Get-SwarmRequestsFromText {
+    param([Parameter(Mandatory = $true)][string]$Text)
+
+    $requests = @()
+    $matches = [regex]::Matches($Text, '\[SWARM_REQUEST\]\s*(\{.*?\})\s*\[/SWARM_REQUEST\]', 'Singleline')
+    foreach ($m in $matches) {
+        $jsonText = $m.Groups[1].Value
+        try {
+            $obj = $jsonText | ConvertFrom-Json -ErrorAction Stop
+            $requests += $obj
+        } catch {
+            # Ignore invalid tool requests; commissioner still provides a score
+        }
+    }
+    return ,$requests
+}
+
+function Invoke-SwarmsEngine {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][string]$Goal,
+        [string[]]$Agents = @(),
+        [string]$Model = "",
+        [string]$SwarmType = "",
+        [int]$MaxLoops = 1,
+        [string]$RepoRoot = "",
+        [string]$OutputDir = ""
+    )
+
+    $toolboxRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\\..')).Path
+    $runner = Join-Path $toolboxRoot 'scripts\\swarms\\toolbox_runner.py'
+    if (-not (Test-Path $runner)) {
+        throw "Swarms runner not found at: $runner"
+    }
+
+    $python = $env:SWARMS_PYTHON_BIN
+    if ([string]::IsNullOrWhiteSpace($python)) { $python = $env:PYTHON_BIN }
+    if ([string]::IsNullOrWhiteSpace($python)) { $python = "python" }
+
+    $args = @("-u", $runner, "--goal", $Goal)
+    if ($Agents -and $Agents.Count -gt 0) {
+        $args += @("--agents", ($Agents -join ","))
+    }
+    if (-not [string]::IsNullOrWhiteSpace($Model)) {
+        $args += @("--model", $Model)
+    }
+    if (-not [string]::IsNullOrWhiteSpace($SwarmType)) {
+        $args += @("--swarm-type", $SwarmType)
+    }
+    if ($MaxLoops -gt 0) {
+        $args += @("--max-loops", "$MaxLoops")
+    }
+    if (-not [string]::IsNullOrWhiteSpace($RepoRoot)) {
+        $args += @("--repo-root", $RepoRoot)
+    } else {
+        $args += @("--repo-root", $toolboxRoot)
+    }
+    if (-not [string]::IsNullOrWhiteSpace($OutputDir)) {
+        $args += @("--output-dir", $OutputDir)
+    }
+
+    $stdout = & $python @args 2>&1 | Out-String
+    $lastJson = ($stdout -split "(`r`n|`n|`r)" | Where-Object { $_.Trim().StartsWith("{") -and $_.Trim().EndsWith("}") } | Select-Object -Last 1)
+    if (-not $lastJson) {
+        throw "Swarms runner returned no JSON payload. Output: $stdout"
+    }
+    $result = $lastJson | ConvertFrom-Json -ErrorAction Stop
+
+    if (-not [string]::IsNullOrWhiteSpace($OutputDir)) {
+        $swarmsDir = Join-Path $OutputDir "swarms"
+        New-Item -ItemType Directory -Force -Path $swarmsDir | Out-Null
+        $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+        $outPath = Join-Path $swarmsDir "swarms-run-$stamp.json"
+        $result | ConvertTo-Json -Depth 50 | Out-File -FilePath $outPath -Encoding UTF8
+    }
+
+    return $result
+}
+
 # --- SINGLE CALL WRAPPER ----------------------------------------------------
 function Invoke-OpenAIRequest {
     param([array]$Messages, [string]$AgentName = "API")
@@ -178,6 +258,7 @@ Stack Trace: $($_.ScriptStackTrace)
 # --- MAIN ORCHESTRATION LOOP -----------------------------------------------
 try {
     $Context = "Goal: $Goal"
+    $Script:SwarmsInvocations = 0
 
     for ($i = 1; $i -le $MaxIterations; $i++) {
         Write-Host "`nIteration $i/$MaxIterations" -ForegroundColor Yellow
@@ -353,6 +434,63 @@ Stack Trace: $($_.ScriptStackTrace)
                 Write-AgentStatus -Agent $C.name -Status "complete"
                 Write-Log -Agent $C.name -Content $Output
                 $Context += "`n`n[$($C.name) Output]:`n$Output"
+
+                # --- Optional: Commissioner-triggered Swarms run ----------------
+                $swarmRequests = Get-SwarmRequestsFromText -Text $Output
+                if ($swarmRequests.Count -gt 0 -and $Script:SwarmsInvocations -lt 1) {
+                    $Script:SwarmsInvocations++
+                    $req = $swarmRequests | Select-Object -First 1
+                    try {
+                        $swarmGoal = if ($req.goal) { [string]$req.goal } else { "" }
+                        if (-not $swarmGoal) { throw "SWARM_REQUEST missing 'goal'." }
+                        $swarmAgents = @()
+                        if ($req.agents) {
+                            if ($req.agents -is [System.Collections.IEnumerable] -and -not ($req.agents -is [string])) {
+                                $swarmAgents = @($req.agents | ForEach-Object { [string]$_ })
+                            } else {
+                                $swarmAgents = @([string]$req.agents)
+                            }
+                        }
+                        $swarmModel = if ($req.model) { [string]$req.model } else { $Model }
+                        $swarmType = if ($req.swarmType) { [string]$req.swarmType } else { "" }
+                        $swarmLoops = 1
+                        if ($req.maxLoops) { try { $swarmLoops = [int]$req.maxLoops } catch { $swarmLoops = 1 } }
+
+                        Write-Host "🧩 Commissioner requested Swarms run..." -ForegroundColor Cyan
+                        Write-AgentStatus -Agent "SwarmsEngine" -Status "working" -ExtraData @{ requested_by = $C.name }
+                        $swarmResult = Invoke-SwarmsEngine `
+                            -Goal $swarmGoal `
+                            -Agents $swarmAgents `
+                            -Model $swarmModel `
+                            -SwarmType $swarmType `
+                            -MaxLoops $swarmLoops `
+                            -OutputDir $OutDir
+                        Write-AgentStatus -Agent "SwarmsEngine" -Status "complete"
+
+                        $swarmSummary = $swarmResult | ConvertTo-Json -Depth 30
+                        $Context += "`n`n[Swarms Output]:`n$swarmSummary"
+
+                        # Re-run Commissioner once with the new Swarms context
+                        Write-Host "🔁 Re-running Commissioner with Swarms output..." -ForegroundColor Yellow
+                        Write-AgentStatus -Agent $C.name -Status "working" -ExtraData @{ rerun = $true }
+                        $Messages = @(
+                            @{ role = "system"; content = $systemPrompt },
+                            @{ role = "user"; content = $Context }
+                        )
+                        $Output2 = Invoke-OpenAIRequest -Messages $Messages -AgentName $C.name
+                        if ($Output2) {
+                            Write-AgentStatus -Agent $C.name -Status "complete" -ExtraData @{ rerun = $true }
+                            Write-Log -Agent $C.name -Content "`n--- Commissioner Re-Run (with Swarms) ---`n$Output2"
+                            $Context += "`n`n[$($C.name) Output (Re-Run)]:`n$Output2"
+                            $Output = $Output2
+                        } else {
+                            Write-AgentStatus -Agent $C.name -Status "error" -ExtraData @{ rerun = $true }
+                        }
+                    } catch {
+                        Write-Host "⚠️ Swarms run failed: $_" -ForegroundColor Yellow
+                        Write-AgentStatus -Agent "SwarmsEngine" -Status "error" -ExtraData @{ error = "$_" }
+                    }
+                }
 
                 # --- Process Agent Improvement Suggestions --------------------
                 if ($Output -match '\[AGENT_IMPROVEMENT:\s*([^\]]+)\]') {

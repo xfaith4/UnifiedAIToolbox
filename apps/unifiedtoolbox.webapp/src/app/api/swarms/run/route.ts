@@ -32,7 +32,10 @@ function resolvePaths() {
 }
 
 async function runPythonSwarm(goal: string, agents: string[], model: string | undefined, swarmsRoot: string, runnerPath: string) {
-  const pythonBin = process.env.PYTHON_BIN || 'python3'
+  const pythonBin =
+    process.env.SWARMS_PYTHON_BIN ||
+    process.env.PYTHON_BIN ||
+    (process.platform === 'win32' ? 'python' : 'python3')
   const args = ['-u', runnerPath, '--goal', goal]
   if (agents.length) args.push('--agents', agents.join(','))
   if (model) args.push('--model', model)
@@ -140,7 +143,7 @@ export async function POST(req: Request) {
       (stderr ? `Swarm runner reported stderr: ${stderr}` : undefined)
     const dependencyHint =
       status === 'failed'
-        ? `Ensure swarm dependencies are installed (pip install -r ${requirementsPathDisplay}) and required model API keys are set.`
+        ? `Ensure the Swarms engine is installed (pwsh ./scripts/Setup-Swarms.ps1 or pip install -r ${requirementsPathDisplay}) and required model API keys are set.`
         : undefined
     const errorMessage =
       baseError && dependencyHint ? `${baseError} | ${dependencyHint}` : baseError || dependencyHint

@@ -156,6 +156,20 @@ Next steps:
 
 ## Existing Scripts
 
+---
+
+## Swarms Engine
+
+**Purpose**: Enable multi-agent “swarming” workflows (via the vendored `scripts/swarms` project) from the Web UI and orchestration scripts.
+
+**Setup**:
+
+```powershell
+pwsh ./scripts/Setup-Swarms.ps1
+```
+
+This creates an isolated venv at `.uaitoolbox/swarms/.venv` and prints the python path; `Start-Toolbox.ps1` will auto-detect and set `SWARMS_PYTHON_BIN` for the Web UI and orchestration when available.
+
 ### Smoketest.ps1
 
 **Purpose**: PowerShell module smoke test for local development.

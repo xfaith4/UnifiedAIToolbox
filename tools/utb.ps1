@@ -33,7 +33,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0, Mandatory = $false)]
-    [ValidateSet('telemetry', 'alerts', 'analysis', 'ai-insights', 'templates', 'help', 'version')]
+    [ValidateSet('telemetry', 'alerts', 'analysis', 'ai-insights', 'templates', 'swarms', 'help', 'version')]
     [string]$Command = 'help',
     
     [Parameter(Position = 1, Mandatory = $false)]
@@ -99,6 +99,7 @@ function Show-Help {
     Write-Host "  analysis       Run repository analysis" -ForegroundColor White
     Write-Host "  ai-insights    Generate AI-powered summaries" -ForegroundColor White
     Write-Host "  templates      Manage and version CI/CD templates" -ForegroundColor White
+    Write-Host "  swarms         Run/setup the Swarms engine" -ForegroundColor White
     Write-Host "  help           Show this help message" -ForegroundColor White
     Write-Host "  version        Show version information" -ForegroundColor White
     Write-Host ""
@@ -113,6 +114,8 @@ function Show-Help {
     Write-Host "  utb.ps1 ai-insights generate         # Generate AI summary" -ForegroundColor Gray
     Write-Host "  utb.ps1 templates version            # Show template version" -ForegroundColor Gray
     Write-Host "  utb.ps1 templates changelog          # Show template changelog" -ForegroundColor Gray
+    Write-Host "  utb.ps1 swarms setup                 # Install/validate Swarms engine" -ForegroundColor Gray
+    Write-Host "  utb.ps1 swarms run --goal \"...\"     # Run a Swarms task" -ForegroundColor Gray
     Write-Host ""
     
     Write-Host "For more information on a specific command, use:" -ForegroundColor Yellow
@@ -476,6 +479,101 @@ function Invoke-TemplatesCommand {
 }
 
 # ============================================================================
+# Swarms Commands
+# ============================================================================
+
+function Invoke-SwarmsCommand {
+    param(
+        [string]$SubCommand,
+        [string[]]$Args
+    )
+
+    Write-Banner "Swarms Engine"
+
+    $setupScript = Join-Path $Script:ScriptsPath 'Setup-Swarms.ps1'
+    $runnerScript = Join-Path $Script:ScriptsPath 'swarms' 'toolbox_runner.py'
+    if (-not (Test-Path $runnerScript)) {
+        Write-Error "Swarms runner not found at: $runnerScript"
+        return 1
+    }
+
+    switch ($SubCommand) {
+        'setup' {
+            if (-not (Test-Path $setupScript)) {
+                Write-Error "Setup script not found at: $setupScript"
+                return 1
+            }
+            $py = & $setupScript
+            Write-Success "Swarms engine ready"
+            Write-Host "SWARMS_PYTHON_BIN=$py" -ForegroundColor Gray
+            return 0
+        }
+
+        'run' {
+            $goal = ''
+            $agents = ''
+            $model = ''
+            $swarmType = ''
+            $repoRoot = $Script:RepoRoot
+            $outDir = Join-Path $Script:RepoRoot 'artifacts'
+
+            for ($i = 0; $i -lt $Args.Count; $i++) {
+                switch ($Args[$i]) {
+                    '--goal' { if ($i + 1 -lt $Args.Count) { $goal = $Args[++$i] } }
+                    '--agents' { if ($i + 1 -lt $Args.Count) { $agents = $Args[++$i] } }
+                    '--model' { if ($i + 1 -lt $Args.Count) { $model = $Args[++$i] } }
+                    '--swarm-type' { if ($i + 1 -lt $Args.Count) { $swarmType = $Args[++$i] } }
+                    '--repo-root' { if ($i + 1 -lt $Args.Count) { $repoRoot = $Args[++$i] } }
+                    '--output-dir' { if ($i + 1 -lt $Args.Count) { $outDir = $Args[++$i] } }
+                }
+            }
+
+            if ([string]::IsNullOrWhiteSpace($goal)) {
+                Write-Error "Missing --goal"
+                Write-Host "Example: utb.ps1 swarms run --goal \"Analyze repo\" --agents \"Researcher,Engineer,Critic\" --model gpt-4o-mini" -ForegroundColor Gray
+                return 1
+            }
+
+            # Ensure engine is installed
+            if (Test-Path $setupScript) {
+                $py = & $setupScript -Quiet
+                if ($py) { $env:SWARMS_PYTHON_BIN = $py }
+            }
+
+            $python = if ($env:SWARMS_PYTHON_BIN) { $env:SWARMS_PYTHON_BIN } else { 'python' }
+            $argv = @('-u', $runnerScript, '--goal', $goal, '--repo-root', $repoRoot, '--output-dir', $outDir)
+            if ($agents) { $argv += @('--agents', $agents) }
+            if ($model) { $argv += @('--model', $model) }
+            if ($swarmType) { $argv += @('--swarm-type', $swarmType) }
+
+            Write-Info "Running Swarms..."
+            & $python @argv
+            return 0
+        }
+
+        'help' {
+            Write-Host "SWARMS COMMANDS:" -ForegroundColor Yellow
+            Write-Host "  setup                          Install/validate Swarms engine" -ForegroundColor White
+            Write-Host '  run --goal "..." [options]     Run a Swarms task' -ForegroundColor White
+            Write-Host "" -ForegroundColor White
+            Write-Host "OPTIONS:" -ForegroundColor Yellow
+            Write-Host '  --agents "A,B,C"              Comma-separated agent names (defaults to core set)' -ForegroundColor White
+            Write-Host "  --model <model>                Model name (e.g., gpt-4o-mini)" -ForegroundColor White
+            Write-Host "  --swarm-type <type>            SwarmRouter type (e.g., SequentialWorkflow, auto)" -ForegroundColor White
+            Write-Host "  --repo-root <path>             Repo root for safe file tools" -ForegroundColor White
+            Write-Host "  --output-dir <path>            Output dir for artifacts/workspace" -ForegroundColor White
+            return 0
+        }
+
+        default {
+            Write-Warning "Unknown swarms subcommand: $SubCommand"
+            Write-Host "Use 'utb.ps1 swarms help' for available commands"
+            return 1
+        }
+    }
+}
+
+# ============================================================================
 # Main Command Router
 # ============================================================================
 
@@ -501,6 +599,10 @@ try {
         
         'templates' {
             $exitCode = Invoke-TemplatesCommand -SubCommand $SubCommand -Args $ArgumentList
+        }
+
+        'swarms' {
+            $exitCode = Invoke-SwarmsCommand -SubCommand $SubCommand -Args $ArgumentList
         }
         
         'version' {

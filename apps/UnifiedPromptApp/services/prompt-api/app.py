@@ -2587,7 +2587,7 @@ class OrchestrationRequest(BaseModel):
     notes: Optional[str] = None
     goal: Optional[str] = None
     model: Optional[str] = None
-    run_mode: Optional[str] = "default"  # default | codex-swarm
+    run_mode: Optional[str] = "default"  # default | codex-swarm | swarms
     repo_root: Optional[str] = None
     max_iterations: Optional[int] = None
 
@@ -2831,8 +2831,17 @@ def orchestrate_run(req: OrchestrationRequest):
             data["events"].append({"ts": now_iso(), "type": "info", "message": f"Executing {ps1.name}"})
             path.write_text(json.dumps(data, indent=2), encoding="utf-8")
             args = [ps_exe, "-NoLogo", "-File", str(ps1)]
-            if run_mode == "codex-swarm":
-                args += ["-RepoRoot", repo_root]
+            if run_mode in ("codex-swarm", "swarms"):
+                args += [
+                    "-RepoRoot",
+                    repo_root,
+                    "-Goal",
+                    str(goal_text),
+                    "-Model",
+                    manifest.get("model") or DEFAULT_MODEL,
+                    "-OutputDir",
+                    str(out_dir),
+                ]
             else:
                 args += [
                     "-Goal", str(goal_text),

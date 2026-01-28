@@ -341,6 +341,47 @@ function Invoke-Tool {
             return @(@{ name="top5Files"; type="json"; uri=$out })
         }
 
+        '^swarms:run$' {
+            Assert-ToolArgs -ToolName $Name -Args ($Args ?? @{}) -RequiredKeys @('goal')
+
+            $toolboxRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\\..')).Path
+            $runner = Join-Path $toolboxRoot 'scripts\\swarms\\toolbox_runner.py'
+            if (-not (Test-Path $runner)) {
+                throw "Swarms runner not found: $runner"
+            }
+
+            $python = $env:SWARMS_PYTHON_BIN
+            if (-not $python) { $python = $env:PYTHON_BIN }
+            if (-not $python) { $python = 'python' }
+
+            $repoRoot = if ($Args.ContainsKey('repoRoot') -and $Args.repoRoot) { [string]$Args.repoRoot } else { $toolboxRoot }
+            $agents = if ($Args.ContainsKey('agents') -and $Args.agents) { $Args.agents } else { $null }
+            $model = if ($Args.ContainsKey('model') -and $Args.model) { [string]$Args.model } else { '' }
+            $swarmType = if ($Args.ContainsKey('swarmType') -and $Args.swarmType) { [string]$Args.swarmType } else { '' }
+            $maxLoops = 1
+            if ($Args.ContainsKey('maxLoops') -and $Args.maxLoops) { try { $maxLoops = [int]$Args.maxLoops } catch { $maxLoops = 1 } }
+
+            $argv = @('-u', $runner, '--goal', [string]$Args.goal, '--repo-root', $repoRoot, '--output-dir', $OutDir, '--max-loops', "$maxLoops")
+            if ($agents) {
+                if ($agents -is [System.Collections.IEnumerable] -and -not ($agents -is [string])) {
+                    $argv += @('--agents', (($agents | ForEach-Object { [string]$_ }) -join ','))
+                } else {
+                    $argv += @('--agents', [string]$agents)
+                }
+            }
+            if ($model) { $argv += @('--model', $model) }
+            if ($swarmType) { $argv += @('--swarm-type', $swarmType) }
+
+            $stdout = & $python @argv 2>&1 | Out-String
+            $line = ($stdout -split "(`r`n|`n|`r)" | Where-Object { $_.Trim().StartsWith('{') -and $_.Trim().EndsWith('}') } | Select-Object -Last 1)
+            if (-not $line) { throw "Swarms tool returned no JSON payload. Output: $stdout" }
+            $obj = $line | ConvertFrom-Json -Depth 50
+
+            $out = Join-Path $OutDir 'swarmResult.json'
+            Write-JsonFile -Object $obj -Path $out
+            return @(@{ name="swarmResult"; type="json"; uri=$out })
+        }
+ 
         default {
             throw ("Unknown tool '{0}'. Bind it here." -f $Name)
         }

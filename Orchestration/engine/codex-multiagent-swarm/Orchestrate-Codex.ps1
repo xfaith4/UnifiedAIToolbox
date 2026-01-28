@@ -6,12 +6,8 @@
     Orchestrate-Codex.ps1 is the multi-agent swarm orchestrator that:
     1. Analyzes a repository structure
     2. Selects appropriate agents for the task
-    3. Executes agents in parallel
-    4. Synthesizes results from all agents
-    5. Generates comprehensive reports
-
-    Note: In non-DryRun mode, the script currently creates placeholder results.
-    Full agent execution integration is planned for a future update.
+    3. Executes a Swarms multi-agent run (Python) as the engine
+    4. Writes outputs + status logs compatible with the Prompt API bridge
 
 .PARAMETER RepoRoot
     Repository root directory to analyze.
@@ -48,6 +44,9 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$RepoRoot,
+
+    [Parameter(Mandatory = $false)]
+    [string]$Goal = "Analyze the repository and produce a practical implementation plan.",
 
     [Parameter(Mandatory = $false)]
     [string]$Model = "gpt-4o-mini",
@@ -127,6 +126,80 @@ function Write-Log {
     }
     
     Write-Host "[$timestamp] [$Level] $Message" -ForegroundColor $color
+}
+
+function Write-AgentStatusLine {
+    param(
+        [Parameter(Mandatory = $true)][string]$OutputDir,
+        [Parameter(Mandatory = $true)][string]$Agent,
+        [Parameter(Mandatory = $true)][string]$Status,
+        [hashtable]$Extra = @{}
+    )
+
+    $statusPath = Join-Path $OutputDir "agent_status.json"
+    $row = @{
+        agent     = $Agent
+        status    = $Status
+        timestamp = (Get-Date -Format "o")
+    }
+    foreach ($k in $Extra.Keys) { $row[$k] = $Extra[$k] }
+    ($row | ConvertTo-Json -Compress) | Add-Content -Path $statusPath
+}
+
+function Resolve-SwarmsPython {
+    param([string]$ToolboxRoot)
+
+    $py = $env:SWARMS_PYTHON_BIN
+    if (-not [string]::IsNullOrWhiteSpace($py) -and (Test-Path $py)) { return $py }
+
+    $candidate = Join-Path $ToolboxRoot ".uaitoolbox\\swarms\\.venv\\Scripts\\python.exe"
+    if (Test-Path $candidate) { return $candidate }
+
+    # Try to bootstrap the Swarms venv if available
+    $setup = Join-Path $ToolboxRoot "scripts\\Setup-Swarms.ps1"
+    if (Test-Path $setup) {
+        try {
+            $resolved = & $setup -Quiet
+            if ($resolved -and (Test-Path $resolved)) { return $resolved }
+        } catch { }
+    }
+
+    # Fallback: rely on PATH python
+    return "python"
+}
+
+function Invoke-SwarmsRun {
+    param(
+        [Parameter(Mandatory = $true)][string]$ToolboxRoot,
+        [Parameter(Mandatory = $true)][string]$RepoRoot,
+        [Parameter(Mandatory = $true)][string]$Goal,
+        [Parameter(Mandatory = $true)][string]$Model,
+        [Parameter(Mandatory = $true)][string]$OutputDir,
+        [string[]]$Agents
+    )
+
+    $runner = Join-Path $ToolboxRoot "scripts\\swarms\\toolbox_runner.py"
+    if (-not (Test-Path $runner)) {
+        throw "Swarms runner not found: $runner"
+    }
+
+    $python = Resolve-SwarmsPython -ToolboxRoot $ToolboxRoot
+
+    $task = "RepoRoot: $RepoRoot`nTask: $Goal"
+    $args = @("-u", $runner, "--goal", $task, "--model", $Model, "--repo-root", $RepoRoot, "--output-dir", $OutputDir)
+    if ($Agents -and $Agents.Count -gt 0) {
+        $args += @("--agents", ($Agents -join ","))
+    }
+    if ($env:SWARM_TYPE) {
+        $args += @("--swarm-type", "$($env:SWARM_TYPE)")
+    }
+
+    $stdout = & $python @args 2>&1 | Out-String
+    $lastJson = ($stdout -split "(`r`n|`n|`r)" | Where-Object { $_.Trim().StartsWith("{") -and $_.Trim().EndsWith("}") } | Select-Object -Last 1)
+    if (-not $lastJson) {
+        throw "Swarms runner produced no JSON payload. Output: $stdout"
+    }
+    return ($lastJson | ConvertFrom-Json -ErrorAction Stop)
 }
 
 function Test-Cli {
@@ -422,6 +495,7 @@ function Export-SwarmResults {
 try {
     Write-Log "=== Codex Multi-Agent Swarm Orchestration ===" -Level Success
     Write-Log "Repository: $RepoRoot"
+    Write-Log "Goal: $Goal"
     Write-Log "Model: $Model"
     Write-Log "Max Agents: $MaxAgents"
     Write-Log "Output Directory: $OutputDir"
@@ -450,32 +524,55 @@ try {
     # Step 2: Select agents
     Write-Log "Step 2: Selecting agents"
     $selectedAgents = Select-Agents -RepoStructure $repoStructure -MaxAgents $MaxAgents
-    
-    # Step 3: Execute agents
-    Write-Log "Step 3: Executing agent swarm"
-    $executionResults = Invoke-AgentExecution `
-        -Agents $selectedAgents `
-        -RepoStructure $repoStructure `
-        -OutputDir $resolvedOutputDir `
-        -Model $Model `
-        -DryRun:$DryRun
-    
-    # Step 4: Export summary
-    Write-Log "Step 4: Generating summary and results"
-    $summary = Export-SwarmSummary `
-        -RepoStructure $repoStructure `
-        -Agents $selectedAgents `
-        -Results $executionResults `
-        -OutputDir $resolvedOutputDir `
-        -Model $Model
-    
-    $results = Export-SwarmResults `
-        -Results $executionResults `
-        -OutputDir $resolvedOutputDir
-    
+
+    # Step 3: Execute Swarms engine (Python)
+    Write-Log "Step 3: Executing Swarms engine" -Level Info
+    Write-AgentStatusLine -OutputDir $resolvedOutputDir -Agent "SwarmsEngine" -Status "working" -Extra @{ model = $Model }
+
+    if ($DryRun) {
+        $swarmPayload = [pscustomobject]@{
+            ok = $true
+            status = "completed"
+            result = @{ message = "DryRun: Swarms engine not executed." }
+        }
+    } else {
+        $agentNames = @($selectedAgents | ForEach-Object { $_.Type })
+        $swarmPayload = Invoke-SwarmsRun -ToolboxRoot (Resolve-Path (Join-Path $PSScriptRoot '..\\..\\..')).Path `
+            -RepoRoot $RepoRoot `
+            -Goal $Goal `
+            -Model $Model `
+            -OutputDir $resolvedOutputDir `
+            -Agents $agentNames
+    }
+
+    Write-AgentStatusLine -OutputDir $resolvedOutputDir -Agent "SwarmsEngine" -Status "complete"
+
+    # Step 4: Export summary + synthesis compatible with bridge consumers
+    Write-Log "Step 4: Writing outputs" -Level Info
+    $swarmResultPath = Join-Path $resolvedOutputDir "swarm-result.json"
+    $swarmPayload | ConvertTo-Json -Depth 50 | Set-Content -Path $swarmResultPath -Encoding UTF8
+
+    $finalPath = Join-Path $resolvedOutputDir "Final_Synthesis.txt"
+    $finalText = $swarmPayload.result
+    if ($finalText -isnot [string]) {
+        $finalText = ($swarmPayload.result | ConvertTo-Json -Depth 50)
+    }
+    $finalText | Out-File -FilePath $finalPath -Encoding UTF8
+
+    $summary = @{
+        Timestamp = (Get-Date -Format "o")
+        Model = $Model
+        RepoRoot = $RepoRoot
+        Goal = $Goal
+        AgentsUsed = @($selectedAgents | ForEach-Object { $_.Type })
+        Engine = "swarms"
+        Swarm = $swarmPayload.swarmType
+        Status = $swarmPayload.status
+    }
+    ($summary | ConvertTo-Json -Depth 10) | Set-Content -Path (Join-Path $resolvedOutputDir "orchestration-summary.json") -Encoding UTF8
+
     Write-Log "=== Orchestration Completed Successfully ===" -Level Success
     Write-Log "Total agents executed: $($selectedAgents.Count)"
-    Write-Log "Total findings: $($results.TotalFindings)"
     Write-Log "Output location: $resolvedOutputDir"
     
     exit 0

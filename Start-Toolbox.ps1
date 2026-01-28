@@ -130,6 +130,26 @@ if (-not (Test-Path "node_modules")) {
 }
 Pop-Location
 
+# Setup Swarms engine (optional but enabled by default for orchestration + UI)
+try {
+    Write-Host "  -> Ensuring Swarms engine..." -ForegroundColor Gray
+    $swarmsPython = Join-Path $ProjectRoot ".uaitoolbox\\swarms\\.venv\\Scripts\\python.exe"
+    if (-not (Test-Path $swarmsPython)) {
+        $setupScript = Join-Path $ProjectRoot "scripts\\Setup-Swarms.ps1"
+        if (Test-Path $setupScript) {
+            $resolved = & $setupScript -Quiet
+            if ($resolved) { $swarmsPython = $resolved }
+        }
+    }
+    if (Test-Path $swarmsPython) {
+        $env:SWARMS_PYTHON_BIN = $swarmsPython
+    } else {
+        Write-Host "  WARNING: Swarms engine not available (missing venv). Run: pwsh ./scripts/Setup-Swarms.ps1" -ForegroundColor Yellow
+    }
+} catch {
+    Write-Host "  WARNING: Swarms engine setup failed: $_" -ForegroundColor Yellow
+}
+
 Write-Host ""
 Write-Host "Starting services..." -ForegroundColor Cyan
 Write-Host ""
