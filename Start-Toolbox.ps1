@@ -94,7 +94,7 @@ if (-not (Test-Path $venvPath)) {
     Write-Host "  -> Creating Python virtual environment..." -ForegroundColor Gray
     # Create venv without pip to avoid ensurepip hang on Windows
     python -m venv --without-pip $venvPath
-    
+
     # Install pip using get-pip.py (more reliable on Windows)
     Write-Host "  -> Installing pip..." -ForegroundColor Gray
     $venvPython = Join-Path $venvPath "Scripts\python.exe"
@@ -135,9 +135,9 @@ Write-Host "Starting services..." -ForegroundColor Cyan
 Write-Host ""
 
 # Best-effort cleanup helper (kills child processes like Uvicorn reload + Next.js dev server trees)
-function Stop-ProcessTree([int]$Pid) {
-    if ($Pid -le 0) { return }
-    try { & taskkill.exe /PID $Pid /T /F | Out-Null } catch { }
+function Stop-ProcessTree([int]$procid) {
+    if ($procid -le 0) { return }
+    try { & taskkill.exe /PID $procid /T /F | Out-Null } catch { }
 }
 
 $apiProc = $null
@@ -182,15 +182,32 @@ $webErrLog = Join-Path $logsDir "webapp.err.log"
 $env:PORT = "$WebPort"
 $env:NEXT_PUBLIC_API_BASE = "http://localhost:$ApiPort"
 
-$npmPath = (Get-Command npm).Source
+# Prefer the Windows batch wrapper so Start-Process can launch it reliably.
+# (Get-Command npm) often resolves to npm.ps1, which is not a Win32 executable.
+$npmCmd = Get-Command npm.cmd -ErrorAction SilentlyContinue
+if ($null -ne $npmCmd) {
+    $npmPath = $npmCmd.Source
+    $npmArgs = @("run", "dev")
+} else {
+    $npmCommand = Get-Command npm -ErrorAction Stop
+    if (($npmCommand.CommandType -eq "ExternalScript") -and ($npmCommand.Source -like "*.ps1")) {
+        $pwshPath = (Get-Command pwsh -ErrorAction SilentlyContinue).Source
+        if (-not $pwshPath) { $pwshPath = (Get-Command powershell -ErrorAction Stop).Source }
+        $npmPath = $pwshPath
+        $npmArgs = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $npmCommand.Source, "run", "dev")
+    } else {
+        $npmPath = $npmCommand.Source
+        $npmArgs = @("run", "dev")
+    }
+}
 $webProc = Start-Process `
     -FilePath $npmPath `
-    -ArgumentList @("run", "dev") `
+    -ArgumentList $npmArgs `
     -WorkingDirectory $webappPath `
-    -RedirectStandardOutput $webOutLog `
-    -RedirectStandardError $webErrLog `
-    -NoNewWindow `
-    -PassThru
+     -RedirectStandardOutput $webOutLog `
+     -RedirectStandardError $webErrLog `
+     -NoNewWindow `
+     -PassThru
 
 Start-Sleep -Seconds 5
 

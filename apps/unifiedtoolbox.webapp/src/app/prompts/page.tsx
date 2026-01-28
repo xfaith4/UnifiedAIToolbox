@@ -485,12 +485,34 @@ function PromptEditor({
   const [aiDelta, setAiDelta] = useState<number | null>(null)
   const [aiRubric, setAiRubric] = useState<PromptQualitySubscores | null>(null)
   const [aiSecretConsent, setAiSecretConsent] = useState(false)
-  const [keyVersion, setKeyVersion] = useState(0)
+  const [, setKeyVersion] = useState(0)
   const [aiIterations, setAiIterations] = useState(3)
+  const [evaluatedTemplateSnapshot, setEvaluatedTemplateSnapshot] = useState<string | null>(null)
+  const [workflowNotice, setWorkflowNotice] = useState<{ tone: 'info' | 'success' | 'error'; message: string } | null>(null)
+  const workflowNoticeTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const refinerSectionRef = useRef<HTMLDivElement | null>(null)
+  const lastLoadedPromptId = useRef<string | null>(null)
 
   useEffect(() => {
     setPrompt(value)
   }, [value])
+
+  useEffect(() => {
+    if (lastLoadedPromptId.current === value.id) return
+    lastLoadedPromptId.current = value.id
+    setEvaluatedTemplateSnapshot(value.quality?.lastRatedAt ? value.template : null)
+    setWorkflowNotice(null)
+    if (workflowNoticeTimeout.current) {
+      clearTimeout(workflowNoticeTimeout.current)
+      workflowNoticeTimeout.current = null
+    }
+  }, [value])
+
+  useEffect(() => {
+    return () => {
+      if (workflowNoticeTimeout.current) clearTimeout(workflowNoticeTimeout.current)
+    }
+  }, [])
 
   useEffect(() => {
     setHistorySelection(value.history?.[0]?.versionId ?? null)
@@ -560,6 +582,8 @@ function PromptEditor({
 
   const draftText = prompt.refine?.draftText ?? prompt.template
   const diffLines = useMemo(() => computeDiff(prompt.template, draftText), [prompt.template, draftText])
+  const draftHasChanges = useMemo(() => diffLines.some((line) => line.status === 'changed'), [diffLines])
+  const isDirty = useMemo(() => promptEditorDirtyKey(prompt) !== promptEditorDirtyKey(value), [prompt, value])
 
   const selectedHistory = useMemo(
     () =>
@@ -606,6 +630,12 @@ function PromptEditor({
     [prompt.history]
   )
 
+  function showNotice(tone: 'info' | 'success' | 'error', message: string) {
+    setWorkflowNotice({ tone, message })
+    if (workflowNoticeTimeout.current) clearTimeout(workflowNoticeTimeout.current)
+    workflowNoticeTimeout.current = setTimeout(() => setWorkflowNotice(null), 3500)
+  }
+
   function handleField<K extends keyof PromptItem>(key: K, value: PromptItem[K]) {
     setPrompt((prev) => ({ ...prev, [key]: value }))
   }
@@ -630,9 +660,11 @@ function PromptEditor({
     }
     setPrompt(updated)
     onPersist(updated)
+    setEvaluatedTemplateSnapshot(updated.template)
+    showNotice('success', 'Evaluation updated.')
   }
 
-  function handleGenerateLocalImprovements() {
+  function handleGenerateLocalImprovements(options?: { notice?: string; noticeTone?: 'info' | 'success' | 'error' }) {
     const draft = generateRefinementDraft(prompt.template, prompt.context)
     const updated = {
       ...prompt,
@@ -652,6 +684,7 @@ function PromptEditor({
     setAiCost(null)
     setAiDelta(null)
     setAiRubric(null)
+    showNotice(options?.noticeTone ?? 'success', options?.notice ?? 'Draft updated. Next: apply & re-evaluate.')
   }
 
   async function handleGenerateAIImprovements() {
@@ -708,10 +741,11 @@ function PromptEditor({
       setAiCost(payload.cost ?? null)
       setAiDelta(typeof payload.qualityScoreDelta === 'number' ? payload.qualityScoreDelta : null)
       setAiRubric(payload.rubricBreakdown ?? null)
+      showNotice('success', 'AI draft ready. Next: apply & re-evaluate.')
     } catch (error) {
       const message = error instanceof Error ? error.message : 'AI refinement failed.'
       setAiError(message)
-      handleGenerateLocalImprovements()
+      handleGenerateLocalImprovements({ notice: 'AI refinement failed; generated a local draft instead.', noticeTone: 'error' })
     } finally {
       setAiLoading(false)
     }
@@ -725,12 +759,14 @@ function PromptEditor({
     }
   }
 
-  function handleApplyDraft() {
+  function handleApplyDraftAndEvaluate() {
     const draft = prompt.refine?.draftText ?? prompt.template
     if (!draft) return
+    const quality = evaluatePromptQuality(draft, prompt.context)
     const updated = {
       ...prompt,
       template: draft,
+      quality,
       refine: {
         ...prompt.refine,
         lastRefinedAt: new Date().toISOString(),
@@ -740,6 +776,8 @@ function PromptEditor({
     }
     setPrompt(updated)
     onPersist(updated)
+    setEvaluatedTemplateSnapshot(draft)
+    showNotice('success', 'Draft applied and evaluated. Next: save the prompt.')
   }
 
   function handleSaveVersion() {
@@ -801,8 +839,170 @@ function PromptEditor({
     setPrompt(updated)
   }
 
+  const generateDisabled =
+    refinerMode === 'ai'
+      ? aiLoading || !aiAvailable || (secretDetected && !aiSecretConsent)
+      : aiLoading
+
+  const hasEvaluation = Boolean(prompt.quality?.lastRatedAt)
+  const evaluationStale =
+    hasEvaluation && evaluatedTemplateSnapshot !== null ? evaluatedTemplateSnapshot !== prompt.template : false
+  const hasDraft = Boolean(prompt.refine?.lastRefinedAt)
+
+  const nextAction: 'wait' | 'consent' | 'evaluate' | 'generate' | 'apply' | 'save' = aiLoading
+    ? 'wait'
+    : refinerMode === 'ai' && secretDetected && !aiSecretConsent
+      ? 'consent'
+      : draftHasChanges
+        ? 'apply'
+        : !hasEvaluation || evaluationStale
+          ? 'evaluate'
+          : !hasDraft
+            ? 'generate'
+            : 'save'
+
+  const nextLabel =
+    nextAction === 'wait'
+      ? 'Refining…'
+      : nextAction === 'consent'
+        ? 'Confirm secret sharing'
+        : nextAction === 'evaluate'
+          ? 'Evaluate'
+          : nextAction === 'generate'
+            ? 'Generate improvements'
+            : nextAction === 'apply'
+              ? 'Apply & re-evaluate'
+              : isDirty
+                ? 'Save Prompt'
+                : 'Close editor'
+
+  const actionPrimary = 'rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-slate-700'
+  const actionSecondary =
+    'rounded-lg border border-slate-700 bg-slate-900/40 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-slate-800/60 disabled:cursor-not-allowed disabled:opacity-60'
+
   return (
     <div className="space-y-6 rounded-2xl border border-slate-800 bg-slate-900/50 p-6">
+      <div className="sticky top-3 z-30 rounded-2xl border border-slate-800 bg-slate-950/70 p-3 backdrop-blur">
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-wrap items-center gap-3 text-xs text-slate-300">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Workflow</span>
+              <span className="rounded-full border border-slate-700 bg-slate-900/60 px-2 py-0.5 text-[11px] text-slate-200">
+                Score {prompt.quality?.overallScore.toFixed(1) ?? '—'}
+              </span>
+              {isDirty ? (
+                <span className="rounded-full border border-amber-400/20 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-200">
+                  Unsaved changes
+                </span>
+              ) : (
+                <span className="rounded-full border border-slate-700 bg-slate-900/60 px-2 py-0.5 text-[11px] text-slate-400">
+                  No pending changes
+                </span>
+              )}
+            </div>
+            <span className="text-[11px] text-slate-400">
+              Next: <span className="font-semibold text-slate-200">{nextLabel}</span>
+            </span>
+            {workflowNotice && (
+              <span
+                className={`rounded-full border px-2 py-0.5 text-[11px] ${
+                  workflowNotice.tone === 'success'
+                    ? 'border-emerald-400/20 bg-emerald-500/10 text-emerald-200'
+                    : workflowNotice.tone === 'error'
+                      ? 'border-rose-400/20 bg-rose-500/10 text-rose-200'
+                      : 'border-slate-700 bg-slate-900/60 text-slate-200'
+                }`}
+                aria-live="polite"
+              >
+                {workflowNotice.message}
+              </span>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <div
+              className="flex overflow-hidden rounded-full border border-slate-700 bg-slate-900/50 text-[11px]"
+              title="AI refinement sends prompt text to OpenAI. Do not include secrets unless you explicitly consent."
+            >
+              <button
+                className={`px-3 py-1 transition ${
+                  refinerMode === 'local' ? 'bg-blue-500 text-white' : 'bg-transparent text-slate-300 hover:bg-slate-800'
+                }`}
+                onClick={() => setRefinerMode('local')}
+              >
+                Local
+              </button>
+              <button
+                className={`px-3 py-1 transition ${
+                  refinerMode === 'ai' ? 'bg-blue-500 text-white' : 'bg-transparent text-slate-300 hover:bg-slate-800'
+                }`}
+                onClick={() => {
+                  if (!aiAvailable) {
+                    setAiError('AI refinement requires an API key.')
+                    showNotice('error', 'Configure an API key to use AI refinement.')
+                    return
+                  }
+                  setRefinerMode('ai')
+                }}
+              >
+                AI
+              </button>
+            </div>
+
+            <button
+              className={nextAction === 'evaluate' ? actionPrimary : actionSecondary}
+              onClick={handleEvaluate}
+              title="Evaluate prompt quality for the current template."
+            >
+              Evaluate
+            </button>
+
+            <button
+              className={nextAction === 'generate' ? actionPrimary : actionSecondary}
+              onClick={handleGenerateImprovements}
+              disabled={generateDisabled}
+              title={refinerMode === 'ai' ? 'Generate a refinement draft using AI.' : 'Generate a refinement draft locally.'}
+            >
+              {aiLoading ? (
+                <span className="flex items-center gap-2">
+                  <span className="inline-block h-3 w-3 animate-spin rounded-full border border-white/60 border-t-transparent" />
+                  Generating…
+                </span>
+              ) : refinerMode === 'ai' ? (
+                'Generate (AI)'
+              ) : (
+                'Generate'
+              )}
+            </button>
+
+            <button
+              className={nextAction === 'apply' ? actionPrimary : actionSecondary}
+              onClick={handleApplyDraftAndEvaluate}
+              disabled={!draftHasChanges}
+              title="Apply the draft to the template and re-evaluate the score."
+            >
+              Apply & re-evaluate
+            </button>
+
+            <button
+              className={nextAction === 'save' ? actionPrimary : actionSecondary}
+              onClick={() => onSave(prompt)}
+              title="Save changes and close the editor."
+            >
+              Save Prompt
+            </button>
+
+            <button
+              className="text-xs text-slate-400 underline underline-offset-2 hover:text-slate-200"
+              onClick={() => refinerSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              type="button"
+            >
+              Refiner details
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
@@ -887,7 +1087,7 @@ function PromptEditor({
         </div>
       </div>
 
-      <div className="space-y-4 rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
+      <div ref={refinerSectionRef} className="space-y-4 rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <div className="text-xs uppercase tracking-wide text-slate-400">Prompt Refiner</div>
@@ -1043,7 +1243,7 @@ function PromptEditor({
                 </label>
               )}
               <button
-                className="rounded-full border border-slate-700 px-2 py-0.5 text-[11px]"
+                className="rounded-lg border border-slate-700 bg-slate-900/40 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-slate-800/60 disabled:cursor-not-allowed disabled:opacity-60"
                 onClick={handleGenerateImprovements}
                 disabled={
                   refinerMode === 'ai'
@@ -1059,7 +1259,18 @@ function PromptEditor({
                     : 'Generate improvements (AI)'
                   : 'Generate improvements'}
               </button>
-              {aiLoading && <span className="text-[11px] text-slate-500">AI refining…</span>}
+              {aiLoading ? (
+                <span className="flex items-center gap-2 text-[11px] text-slate-400" aria-live="polite">
+                  <span className="inline-block h-3 w-3 animate-spin rounded-full border border-slate-500 border-t-transparent" />
+                  Refining…
+                </span>
+              ) : (
+                prompt.refine?.lastRefinedAt && (
+                  <span className="text-[11px] text-emerald-200" aria-live="polite">
+                    Draft updated.
+                  </span>
+                )
+              )}
             </div>
           </div>
           <textarea
@@ -1070,9 +1281,9 @@ function PromptEditor({
           <div className="flex flex-wrap items-center gap-2">
             <button
               className="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-700"
-              onClick={handleApplyDraft}
+              onClick={handleApplyDraftAndEvaluate}
             >
-              Apply draft to template
+              Apply draft & re-evaluate
             </button>
             <button
               className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:border-slate-500"
@@ -1272,6 +1483,21 @@ function TextAreaField({
       {hint && <div className="mt-1 text-xs text-slate-500">{hint}</div>}
     </label>
   )
+}
+
+function promptEditorDirtyKey(prompt: PromptItem): string {
+  return JSON.stringify({
+    title: prompt.title ?? '',
+    category: prompt.category ?? '',
+    description: prompt.description ?? '',
+    context: prompt.context ?? '',
+    outputFormat: prompt.outputFormat ?? '',
+    template: prompt.template ?? '',
+    variables: prompt.variables ?? null,
+    tags: prompt.tags ?? null,
+    refine: prompt.refine ?? null,
+    history: prompt.history ?? null,
+  })
 }
 
 
