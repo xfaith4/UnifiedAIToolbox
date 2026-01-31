@@ -14,6 +14,7 @@ The Unified AI Toolbox is a streamlined platform that provides:
 - **Web Portal**: Modern Next.js application for prompt and agent management
 - **REST API**: FastAPI backend with OpenAPI documentation
 - **GitHub Integration**: Clone repos, analyze code, create PRs automatically
+<img width="1897" height="899" alt="image" src="https://github.com/user-attachments/assets/5dcf9486-1af6-45e8-9211-4cd60d792e34" />
 
 ## 🚀 Quick Start
 
