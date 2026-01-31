@@ -25,7 +25,17 @@ const Header: React.FC<HeaderProps> = ({
     <header className="flex items-center justify-between p-3 bg-gray-800/50 border-b border-gray-700 backdrop-blur-sm">
       <div className="flex items-center">
         <LogoIcon className="w-8 h-8 mr-3 text-indigo-400" />
-        <h1 className="text-xl font-bold text-gray-100">AI Orchestrator</h1>
+        <div className="flex flex-col">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-xl font-bold text-gray-100">App Factory</h1>
+            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-500/15 text-indigo-200 border border-indigo-500/25">
+              Job Type: App Factory
+            </span>
+          </div>
+          <p className="text-xs text-gray-400">
+            Application Factory — generates full application artifacts from a goal + inputs.
+          </p>
+        </div>
       </div>
        {totalCost !== null && totalCost > 0 && (
         <div className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-md bg-gray-700/50">

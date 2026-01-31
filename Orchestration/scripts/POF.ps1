@@ -556,5 +556,19 @@ finally {
     $FinalPath = Join-Path $OutDir "Final_Synthesis.txt"
     $Context | Out-File $FinalPath -Encoding UTF8
     Write-Host "`n🎯 Final synthesis saved to $FinalPath"
+
+    # Generate a standardized HTML page for the final synthesis (best-effort)
+    try {
+        $toolboxRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\\..')).Path
+        $converter = Join-Path $toolboxRoot "scripts\\Convert-FinalSynthesisToHtml.ps1"
+        if (Test-Path $converter) {
+            $htmlPath = Join-Path $OutDir "Final_Synthesis.html"
+            & $converter -TextPath $FinalPath -OutputPath $htmlPath -Title "Final Synthesis" -RunId $RunId -Model $Model -Goal $Goal | Out-Null
+            Write-Host "🌐 Final synthesis HTML saved to $htmlPath"
+        }
+    }
+    catch {
+        Write-Host "⚠️ Failed to generate Final_Synthesis.html: $_" -ForegroundColor Yellow
+    }
 }
 ### END FILE: POF.ps1

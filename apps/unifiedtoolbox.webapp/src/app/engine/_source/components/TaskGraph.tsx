@@ -200,7 +200,7 @@ const TaskGraph: React.FC<TaskGraphProps> = ({ tasks, onSelectTask, selectedTask
     <div ref={graphContainerRef} className="w-full h-full bg-gray-900 cursor-grab active:cursor-grabbing">
       {isEmpty && (
         <div className="flex-1 flex items-center justify-center text-gray-500 h-full">
-          <p>The orchestration graph will appear here once started.</p>
+          <p>The build graph will appear here once started.</p>
         </div>
       )}
       {renderError && (

@@ -52,7 +52,7 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, tasks }) => 
 
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
-      link.download = 'orchestrator-project.zip';
+      link.download = 'app-factory-artifacts.zip';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -77,7 +77,7 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, tasks }) => 
           .animate-fade-in-up { animation: fade-in-up 0.3s ease-out forwards; }
         `}</style>
         <div className="flex justify-between items-center p-4 border-b border-gray-700">
-          <h2 className="text-xl font-bold">Export Orchestration Results</h2>
+          <h2 className="text-xl font-bold">Export App Factory Results</h2>
           <button onClick={onClose} className="p-1 rounded-full hover:bg-gray-700 transition-colors">
             <CloseIcon className="w-6 h-6" />
           </button>

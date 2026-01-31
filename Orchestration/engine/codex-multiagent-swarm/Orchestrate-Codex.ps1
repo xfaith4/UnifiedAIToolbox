@@ -548,6 +548,7 @@ try {
             $swarmPayload = [pscustomobject]@{
                 ok = $true
                 status = "completed"
+                swarmType = "dryrun"
                 result = @{ message = "DryRun: Swarms engine not executed." }
             }
         } else {
@@ -577,6 +578,24 @@ try {
         $finalText = ($swarmPayload.result | ConvertTo-Json -Depth 50)
     }
     $finalText | Out-File -FilePath $finalPath -Encoding UTF8
+
+    # Generate a standardized HTML page for the final synthesis (best-effort)
+    try {
+        $toolboxRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\\..\\..')).Path
+        $converter = Join-Path $toolboxRoot "scripts\\Convert-FinalSynthesisToHtml.ps1"
+        if (Test-Path $converter) {
+            $htmlPath = Join-Path $resolvedOutputDir "Final_Synthesis.html"
+            $runId = Split-Path -Leaf $resolvedOutputDir
+            & $converter -TextPath $finalPath -OutputPath $htmlPath -Title "Final Synthesis" -RunId $runId -Model $Model -RepoRoot $RepoRoot -Goal $Goal | Out-Null
+            Write-Log "Wrote HTML synthesis: $htmlPath" -Level Info
+        }
+        else {
+            Write-Log "Synthesis HTML converter not found: $converter" -Level Warning
+        }
+    }
+    catch {
+        Write-Log "Failed to generate HTML synthesis: $_" -Level Warning
+    }
 
     $summary = @{
         Timestamp = (Get-Date -Format "o")

@@ -61,7 +61,7 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose, session,
           ) : isLoading ? (
              <div className="flex flex-col items-center justify-center h-48">
                 <LoadingIcon className="w-12 h-12 animate-spin text-indigo-400"/>
-                <p className="mt-4 text-gray-300">Running meta-orchestration... The Feedback Analyst agent is reviewing your request.</p>
+                <p className="mt-4 text-gray-300">Running meta-review... The Feedback Analyst agent is reviewing your request.</p>
             </div>
           ) : proposal ? (
             <div>

@@ -57,7 +57,7 @@ const SessionHistoryPanel: React.FC<SessionHistoryPanelProps> = ({
                         className={`w-full text-left p-3 rounded-lg border-2 transition-colors ${currentSessionId === 'live' ? 'bg-indigo-500/30 border-indigo-500' : 'bg-gray-900/50 border-gray-700 hover:border-indigo-400'}`}
                     >
                          <p className="font-semibold text-white flex items-center"><RunIcon className="w-4 h-4 mr-2"/> Live View</p>
-                         <p className="text-xs mt-1">View the current or next orchestration run.</p>
+                         <p className="text-xs mt-1">View the current or next build run.</p>
                     </button>
                     {sortedSessions.length === 0 ? (
                         <p className="text-center italic mt-4">No completed sessions yet.</p>

@@ -139,6 +139,8 @@ export default function OrchestratorPage() {
   const [swarmStatus, setSwarmStatus] = useState<'idle' | 'running' | 'completed' | 'failed'>('idle')
   const [swarmOutput, setSwarmOutput] = useState('')
   const [swarmError, setSwarmError] = useState('')
+  const [swarmSessionAgents, setSwarmSessionAgents] = useState<string[]>([])
+  const [swarmSessionModel, setSwarmSessionModel] = useState<string>('')
 
   // Modal state
   const [showAgentCreator, setShowAgentCreator] = useState(false)
@@ -281,6 +283,8 @@ export default function OrchestratorPage() {
     setSwarmStatus('running')
     setSwarmOutput(SWARM_LAUNCH_NOTE)
     setSwarmError('')
+    setSwarmSessionAgents(selected)
+    setSwarmSessionModel(runModel)
     addLocalRun(seededRun)
     setRuns((prev) => [seededRun, ...prev])
 
@@ -331,6 +335,90 @@ export default function OrchestratorPage() {
   }, [])
 
   const hasSwarmRun = Boolean(swarmRun)
+
+  type SessionStats = {
+    totalAgents: number
+    modelCounts: { model: string; count: number }[]
+    agentModels: { agent: string; model: string }[]
+  }
+
+  const computeSessionStats = (agentNames: string[] | undefined, defaultModel: string | undefined): SessionStats => {
+    const agents = Array.from(new Set((agentNames ?? []).filter(Boolean)))
+    const resolvedDefaultModel = defaultModel?.trim() || 'unknown'
+
+    const agentModels = agents
+      .map((agent) => ({ agent, model: resolvedDefaultModel }))
+      .sort((a, b) => a.agent.localeCompare(b.agent))
+
+    const byModel = new Map<string, number>()
+    for (const entry of agentModels) {
+      byModel.set(entry.model, (byModel.get(entry.model) ?? 0) + 1)
+    }
+    const modelCounts = Array.from(byModel.entries())
+      .map(([model, count]) => ({ model, count }))
+      .sort((a, b) => b.count - a.count || a.model.localeCompare(b.model))
+
+    return {
+      totalAgents: agentModels.length,
+      modelCounts,
+      agentModels,
+    }
+  }
+
+  const SessionStatisticsPanel = ({
+    agents,
+    model,
+  }: {
+    agents: string[] | undefined
+    model: string | undefined
+  }) => {
+    const stats = computeSessionStats(agents, model)
+
+    return (
+      <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-sm font-semibold text-slate-100">Session Statistics</div>
+          <div className="text-[11px] text-slate-400">
+            Total agents: <span className="font-semibold text-slate-200">{stats.totalAgents}</span>
+          </div>
+        </div>
+
+        <div className="mt-3 grid gap-3 md:grid-cols-2">
+          <div>
+            <div className="text-[11px] uppercase tracking-wide text-slate-500">Count per model</div>
+            <div className="mt-1 space-y-1 text-xs text-slate-200">
+              {stats.modelCounts.length > 0 ? (
+                stats.modelCounts.map((row) => (
+                  <div key={row.model} className="flex items-center justify-between gap-3 rounded-lg bg-slate-900/60 px-2 py-1">
+                    <span className="font-mono text-[11px] text-slate-100">{row.model}</span>
+                    <span className="text-slate-300">{row.count} agent{row.count === 1 ? '' : 's'}</span>
+                  </div>
+                ))
+              ) : (
+                <div className="text-slate-400">—</div>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <div className="text-[11px] uppercase tracking-wide text-slate-500">Model per agent</div>
+            <div className="mt-1 max-h-28 overflow-auto space-y-1 text-xs text-slate-200">
+              {stats.agentModels.length > 0 ? (
+                stats.agentModels.map((row) => (
+                  <div key={row.agent} className="flex items-center justify-between gap-3 rounded-lg bg-slate-900/60 px-2 py-1">
+                    <span className="text-slate-200">{row.agent}</span>
+                    <span className="font-mono text-[11px] text-slate-300">{row.model}</span>
+                  </div>
+                ))
+              ) : (
+                <div className="text-slate-400">—</div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   // Template rendering for legacy mode
   function renderTemplate(): string {
@@ -1197,6 +1285,12 @@ export default function OrchestratorPage() {
                         )}
                       </div>
                       {swarmError && <div className="mt-1 text-red-300">{swarmError}</div>}
+                      <div className="mt-2">
+                        <SessionStatisticsPanel
+                          agents={swarmSessionAgents.length > 0 ? swarmSessionAgents : swarmRunDisplay.agents}
+                          model={swarmSessionModel || swarmRunDisplay.model || ''}
+                        />
+                      </div>
                       {swarmOutput && (
                         <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-[11px] text-slate-100">
                           {swarmOutput}
@@ -1463,6 +1557,15 @@ export default function OrchestratorPage() {
                 <p className="text-xs text-red-400 mb-2">{logError}</p>
               )}
               <div className="space-y-3">
+                <SessionStatisticsPanel agents={logRun.agents ?? []} model={logRun.model ?? ''} />
+                {logRun.output && (
+                  <div>
+                    <h4 className="text-sm font-semibold text-slate-100 mb-2">Result</h4>
+                    <pre className="bg-slate-950 p-4 rounded-lg text-xs text-slate-200 whitespace-pre-wrap overflow-auto max-h-60">
+                      {logRun.output}
+                    </pre>
+                  </div>
+                )}
                 {logRun.events && logRun.events.length > 0 && (
                   <div>
                     <h4 className="text-sm font-semibold text-slate-100 mb-2">Events</h4>
