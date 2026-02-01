@@ -1,10 +1,28 @@
 import { NextResponse } from 'next/server'
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { telemetryService } from '@/lib/services/telemetryService'
 
 function getRepoRoot() {
   // process.cwd() is apps/unifiedtoolbox.webapp
   return path.resolve(process.cwd(), '..', '..')
+}
+
+export async function GET(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const timeWindow = searchParams.get('timeWindow') || '7d'
+
+    const data = await telemetryService.getDashboardTelemetry(timeWindow)
+    
+    return NextResponse.json(data)
+  } catch (error) {
+    console.error('Error fetching telemetry:', error)
+    return NextResponse.json(
+      { error: 'Failed to fetch telemetry data' },
+      { status: 500 }
+    )
+  }
 }
 
 export async function POST(req: Request) {

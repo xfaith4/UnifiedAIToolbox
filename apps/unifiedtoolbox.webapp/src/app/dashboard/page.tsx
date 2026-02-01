@@ -17,7 +17,7 @@ import {
   ResponsiveContainer,
   Legend,
 } from 'recharts'
-import { telemetryService, type DashboardTelemetry } from '@/lib/services/telemetryService'
+import { type DashboardTelemetry } from '@/lib/services/telemetryService'
 
 const COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#06b6d4']
 
@@ -28,7 +28,11 @@ export default function DashboardPage() {
   useEffect(() => {
     async function loadTelemetry() {
       try {
-        const data = await telemetryService.getDashboardTelemetry('7d')
+        const response = await fetch('/api/telemetry?timeWindow=7d')
+        if (!response.ok) {
+          throw new Error('Failed to fetch telemetry')
+        }
+        const data = await response.json()
         setTelemetry(data)
       } catch (error) {
         console.error('Failed to load telemetry:', error)
@@ -216,7 +220,7 @@ export default function DashboardPage() {
       <section className="space-y-4">
         <h2 className="text-xl font-semibold">Orchestration Cost & Impact (Last 7 Days)</h2>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
           <KpiCard
             label="Total Tokens"
             value={orchestrationCost.totalTokens.toLocaleString()}
@@ -234,6 +238,11 @@ export default function DashboardPage() {
             label="CO₂e Impact"
             value={`${orchestrationCost.sustainability.gCO2e}g`}
             hint={`${orchestrationCost.sustainability.energyKWh.toFixed(3)} kWh`}
+          />
+          <KpiCard
+            label="Water Usage"
+            value={`${orchestrationCost.sustainability.waterLiters.toFixed(2)}L`}
+            hint="Est. for cooling"
           />
         </div>
 
