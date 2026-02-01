@@ -263,12 +263,19 @@ try {
     for ($i = 1; $i -le $MaxIterations; $i++) {
         Write-Host "`nIteration $i/$MaxIterations" -ForegroundColor Yellow
 
-        # --- Split Agents: Commissioner vs Others --------------------------
-        $IndependentAgents = $Agents | Where-Object { $_.name -ne "Commissioner" }
+        # --- Agent Pipeline -------------------------------------------------
+        # Phase 1 (parallel): contributor agents
+        # Phase 2 (sequential): Artifact Auditor -> Contract Editor
+        # Phase 3 (sequential): Synthesizer
+        # Phase 4 (sequential): Commissioner
         $Commissioner = $Agents | Where-Object { $_.name -eq "Commissioner" }
+        $Synthesizer = $Agents | Where-Object { $_.name -eq "Synthesizer" }
+        $Verifier = $Agents | Where-Object { $_.name -eq "Verifier" }
+        $AuditAgents = $Agents | Where-Object { $_.name -in @("Artifact Auditor", "Contract Editor") }
+        $Phase1Agents = $Agents | Where-Object { $_.name -notin @("Commissioner", "Synthesizer", "Verifier", "Artifact Auditor", "Contract Editor") }
 
         # --- Prepare work items --------------------------------------------
-        $WorkItems = foreach ($A in $IndependentAgents) {
+        $WorkItems = foreach ($A in $Phase1Agents) {
             [PSCustomObject]@{
                 Agent   = $A
                 Context = $Context
@@ -407,6 +414,91 @@ Stack Trace: $($_.ScriptStackTrace)
             }
             Write-Log -Agent $r.Agent -Content $r.Output
             $Context += "`n`n[$($r.Agent) Output]:`n$($r.Output)"
+        }
+
+        # --- Run audit + contract agents sequentially ----------------------
+        foreach ($agentName in @("Artifact Auditor", "Contract Editor")) {
+            $toRun = @($AuditAgents | Where-Object { $_.name -eq $agentName })
+            foreach ($A in $toRun) {
+                Write-AgentStatus -Agent $A.name -Status "working"
+
+                $systemPrompt = if ([string]::IsNullOrWhiteSpace($Instruction)) {
+                    $A.prompt
+                } else {
+                    "$Instruction`n`n$($A.prompt)"
+                }
+
+                $Messages = @(
+                    @{ role = "system"; content = $systemPrompt },
+                    @{ role = "user"; content = $Context }
+                )
+
+                $Output = Invoke-OpenAIRequest -Messages $Messages -AgentName $A.name
+                if (-not $Output) {
+                    Write-AgentStatus -Agent $A.name -Status "error"
+                    continue
+                }
+
+                Write-AgentStatus -Agent $A.name -Status "complete"
+                Write-Log -Agent $A.name -Content $Output
+                $Context += "`n`n[$($A.name) Output]:`n$Output"
+            }
+        }
+
+        # --- Run Synthesizer sequentially ----------------------------------
+        if ($Synthesizer) {
+            foreach ($S in $Synthesizer) {
+                Write-AgentStatus -Agent $S.name -Status "working"
+
+                $systemPrompt = if ([string]::IsNullOrWhiteSpace($Instruction)) {
+                    $S.prompt
+                } else {
+                    "$Instruction`n`n$($S.prompt)"
+                }
+
+                $Messages = @(
+                    @{ role = "system"; content = $systemPrompt },
+                    @{ role = "user"; content = $Context }
+                )
+
+                $Output = Invoke-OpenAIRequest -Messages $Messages -AgentName $S.name
+                if (-not $Output) {
+                    Write-AgentStatus -Agent $S.name -Status "error"
+                    continue
+                }
+
+                Write-AgentStatus -Agent $S.name -Status "complete"
+                Write-Log -Agent $S.name -Content $Output
+                $Context += "`n`n[$($S.name) Output]:`n$Output"
+            }
+        }
+
+        # --- Run Verifier sequentially -------------------------------------
+        if ($Verifier) {
+            foreach ($V in $Verifier) {
+                Write-AgentStatus -Agent $V.name -Status "working"
+
+                $systemPrompt = if ([string]::IsNullOrWhiteSpace($Instruction)) {
+                    $V.prompt
+                } else {
+                    "$Instruction`n`n$($V.prompt)"
+                }
+
+                $Messages = @(
+                    @{ role = "system"; content = $systemPrompt },
+                    @{ role = "user"; content = $Context }
+                )
+
+                $Output = Invoke-OpenAIRequest -Messages $Messages -AgentName $V.name
+                if (-not $Output) {
+                    Write-AgentStatus -Agent $V.name -Status "error"
+                    continue
+                }
+
+                Write-AgentStatus -Agent $V.name -Status "complete"
+                Write-Log -Agent $V.name -Content $Output
+                $Context += "`n`n[$($V.name) Output]:`n$Output"
+            }
         }
 
         # --- Run Commissioner sequentially --------------------------------

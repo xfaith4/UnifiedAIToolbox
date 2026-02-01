@@ -22,6 +22,7 @@ import sys
 import time
 import traceback
 import uuid
+from datetime import datetime, timezone
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -62,6 +63,23 @@ def _print_payload(payload: Dict[str, Any]) -> None:
     except (BrokenPipeError, OSError):
         # When stdout is closed early by a consumer (e.g., piping to `head`), avoid crashing.
         pass
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _append_agent_status(status_path: Path, agent: str, status: str, extra: Optional[Dict[str, Any]] = None) -> None:
+    record: Dict[str, Any] = {"agent": agent, "status": status, "timestamp": _now_iso()}
+    if extra:
+        record.update(extra)
+    try:
+        status_path.parent.mkdir(parents=True, exist_ok=True)
+        with status_path.open("a", encoding="utf-8") as f:
+            f.write(_safe_json(record) + "\n")
+    except Exception:
+        # Status emission is best-effort; never fail the run due to logging.
+        return
 
 
 def parse_args() -> argparse.Namespace:
@@ -175,6 +193,75 @@ def _resolve_config(args: argparse.Namespace) -> Tuple[List[str], str, str, int,
     return agents, model, swarm_type, max_loops, repo_root, output_dir, agent_config, rules
 
 
+PERMANENT_PRE_SYNTH_AGENTS = ["Artifact Auditor", "Contract Editor"]
+PERMANENT_POST_SYNTH_AGENTS = ["Verifier"]
+
+
+def _ensure_permanent_agents(selected: List[str]) -> List[str]:
+    """
+    Ensure permanent agents are always included, preserving user-provided order.
+
+    Rules:
+    - If caller does not provide agents, use the default orchestration roster.
+    - If caller provides a roster, keep its order but inject missing permanent agents
+      before Synthesizer (if present), otherwise append at the end.
+    """
+    cleaned = [a.strip() for a in selected if a and a.strip()]
+    if not cleaned:
+        return [
+            "Researcher",
+            "Engineer",
+            "Critic",
+            "Artifact Auditor",
+            "Contract Editor",
+            "Synthesizer",
+            "Verifier",
+            "Commissioner",
+        ]
+
+    def _insert_before(items: List[str], needle: str, new_items: List[str]) -> List[str]:
+        if not new_items:
+            return items
+        try:
+            idx = items.index(needle)
+        except ValueError:
+            idx = len(items)
+        return items[:idx] + new_items + items[idx:]
+
+    def _insert_after(items: List[str], needle: str, new_items: List[str]) -> List[str]:
+        if not new_items:
+            return items
+        try:
+            idx = items.index(needle) + 1
+        except ValueError:
+            idx = len(items)
+        return items[:idx] + new_items + items[idx:]
+
+    def _insert_before_commissioner(items: List[str], new_items: List[str]) -> List[str]:
+        if not new_items:
+            return items
+        return _insert_before(items, "Commissioner", new_items)
+
+    existing = set(cleaned)
+    pre_to_add = [a for a in PERMANENT_PRE_SYNTH_AGENTS if a not in existing]
+    post_to_add = [a for a in PERMANENT_POST_SYNTH_AGENTS if a not in existing]
+
+    updated = cleaned
+    # Insert audit + contract agents before Synthesizer when possible; otherwise keep Commissioner last if present.
+    if "Synthesizer" in updated:
+        updated = _insert_before(updated, "Synthesizer", pre_to_add)
+    else:
+        updated = _insert_before_commissioner(updated, pre_to_add)
+
+    # Insert verifier after Synthesizer when possible; otherwise keep Commissioner last if present.
+    if "Synthesizer" in updated:
+        updated = _insert_after(updated, "Synthesizer", post_to_add)
+    else:
+        updated = _insert_before_commissioner(updated, post_to_add)
+
+    return updated
+
+
 def main() -> int:
     args = parse_args()
     started_at = time.time()
@@ -216,13 +303,15 @@ def main() -> int:
         from swarms.structs.agent import Agent  # type: ignore
         from swarms.structs.swarm_router import SwarmRouter  # type: ignore
 
-        if not selected_agents:
-            selected_agents = ["Researcher", "Engineer", "Critic", "Synthesizer", "Commissioner"]
+        selected_agents = _ensure_permanent_agents(selected_agents)
+        payload["agents"] = selected_agents
 
         workspace = (
             (output_dir / "swarms-workspace") if output_dir else (_toolbox_root() / ".uaitoolbox" / "swarms" / "workspace")
         )
         workspace.mkdir(parents=True, exist_ok=True)
+
+        status_path = (output_dir / "agent_status.json") if output_dir else None
 
         # Swarms uses loguru extensively; avoid noisy stdout and Windows console sink issues
         # by redirecting logs to a file in the workspace.
@@ -239,7 +328,7 @@ def main() -> int:
         agents: List[Any] = []
         for name in selected_agents:
             prompt = prompts.get(name, {}).get("prompt") or f"You are {name}. Help achieve the goal."
-            agents.append(
+            agent_obj = (
                 Agent(
                     agent_name=name,
                     agent_description=f"UnifiedAIToolbox Swarms agent: {name}",
@@ -252,6 +341,32 @@ def main() -> int:
                     workspace_dir=str(workspace),
                 )
             )
+            if status_path is not None:
+                original_run = getattr(agent_obj, "run", None)
+                if callable(original_run):
+                    def _wrapped_run(*run_args: Any, _agent_name: str = name, _orig: Any = original_run, **run_kwargs: Any) -> Any:
+                        started = time.time()
+                        _append_agent_status(status_path, _agent_name, "working", {"model": model})
+                        try:
+                            result = _orig(*run_args, **run_kwargs)
+                            _append_agent_status(
+                                status_path,
+                                _agent_name,
+                                "complete",
+                                {"model": model, "duration_ms": int((time.time() - started) * 1000)},
+                            )
+                            return result
+                        except Exception as exc:
+                            _append_agent_status(
+                                status_path,
+                                _agent_name,
+                                "error",
+                                {"model": model, "error": str(exc), "duration_ms": int((time.time() - started) * 1000)},
+                            )
+                            raise
+
+                    setattr(agent_obj, "run", _wrapped_run)
+            agents.append(agent_obj)
 
         if len(agents) == 1:
             # SwarmRouter/SequentialWorkflow can require an explicit multi-agent flow; single-agent runs

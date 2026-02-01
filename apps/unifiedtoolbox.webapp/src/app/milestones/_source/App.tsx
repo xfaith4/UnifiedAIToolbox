@@ -13,6 +13,9 @@ import { computeOutliers } from '@/lib/milestones/outliers';
 import { computeTimeWindow, normalizeRuns, summarizeRuns } from '@/lib/milestones/metrics';
 import { evaluateMilestones } from '@/lib/milestones/evaluate';
 import { GoalInfo, RunRecord, TimeWindowState } from '@/lib/milestones/types';
+import { fetchOrchestrationRuns, ORCHESTRATOR_API_BASE } from '@/lib/services/orchestratorApi';
+import type { OrchestrationRun } from '@/lib/types/orchestrator';
+import AgentActivityTally from '@/components/orchestration/AgentActivityTally';
 
 const baseURL = '/milestone-data/data/';
 const timeWindowOptions = [
@@ -57,6 +60,8 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [timeWindow, setTimeWindow] = useState<TimeWindowState>({ type: 'last30' });
   const [xAxisMode, setXAxisMode] = useState<'index' | 'time'>('index');
+  const [liveRun, setLiveRun] = useState<OrchestrationRun | null>(null);
+  const [liveRunError, setLiveRunError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -86,6 +91,35 @@ export default function App() {
     }
     fetchData();
     const interval = setInterval(fetchData, 5 * 60 * 1000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    async function pollLiveRun() {
+      try {
+        setLiveRunError(null);
+        const apiRuns = await fetchOrchestrationRuns();
+        const running =
+          apiRuns.find((r) => (r.status || '').toLowerCase() === 'running') ||
+          apiRuns.find((r) => (r.status || '').toLowerCase() === 'queued') ||
+          null;
+        if (active) setLiveRun(running);
+      } catch (err) {
+        if (active) {
+          setLiveRun(null);
+          const message = err instanceof Error ? err.message : 'Unable to load live orchestrator runs.';
+          setLiveRunError(message);
+        }
+      }
+    }
+
+    // Only poll if API base is configured (always set, but may be unreachable).
+    void pollLiveRun();
+    const interval = setInterval(pollLiveRun, 4000);
     return () => {
       active = false;
       clearInterval(interval);
@@ -159,6 +193,25 @@ export default function App() {
             ))}
           </div>
         </div>
+        {liveRun ? (
+          <div className="mt-4">
+            <AgentActivityTally run={liveRun} title="Live Agent Tally (current run)" />
+          </div>
+        ) : liveRunError ? (
+          <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-300">
+            <div className="font-semibold text-slate-100">Live agent tally unavailable</div>
+            <div className="mt-1 text-xs text-slate-400">
+              Unable to fetch orchestrator runs from <code className="rounded bg-slate-900 px-1 py-0.5 font-mono">{ORCHESTRATOR_API_BASE}</code>.
+            </div>
+          </div>
+        ) : (
+          <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-300">
+            <div className="font-semibold text-slate-100">Live agent tally</div>
+            <div className="mt-1 text-xs text-slate-400">
+              No active orchestration run detected from <code className="rounded bg-slate-900 px-1 py-0.5 font-mono">{ORCHESTRATOR_API_BASE}</code>.
+            </div>
+          </div>
+        )}
         {timeWindow.type === 'custom' ? (
           <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-slate-200">
             <label className="flex items-center gap-2">

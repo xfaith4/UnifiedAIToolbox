@@ -94,9 +94,21 @@ $AgentTypes = @{
         Role        = "Quality assurance"
         Description = "Reviews work and identifies issues"
     }
+    'Artifact Auditor' = @{
+        Role        = "Buildability auditing"
+        Description = "Assesses whether artifacts are buildable and enumerates missing build pieces"
+    }
+    'Contract Editor' = @{
+        Role        = "Contract normalization"
+        Description = "Rewrites outputs into a single, testable synthesis contract"
+    }
     Synthesizer  = @{
         Role        = "Integration"
         Description = "Combines outputs into coherent results"
+    }
+    Verifier = @{
+        Role        = "Validation"
+        Description = "Validates the synthesized plan against acceptance criteria and build commands"
     }
     Commissioner = @{
         Role        = "Decision making"
@@ -302,41 +314,54 @@ function Select-Agents {
     
     $selectedAgents = @()
     $availableSlots = $MaxAgents
-    
-    # Always include core agents if we have slots
+
+    # Core "contributor" agents are bounded by MaxAgents
     $coreAgents = @("Researcher", "Engineer", "Critic")
-    
     foreach ($agentType in $coreAgents) {
-        if ($availableSlots -gt 0) {
-            $selectedAgents += @{
-                Type        = $agentType
-                Role        = $AgentTypes[$agentType].Role
-                Description = $AgentTypes[$agentType].Description
-                Priority    = 1
-            }
-            $availableSlots--
-        }
-    }
-    
-    # Add optional agents based on available slots
-    if ($availableSlots -gt 0) {
+        if ($availableSlots -le 0) { break }
         $selectedAgents += @{
-            Type        = "Synthesizer"
-            Role        = $AgentTypes["Synthesizer"].Role
-            Description = $AgentTypes["Synthesizer"].Description
-            Priority    = 2
+            Type        = $agentType
+            Role        = $AgentTypes[$agentType].Role
+            Description = $AgentTypes[$agentType].Description
+            Priority    = 1
         }
         $availableSlots--
     }
-    
+
+    # Permanent audit + contract agents (always included; not counted against MaxAgents)
+    foreach ($agentType in @("Artifact Auditor", "Contract Editor")) {
+        $selectedAgents += @{
+            Type        = $agentType
+            Role        = $AgentTypes[$agentType].Role
+            Description = $AgentTypes[$agentType].Description
+            Priority    = 2
+        }
+    }
+
+    # Always include Synthesizer so the run has a single coherent final output
+    $selectedAgents += @{
+        Type        = "Synthesizer"
+        Role        = $AgentTypes["Synthesizer"].Role
+        Description = $AgentTypes["Synthesizer"].Description
+        Priority    = 3
+    }
+
+    # Permanent verifier (always included; not counted against MaxAgents)
+    $selectedAgents += @{
+        Type        = "Verifier"
+        Role        = $AgentTypes["Verifier"].Role
+        Description = $AgentTypes["Verifier"].Description
+        Priority    = 4
+    }
+
+    # Commissioner remains optional and is included only if MaxAgents left slots previously
     if ($availableSlots -gt 0) {
         $selectedAgents += @{
             Type        = "Commissioner"
             Role        = $AgentTypes["Commissioner"].Role
             Description = $AgentTypes["Commissioner"].Description
-            Priority    = 3
+            Priority    = 5
         }
-        $availableSlots--
     }
     
     Write-Log "Selected $($selectedAgents.Count) agents: $($selectedAgents.Type -join ', ')" -Level Success

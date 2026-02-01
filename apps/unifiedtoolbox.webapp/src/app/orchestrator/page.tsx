@@ -33,6 +33,7 @@ import {
   createNewRun,
 } from '@/lib/services/orchestratorStore'
 import { runLocalSwarm } from '@/lib/services/swarmRunner'
+import AgentActivityTally from '@/components/orchestration/AgentActivityTally'
 
 // Default agents for multi-agent orchestration
 const DEFAULT_ORCHESTRATOR_AGENTS: OrchestratorAgent[] = [
@@ -335,6 +336,11 @@ export default function OrchestratorPage() {
   }, [])
 
   const hasSwarmRun = Boolean(swarmRun)
+
+  const runningRuns = useMemo(() => {
+    const liveStates = new Set(['queued', 'running'])
+    return runs.filter((run) => liveStates.has((run.status || '').toLowerCase()))
+  }, [runs])
 
   type SessionStats = {
     totalAgents: number
@@ -767,6 +773,14 @@ export default function OrchestratorPage() {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {runningRuns.length > 0 && (
+        <div className="space-y-3">
+          {runningRuns.slice(0, 3).map((run) => (
+            <AgentActivityTally key={run.id} run={run} title="Live Agent Tally" />
+          ))}
         </div>
       )}
 

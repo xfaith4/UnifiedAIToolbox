@@ -4,6 +4,8 @@ import React, { useState, useMemo, useEffect } from 'react';
 import Header from './components/Header';
 import GoalInput from './components/GoalInput';
 import ExpectedOutputsPanel from './components/ExpectedOutputsPanel';
+import RunMonitorPanel from './components/RunMonitorPanel';
+import TaskClustersView from './components/TaskClustersView';
 import TaskGraph from './components/TaskGraph';
 import SidePanel from './components/SidePanel';
 import ExportModal from './components/ExportModal';
@@ -30,6 +32,7 @@ const App: React.FC = () => {
 
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<'live' | string>('live');
+  const [viewMode, setViewMode] = useState<'clusters' | 'graph'>('clusters');
 
   // Modal and Panel States
   const [showExport, setShowExport] = useState(false);
@@ -76,6 +79,13 @@ const App: React.FC = () => {
 
   const tasks = displayedSession?.tasks || [];
   const selectedTask = useMemo(() => tasks.find(t => t.id === selectedTaskId) || null, [tasks, selectedTaskId]);
+
+  useEffect(() => {
+    // Auto-default to clusters when task count gets large (graph becomes noisy).
+    if (tasks.length > 18 && viewMode !== 'clusters') {
+      setViewMode('clusters');
+    }
+  }, [tasks.length, viewMode]);
 
   const handleGoalSubmit = (goal: string, fileContent: string | null) => {
     if (activeView !== 'live') {
@@ -140,11 +150,27 @@ const App: React.FC = () => {
         <ExpectedOutputsPanel onLearnMore={() => setShowDefinitions(true)} />
         <div className="flex-1 flex overflow-hidden">
           <div className="flex-1 flex flex-col min-w-0">
-            <TaskGraph
+            <RunMonitorPanel
               tasks={tasks}
-              onSelectTask={handleSelectTask}
-              selectedTaskId={selectedTaskId}
+              isOrchestrating={isOrchestrating}
+              viewMode={viewMode}
+              onChangeViewMode={setViewMode}
             />
+            <div className="flex-1 min-h-0">
+              {viewMode === 'graph' ? (
+                <TaskGraph
+                  tasks={tasks}
+                  onSelectTask={handleSelectTask}
+                  selectedTaskId={selectedTaskId}
+                />
+              ) : (
+                <TaskClustersView
+                  tasks={tasks}
+                  onSelectTask={handleSelectTask}
+                  selectedTaskId={selectedTaskId}
+                />
+              )}
+            </div>
           </div>
           <SidePanel
             task={selectedTask}
