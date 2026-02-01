@@ -8,6 +8,15 @@ const simpleId = () => `id_${Date.now()}_${Math.random().toString(36).substr(2, 
 // Define maximum character lengths to prevent token limit errors.
 const MAX_FILE_CONTEXT_LENGTH = 20000; // Approx 5k tokens for initial plan
 const MAX_ARTIFACT_CONTEXT_LENGTH = 8000; // Approx 2k tokens per artifact
+// DALL·E prompt hard limit (server-enforced, in characters).
+const MAX_IMAGE_PROMPT_LENGTH = 4000;
+const IMAGE_PROMPT_TRUNCATION_NOTICE = "\n\n... [Image Prompt Truncated due to DALL·E 4000 character limit] ...";
+
+const truncateForPromptLimit = (value: string, maxLen: number, notice: string) => {
+  if (value.length <= maxLen) return value;
+  const keepLen = Math.max(0, maxLen - notice.length);
+  return value.substring(0, keepLen) + notice;
+};
 
 // Pricing per 1 million tokens (input/output) for GPT-5.2
 const PRICING = {
@@ -17,6 +26,10 @@ const PRICING = {
 
 const STORAGE_KEY = 'orchestrator-session-history';
 const MAX_HISTORY_ITEMS = 50;
+// LocalStorage is quota-limited (~5MB). Keep the on-disk cache compact to avoid QuotaExceededError.
+// Full-fidelity sessions are persisted server-side via /api/engine/history.
+const MAX_LOCAL_CACHE_ITEMS = 15;
+const MAX_LOCAL_GOAL_CHARS = 2000;
 const HISTORY_API_ENDPOINT = '/api/engine/history';
 
 const getBrowserApiKey = () =>
@@ -67,13 +80,86 @@ const loadLocalHistory = (): Session[] => {
   }
 };
 
+const isQuotaExceededError = (error: unknown) => {
+  if (!error || typeof error !== 'object') return false;
+  const e = error as { name?: string; code?: number; message?: string };
+  return (
+    e.name === 'QuotaExceededError' ||
+    e.name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
+    e.code === 22 ||
+    e.code === 1014 ||
+    (typeof e.message === 'string' && e.message.toLowerCase().includes('quota'))
+  );
+};
+
+const truncateString = (value: string, maxChars: number) => {
+  if (value.length <= maxChars) return value;
+  return `${value.slice(0, Math.max(0, maxChars - 12))}… (truncated)`;
+};
+
+const sanitizeSessionForLocalCache = (session: Session): Session => {
+  const safeGoal = truncateString(session.goal ?? '', MAX_LOCAL_GOAL_CHARS);
+
+  return {
+    id: session.id,
+    goal: safeGoal,
+    // File contents are often huge; keep them out of localStorage cache.
+    fileContent: null,
+    date: session.date || new Date().toISOString(),
+    environmentalImpact: session.environmentalImpact ?? null,
+    planningCost: session.planningCost,
+    totalCost: session.totalCost,
+    // Keep task metadata but drop logs/artifact bodies to avoid blowing localStorage.
+    tasks: Array.isArray(session.tasks)
+      ? session.tasks.map((t) => ({
+          id: t.id,
+          name: t.name,
+          status: t.status,
+          dependencies: Array.isArray(t.dependencies) ? t.dependencies : [],
+          agent: {
+            role: t.agent?.role ?? 'Agent',
+            specialization: t.agent?.specialization,
+            log: [],
+          },
+          artifacts: [],
+          cost: t.cost,
+          inputTokens: t.inputTokens,
+          outputTokens: t.outputTokens,
+        }))
+      : [],
+  };
+};
+
 const persistLocalHistory = (history: Session[]) => {
   if (typeof window === 'undefined') return;
-  try {
-    const serializedHistory = JSON.stringify(history);
-    window.localStorage.setItem(STORAGE_KEY, serializedHistory);
-  } catch (error) {
-    console.error("Failed to save session history to localStorage:", error);
+  const compactHistory = history.slice(0, MAX_LOCAL_CACHE_ITEMS).map(sanitizeSessionForLocalCache);
+
+  // Try to persist; if quota is exceeded, progressively shrink and retry.
+  let candidate = compactHistory;
+  while (candidate.length >= 0) {
+    try {
+      const serializedHistory = JSON.stringify(candidate);
+      window.localStorage.setItem(STORAGE_KEY, serializedHistory);
+      return;
+    } catch (error) {
+      if (!isQuotaExceededError(error)) {
+        console.warn('[orchestrator history] Failed to save local cache:', error);
+        return;
+      }
+
+      // Quota exceeded: reduce stored history and retry.
+      if (candidate.length <= 1) {
+        try {
+          window.localStorage.removeItem(STORAGE_KEY);
+        } catch {
+          // ignore
+        }
+        console.warn('[orchestrator history] localStorage quota exceeded; cleared local cache.');
+        return;
+      }
+
+      candidate = candidate.slice(0, Math.max(1, Math.floor(candidate.length / 2)));
+    }
   }
 };
 
@@ -345,7 +431,12 @@ const useOrchestrator = () => {
         }
 
       } else if (task.agent.role === 'Image Generator') {
-        const imagePrompt = `Based on the goal "${session?.goal}", generate a suitable image for the task: "${task.name}". ${context}`;
+        const baseImagePrompt = `Based on the goal "${session?.goal}", generate a suitable image for the task: "${task.name}".`;
+        const imagePromptRaw = context ? `${baseImagePrompt}\n\n${context}` : baseImagePrompt;
+        const imagePrompt = truncateForPromptLimit(imagePromptRaw, MAX_IMAGE_PROMPT_LENGTH, IMAGE_PROMPT_TRUNCATION_NOTICE);
+        if (imagePrompt !== imagePromptRaw) {
+          appendToTaskLog(task.id, `Image prompt exceeded ${MAX_IMAGE_PROMPT_LENGTH} characters; truncated before calling DALL·E.`);
+        }
         const imageResponse = await openai.images.generate({
           model: 'dall-e-3',
           prompt: imagePrompt,
