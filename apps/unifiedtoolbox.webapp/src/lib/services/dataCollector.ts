@@ -8,7 +8,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import yaml from 'js-yaml'
 
-const REPO_ROOT = path.join(process.cwd(), '../..')
+const REPO_ROOT = process.env.REPO_ROOT || path.join(process.cwd(), '../..')
 const PROMPTS_DIR = path.join(REPO_ROOT, 'data/prompts')
 const AGENTS_DIR = path.join(REPO_ROOT, 'data/agents')
 const LOGS_DIR = path.join(REPO_ROOT, 'logs')
@@ -84,24 +84,37 @@ export async function scanPromptLibrary(): Promise<PromptData[]> {
         const content = fs.readFileSync(filePath, 'utf8')
         const data = yaml.load(content) as any
 
-        // Determine category from file name or metadata
+        // Determine category from metadata first, then fall back to filename
         let category = 'General'
-        if (file.includes('engineering') || file.includes('powershell') || file.includes('sql')) {
-          category = 'Engineer'
-        } else if (file.includes('analytics') || file.includes('performance')) {
-          category = 'Researcher'
-        } else if (file.includes('incident') || file.includes('postmortem')) {
-          category = 'Synthesizer'
-        } else if (file.includes('meeting') || file.includes('comms')) {
-          category = 'Commissioner'
-        } else if (file.includes('review')) {
-          category = 'Critic'
-        } else if (data.telemetry?.tags?.includes('supervisor')) {
-          category = 'Supervisor'
+        
+        // Check telemetry tags first (most reliable)
+        if (data.telemetry?.tags) {
+          const tags = data.telemetry.tags
+          if (tags.includes('supervisor')) category = 'Supervisor'
+          else if (tags.includes('engineering') || tags.includes('powershell') || tags.includes('sql')) category = 'Engineer'
+          else if (tags.includes('analytics') || tags.includes('research')) category = 'Researcher'
+          else if (tags.includes('synthesis') || tags.includes('postmortem')) category = 'Synthesizer'
+          else if (tags.includes('review') || tags.includes('critic')) category = 'Critic'
+          else if (tags.includes('comms') || tags.includes('meeting')) category = 'Commissioner'
+        }
+        
+        // Fall back to filename patterns if no category from metadata
+        if (category === 'General') {
+          if (file.includes('engineering') || file.includes('powershell') || file.includes('sql')) {
+            category = 'Engineer'
+          } else if (file.includes('analytics') || file.includes('performance')) {
+            category = 'Researcher'
+          } else if (file.includes('incident') || file.includes('postmortem')) {
+            category = 'Synthesizer'
+          } else if (file.includes('meeting') || file.includes('comms')) {
+            category = 'Commissioner'
+          } else if (file.includes('review')) {
+            category = 'Critic'
+          }
         }
 
-        // Check for companion files
-        const baseName = file.replace(/\.(prompt|meta|tests)\.ya?ml$/, '')
+        // Check for companion files - strip all yaml extensions for matching
+        const baseName = file.replace(/\.(prompt|meta|tests)?\.ya?ml$/, '')
         const hasTests = files.some(f => f.startsWith(baseName) && f.includes('.tests.'))
         const hasDocs = files.some(f => f.startsWith(baseName) && f.includes('.meta.'))
 

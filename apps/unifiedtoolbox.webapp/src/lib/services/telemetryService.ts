@@ -174,8 +174,9 @@ class TelemetryService {
             byRole[role] = (byRole[role] || 0) + 1
         })
 
-        // For usage data, we'll use mock data for now since we need run history
-        // In a production system, this would come from a database of agent invocations
+        // For usage data, we use simulated data based on actual agents
+        // TODO: In production, this should come from a database tracking actual agent invocations
+        // with timestamps, token counts, and quality scores per call
         const mockUsage: AgentUsage[] = agents.slice(0, 4).map((agent, idx) => ({
             agentId: agent.id,
             name: agent.name,
@@ -244,7 +245,9 @@ class TelemetryService {
                 }
                 
                 // Estimate tokens if not provided (rough estimate based on duration)
-                const estimatedTokens = run.tokenUsage?.total || Math.floor((run.durationSeconds || 30) * 100)
+                // Assumption: ~100 tokens per second of processing time (varies by model and task)
+                const TOKENS_PER_SECOND = 100
+                const estimatedTokens = run.tokenUsage?.total || Math.floor((run.durationSeconds || 30) * TOKENS_PER_SECOND)
                 const estimatedInput = run.tokenUsage?.input || Math.floor(estimatedTokens * 0.4)
                 const estimatedOutput = run.tokenUsage?.output || Math.floor(estimatedTokens * 0.6)
                 
@@ -358,7 +361,7 @@ class TelemetryService {
 
         return {
             avgIterations: Math.round(avgIterations * 10) / 10,
-            avgScoreImprovement: 2.4, // Mock for now - would need score tracking
+            avgScoreImprovement: 2.4, // TODO: Calculate from actual run quality scores when available
             successRate: runs.length > 0 ? Math.round((successfulRuns / runs.length) * 1000) / 10 : 0,
             avgTimeToCompletion,
             totalRuns: runs.length,
