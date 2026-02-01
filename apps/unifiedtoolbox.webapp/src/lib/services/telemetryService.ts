@@ -41,6 +41,7 @@ export interface AgentLibraryHealth {
     activeAgents7d: number
     avgTokensPerCall: number
     avgQualityScore: number
+    avgAgentsPerRun: number
 }
 
 /**
@@ -164,6 +165,7 @@ class TelemetryService {
      */
     async getAgentLibraryHealth(): Promise<AgentLibraryHealth> {
         const agents = await scanAgentLibrary()
+        const runs = await scanOrchestrationRuns()
         
         // Aggregate by role
         const byRole: Record<string, number> = {}
@@ -184,6 +186,11 @@ class TelemetryService {
             lastUsed: new Date(Date.now() - idx * 60 * 60 * 1000).toISOString(),
         }))
 
+        // Calculate average agents per run
+        const avgAgentsPerRun = runs.length > 0
+            ? runs.reduce((sum, run) => sum + (run.agents?.length || 1), 0) / runs.length
+            : 0
+
         return {
             totalAgents: agents.length,
             byRole,
@@ -195,6 +202,7 @@ class TelemetryService {
             avgQualityScore: mockUsage.length > 0
                 ? Math.round(mockUsage.reduce((sum, u) => sum + u.avgScore, 0) / mockUsage.length * 10) / 10
                 : 0,
+            avgAgentsPerRun: Math.round(avgAgentsPerRun * 10) / 10,
         }
     }
 

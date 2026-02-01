@@ -69,6 +69,11 @@ export default function DashboardPage() {
     { name: 'Production', value: promptLibrary.byQuality.production, color: '#10b981' },
   ]
 
+  const agentRoleData = Object.entries(agentLibrary.byRole)
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 8) // Top 8 roles
+
   const modelBreakdownData = Object.entries(orchestrationCost.byModel).map(([name, data]) => ({
     name,
     tokens: data.tokens,
@@ -162,9 +167,14 @@ export default function DashboardPage() {
       <section className="space-y-4">
         <h2 className="text-xl font-semibold">Agent Library Health</h2>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
           <KpiCard label="Total Agents" value={agentLibrary.totalAgents} />
           <KpiCard label="Active (7d)" value={agentLibrary.activeAgents7d} />
+          <KpiCard
+            label="Avg Agents/Run"
+            value={agentLibrary.avgAgentsPerRun.toFixed(1)}
+            hint="Per orchestration"
+          />
           <KpiCard
             label="Avg Tokens/Call"
             value={agentLibrary.avgTokensPerCall.toLocaleString()}
@@ -213,6 +223,24 @@ export default function DashboardPage() {
               ))}
             </tbody>
           </table>
+        </div>
+
+        {/* Agent Distribution by Role */}
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg">
+          <div className="mb-3 font-semibold">Agent Distribution by Role</div>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={agentRoleData} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.2} />
+                <XAxis type="number" stroke="#94a3b8" fontSize={12} />
+                <YAxis type="category" dataKey="name" stroke="#94a3b8" fontSize={12} width={150} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155' }}
+                />
+                <Bar dataKey="value" fill="#8b5cf6" name="Count" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
       </section>
 
