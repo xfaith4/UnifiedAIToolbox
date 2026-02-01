@@ -17,7 +17,7 @@ import {
   ResponsiveContainer,
   Legend,
 } from 'recharts'
-import { telemetryService, type DashboardTelemetry } from '@/lib/services/telemetryService'
+import { type DashboardTelemetry } from '@/lib/services/telemetryService'
 
 const COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#06b6d4']
 
@@ -28,7 +28,11 @@ export default function DashboardPage() {
   useEffect(() => {
     async function loadTelemetry() {
       try {
-        const data = await telemetryService.getDashboardTelemetry('7d')
+        const response = await fetch('/api/telemetry?timeWindow=7d')
+        if (!response.ok) {
+          throw new Error('Failed to fetch telemetry')
+        }
+        const data = await response.json()
         setTelemetry(data)
       } catch (error) {
         console.error('Failed to load telemetry:', error)
@@ -64,6 +68,11 @@ export default function DashboardPage() {
     { name: 'Validated', value: promptLibrary.byQuality.validated, color: '#3b82f6' },
     { name: 'Production', value: promptLibrary.byQuality.production, color: '#10b981' },
   ]
+
+  const agentRoleData = Object.entries(agentLibrary.byRole)
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 8) // Top 8 roles
 
   const modelBreakdownData = Object.entries(orchestrationCost.byModel).map(([name, data]) => ({
     name,
@@ -158,9 +167,14 @@ export default function DashboardPage() {
       <section className="space-y-4">
         <h2 className="text-xl font-semibold">Agent Library Health</h2>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
           <KpiCard label="Total Agents" value={agentLibrary.totalAgents} />
           <KpiCard label="Active (7d)" value={agentLibrary.activeAgents7d} />
+          <KpiCard
+            label="Avg Agents/Run"
+            value={agentLibrary.avgAgentsPerRun.toFixed(1)}
+            hint="Per orchestration"
+          />
           <KpiCard
             label="Avg Tokens/Call"
             value={agentLibrary.avgTokensPerCall.toLocaleString()}
@@ -210,13 +224,31 @@ export default function DashboardPage() {
             </tbody>
           </table>
         </div>
+
+        {/* Agent Distribution by Role */}
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg">
+          <div className="mb-3 font-semibold">Agent Distribution by Role</div>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={agentRoleData} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.2} />
+                <XAxis type="number" stroke="#94a3b8" fontSize={12} />
+                <YAxis type="category" dataKey="name" stroke="#94a3b8" fontSize={12} width={150} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155' }}
+                />
+                <Bar dataKey="value" fill="#8b5cf6" name="Count" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
       </section>
 
       {/* Section 3: Orchestration Cost & Impact */}
       <section className="space-y-4">
         <h2 className="text-xl font-semibold">Orchestration Cost & Impact (Last 7 Days)</h2>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
           <KpiCard
             label="Total Tokens"
             value={orchestrationCost.totalTokens.toLocaleString()}
@@ -234,6 +266,11 @@ export default function DashboardPage() {
             label="CO₂e Impact"
             value={`${orchestrationCost.sustainability.gCO2e}g`}
             hint={`${orchestrationCost.sustainability.energyKWh.toFixed(3)} kWh`}
+          />
+          <KpiCard
+            label="Water Usage"
+            value={`${orchestrationCost.sustainability.waterLiters.toFixed(2)}L`}
+            hint="Est. for cooling"
           />
         </div>
 
