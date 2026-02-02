@@ -2,6 +2,7 @@
 Orchestrator verification runner.
 
 Provides optional verification capabilities for orchestration runs including:
+- Artifact normalization
 - Build verification
 - Test verification (unit, smoke)
 - Linting
@@ -11,6 +12,7 @@ Provides optional verification capabilities for orchestration runs including:
 import logging
 import subprocess
 import json
+import os
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple
 
@@ -269,14 +271,67 @@ class OrchestratorVerifier:
         
         return None
     
+    def run_normalization(self) -> Optional[Dict[str, Any]]:
+        """
+        Run artifact normalization if enabled.
+        
+        Returns:
+            Dict with normalization results or None if disabled
+        """
+        # Check if normalization is enabled via environment variable
+        normalize_enabled = os.environ.get("NORMALIZE_ARTIFACTS", "true").lower() == "true"
+        if not normalize_enabled:
+            return None
+        
+        strict_mode = os.environ.get("NORMALIZE_STRICT", "false").lower() == "true"
+        
+        try:
+            # Import normalizer (lazy import to avoid issues if module not available)
+            import sys
+            bridge_dir = self.run_dir.parent.parent
+            normalize_path = bridge_dir / "src" / "normalize"
+            
+            if not normalize_path.exists():
+                logger.warning(f"Normalize module not found at {normalize_path}")
+                return None
+            
+            # Add to path if not already there
+            if str(bridge_dir / "src") not in sys.path:
+                sys.path.insert(0, str(bridge_dir / "src"))
+            
+            from normalize.normalizer import ArtifactNormalizer
+            
+            # Run normalization
+            normalizer = ArtifactNormalizer(
+                artifact_path=self.run_dir,
+                normalize_enabled=True,
+                strict_mode=strict_mode
+            )
+            
+            result = normalizer.normalize()
+            
+            # Clean up temp workspace
+            normalizer.cleanup()
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Normalization failed: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "report": f"Normalization error: {e}"
+            }
+    
     def run_all_verifications(self) -> Dict[str, Any]:
         """
-        Run all applicable verifications.
+        Run all applicable verifications including normalization.
         
         Returns:
             Dict containing all verification results and log paths
         """
         results = {
+            "normalization_result": self.run_normalization(),
             "lint_result": self.verify_lint(),
             "build_result": self.verify_build(),
             "unit_test_result": self.verify_unit_tests(),

@@ -1,0 +1,11 @@
+# Watchlist Configuration
+
+This file contains watchlist settings for the trading bot.
+
+## Default Symbols
+- AAPL
+- GOOGL
+- MSFT
+
+## Update Frequency
+Every 5 minutes
