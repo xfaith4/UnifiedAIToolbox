@@ -16,7 +16,7 @@ CODE_EXTENSIONS = {
 
 
 def is_probably_code_fence_wrapped(text: str) -> bool:
-    """
+    r"""
     Detect if text appears to be wrapped in markdown code fences.
     
     Returns True if:

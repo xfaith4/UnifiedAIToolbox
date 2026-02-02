@@ -104,12 +104,17 @@ def infer_file_type(content: str) -> Optional[str]:
         return ".py"
     
     # JavaScript/TypeScript
-    if re.search(r'\b(export|import|const|let|var)\b.*(?:from|require)', sample):
+    has_js_keywords = re.search(r'\b(export|import|const|let|var|function)\b', sample)
+    if has_js_keywords:
         if "tsx" in sample_lower or "</" in sample:
             return ".tsx"
         elif "jsx" in sample_lower:
             return ".jsx"
-        elif "typescript" in sample_lower or ": " in sample:
+        elif ":" in sample and re.search(r'\w+:\s*\w+', sample):
+            # Has type annotations like "const myVar: string"
+            return ".ts"
+        elif re.search(r'\b(import|export)\b.*\bfrom\b', sample):
+            # Has import/export with from
             return ".ts"
         else:
             return ".js"
