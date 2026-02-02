@@ -106,6 +106,7 @@ class Verification(BaseModel):
     """Verification results for a run."""
     run_id: str = Field(..., description="Associated run ID")
     timestamp: str = Field(..., description="ISO-8601 timestamp")
+    normalization_result: Optional[Dict[str, Any]] = Field(None, description="Normalization result")
     lint_result: Optional[VerificationResult] = Field(None, description="Linting result")
     build_result: Optional[VerificationResult] = Field(None, description="Build result")
     unit_test_result: Optional[VerificationResult] = Field(None, description="Unit test result")

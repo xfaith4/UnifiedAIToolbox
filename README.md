@@ -84,9 +84,33 @@ That's it! The launcher will automatically:
 ### 🔄 Orchestration & Automation
 
 - **Multi-Agent System**: Specialized agents (Supervisor, Researcher, Engineer, Critic, Synthesizer)
+- **Artifact Normalization**: Automatic cleanup and validation of generated code artifacts
 - **Run Tracking**: Track orchestration with cost analysis and quality metrics
 - **GitHub Integration**: Automated repo operations via GitHub API
 - **Real-time Monitoring**: Live log streaming and progress tracking
+
+#### Artifact Normalization Workflow
+
+The orchestration tool includes an automatic artifact normalizer that ensures generated code is runnable:
+
+1. **Intake**: Unzips and indexes the generated artifact
+2. **Cleanup**: 
+   - Strips accidental markdown code fences from code files
+   - Splits bundled multi-file blobs into discrete files
+   - Relocates orphaned/weirdly-named files to appropriate locations
+3. **Scaffolding**: Creates missing configuration files:
+   - Frontend: `package.json`, `vite.config.ts`, `tsconfig.json`, `index.html`
+   - Backend: `requirements.txt` or `pyproject.toml`, `__init__.py` markers
+4. **Validation**: Runs sanity checks (Python syntax, package.json structure, YAML parsing)
+5. **Report**: Generates `normalization_report.md` with all transformations
+
+Configure normalization in `.env`:
+```bash
+NORMALIZE_ARTIFACTS=true    # Enable/disable normalization (default: true)
+NORMALIZE_STRICT=false      # Fail on unresolved issues (default: false)
+```
+
+All transformations are logged in `normalize_log.json` with before/after hashes.
 
 ### 💻 Web Portal
 
@@ -131,6 +155,10 @@ OPENAI_MODEL=gpt-5.2
 API_PORT=8000                # FastAPI backend port
 WEB_PORT=3000               # Next.js web portal port
 
+# Optional - Artifact Normalization
+NORMALIZE_ARTIFACTS=true     # Enable automatic artifact cleanup
+NORMALIZE_STRICT=false       # Fail on unresolved issues
+
 # Optional - GitHub Integration
 GITHUB_TOKEN=your-github-token
 ```
@@ -144,6 +172,7 @@ GITHUB_TOKEN=your-github-token
 
 ### Advanced Features
 
+- **Artifact Normalization** - [docs/ARTIFACT_NORMALIZATION.md](docs/ARTIFACT_NORMALIZATION.md)
 - **Orchestration Run Tracking** - [docs/ORCHESTRATION_RUN_TRACKING.md](docs/ORCHESTRATION_RUN_TRACKING.md)
 - **PromptOps Guide** - [docs/PROMPTOPS.md](docs/PROMPTOPS.md)
 - **GitHub Integration** - [docs/GITHUB_INTEGRATION.md](docs/GITHUB_INTEGRATION.md)
