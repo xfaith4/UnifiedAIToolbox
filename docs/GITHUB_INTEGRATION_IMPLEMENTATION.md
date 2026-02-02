@@ -72,12 +72,14 @@ The header takes precedence if both are provided.
 **Test Suite:** `tests/test_github_api.py`
 
 **Coverage:**
+
 - 14 unit tests for API endpoints
 - Tests for authentication, repository operations, PR/issue queries, orchestration workflow
 - Proper mocking of GitHub API to avoid external dependencies
 - All tests passing
 
 **Additional Tests:**
+
 - Smoke test: `tests/test_github_integration_smoke.py`
 - Existing orchestration-bridge tests: 46 tests
 
@@ -88,6 +90,7 @@ The header takes precedence if both are provided.
 **Main Documentation:** `docs/GITHUB_INTEGRATION.md`
 
 Includes:
+
 - Configuration guide with token setup
 - Authentication methods
 - Complete API reference
@@ -98,10 +101,12 @@ Includes:
 - Future enhancement roadmap
 
 **README Updates:**
+
 - Added GitHub Integration reference in documentation section
 - Linked to comprehensive guide
 
 **Configuration Example:**
+
 - Updated `.env.example` with GitHub token configuration
 - Added scope requirements and security notes
 
@@ -110,6 +115,7 @@ Includes:
 ### 1. Repository Query
 
 Users can query any public or private (with token) repository for:
+
 - Metadata (stars, forks, language, topics)
 - Branches
 - Pull requests (open, closed, all)
@@ -118,6 +124,7 @@ Users can query any public or private (with token) repository for:
 ### 2. Repository Cloning
 
 Repositories can be cloned locally with:
+
 - Automatic authentication using token
 - Branch selection
 - File tree generation
@@ -131,19 +138,20 @@ The main orchestration workflow:
 ```
 1. POST /github/orchestration/run
    ↓ (clones repo and returns run_id)
-   
+
 2. Run orchestration externally
    ↓ (PowerShell scripts, AI agents)
-   
+
 3. POST /github/orchestration/upload-results
    ↓ (creates PR with findings)
-   
+
 4. Review PR on GitHub
 ```
 
 ### 4. Pull Request Creation
 
 When uploading results:
+
 - Creates new branch with timestamp
 - Commits all changes
 - Generates descriptive PR title and body
@@ -171,6 +179,7 @@ except ImportError:
 Rather than reimplementing GitHub operations, the API uses existing services from `orchestration-bridge`.
 
 **Benefits:**
+
 - Code reuse
 - Consistent behavior
 - Single source of truth for GitHub operations
@@ -179,10 +188,12 @@ Rather than reimplementing GitHub operations, the API uses existing services fro
 ### 3. Two-Step Orchestration Workflow
 
 Orchestration is split into:
+
 1. Clone + queue (`/orchestration/run`)
 2. Upload results (`/orchestration/upload-results`)
 
 **Rationale:**
+
 - Allows external orchestration engines (PowerShell, Python)
 - Flexible for different orchestration types
 - Clear separation of concerns
@@ -193,6 +204,7 @@ Orchestration is split into:
 Standard `Authorization: Bearer` header used.
 
 **Benefits:**
+
 - Industry standard
 - Works with most HTTP clients
 - Easy to integrate with other tools
@@ -203,6 +215,7 @@ Standard `Authorization: Bearer` header used.
 ### Unit Tests
 
 All endpoints tested with mocked GitHub API:
+
 - Success cases
 - Error cases (no token, invalid input, API failures)
 - Response structure validation
@@ -211,6 +224,7 @@ All endpoints tested with mocked GitHub API:
 ### Integration Tests
 
 Smoke tests verify:
+
 - Module imports correctly
 - Endpoints registered
 - Models properly defined
@@ -219,6 +233,7 @@ Smoke tests verify:
 ### Future Testing
 
 Recommendations:
+
 - Add integration tests with real GitHub API (using test repos)
 - Add performance tests for large repos
 - Add rate limit handling tests
@@ -236,6 +251,7 @@ Recommendations:
 ### Documentation
 
 Security best practices documented:
+
 - Never commit tokens
 - Use minimal scopes
 - Rotate tokens regularly
@@ -396,6 +412,7 @@ Tests run in CI without requiring real GitHub tokens (mocked).
 ### Logging
 
 The implementation includes logging at key points:
+
 - Clone operations
 - PR creation
 - API errors
@@ -404,6 +421,7 @@ The implementation includes logging at key points:
 ### Metrics (Recommended)
 
 Future metrics to track:
+
 - API endpoint usage
 - Clone success/failure rates
 - PR creation success rates

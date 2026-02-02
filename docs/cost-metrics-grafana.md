@@ -5,12 +5,14 @@ This guide explains how to integrate the Unified AI Toolbox cost and environment
 ## Overview
 
 The Unified AI Toolbox now tracks detailed metrics for every AI API call, including:
+
 - **Cost** (USD) per model, agent, and orchestration run
 - **Energy consumption** (kWh) estimated based on token processing
 - **Water usage** (liters) for datacenter cooling
 - Token counts (input/output)
 
 These metrics are stored in SQLite tables and can be accessed via:
+
 1. REST API endpoints
 2. Prometheus-compatible metrics endpoint
 3. Direct database queries
@@ -20,6 +22,7 @@ These metrics are stored in SQLite tables and can be accessed via:
 ### Database Tables
 
 **orchestration_cost_metrics** - Per-call metrics
+
 ```sql
 CREATE TABLE orchestration_cost_metrics (
     id INTEGER PRIMARY KEY,
@@ -38,6 +41,7 @@ CREATE TABLE orchestration_cost_metrics (
 ```
 
 **orchestration_run_aggregates** - Per-run summaries
+
 ```sql
 CREATE TABLE orchestration_run_aggregates (
     id INTEGER PRIMARY KEY,
@@ -141,8 +145,9 @@ grafana-cli plugins install frser-sqlite-datasource
 #### Example Queries
 
 **Total cost over time:**
+
 ```sql
-SELECT 
+SELECT
   DATE(timestamp) as time,
   SUM(cost_usd) as cost
 FROM orchestration_cost_metrics
@@ -152,8 +157,9 @@ ORDER BY time
 ```
 
 **Cost by model:**
+
 ```sql
-SELECT 
+SELECT
   model_name as metric,
   SUM(cost_usd) as value
 FROM orchestration_cost_metrics
@@ -164,12 +170,13 @@ LIMIT 10
 ```
 
 **Energy consumption by agent:**
+
 ```sql
-SELECT 
+SELECT
   agent_name as metric,
   SUM(kwh_estimated) as value
 FROM orchestration_cost_metrics
-WHERE agent_name IS NOT NULL 
+WHERE agent_name IS NOT NULL
   AND $__timeFilter(timestamp)
 GROUP BY agent_name
 ORDER BY value DESC
@@ -200,21 +207,25 @@ grafana-cli plugins install yesoreyeram-infinity-datasource
 ### Panel Examples
 
 **1. Total Cost (Stat Panel)**
+
 - Query: `unified_ai_cost_usd_total`
 - Visualization: Stat
 - Unit: currency (USD)
 
 **2. Energy Consumption (Time Series)**
+
 - Query: `rate(unified_ai_energy_kwh_total[5m])`
 - Visualization: Time series
 - Unit: kWh
 
 **3. Cost by Model (Bar Chart)**
+
 - Query: `topk(5, unified_ai_cost_usd_total)`
 - Visualization: Bar chart
 - Legend: Model names
 
 **4. Water Usage Trend (Time Series)**
+
 - Query: `increase(unified_ai_water_liters_total[1h])`
 - Visualization: Time series
 - Unit: liters
@@ -351,7 +362,7 @@ groups:
         annotations:
           summary: "High AI API costs detected"
           description: "Cost increased by ${{ $value }} in the last hour"
-      
+
       - alert: HighEnergyUsage
         expr: increase(unified_ai_energy_kwh_total[1h]) > 5
         for: 5m
@@ -365,6 +376,7 @@ groups:
 ### Grafana Alerts
 
 Configure alerts directly in Grafana panels:
+
 1. Edit panel → Alert tab
 2. Set conditions (e.g., cost > threshold)
 3. Configure notification channels (email, Slack, etc.)
@@ -394,6 +406,7 @@ Configure alerts directly in Grafana panels:
 ### High Cardinality Issues
 
 If you have many models/agents, consider:
+
 1. Reducing label dimensions
 2. Using recording rules in Prometheus
 3. Aggregating data before visualization
@@ -408,5 +421,6 @@ If you have many models/agents, consider:
 ## Support
 
 For issues or questions:
+
 - GitHub Issues: [UnifiedAIToolbox](https://github.com/xfaith4/UnifiedAIToolbox/issues)
 - API Documentation: `http://localhost:8000/docs` (when API is running)

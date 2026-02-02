@@ -1,13 +1,16 @@
 # Task Executor Runbook
 
 ## Prerequisites
+
 - Git is installed and configured
 - PowerShell/`pwsh` available if you intend to run the real Codex swarm
 - TaskGraph located at `apps/orchestration-bridge/runs/<run_id>/taskgraph.json`
 - Repository cloned locally (used as the source worktree)
 
 ## Steps
+
 1. **Prepare paths**
+
    ```bash
    export RUN_ID=demo-run
    export REPO_PATH=/path/to/repo
@@ -15,6 +18,7 @@
 
 2. **Generate a TaskGraph (if not already)**
    - Use the supervisor planner endpoint:
+
    ```bash
    curl -X POST http://localhost:8000/github/supervisor/taskgraph \
      -H 'Content-Type: application/json' \
@@ -22,6 +26,7 @@
    ```
 
 3. **Run the executor**
+
    ```bash
    python - <<'PY'
    from pathlib import Path
@@ -49,4 +54,3 @@
 6. **Validation example**
    - Prepare two tasks: one with `conflict_group: build` and another with `conflict_group: test`.
    - Executor will process them in order; adjust future enhancements to parallelize non-conflicting groups if desired.
-

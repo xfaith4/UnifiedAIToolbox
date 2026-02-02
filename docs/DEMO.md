@@ -20,11 +20,14 @@ The Orchestration Simulation Demo provides a realistic simulation of an actual o
 ### Features
 
 #### 🎯 Realistic Goal
+
 Watch agents work on a real-world project:
 > "Build a RESTful Task Management API with user authentication, CRUD operations for tasks, data persistence using SQLite, comprehensive unit tests, API documentation, and deployment instructions for both development and production environments."
 
 #### 👥 Multi-Agent Collaboration
+
 See 5 specialized agents in action:
+
 1. **Supervisor** - Analyzes goals, coordinates team, scores quality
 2. **Researcher** - Analyzes requirements and recommends tech stack
 3. **Engineer** - Implements code, database models, API endpoints
@@ -32,19 +35,24 @@ See 5 specialized agents in action:
 5. **Synthesizer** - Creates documentation and deployment guides
 
 #### 📊 Real-Time Metrics
+
 Track orchestration progress with live metrics:
+
 - **Progress**: Visual percentage and step tracking
 - **Cost**: Running total of API costs and token usage
 - **Quality Score**: Final assessment score (8.7/10)
 - **Active Agent**: Current agent and their role
 
 #### 🎬 Interactive Controls
+
 - **Play/Pause**: Control simulation playback
 - **Reset**: Restart from the beginning
 - **Auto-progression**: Watch agents work sequentially
 
 #### 📦 Deliverables Showcase
+
 See the complete output:
+
 - ✅ Clean, typed FastAPI source code
 - ✅ 87% test coverage with pytest
 - ✅ Comprehensive documentation (API, deployment, contributing)
@@ -97,6 +105,7 @@ The simulation demonstrates a complete orchestration workflow:
 ### Usage
 
 **Method 1: Direct Browser Access**
+
 ```bash
 # Open directly in browser
 open demo-orchestration-sim.html    # macOS
@@ -105,6 +114,7 @@ start demo-orchestration-sim.html   # Windows
 ```
 
 **Method 2: Local Web Server**
+
 ```bash
 # Python
 python3 -m http.server 8080
@@ -118,6 +128,7 @@ http://localhost:8080/demo-orchestration-sim.html
 
 **Method 3: GitHub Pages**
 Once GitHub Pages is enabled:
+
 ```
 https://xfaith4.github.io/UnifiedAIToolbox/demo-orchestration-sim.html
 ```
@@ -220,6 +231,7 @@ The Unified AI Toolbox Animated Demo (`demo-animated.html`) is an interactive, v
 
 **Method 1: Direct File Access**
 Simply open `demo-animated.html` in any modern web browser:
+
 ```bash
 # macOS
 open demo-animated.html
@@ -233,6 +245,7 @@ start demo-animated.html
 
 **Method 2: Via HTTP Server**
 For best results, serve via HTTP:
+
 ```bash
 # Python
 python3 -m http.server 8080
@@ -246,6 +259,7 @@ http://localhost:8080/demo-animated.html
 
 **Method 3: Via GitHub Pages**
 Once GitHub Pages is enabled for the repository (Settings → Pages → Source: main branch):
+
 ```
 https://xfaith4.github.io/UnifiedAIToolbox/demo-animated.html
 ```
@@ -300,6 +314,7 @@ The demo is linked from the main [Launch Portal](../launch-portal.html) for easy
 ### Changing Colors
 
 Edit the CSS gradient colors in the `<style>` section:
+
 ```css
 background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
 ```
@@ -311,6 +326,7 @@ Modify the `.agents-grid` section in HTML to add or remove agent cards.
 ### Adjusting Animation Speed
 
 Change animation duration in CSS:
+
 ```css
 animation: agentAppear 0.5s ease-out forwards;  /* Change 0.5s to your preference */
 ```
@@ -324,6 +340,7 @@ All content is in plain HTML - simply edit the text within each section.
 ### Linking to Demo
 
 Add to your documentation or website:
+
 ```markdown
 🌟 **[View Animated Demo](demo-animated.html)** - Experience the toolbox capabilities!
 ```
@@ -331,6 +348,7 @@ Add to your documentation or website:
 ### Embedding
 
 The demo can be embedded in an iframe:
+
 ```html
 <iframe src="demo-animated.html" width="100%" height="800px" frameborder="0"></iframe>
 ```
@@ -387,6 +405,6 @@ Found an issue or have suggestions for the demo? Please [open an issue](https://
 
 ---
 
-**Version**: 1.1  
-**Last Updated**: January 2026  
+**Version**: 1.1
+**Last Updated**: January 2026
 **Status**: Production Ready

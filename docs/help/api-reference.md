@@ -11,6 +11,7 @@ http://localhost:8000
 Most endpoints require authentication using JWT tokens.
 
 ### Login
+
 ```http
 POST /auth/login
 Content-Type: application/json
@@ -22,6 +23,7 @@ Content-Type: application/json
 ```
 
 **Response:**
+
 ```json
 {
   "access_token": "eyJ0eXAiOiJKV1QiLCJhbGc...",
@@ -32,7 +34,9 @@ Content-Type: application/json
 ```
 
 ### Using Access Tokens
+
 Include the access token in the Authorization header:
+
 ```http
 Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGc...
 ```
@@ -42,9 +46,11 @@ Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGc...
 ### Health Check
 
 #### GET /health
+
 Check if the API is running.
 
 **Response:**
+
 ```json
 {
   "status": "healthy",
@@ -60,6 +66,7 @@ Check if the API is running.
 ### List Prompts
 
 #### GET /prompts
+
 Get a list of all prompts.
 
 **Query Parameters:**
@@ -69,6 +76,7 @@ Get a list of all prompts.
 - `offset` (optional): Pagination offset (default: 0)
 
 **Response:**
+
 ```json
 {
   "prompts": [
@@ -92,9 +100,11 @@ Get a list of all prompts.
 ### Get Prompt
 
 #### GET /prompts/{prompt_id}
+
 Get a specific prompt by ID.
 
 **Response:**
+
 ```json
 {
   "id": "prompt_123",
@@ -112,9 +122,11 @@ Get a specific prompt by ID.
 ### Create Prompt
 
 #### POST /prompts
+
 Create a new prompt.
 
 **Request Body:**
+
 ```json
 {
   "title": "New Prompt",
@@ -127,6 +139,7 @@ Create a new prompt.
 ```
 
 **Response:**
+
 ```json
 {
   "id": "prompt_456",
@@ -144,9 +157,11 @@ Create a new prompt.
 ### Update Prompt
 
 #### PUT /prompts/{prompt_id}
+
 Update an existing prompt.
 
 **Request Body:**
+
 ```json
 {
   "title": "Updated Prompt Title",
@@ -159,9 +174,11 @@ Update an existing prompt.
 ### Delete Prompt
 
 #### DELETE /prompts/{prompt_id}
+
 Delete a prompt.
 
 **Response:**
+
 ```json
 {
   "message": "Prompt deleted successfully",
@@ -176,6 +193,7 @@ Delete a prompt.
 ### Search Prompts
 
 #### GET /search
+
 Full-text search across prompts.
 
 **Query Parameters:**
@@ -186,6 +204,7 @@ Full-text search across prompts.
 - `limit` (optional): Results limit (default: 50)
 
 **Response:**
+
 ```json
 {
   "results": [
@@ -211,9 +230,11 @@ Full-text search across prompts.
 ### List Agents
 
 #### GET /agents
+
 Get all agent definitions.
 
 **Response:**
+
 ```json
 {
   "agents": [
@@ -232,21 +253,25 @@ Get all agent definitions.
 ### Get Agent
 
 #### GET /agents/{agent_id}
+
 Get a specific agent.
 
 ### Create Agent
 
 #### POST /agents
+
 Create a new agent definition.
 
 ### Update Agent
 
 #### PUT /agents/{agent_id}
+
 Update an agent definition.
 
 ### Delete Agent
 
 #### DELETE /agents/{agent_id}
+
 Delete an agent.
 
 ---
@@ -256,9 +281,11 @@ Delete an agent.
 ### Run Orchestration
 
 #### POST /orchestrator/run
+
 Execute an orchestration workflow.
 
 **Request Body:**
+
 ```json
 {
   "goal": "Implement user authentication",
@@ -271,6 +298,7 @@ Execute an orchestration workflow.
 ```
 
 **Response:**
+
 ```json
 {
   "run_id": "run_789",
@@ -283,9 +311,11 @@ Execute an orchestration workflow.
 ### Get Run Status
 
 #### GET /orchestrator/runs/{run_id}
+
 Get the status of an orchestration run.
 
 **Response:**
+
 ```json
 {
   "run_id": "run_789",
@@ -303,9 +333,11 @@ Get the status of an orchestration run.
 ### Stream Logs
 
 #### GET /orchestrator/runs/{run_id}/logs
+
 Server-Sent Events stream of run logs.
 
 **Response:** (text/event-stream)
+
 ```
 data: {"timestamp": "2025-11-26T13:46:16Z", "level": "info", "message": "Starting orchestration..."}
 
@@ -317,9 +349,11 @@ data: {"timestamp": "2025-11-26T13:52:30Z", "level": "info", "message": "Orchest
 ### Cancel Run
 
 #### DELETE /orchestrator/runs/{run_id}
+
 Cancel a running orchestration.
 
 **Response:**
+
 ```json
 {
   "message": "Run cancelled successfully",
@@ -334,9 +368,11 @@ Cancel a running orchestration.
 ### Clone Repository
 
 #### POST /github/clone
+
 Clone a GitHub repository.
 
 **Request Body:**
+
 ```json
 {
   "repo_url": "https://github.com/user/repo",
@@ -346,6 +382,7 @@ Clone a GitHub repository.
 ```
 
 **Response:**
+
 ```json
 {
   "clone_id": "clone_123",
@@ -357,14 +394,17 @@ Clone a GitHub repository.
 ### Get Clone Progress
 
 #### GET /github/clone/{clone_id}/progress
+
 Get repository clone progress (Server-Sent Events).
 
 ### List Repositories
 
 #### GET /github/repos
+
 List cloned repositories.
 
 **Response:**
+
 ```json
 {
   "repositories": [
@@ -381,9 +421,11 @@ List cloned repositories.
 ### Run Codex Swarm
 
 #### POST /github/codex/run
+
 Run Codex multi-agent code review.
 
 **Request Body:**
+
 ```json
 {
   "repo_path": "repos/repo",
@@ -393,6 +435,7 @@ Run Codex multi-agent code review.
 ```
 
 **Response:**
+
 ```json
 {
   "run_id": "codex_456",
@@ -405,9 +448,11 @@ Run Codex multi-agent code review.
 ### Get Codex Findings
 
 #### GET /github/codex/runs/{run_id}/findings
+
 Get findings from Codex swarm run.
 
 **Response:**
+
 ```json
 {
   "run_id": "codex_456",
@@ -439,6 +484,7 @@ Get findings from Codex swarm run.
 ### Get Usage Stats
 
 #### GET /costs/usage
+
 Get API usage and cost statistics.
 
 **Query Parameters:**
@@ -446,6 +492,7 @@ Get API usage and cost statistics.
 - `end_date` (optional): Filter to date (ISO 8601)
 
 **Response:**
+
 ```json
 {
   "total_tokens": 1250000,
@@ -512,6 +559,7 @@ API requests are rate-limited to prevent abuse:
 - **Anonymous users**: 100 requests per hour
 
 Rate limit headers are included in responses:
+
 ```http
 X-RateLimit-Limit: 1000
 X-RateLimit-Remaining: 995
@@ -529,6 +577,7 @@ GET /prompts?limit=20&offset=40
 ```
 
 Responses include pagination metadata:
+
 ```json
 {
   "data": [...],

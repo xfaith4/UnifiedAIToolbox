@@ -7,6 +7,7 @@ The Unified AI Toolbox Alerting System provides real-time monitoring and alertin
 ## Overview
 
 The alerting system builds on the telemetry module to provide:
+
 - **Rule-based Alerting**: Define threshold, pattern, and custom alert conditions
 - **Severity Levels**: Categorize alerts from Info to Critical
 - **Alert Storage**: JSONL-based storage for easy querying and analysis
@@ -44,6 +45,7 @@ Telemetry Events → Alert Rules → Alert Evaluation → Alert Storage → Noti
 Monitor numeric values and trigger when thresholds are crossed.
 
 **Example: High Error Rate**
+
 ```powershell
 New-AlertRule `
     -Name "High-Error-Rate" `
@@ -57,6 +59,7 @@ New-AlertRule `
 ```
 
 **Supported Operators:**
+
 - `GreaterThan`
 - `LessThan`
 - `Equal`
@@ -69,6 +72,7 @@ New-AlertRule `
 Use regex patterns to match against event data.
 
 **Example: Analysis Failures**
+
 ```powershell
 New-AlertRule `
     -Name "Repo-Analysis-Failures" `
@@ -84,6 +88,7 @@ New-AlertRule `
 Use PowerShell script blocks for complex logic.
 
 **Example: Custom Business Logic**
+
 ```powershell
 New-AlertRule `
     -Name "Custom-Check" `
@@ -103,20 +108,25 @@ New-AlertRule `
 The system comes with 7 pre-configured alert rules:
 
 ### Critical Severity
+
 - **AI-Summary-Failures**: AI summary generation failing 3+ times consecutively
 
 ### High Severity
+
 - **Repo-Analysis-Failures**: Repository analysis failures
 - **High-Error-Rate**: Error count exceeds 10
 
 ### Medium Severity
+
 - **Low-Health-Score**: Repository health score below 50
 - **Artifact-Upload-Failures**: GitHub artifact uploads failing
 
 ### Low Severity
+
 - **Long-Analysis-Duration**: Repository analysis taking >600 seconds
 
 ### Info Severity
+
 - **Analysis-Completed**: Analysis completed successfully (disabled by default)
 
 ## Getting Started
@@ -410,8 +420,8 @@ if ($stats.bySeverity['Critical'] -gt 0) {
 }
 
 # Review most triggered rules
-$stats.byRule.GetEnumerator() | 
-    Sort-Object Value -Descending | 
+$stats.byRule.GetEnumerator() |
+    Sort-Object Value -Descending |
     Select-Object -First 5
 ```
 
@@ -442,7 +452,7 @@ $rule = New-AlertRule `
     -ScriptBlock {
         param($Event)
         $m = $Event.metadata
-        return ($m.error_rate -gt 0.1) -and 
+        return ($m.error_rate -gt 0.1) -and
                ($m.response_time -gt 1000) -and
                ($m.active_users -gt 100)
     } `
@@ -482,7 +492,7 @@ if ($errorCount -gt 10) {
         source = "Monitoring"
         metadata = @{ error_count = $errorCount }
     }
-    
+
     # Trigger alert handling
     Write-Warning "High error rate detected: $errorCount errors in last 100 events"
 }
@@ -555,6 +565,7 @@ Planned features for future releases:
 ## Support
 
 For issues or questions:
+
 - Check the [Telemetry & AI Insights Guide](TELEMETRY_AND_AI_INSIGHTS.md)
 - Review the [Unified CLI Guide](UNIFIED_CLI.md)
 - Check [GitHub Discussions](https://github.com/xfaith4/UnifiedAIToolbox/discussions)
