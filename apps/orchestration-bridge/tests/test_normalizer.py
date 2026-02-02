@@ -169,12 +169,14 @@ def main():
         assert ":" not in sanitized
         assert " " not in sanitized
     
-    def test_classify_orphan_markdown(self):
+    def test_classify_orphan_markdown(self, tmp_path):
         """Test classifying markdown orphan."""
-        orphan_file = Path("temp.txt")
-        # Mock file with markdown content
+        orphan_file = tmp_path / "notes"
+        orphan_file.write_text("# Test Document\n\nThis is a markdown file.")
+        
         suggested, reason = orphan_handler.classify_orphan(orphan_file)
-        # We can't test full behavior without actual file
+        assert "docs" in suggested or "notes" in suggested
+        assert "markdown" in reason.lower() or "documentation" in reason.lower()
 
 
 class TestScaffolder:
