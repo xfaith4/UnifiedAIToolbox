@@ -112,6 +112,7 @@ class RepositoryMetadataResponse(BaseModel):
     private: bool
     archived: bool
     updated_at: Optional[str] = None
+    open_prs_count: int = 0
 
 
 class AccessibleRepository(BaseModel):
@@ -128,6 +129,7 @@ class AccessibleRepository(BaseModel):
     archived: bool = False
     visibility: Optional[str] = None
     updated_at: Optional[str] = None
+    open_prs_count: int = 0
 
 
 class RepoIntakeRequest(BaseModel):
@@ -169,6 +171,7 @@ class CloneRepositoryRequest(BaseModel):
     private: bool
     archived: bool
     updated_at: Optional[str] = None
+    open_prs_count: int = 0
 
 
 class AccessibleRepository(BaseModel):
@@ -185,6 +188,7 @@ class AccessibleRepository(BaseModel):
     archived: bool = False
     visibility: Optional[str] = None
     updated_at: Optional[str] = None
+    open_prs_count: int = 0
 
 
 class RepoIntakeRequest(BaseModel):
@@ -226,6 +230,7 @@ class CloneRepositoryRequest(BaseModel):
     private: bool
     archived: bool
     updated_at: Optional[str] = None
+    open_prs_count: int = 0
 
 
 class AccessibleRepository(BaseModel):
@@ -242,6 +247,7 @@ class AccessibleRepository(BaseModel):
     archived: bool = False
     visibility: Optional[str] = None
     updated_at: Optional[str] = None
+    open_prs_count: int = 0
 
 
 class RepoIntakeRequest(BaseModel):
@@ -283,6 +289,7 @@ class CloneRepositoryRequest(BaseModel):
     private: bool
     archived: bool
     updated_at: Optional[str] = None
+    open_prs_count: int = 0
 
 
 class AccessibleRepository(BaseModel):
@@ -299,6 +306,7 @@ class AccessibleRepository(BaseModel):
     archived: bool = False
     visibility: Optional[str] = None
     updated_at: Optional[str] = None
+    open_prs_count: int = 0
 
 
 class RepoIntakeRequest(BaseModel):

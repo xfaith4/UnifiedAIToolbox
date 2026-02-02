@@ -134,7 +134,7 @@ export default function GitHubPage() {
         />
         <input
           className="w-full rounded-xl border border-slate-700 bg-slate-800/60 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          placeholder="Optional filter (owner/repo contains...)"
+          placeholder="Search repositories (filter by owner/repo name)"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
         />
@@ -147,62 +147,6 @@ export default function GitHubPage() {
         {loading ? 'Fetching.' : 'List Accessible Repos'}
       </button>
       {error && <div className="text-sm text-rose-400">{error}</div>}
-
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
-        <div className="mb-3 font-semibold">Results</div>
-        <ul className="space-y-3">
-          {repos.map((r) => (
-            <li
-              key={r.id}
-              className={`flex items-center justify-between rounded-xl border px-3 py-2 ${
-                selectedRepo?.full_name === r.full_name ? 'border-blue-700 bg-blue-900/20' : 'border-slate-800 bg-slate-900/40'
-              }`}
-            >
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <div className="font-medium">{r.full_name}</div>
-                  <span className="rounded-full bg-slate-800 px-2 py-0.5 text-xs text-slate-200">
-                    {r.private ? 'Private' : 'Public'}
-                  </span>
-                  {r.archived && (
-                    <span className="rounded-full bg-amber-900/60 px-2 py-0.5 text-xs text-amber-200">
-                      Archived
-                    </span>
-                  )}
-                </div>
-                <div className="text-xs text-slate-400">
-                  {r.description || '-'}{' '}
-                  {r.updated_at ? (
-                    <span className="text-slate-500">
-                      Updated {new Date(r.updated_at).toLocaleDateString()}
-                    </span>
-                  ) : null}
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <button
-                  className="text-sm rounded-lg border border-blue-700 px-3 py-1 text-blue-200 hover:bg-blue-800/40"
-                  onClick={() => handleSelectRepo(r)}
-                  disabled={orchRunning && selectedRepo?.full_name !== r.full_name}
-                >
-                  {selectedRepo?.full_name === r.full_name ? 'Selected' : 'Select'}
-                </button>
-                <a
-                  className="text-sm text-blue-400 underline hover:text-blue-300"
-                  href={r.html_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  Open
-                </a>
-              </div>
-            </li>
-          ))}
-          {!loading && repos.length === 0 && (
-            <li className="text-sm text-slate-500">No repositories to display.</li>
-          )}
-        </ul>
-      </div>
 
       {selectedRepo && (
         <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 space-y-4">
@@ -306,6 +250,67 @@ export default function GitHubPage() {
           </div>
         </div>
       )}
+
+      <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
+        <div className="mb-3 font-semibold">Repository Results</div>
+        <ul className="space-y-3">
+          {repos.map((r) => (
+            <li
+              key={r.id}
+              className={`flex items-center justify-between rounded-xl border px-3 py-2 ${
+                selectedRepo?.full_name === r.full_name ? 'border-blue-700 bg-blue-900/20' : 'border-slate-800 bg-slate-900/40'
+              }`}
+            >
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <div className="font-medium">{r.full_name}</div>
+                  <span className="rounded-full bg-slate-800 px-2 py-0.5 text-xs text-slate-200">
+                    {r.private ? 'Private' : 'Public'}
+                  </span>
+                  {r.archived && (
+                    <span className="rounded-full bg-amber-900/60 px-2 py-0.5 text-xs text-amber-200">
+                      Archived
+                    </span>
+                  )}
+                  {r.open_prs_count !== undefined && r.open_prs_count > 0 && (
+                    <span className="rounded-full bg-green-900/60 px-2 py-0.5 text-xs text-green-200">
+                      {r.open_prs_count} PR{r.open_prs_count !== 1 ? 's' : ''}
+                    </span>
+                  )}
+                </div>
+                <div className="text-xs text-slate-400">
+                  {r.description || '-'}{' '}
+                  {r.updated_at ? (
+                    <span className="text-slate-500">
+                      Updated {new Date(r.updated_at).toLocaleDateString()}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  className="text-sm rounded-lg border border-blue-700 px-3 py-1 text-blue-200 hover:bg-blue-800/40"
+                  onClick={() => handleSelectRepo(r)}
+                  disabled={orchRunning && selectedRepo?.full_name !== r.full_name}
+                >
+                  {selectedRepo?.full_name === r.full_name ? 'Selected' : 'Select'}
+                </button>
+                <a
+                  className="text-sm text-blue-400 underline hover:text-blue-300"
+                  href={r.html_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Open
+                </a>
+              </div>
+            </li>
+          ))}
+          {!loading && repos.length === 0 && (
+            <li className="text-sm text-slate-500">No repositories to display.</li>
+          )}
+        </ul>
+      </div>
     </main>
   )
 }

@@ -232,6 +232,14 @@ class GitHubCloneService(GitHubClientMixin, FileTreeMixin, CloneUrlMixin):
 
             repos: list[Dict[str, Any]] = []
             for repo in repos_iter:
+                # Get open PR count for the repository
+                open_prs_count = 0
+                try:
+                    open_prs_count = repo.get_pulls(state='open').totalCount
+                except Exception:
+                    # If fetching PR count fails, just use 0
+                    pass
+                
                 repos.append({
                     "id": getattr(repo, "id", None),
                     "full_name": repo.full_name,
@@ -245,6 +253,7 @@ class GitHubCloneService(GitHubClientMixin, FileTreeMixin, CloneUrlMixin):
                     "archived": bool(getattr(repo, "archived", False)),
                     "visibility": "private" if getattr(repo, "private", False) else "public",
                     "updated_at": repo.updated_at.isoformat() if getattr(repo, "updated_at", None) else None,
+                    "open_prs_count": open_prs_count,
                 })
 
                 if limit is not None and len(repos) >= limit:
