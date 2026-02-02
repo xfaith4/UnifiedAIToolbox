@@ -172,6 +172,7 @@ GITHUB_TOKEN=your-github-token
 
 ### Advanced Features
 
+- **Artifact Normalization** - [docs/ARTIFACT_NORMALIZATION.md](docs/ARTIFACT_NORMALIZATION.md)
 - **Orchestration Run Tracking** - [docs/ORCHESTRATION_RUN_TRACKING.md](docs/ORCHESTRATION_RUN_TRACKING.md)
 - **PromptOps Guide** - [docs/PROMPTOPS.md](docs/PROMPTOPS.md)
 - **GitHub Integration** - [docs/GITHUB_INTEGRATION.md](docs/GITHUB_INTEGRATION.md)
