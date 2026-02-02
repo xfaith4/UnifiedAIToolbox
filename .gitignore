@@ -66,6 +66,10 @@ testResults.xml
 coverage/
 .coverage
 
+# Temporary test files
+test-*.tmp
+*.test.tmp
+
 # Pester test artifacts
 tmp/
 tests/test-artifacts/

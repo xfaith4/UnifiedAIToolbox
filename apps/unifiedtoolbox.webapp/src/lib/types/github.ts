@@ -10,4 +10,5 @@ export interface GitHubRepo {
   private?: boolean
   archived?: boolean
   updated_at?: string | null
+  open_prs_count?: number
 }
