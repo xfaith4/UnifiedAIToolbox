@@ -199,6 +199,7 @@ See [AGENTS.md](AGENTS.md) for orchestration rules and definition of done.
 - **Orchestration Run Tracking** - [docs/ORCHESTRATION_RUN_TRACKING.md](docs/ORCHESTRATION_RUN_TRACKING.md)
 - **PromptOps Guide** - [docs/PROMPTOPS.md](docs/PROMPTOPS.md)
 - **GitHub Integration** - [docs/GITHUB_INTEGRATION.md](docs/GITHUB_INTEGRATION.md)
+- **MCP Registry Ingestion** - [docs/MCP_REGISTRY_INGESTION.md](docs/MCP_REGISTRY_INGESTION.md)
 
 ### Guides
 

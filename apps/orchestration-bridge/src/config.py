@@ -56,6 +56,32 @@ class Settings(BaseSettings):
         description="Path to the MCP server registry used by orchestration agents"
     )
     
+    # Registry ingestion settings
+    mcp_registry_url: str = Field(
+        default="https://registry.modelcontextprotocol.io/v1/servers",
+        description="URL for the official MCP registry"
+    )
+    
+    mcp_registry_cache_path: Path = Field(
+        default_factory=lambda: Path(__file__).resolve().parents[3] / "data" / "mcp" / "registry_cache.json",
+        description="Path to cache the fetched registry data"
+    )
+    
+    mcp_refresh_interval_hours: int = Field(
+        default=24,
+        description="Hours between automatic registry refreshes"
+    )
+    
+    mcp_fetch_timeout: int = Field(
+        default=30,
+        description="Timeout in seconds for fetching from external registries"
+    )
+    
+    mcp_enable_github_source: bool = Field(
+        default=False,
+        description="Enable optional GitHub topic-based discovery (requires GITHUB_TOKEN)"
+    )
+    
     # API settings
     prompt_api_url: str = Field(
         default="http://localhost:8000",
@@ -92,7 +118,7 @@ class Settings(BaseSettings):
         v.mkdir(parents=True, exist_ok=True)
         return v
 
-    @field_validator('mcp_registry_path', mode='before')
+    @field_validator('mcp_registry_path', 'mcp_registry_cache_path', mode='before')
     @classmethod
     def ensure_registry_parent(cls, v: Path) -> Path:
         """Ensure the MCP registry directory exists and expand user paths."""
@@ -109,10 +135,12 @@ class Settings(BaseSettings):
             raise ValueError(f"Invalid log level: {v}. Must be one of {valid_levels}")
         return v.upper()
     
-    model_config = {"env_prefix": "BRIDGE_"}
-        case_sensitive = False
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+    model_config = {
+        "env_prefix": "BRIDGE_",
+        "case_sensitive": False,
+        "env_file": ".env",
+        "env_file_encoding": "utf-8"
+    }
 
 
 # Global settings instance
