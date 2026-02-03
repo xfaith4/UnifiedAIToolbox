@@ -537,26 +537,19 @@ const useOrchestrator = () => {
       if (newArtifact) {
         appendToTaskLog(task.id, `Created artifact: ${newArtifact.name}`);
         updateTask(task.id, { status: TaskStatus.COMPLETED, artifacts: [newArtifact], cost: taskCost, inputTokens, outputTokens });
-        
-        // Update session water usage
-        const taskWaterUsage = calculateWaterUsage(inputTokens, outputTokens);
-        setSession(s => s ? { 
-          ...s, 
-          waterUsage: (s.waterUsage || 0) + taskWaterUsage 
-        } : null);
       } else {
         // Fix: Instead of throwing an error, mark the task as complete without an artifact.
         // This prevents a single non-producing agent from failing the entire orchestration.
         appendToTaskLog(task.id, "Agent completed without producing a usable artifact.");
         updateTask(task.id, { status: TaskStatus.COMPLETED, artifacts: [], cost: taskCost, inputTokens, outputTokens });
-        
-        // Update session water usage
-        const taskWaterUsage = calculateWaterUsage(inputTokens, outputTokens);
-        setSession(s => s ? { 
-          ...s, 
-          waterUsage: (s.waterUsage || 0) + taskWaterUsage 
-        } : null);
       }
+      
+      // Update session water usage after task completion
+      const taskWaterUsage = calculateWaterUsage(inputTokens, outputTokens);
+      setSession(s => s ? { 
+        ...s, 
+        waterUsage: (s.waterUsage || 0) + taskWaterUsage 
+      } : null);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
       console.error(`Task ${task.id} failed:`, error);
