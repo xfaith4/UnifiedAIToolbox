@@ -871,6 +871,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     serve_parser.set_defaults(func=cmd_serve)
 
+    # MCP Registry refresh command
+    refresh_parser = sub.add_parser(
+        "refresh-registry",
+        help="Refresh MCP server registry from upstream sources (official registry).",
+    )
+    refresh_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Force refresh even if cache is fresh.",
+    )
+    refresh_parser.set_defaults(func=cmd_refresh_registry)
+
     return parser
 
 
@@ -886,6 +898,41 @@ def cmd_serve(args: argparse.Namespace) -> int:
     )
     service.start()
     return 0
+
+
+def cmd_refresh_registry(args: argparse.Namespace) -> int:
+    """Refresh the MCP server registry from upstream sources."""
+    print("[bridge] Refreshing MCP server registry from upstream sources...")
+    
+    # Import here to avoid circular dependencies
+    sys.path.insert(0, str(BRIDGE_ROOT / "src"))
+    from src.utils.registry_service import refresh_registry
+    
+    try:
+        result = refresh_registry(force=args.force)
+        
+        print(f"[bridge] Registry refresh {'completed' if result['success'] else 'failed'}:")
+        print(f"  - Servers added: {result['servers_added']}")
+        print(f"  - Servers updated: {result['servers_updated']}")
+        print(f"  - Total servers: {result['servers_total']}")
+        print(f"  - Sources synced: {', '.join(result['sources_synced']) or 'none'}")
+        
+        if result['cached']:
+            print("  - Note: Serving from cached data (upstream unreachable or refresh skipped)")
+        
+        if result['errors']:
+            print("  - Errors encountered:")
+            for error in result['errors']:
+                print(f"    * {error}")
+        
+        return 0 if result['success'] else 1
+        
+    except Exception as e:
+        print(f"[bridge] Fatal error during registry refresh: {e}")
+        import traceback
+        traceback.print_exc()
+        return 1
+
 
 
 def main(argv: Optional[List[str]] = None) -> int:
