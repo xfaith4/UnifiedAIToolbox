@@ -29,8 +29,9 @@ def _registry_from_data(data: dict) -> MCPRegistry:
 def _registry_to_dict(registry: MCPRegistry) -> dict:
     """Serialize a registry to a plain dictionary."""
     if hasattr(registry, "model_dump"):
-        return registry.model_dump()  # type: ignore[attr-defined]
-    return registry.model_dump()
+        # Use mode='json' to properly serialize Pydantic types like AnyUrl
+        return registry.model_dump(mode='json')  # type: ignore[attr-defined]
+    return registry.dict()
 
 
 def load_registry(path: Optional[Path] = None, allow_missing: bool = True) -> MCPRegistry:

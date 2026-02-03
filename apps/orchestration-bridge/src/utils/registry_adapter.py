@@ -274,7 +274,7 @@ def ingest_from_source(
         
         # Update registry metadata
         existing_registry.metadata["last_sync"] = datetime.now(timezone.utc).isoformat()
-        existing_registry.metadata["last_source"] = source.source_id
+        existing_registry.metadata["last_source"] = str(source.source_id)
         
         logger.info(f"Ingestion complete: {stats['servers_added']} added, "
                    f"{stats['servers_updated']} updated, "

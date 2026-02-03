@@ -190,7 +190,10 @@ def _json_serializer(obj: Any) -> Any:
         return obj.isoformat()
     elif isinstance(obj, Path):
         return str(obj)
-    elif hasattr(obj, 'dict'):
+    elif hasattr(obj, '__str__') and type(obj).__name__ == 'AnyUrl':
+        # Handle Pydantic AnyUrl
+        return str(obj)
+    elif hasattr(obj, 'model_dump'):
         return obj.model_dump()
     raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 

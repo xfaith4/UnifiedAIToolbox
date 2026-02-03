@@ -76,9 +76,9 @@ class TestRegistryRefreshService:
         cache_path = tmp_path / "cache.json"
         
         # Start with empty registry
+        from src.utils.mcp_registry import save_registry
         initial_registry = MCPRegistry(servers=[], metadata={})
-        with open(registry_path, "w") as f:
-            json.dump(initial_registry.model_dump(), f)
+        save_registry(initial_registry, registry_path)
         
         service = RegistryRefreshService(
             registry_path=registry_path,
@@ -131,9 +131,9 @@ class TestRegistryRefreshService:
             assert "official" in result["sources_synced"]
             
             # Verify registry was saved
-            with open(registry_path, "r") as f:
-                saved_registry = json.load(f)
-                assert len(saved_registry["servers"]) == 2
+            from src.utils.mcp_registry import load_registry
+            saved_registry = load_registry(registry_path)
+            assert len(saved_registry.servers) == 2
 
     def test_refresh_updates_existing_servers(self, tmp_path):
         """Test that refresh updates servers that already exist."""
@@ -141,6 +141,7 @@ class TestRegistryRefreshService:
         cache_path = tmp_path / "cache.json"
         
         # Start with a registry containing one server
+        from src.utils.mcp_registry import save_registry
         existing_server = MCPServer(
             id="server1",
             name="Old Name",
@@ -150,8 +151,7 @@ class TestRegistryRefreshService:
             auth=MCPAuthConfig(type="none"),
         )
         initial_registry = MCPRegistry(servers=[existing_server], metadata={})
-        with open(registry_path, "w") as f:
-            json.dump(initial_registry.model_dump(), f)
+        save_registry(initial_registry, registry_path)
         
         service = RegistryRefreshService(
             registry_path=registry_path,
@@ -199,6 +199,7 @@ class TestRegistryRefreshService:
         cache_path = tmp_path / "cache.json"
         
         # Create existing registry with servers
+        from src.utils.mcp_registry import save_registry
         existing_server = MCPServer(
             id="cached-server",
             name="Cached Server",
@@ -207,8 +208,7 @@ class TestRegistryRefreshService:
             auth=MCPAuthConfig(type="none"),
         )
         initial_registry = MCPRegistry(servers=[existing_server], metadata={})
-        with open(registry_path, "w") as f:
-            json.dump(initial_registry.model_dump(), f)
+        save_registry(initial_registry, registry_path)
         
         service = RegistryRefreshService(
             registry_path=registry_path,
@@ -245,6 +245,7 @@ class TestRegistryRefreshService:
             json.dump(cache_data, f)
         
         # Create registry with some servers
+        from src.utils.mcp_registry import save_registry
         existing_server = MCPServer(
             id="server1",
             name="Server 1",
@@ -253,8 +254,7 @@ class TestRegistryRefreshService:
             auth=MCPAuthConfig(type="none"),
         )
         initial_registry = MCPRegistry(servers=[existing_server], metadata={})
-        with open(registry_path, "w") as f:
-            json.dump(initial_registry.model_dump(), f)
+        save_registry(initial_registry, registry_path)
         
         service = RegistryRefreshService(
             registry_path=registry_path,

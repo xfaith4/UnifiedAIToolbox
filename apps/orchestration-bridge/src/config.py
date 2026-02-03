@@ -135,10 +135,12 @@ class Settings(BaseSettings):
             raise ValueError(f"Invalid log level: {v}. Must be one of {valid_levels}")
         return v.upper()
     
-    model_config = {"env_prefix": "BRIDGE_"}
-        case_sensitive = False
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+    model_config = {
+        "env_prefix": "BRIDGE_",
+        "case_sensitive": False,
+        "env_file": ".env",
+        "env_file_encoding": "utf-8"
+    }
 
 
 # Global settings instance
