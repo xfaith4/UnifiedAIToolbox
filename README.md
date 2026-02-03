@@ -163,11 +163,34 @@ NORMALIZE_STRICT=false       # Fail on unresolved issues
 GITHUB_TOKEN=your-github-token
 ```
 
+## 🎭 Orchestration Workflow
+
+The AI Toolbox follows a lightweight orchestration workflow for Codex-driven changes:
+
+### Intake → Plan → Execute
+
+1. **Intake**: Restate the goal, identify required files/scripts, call out missing inputs
+2. **Plan**: Propose smallest viable plan, prefer existing scripts/templates
+3. **Execute**: Make targeted changes, keep artifacts local
+4. **Verify**: Run checks if feasible, document skipped checks
+5. **Report**: Summarize changes, list follow-ups
+
+### Artifact Locations
+
+- **Local orchestration artifacts**: `.uaitoolbox/` or `runs/` (git-ignored)
+- **Prompts**: `data/prompts/` (YAML)
+- **Agents**: `data/agents/` (YAML/JSON)
+- **Run tracking**: `apps/orchestration-bridge/runs/` (JSON)
+- **Audit logs**: SQLite databases + JSONL files
+
+See [AGENTS.md](AGENTS.md) for orchestration rules and definition of done.
+
 ## 📚 Documentation
 
 ### Core Documentation
 
 - **Architecture Overview** - [docs/help/architecture.md](docs/help/architecture.md)
+- **Architecture Facts** - [docs/ARCHITECTURE_FACTS.md](docs/ARCHITECTURE_FACTS.md)
 - **API Reference** - [docs/help/api-reference.md](docs/help/api-reference.md)
 
 ### Advanced Features
