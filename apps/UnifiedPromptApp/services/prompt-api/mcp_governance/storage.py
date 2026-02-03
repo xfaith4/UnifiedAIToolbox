@@ -20,7 +20,10 @@ from .models import (
 
 
 # Storage paths
-DATA_DIR = pathlib.Path(__file__).parent.parent.parent.parent.parent / "data" / "mcp"
+# Navigate from mcp_governance/storage.py (6 levels up) to repo root
+# storage.py -> mcp_governance -> prompt-api -> services -> UnifiedPromptApp -> apps -> repo_root
+REPO_ROOT = pathlib.Path(__file__).parent.parent.parent.parent.parent.parent
+DATA_DIR = REPO_ROOT / "data" / "mcp"
 SERVERS_FILE = DATA_DIR / "servers.json"
 COLLECTIONS_FILE = DATA_DIR / "collections.json"
 INSTALLS_FILE = DATA_DIR / "installs.json"
