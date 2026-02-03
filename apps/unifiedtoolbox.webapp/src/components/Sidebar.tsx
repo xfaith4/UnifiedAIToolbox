@@ -24,6 +24,7 @@ const mainNavItems = [
   { text: 'Agents', path: '/agents' },
   { text: 'Prompts', path: '/prompts' },
   { text: 'Orchestration', path: '/orchestrator' },
+  { text: 'MCP Library', path: '/mcp-library' },
 ];
 
 const secondaryNavItems = [

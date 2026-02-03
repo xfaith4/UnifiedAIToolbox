@@ -1184,6 +1184,13 @@ try:
 except ImportError as e:
     print(f"Warning: Webhook handler not available: {e}")
 
+# Include MCP governance router
+try:
+    from mcp_governance.api_routes import router as mcp_router
+    app.include_router(mcp_router)
+except ImportError as e:
+    print(f"Warning: MCP governance not available: {e}")
+
 # ----------------------------
 # Authentication Endpoints
 # ----------------------------
