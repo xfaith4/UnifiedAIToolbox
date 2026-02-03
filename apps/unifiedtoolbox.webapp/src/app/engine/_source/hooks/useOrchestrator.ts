@@ -24,6 +24,9 @@ const PRICING = {
   'dall-e-3': { perImage: 0.040 }, // Standard quality 1024x1024
 };
 
+// Water usage estimation: approximate liters per 1,000 tokens
+const WATER_LITERS_PER_K_TOKEN = 0.002;
+
 const STORAGE_KEY = 'orchestrator-session-history';
 const MAX_HISTORY_ITEMS = 50;
 // LocalStorage is quota-limited (~5MB). Keep the on-disk cache compact to avoid QuotaExceededError.
@@ -170,6 +173,11 @@ const calculateCost = (model: keyof typeof PRICING, inputTokens: number, outputT
   const modelPricing = PRICING[model];
   if (!modelPricing || !('input' in modelPricing)) return 0;
   return (inputTokens * modelPricing.input) + (outputTokens * modelPricing.output);
+};
+
+const calculateWaterUsage = (inputTokens: number, outputTokens: number): number => {
+  const totalTokens = inputTokens + outputTokens;
+  return (totalTokens / 1000) * WATER_LITERS_PER_K_TOKEN;
 };
 
 
@@ -320,6 +328,7 @@ const useOrchestrator = () => {
 
     const newSession: Session = {
       id: simpleId(), goal, fileContent, date: new Date().toISOString(), tasks: [], environmentalImpact: null,
+      startTime: Date.now(), waterUsage: 0,
     };
     setSession(newSession);
     setTasks(initialTasks); // Set initial tasks if any
@@ -363,7 +372,12 @@ const useOrchestrator = () => {
       const usage = response.usage;
       if (usage) {
         const planningCost = calculateCost('gpt-5.2', usage.prompt_tokens, usage.completion_tokens);
-        setSession(s => s ? { ...s, planningCost } : null);
+        const planningWater = calculateWaterUsage(usage.prompt_tokens, usage.completion_tokens);
+        setSession(s => s ? { 
+          ...s, 
+          planningCost,
+          waterUsage: (s.waterUsage || 0) + planningWater 
+        } : null);
       }
 
       const plan = JSON.parse(response.choices[0].message.content || "{}");
@@ -523,11 +537,25 @@ const useOrchestrator = () => {
       if (newArtifact) {
         appendToTaskLog(task.id, `Created artifact: ${newArtifact.name}`);
         updateTask(task.id, { status: TaskStatus.COMPLETED, artifacts: [newArtifact], cost: taskCost, inputTokens, outputTokens });
+        
+        // Update session water usage
+        const taskWaterUsage = calculateWaterUsage(inputTokens, outputTokens);
+        setSession(s => s ? { 
+          ...s, 
+          waterUsage: (s.waterUsage || 0) + taskWaterUsage 
+        } : null);
       } else {
         // Fix: Instead of throwing an error, mark the task as complete without an artifact.
         // This prevents a single non-producing agent from failing the entire orchestration.
         appendToTaskLog(task.id, "Agent completed without producing a usable artifact.");
         updateTask(task.id, { status: TaskStatus.COMPLETED, artifacts: [], cost: taskCost, inputTokens, outputTokens });
+        
+        // Update session water usage
+        const taskWaterUsage = calculateWaterUsage(inputTokens, outputTokens);
+        setSession(s => s ? { 
+          ...s, 
+          waterUsage: (s.waterUsage || 0) + taskWaterUsage 
+        } : null);
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";

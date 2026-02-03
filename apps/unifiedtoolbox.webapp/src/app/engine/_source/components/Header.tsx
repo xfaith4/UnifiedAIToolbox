@@ -1,6 +1,6 @@
 import React from 'react';
 // Fix: Corrected icon import path
-import { HistoryIcon, BookIcon, ExportIcon, FeedbackIcon, SettingsIcon, LogoIcon, CostIcon } from './icons';
+import { HistoryIcon, BookIcon, ExportIcon, FeedbackIcon, SettingsIcon, LogoIcon, CostIcon, WaterIcon, TimerIcon } from './icons';
 
 interface HeaderProps {
   onShowHistory: () => void;
@@ -10,6 +10,8 @@ interface HeaderProps {
   onShowSettings: () => void;
   isOrchestrationComplete: boolean;
   totalCost: number | null;
+  waterUsage: number | null;
+  elapsedTime: number | null;
 }
 
 const Header: React.FC<HeaderProps> = ({ 
@@ -19,8 +21,17 @@ const Header: React.FC<HeaderProps> = ({
   onShowFeedback, 
   onShowSettings,
   isOrchestrationComplete,
-  totalCost
+  totalCost,
+  waterUsage,
+  elapsedTime
 }) => {
+  // Format elapsed time as MM:SS
+  const formatElapsedTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
   return (
     <header className="flex items-center justify-between p-3 bg-gray-800/50 border-b border-gray-700 backdrop-blur-sm">
       <div className="flex items-center">
@@ -37,13 +48,29 @@ const Header: React.FC<HeaderProps> = ({
           </p>
         </div>
       </div>
-       {totalCost !== null && totalCost > 0 && (
-        <div className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-md bg-gray-700/50">
+      <div className="flex items-center gap-3">
+        {totalCost !== null && totalCost > 0 && (
+          <div className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-md bg-gray-700/50">
             <CostIcon className="w-5 h-5 text-green-400" />
             <span className="font-semibold text-gray-300">Session Cost:</span>
             <span className="font-mono font-bold text-green-400">${totalCost.toFixed(6)}</span>
-        </div>
-      )}
+          </div>
+        )}
+        {waterUsage !== null && waterUsage > 0 && (
+          <div className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-md bg-gray-700/50">
+            <WaterIcon className="w-5 h-5 text-blue-400" />
+            <span className="font-semibold text-gray-300">Water:</span>
+            <span className="font-mono font-bold text-blue-400">{waterUsage.toFixed(3)}L</span>
+          </div>
+        )}
+        {elapsedTime !== null && (
+          <div className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-md bg-gray-700/50">
+            <TimerIcon className="w-5 h-5 text-yellow-400" />
+            <span className="font-semibold text-gray-300">Run Time:</span>
+            <span className="font-mono font-bold text-yellow-400">{formatElapsedTime(elapsedTime)}</span>
+          </div>
+        )}
+      </div>
       <nav className="flex items-center gap-2">
         <button onClick={onShowHistory} className="flex items-center gap-2 px-3 py-2 text-sm rounded-md hover:bg-gray-700 transition-colors">
           <HistoryIcon className="w-5 h-5" />
