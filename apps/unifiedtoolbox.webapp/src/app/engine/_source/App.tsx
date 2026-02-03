@@ -47,7 +47,10 @@ const App: React.FC = () => {
   useEffect(() => {
     if (isOrchestrating && liveSession?.startTime) {
       const interval = setInterval(() => {
-        setElapsedTime(Math.floor((Date.now() - liveSession.startTime) / 1000));
+        const startTime = liveSession.startTime;
+        if (startTime) {
+          setElapsedTime(Math.floor((Date.now() - startTime) / 1000));
+        }
       }, 1000);
       return () => clearInterval(interval);
     } else if (!isOrchestrating) {
