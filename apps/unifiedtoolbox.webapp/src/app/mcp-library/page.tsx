@@ -99,6 +99,7 @@ export default function MCPLibraryPage() {
 
   useEffect(() => {
     loadServers()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const handleSearch = () => {

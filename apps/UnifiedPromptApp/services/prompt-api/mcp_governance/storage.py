@@ -20,9 +20,24 @@ from .models import (
 
 
 # Storage paths
-# Navigate from mcp_governance/storage.py (6 levels up) to repo root
-# storage.py -> mcp_governance -> prompt-api -> services -> UnifiedPromptApp -> apps -> repo_root
-REPO_ROOT = pathlib.Path(__file__).parent.parent.parent.parent.parent.parent
+# Find repository root by looking for marker files
+def find_repo_root():
+    """Find repository root by looking for .git or other markers."""
+    current = pathlib.Path(__file__).parent.absolute()
+    for _ in range(10):  # Max 10 levels up
+        # Check for repository root markers
+        if (current / ".git").exists():
+            return current
+        # Check if data/mcp directory exists here
+        if (current / "data" / "mcp" / "servers.json").exists():
+            return current
+        if current.parent == current:  # Reached filesystem root
+            break
+        current = current.parent
+    # Fallback to relative path (6 levels up from storage.py)
+    return pathlib.Path(__file__).parent.parent.parent.parent.parent.parent
+
+REPO_ROOT = find_repo_root()
 DATA_DIR = REPO_ROOT / "data" / "mcp"
 SERVERS_FILE = DATA_DIR / "servers.json"
 COLLECTIONS_FILE = DATA_DIR / "collections.json"

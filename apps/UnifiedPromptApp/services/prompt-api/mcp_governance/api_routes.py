@@ -165,12 +165,12 @@ async def search_servers(query: ServerSearchQuery):
     
     # Get install records to determine installation status
     install_records = storage.get_install_records()
-    installed_server_ids = {rec.server_id for rec in install_records if rec.status == InstallStatus.ENABLED}
+    enabled_server_ids = {rec.server_id for rec in install_records if rec.status == InstallStatus.ENABLED}
     
     # Convert to search results
     results = []
     for server in servers:
-        installation_status = "installed" if server.get("id") in installed_server_ids else "catalog"
+        installation_status = "installed" if server.get("id") in enabled_server_ids else "catalog"
         
         results.append(ServerSearchResult(
             server_id=server.get("id", ""),
