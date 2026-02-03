@@ -28,6 +28,7 @@ const navSections: NavSection[] = [
     items: [
       { href: '/prompts', label: 'Prompt Library', icon: BookOpen },
       { href: '/agents', label: 'Agent Library', icon: Bot },
+      { href: '/mcp-library', label: 'MCP Library', icon: Sparkles },
     ],
   },
   {

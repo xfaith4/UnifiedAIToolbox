@@ -23,6 +23,7 @@ from .models import (
     Allowlist, AllowlistCreate, AllowlistUpdate, AllowlistScope,
     AuditEvent, AuditEventQuery, AuditEventType
 )
+from . import storage
 
 
 logger = logging.getLogger(__name__)
@@ -152,12 +153,40 @@ async def search_servers(query: ServerSearchQuery):
     Searches both catalog (discoverable) and installed servers.
     Supports filtering by tags, capabilities, and installation status.
     """
-    # TODO: Implement server search
-    # This would query /data/mcp/servers.json with filters
+    # Search servers using storage layer
+    servers, total = storage.search_servers(
+        query=query.query,
+        tags=query.tags,
+        capabilities=query.capabilities,
+        status=query.status,
+        limit=query.limit,
+        offset=query.offset
+    )
+    
+    # Get install records to determine installation status
+    install_records = storage.get_install_records()
+    enabled_server_ids = {rec.server_id for rec in install_records if rec.status == InstallStatus.ENABLED}
+    
+    # Convert to search results
+    results = []
+    for server in servers:
+        installation_status = "installed" if server.get("id") in enabled_server_ids else "catalog"
+        
+        results.append(ServerSearchResult(
+            server_id=server.get("id", ""),
+            name=server.get("name", ""),
+            description=server.get("description"),
+            url=server.get("url", ""),
+            tags=server.get("tags", []),
+            capabilities=server.get("capabilities", []),
+            status=server.get("status", "unknown"),
+            installation_status=installation_status,
+            owner=server.get("owner")
+        ))
     
     return ServerSearchResponse(
-        results=[],
-        total=0,
+        results=results,
+        total=total,
         limit=query.limit,
         offset=query.offset
     )
@@ -171,8 +200,21 @@ async def get_server(server_id: str):
     Returns full server metadata including installation status,
     health checks, and capabilities.
     """
-    # TODO: Implement server detail lookup
-    raise HTTPException(status_code=404, detail=f"Server '{server_id}' not found")
+    # Get server from catalog
+    server = storage.get_server(server_id)
+    if not server:
+        raise HTTPException(status_code=404, detail=f"Server '{server_id}' not found")
+    
+    # Get installation status
+    install_record = storage.get_install_by_server(server_id)
+    if install_record:
+        server["installation_status"] = "installed"
+        server["install_record"] = install_record.dict()
+    else:
+        server["installation_status"] = "catalog"
+        server["install_record"] = None
+    
+    return server
 
 
 # ============================================================================
@@ -191,8 +233,17 @@ async def list_collections(
     Collections group related MCP servers for easier management
     and policy application.
     """
-    # TODO: Implement collection listing
-    return []
+    collections = storage.get_collections()
+    
+    # Filter by tag if specified
+    if tag:
+        collections = [c for c in collections if tag in c.tags]
+    
+    # Apply pagination
+    total = len(collections)
+    collections = collections[offset:offset + limit]
+    
+    return collections
 
 
 @router.post("/collections", response_model=Collection, status_code=201)
@@ -203,8 +254,6 @@ async def create_collection(collection: CollectionCreate):
     Groups MCP servers under a named collection for easier
     allowlist management.
     """
-    # TODO: Implement collection creation
-    
     new_collection = Collection(
         collection_id=str(uuid.uuid4()),
         name=collection.name,
@@ -215,14 +264,16 @@ async def create_collection(collection: CollectionCreate):
         created_at=datetime.utcnow()
     )
     
-    return new_collection
+    return storage.save_collection(new_collection)
 
 
 @router.get("/collections/{collection_id}", response_model=Collection)
 async def get_collection(collection_id: str):
     """Get a specific collection by ID."""
-    # TODO: Implement collection lookup
-    raise HTTPException(status_code=404, detail=f"Collection '{collection_id}' not found")
+    collection = storage.get_collection(collection_id)
+    if not collection:
+        raise HTTPException(status_code=404, detail=f"Collection '{collection_id}' not found")
+    return collection
 
 
 @router.put("/collections/{collection_id}", response_model=Collection)
@@ -232,8 +283,23 @@ async def update_collection(collection_id: str, update: CollectionUpdate):
     
     Updates name, description, server list, or tags.
     """
-    # TODO: Implement collection update
-    raise HTTPException(status_code=404, detail=f"Collection '{collection_id}' not found")
+    collection = storage.get_collection(collection_id)
+    if not collection:
+        raise HTTPException(status_code=404, detail=f"Collection '{collection_id}' not found")
+    
+    # Apply updates
+    if update.name is not None:
+        collection.name = update.name
+    if update.description is not None:
+        collection.description = update.description
+    if update.server_ids is not None:
+        collection.server_ids = update.server_ids
+    if update.tags is not None:
+        collection.tags = update.tags
+    
+    collection.updated_at = datetime.utcnow()
+    
+    return storage.save_collection(collection)
 
 
 @router.delete("/collections/{collection_id}", status_code=204)
@@ -244,8 +310,9 @@ async def delete_collection(collection_id: str):
     Note: Deleting a collection does not affect MCP servers themselves,
     only removes the grouping.
     """
-    # TODO: Implement collection deletion
-    raise HTTPException(status_code=404, detail=f"Collection '{collection_id}' not found")
+    success = storage.delete_collection(collection_id)
+    if not success:
+        raise HTTPException(status_code=404, detail=f"Collection '{collection_id}' not found")
 
 
 # ============================================================================
@@ -263,8 +330,17 @@ async def list_install_records(
     
     Install records track which MCP servers are installed and enabled.
     """
-    # TODO: Implement install record listing
-    return []
+    installs = storage.get_install_records()
+    
+    # Filter by status if specified
+    if status:
+        installs = [i for i in installs if i.status == status]
+    
+    # Apply pagination
+    total = len(installs)
+    installs = installs[offset:offset + limit]
+    
+    return installs
 
 
 @router.post("/installs", response_model=InstallRecord, status_code=201)
@@ -275,8 +351,6 @@ async def create_install_record(record: InstallRecordCreate):
     Marks an MCP server as installed with initial configuration.
     Server starts in 'pending' status until installation completes.
     """
-    # TODO: Implement install record creation
-    
     new_record = InstallRecord(
         install_id=str(uuid.uuid4()),
         server_id=record.server_id,
@@ -287,14 +361,16 @@ async def create_install_record(record: InstallRecordCreate):
         notes=record.notes
     )
     
-    return new_record
+    return storage.save_install_record(new_record)
 
 
 @router.get("/installs/{install_id}", response_model=InstallRecord)
 async def get_install_record(install_id: str):
     """Get a specific install record by ID."""
-    # TODO: Implement install record lookup
-    raise HTTPException(status_code=404, detail=f"Install record '{install_id}' not found")
+    record = storage.get_install_record(install_id)
+    if not record:
+        raise HTTPException(status_code=404, detail=f"Install record '{install_id}' not found")
+    return record
 
 
 @router.put("/installs/{install_id}", response_model=InstallRecord)
@@ -307,8 +383,25 @@ async def update_install_record(install_id: str, update: InstallRecordUpdate):
     - Update configuration
     - Add notes
     """
-    # TODO: Implement install record update
-    raise HTTPException(status_code=404, detail=f"Install record '{install_id}' not found")
+    record = storage.get_install_record(install_id)
+    if not record:
+        raise HTTPException(status_code=404, detail=f"Install record '{install_id}' not found")
+    
+    # Apply updates
+    if update.status is not None:
+        record.status = update.status
+        if update.status == InstallStatus.ENABLED:
+            record.enabled_at = datetime.utcnow()
+        elif update.status == InstallStatus.DISABLED:
+            record.disabled_at = datetime.utcnow()
+    
+    if update.config is not None:
+        record.config = update.config
+    
+    if update.notes is not None:
+        record.notes = update.notes
+    
+    return storage.save_install_record(record)
 
 
 @router.post("/installs/{install_id}/enable", response_model=InstallRecord)
@@ -318,8 +411,14 @@ async def enable_install(install_id: str):
     
     Makes the server available for tool calls.
     """
-    # TODO: Implement enable logic
-    raise HTTPException(status_code=404, detail=f"Install record '{install_id}' not found")
+    record = storage.get_install_record(install_id)
+    if not record:
+        raise HTTPException(status_code=404, detail=f"Install record '{install_id}' not found")
+    
+    record.status = InstallStatus.ENABLED
+    record.enabled_at = datetime.utcnow()
+    
+    return storage.save_install_record(record)
 
 
 @router.post("/installs/{install_id}/disable", response_model=InstallRecord)
@@ -330,8 +429,14 @@ async def disable_install(install_id: str):
     Prevents the server from being used for tool calls.
     Does not uninstall the server.
     """
-    # TODO: Implement disable logic
-    raise HTTPException(status_code=404, detail=f"Install record '{install_id}' not found")
+    record = storage.get_install_record(install_id)
+    if not record:
+        raise HTTPException(status_code=404, detail=f"Install record '{install_id}' not found")
+    
+    record.status = InstallStatus.DISABLED
+    record.disabled_at = datetime.utcnow()
+    
+    return storage.save_install_record(record)
 
 
 # ============================================================================
@@ -351,8 +456,21 @@ async def list_allowlists(
     Allowlists control which MCP servers/tools are available
     for specific runs, jobs, users, or globally.
     """
-    # TODO: Implement allowlist listing
-    return []
+    allowlists = storage.get_allowlists()
+    
+    # Filter by scope if specified
+    if scope:
+        allowlists = [a for a in allowlists if a.scope == scope]
+    
+    # Filter by scope_id if specified
+    if scope_id:
+        allowlists = [a for a in allowlists if a.scope_id == scope_id]
+    
+    # Apply pagination
+    total = len(allowlists)
+    allowlists = allowlists[offset:offset + limit]
+    
+    return allowlists
 
 
 @router.post("/allowlists", response_model=Allowlist, status_code=201)
@@ -363,8 +481,6 @@ async def create_allowlist(allowlist: AllowlistCreate):
     Binds a set of allowed MCP servers/tools to a specific scope
     (run, job, user, or global).
     """
-    # TODO: Implement allowlist creation
-    
     new_allowlist = Allowlist(
         allowlist_id=str(uuid.uuid4()),
         scope=allowlist.scope,
@@ -379,7 +495,7 @@ async def create_allowlist(allowlist: AllowlistCreate):
         expires_at=allowlist.expires_at
     )
     
-    return new_allowlist
+    return storage.save_allowlist(new_allowlist)
 
 
 @router.get("/allowlists/{allowlist_id}", response_model=Allowlist)

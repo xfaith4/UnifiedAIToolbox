@@ -84,6 +84,7 @@ That's it! The launcher will automatically:
 ### 🔄 Orchestration & Automation
 
 - **Multi-Agent System**: Specialized agents (Supervisor, Researcher, Engineer, Critic, Synthesizer)
+- **MCP Library**: Browse, manage, and secure Model Context Protocol servers with deny-by-default policy enforcement
 - **Artifact Normalization**: Automatic cleanup and validation of generated code artifacts
 - **Run Tracking**: Track orchestration with cost analysis and quality metrics
 - **GitHub Integration**: Automated repo operations via GitHub API
@@ -195,6 +196,7 @@ See [AGENTS.md](AGENTS.md) for orchestration rules and definition of done.
 
 ### Advanced Features
 
+- **MCP Library & Governance** - [docs/MCP_LIBRARY_WALKTHROUGH.md](docs/MCP_LIBRARY_WALKTHROUGH.md)
 - **Artifact Normalization** - [docs/ARTIFACT_NORMALIZATION.md](docs/ARTIFACT_NORMALIZATION.md)
 - **Orchestration Run Tracking** - [docs/ORCHESTRATION_RUN_TRACKING.md](docs/ORCHESTRATION_RUN_TRACKING.md)
 - **PromptOps Guide** - [docs/PROMPTOPS.md](docs/PROMPTOPS.md)
