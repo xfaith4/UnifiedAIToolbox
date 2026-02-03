@@ -31,7 +31,8 @@ def _registry_to_dict(registry: MCPRegistry) -> dict:
     if hasattr(registry, "model_dump"):
         # Use mode='json' to properly serialize Pydantic types like AnyUrl
         return registry.model_dump(mode='json')  # type: ignore[attr-defined]
-    return registry.dict()
+    # Fallback for Pydantic v1
+    return registry.dict()  # type: ignore[attr-defined]
 
 
 def load_registry(path: Optional[Path] = None, allow_missing: bool = True) -> MCPRegistry:
