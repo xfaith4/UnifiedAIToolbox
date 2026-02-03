@@ -33,6 +33,7 @@ const App: React.FC = () => {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<'live' | string>('live');
   const [viewMode, setViewMode] = useState<'clusters' | 'graph'>('clusters');
+  const [elapsedTime, setElapsedTime] = useState<number>(0);
 
   // Modal and Panel States
   const [showExport, setShowExport] = useState(false);
@@ -41,6 +42,18 @@ const App: React.FC = () => {
   const [showFeedback, setShowFeedback] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [isApiKeyMissing, setIsApiKeyMissing] = useState(false);
+
+  // Timer effect to update elapsed time when orchestrating
+  useEffect(() => {
+    if (isOrchestrating && liveSession?.startTime) {
+      const interval = setInterval(() => {
+        setElapsedTime(Math.floor((Date.now() - liveSession.startTime!) / 1000));
+      }, 1000);
+      return () => clearInterval(interval);
+    } else if (!isOrchestrating) {
+      setElapsedTime(0);
+    }
+  }, [isOrchestrating, liveSession?.startTime]);
 
   useEffect(() => {
     // Check if the client-side API key is available.
@@ -140,6 +153,8 @@ const App: React.FC = () => {
         onShowSettings={() => setShowSettings(true)}
         isOrchestrationComplete={isExportAvailable}
         totalCost={totalCost}
+        waterUsage={displayedSession?.waterUsage || null}
+        elapsedTime={isOrchestrating ? elapsedTime : null}
       />
       <main className="flex-1 flex flex-col overflow-hidden">
         <GoalInput

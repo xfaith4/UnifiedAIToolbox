@@ -51,4 +51,6 @@ export interface Session {
   environmentalImpact: EnvironmentalImpact | null;
   planningCost?: number;
   totalCost?: number;
+  startTime?: number; // timestamp when orchestration started
+  waterUsage?: number; // water usage in liters
 }
