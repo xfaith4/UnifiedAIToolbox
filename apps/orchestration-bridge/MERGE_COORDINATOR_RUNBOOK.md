@@ -4,12 +4,15 @@
 Integrate completed task branches into an integration branch, run per-task validations, and open a PR.
 
 ## Prerequisites
+
 - Repository cloned locally and up to date with remote
 - `taskgraph.json` present at `apps/orchestration-bridge/runs/<run_id>/taskgraph.json` with `branch` set for each task
 - `GITHUB_TOKEN` exported (PAT with repo access) if creating a PR
 
 ## Steps
+
 1. **Set environment**
+
    ```bash
    export RUN_ID=demo-run
    export REPO_PATH=/path/to/repo
@@ -18,11 +21,13 @@ Integrate completed task branches into an integration branch, run per-task valid
    ```
 
 2. **Inspect task graph**
+
    ```bash
    cat apps/orchestration-bridge/runs/$RUN_ID/taskgraph.json | jq '.tasks[] | {id, branch, validation}'
    ```
 
 3. **Run merge coordinator**
+
    ```bash
    python - <<'PY'
    from pathlib import Path
@@ -51,4 +56,5 @@ Integrate completed task branches into an integration branch, run per-task valid
    - If conflict occurs, integration stops. Inspect conflict JSON for hints, resolve manually or re-run after fixing.
 
 ## Parallel/Conflict Groups
+
 - Merge order follows taskgraph order. Conflict groups are respected during execution (handled earlier by executor). Merge coordinator assumes branches are ready to merge.
