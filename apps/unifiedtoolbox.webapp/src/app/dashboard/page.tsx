@@ -19,7 +19,52 @@ import {
 } from 'recharts'
 import { type DashboardTelemetry } from '@/lib/services/telemetryService'
 
+// Color palette for charts (currently colors are defined inline in each chart)
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#06b6d4']
+
+/**
+ * Categorize agent roles into high-level groups for better visualization
+ * This helps reduce overlap and provides actionable insights into agent distribution
+ */
+function categorizeAgentRole(roleName: string): string {
+  const role = roleName.toLowerCase()
+  
+  // Engineering roles - code production, performance, and mentorship
+  if (role.includes('code') || role.includes('engineer') || role.includes('coach') || 
+      role.includes('integration') || role.includes('artifact')) {
+    return 'Engineering'
+  }
+  
+  // Design & UX roles - visual, interaction, and accessibility
+  if (role.includes('design') || role.includes('ux') || role.includes('ui') || 
+      role.includes('visual') || role.includes('accessibility') || role.includes('experience') ||
+      role.includes('navigation') || role.includes('interaction')) {
+    return 'Design & UX'
+  }
+  
+  // Review & Quality roles - criticism, security, quality assessment
+  if (role.includes('review') || role.includes('critic') || role.includes('security') ||
+      role.includes('quality') || role.includes('supervisor') || role.includes('defect') ||
+      role.includes('risk')) {
+    return 'Review & Quality'
+  }
+  
+  // Research & Strategy roles - data gathering, planning, content strategy
+  if (role.includes('research') || role.includes('strategy') || role.includes('strategist') ||
+      role.includes('content') || role.includes('rollout') || role.includes('gather')) {
+    return 'Research & Strategy'
+  }
+  
+  // Synthesis roles - merging, assessment, decision-making
+  if (role.includes('synth') || role.includes('merge') || role.includes('assess') ||
+      role.includes('commissioner') || role.includes('consolidate')) {
+    return 'Synthesis & Assessment'
+  }
+  
+  // Default category for specialized or unique roles
+  return 'Specialized'
+}
 
 export default function DashboardPage() {
   const [telemetry, setTelemetry] = useState<DashboardTelemetry | null>(null)
@@ -69,10 +114,16 @@ export default function DashboardPage() {
     { name: 'Production', value: promptLibrary.byQuality.production, color: '#10b981' },
   ]
 
-  const agentRoleData = Object.entries(agentLibrary.byRole)
+  // Group agents by categorized roles for better visualization
+  const categorizedRoles: Record<string, number> = {}
+  Object.entries(agentLibrary.byRole).forEach(([roleName, count]) => {
+    const category = categorizeAgentRole(roleName)
+    categorizedRoles[category] = (categorizedRoles[category] || 0) + count
+  })
+  
+  const agentRoleData = Object.entries(categorizedRoles)
     .map(([name, value]) => ({ name, value }))
     .sort((a, b) => b.value - a.value)
-    .slice(0, 8) // Top 8 roles
 
   const modelBreakdownData = Object.entries(orchestrationCost.byModel).map(([name, data]) => ({
     name,
@@ -227,7 +278,8 @@ export default function DashboardPage() {
 
         {/* Agent Distribution by Role */}
         <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg">
-          <div className="mb-3 font-semibold">Agent Distribution by Role</div>
+          <div className="mb-1 font-semibold">Agent Distribution by Role</div>
+          <div className="mb-3 text-xs text-slate-400">Agents grouped by functional categories for clarity</div>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={agentRoleData} layout="vertical">
