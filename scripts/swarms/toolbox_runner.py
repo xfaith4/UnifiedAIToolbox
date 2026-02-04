@@ -193,73 +193,27 @@ def _resolve_config(args: argparse.Namespace) -> Tuple[List[str], str, str, int,
     return agents, model, swarm_type, max_loops, repo_root, output_dir, agent_config, rules
 
 
-PERMANENT_PRE_SYNTH_AGENTS = ["Artifact Auditor", "Contract Editor"]
-PERMANENT_POST_SYNTH_AGENTS = ["Verifier"]
+DEFAULT_AGENT_ROSTER = [
+    "Researcher",
+    "Engineer",
+    "Critic",
+    "Synthesizer",
+    "Commissioner",
+    "Supervisor",
+    "Historian",
+]
 
 
-def _ensure_permanent_agents(selected: List[str]) -> List[str]:
+def _ensure_default_agents(selected: List[str]) -> List[str]:
     """
-    Ensure permanent agents are always included, preserving user-provided order.
+    Ensure we have a usable agent roster.
 
     Rules:
-    - If caller does not provide agents, use the default orchestration roster.
-    - If caller provides a roster, keep its order but inject missing permanent agents
-      before Synthesizer (if present), otherwise append at the end.
+    - If caller does not provide agents, use DEFAULT_AGENT_ROSTER.
+    - If caller provides a roster, preserve order exactly (no hidden injections).
     """
     cleaned = [a.strip() for a in selected if a and a.strip()]
-    if not cleaned:
-        return [
-            "Researcher",
-            "Engineer",
-            "Critic",
-            "Artifact Auditor",
-            "Contract Editor",
-            "Synthesizer",
-            "Verifier",
-            "Commissioner",
-        ]
-
-    def _insert_before(items: List[str], needle: str, new_items: List[str]) -> List[str]:
-        if not new_items:
-            return items
-        try:
-            idx = items.index(needle)
-        except ValueError:
-            idx = len(items)
-        return items[:idx] + new_items + items[idx:]
-
-    def _insert_after(items: List[str], needle: str, new_items: List[str]) -> List[str]:
-        if not new_items:
-            return items
-        try:
-            idx = items.index(needle) + 1
-        except ValueError:
-            idx = len(items)
-        return items[:idx] + new_items + items[idx:]
-
-    def _insert_before_commissioner(items: List[str], new_items: List[str]) -> List[str]:
-        if not new_items:
-            return items
-        return _insert_before(items, "Commissioner", new_items)
-
-    existing = set(cleaned)
-    pre_to_add = [a for a in PERMANENT_PRE_SYNTH_AGENTS if a not in existing]
-    post_to_add = [a for a in PERMANENT_POST_SYNTH_AGENTS if a not in existing]
-
-    updated = cleaned
-    # Insert audit + contract agents before Synthesizer when possible; otherwise keep Commissioner last if present.
-    if "Synthesizer" in updated:
-        updated = _insert_before(updated, "Synthesizer", pre_to_add)
-    else:
-        updated = _insert_before_commissioner(updated, pre_to_add)
-
-    # Insert verifier after Synthesizer when possible; otherwise keep Commissioner last if present.
-    if "Synthesizer" in updated:
-        updated = _insert_after(updated, "Synthesizer", post_to_add)
-    else:
-        updated = _insert_before_commissioner(updated, post_to_add)
-
-    return updated
+    return cleaned or list(DEFAULT_AGENT_ROSTER)
 
 
 def main() -> int:
@@ -303,7 +257,7 @@ def main() -> int:
         from swarms.structs.agent import Agent  # type: ignore
         from swarms.structs.swarm_router import SwarmRouter  # type: ignore
 
-        selected_agents = _ensure_permanent_agents(selected_agents)
+        selected_agents = _ensure_default_agents(selected_agents)
         payload["agents"] = selected_agents
 
         workspace = (

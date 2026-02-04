@@ -94,25 +94,21 @@ $AgentTypes = @{
         Role        = "Quality assurance"
         Description = "Reviews work and identifies issues"
     }
-    'Artifact Auditor' = @{
-        Role        = "Buildability auditing"
-        Description = "Assesses whether artifacts are buildable and enumerates missing build pieces"
-    }
-    'Contract Editor' = @{
-        Role        = "Contract normalization"
-        Description = "Rewrites outputs into a single, testable synthesis contract"
-    }
     Synthesizer  = @{
         Role        = "Integration"
         Description = "Combines outputs into coherent results"
     }
-    Verifier = @{
-        Role        = "Validation"
-        Description = "Validates the synthesized plan against acceptance criteria and build commands"
-    }
     Commissioner = @{
         Role        = "Decision making"
         Description = "Evaluates results and makes final calls"
+    }
+    Supervisor = @{
+        Role        = "Quality gate"
+        Description = "Scores run output and extracts reusable learnings"
+    }
+    Historian = @{
+        Role        = "Memory capsule"
+        Description = "Captures durable run knowledge for reuse"
     }
 }
 
@@ -313,55 +309,31 @@ function Select-Agents {
     Write-Log "Selecting agents based on repository characteristics"
     
     $selectedAgents = @()
-    $availableSlots = $MaxAgents
 
-    # Core "contributor" agents are bounded by MaxAgents
-    $coreAgents = @("Researcher", "Engineer", "Critic")
-    foreach ($agentType in $coreAgents) {
-        if ($availableSlots -le 0) { break }
+    # Keep the roster compact and bounded by MaxAgents (total agents).
+    # Ensure we always have a synthesis step when there is at least 1 slot.
+    $ordered = @("Researcher", "Engineer", "Critic", "Synthesizer", "Commissioner", "Supervisor", "Historian")
+
+    # If MaxAgents is very small, prioritize Researcher + Synthesizer.
+    if ($MaxAgents -le 1) {
+        $ordered = @("Synthesizer")
+    } elseif ($MaxAgents -eq 2) {
+        $ordered = @("Researcher", "Synthesizer")
+    } elseif ($MaxAgents -eq 3) {
+        $ordered = @("Researcher", "Engineer", "Synthesizer")
+    }
+
+    $priority = 1
+    foreach ($agentType in $ordered) {
+        if ($selectedAgents.Count -ge $MaxAgents) { break }
+        if (-not $AgentTypes.ContainsKey($agentType)) { continue }
         $selectedAgents += @{
             Type        = $agentType
             Role        = $AgentTypes[$agentType].Role
             Description = $AgentTypes[$agentType].Description
-            Priority    = 1
+            Priority    = $priority
         }
-        $availableSlots--
-    }
-
-    # Permanent audit + contract agents (always included; not counted against MaxAgents)
-    foreach ($agentType in @("Artifact Auditor", "Contract Editor")) {
-        $selectedAgents += @{
-            Type        = $agentType
-            Role        = $AgentTypes[$agentType].Role
-            Description = $AgentTypes[$agentType].Description
-            Priority    = 2
-        }
-    }
-
-    # Always include Synthesizer so the run has a single coherent final output
-    $selectedAgents += @{
-        Type        = "Synthesizer"
-        Role        = $AgentTypes["Synthesizer"].Role
-        Description = $AgentTypes["Synthesizer"].Description
-        Priority    = 3
-    }
-
-    # Permanent verifier (always included; not counted against MaxAgents)
-    $selectedAgents += @{
-        Type        = "Verifier"
-        Role        = $AgentTypes["Verifier"].Role
-        Description = $AgentTypes["Verifier"].Description
-        Priority    = 4
-    }
-
-    # Commissioner remains optional and is included only if MaxAgents left slots previously
-    if ($availableSlots -gt 0) {
-        $selectedAgents += @{
-            Type        = "Commissioner"
-            Role        = $AgentTypes["Commissioner"].Role
-            Description = $AgentTypes["Commissioner"].Description
-            Priority    = 5
-        }
+        $priority++
     }
     
     Write-Log "Selected $($selectedAgents.Count) agents: $($selectedAgents.Type -join ', ')" -Level Success

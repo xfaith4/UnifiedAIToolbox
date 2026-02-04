@@ -2983,7 +2983,11 @@ def orchestrate_run(req: OrchestrationRequest):
             except Exception as e:
                 print(f"[orchestrate] Failed to write error state to manifest: {e}", file=sys.stderr)
 
-    threading.Thread(target=_execute, args=(path, manifest), daemon=True).start()
+    disable_exec = os.environ.get("PROMPT_API_DISABLE_ORCHESTRATION_EXEC") == "1" or bool(
+        os.environ.get("PYTEST_CURRENT_TEST")
+    )
+    if not disable_exec:
+        threading.Thread(target=_execute, args=(path, manifest), daemon=True).start()
 
     return {"run_id": run_id, "manifest": manifest}
 
@@ -3078,7 +3082,7 @@ def get_orchestration_run(run_id: str):
     if not path.exists():
         raise HTTPException(status_code=404, detail="Run not found")
     try:
-        data = safe_json_load(path, default={}, context=f"get_run:{run_id}")
+        data = safe_json_load(path, context=f"get_run:{run_id}")
         data["run_id"] = data.get("run_id") or run_id
         log_path = BRIDGE_RUN_DIR / f"{run_id}.log"
         if log_path.exists():

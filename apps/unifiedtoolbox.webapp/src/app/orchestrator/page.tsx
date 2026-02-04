@@ -43,6 +43,7 @@ const DEFAULT_ORCHESTRATOR_AGENTS: OrchestratorAgent[] = [
   { name: 'Critic', role: 'system', description: 'Reviews and validates work' },
   { name: 'Synthesizer', role: 'system', description: 'Combines outputs into coherent results' },
   { name: 'Commissioner', role: 'system', description: 'Evaluates and makes final decisions' },
+  { name: 'Historian', role: 'system', description: 'Captures durable run knowledge for reuse' },
 ]
 
 const CARD_SHELL =
@@ -457,6 +458,12 @@ export default function OrchestratorPage() {
     }
     if (goalLower.includes('evaluate') || goalLower.includes('assess') || goalLower.includes('judge')) {
       recommendations.push('Commissioner')
+    }
+    if (goalLower.includes('score') || goalLower.includes('quality') || goalLower.includes('postmortem')) {
+      recommendations.push('Supervisor')
+    }
+    if (goalLower.includes('summary') || goalLower.includes('summarize') || goalLower.includes('history') || goalLower.includes('brief')) {
+      recommendations.push('Historian')
     }
 
     // Default workflow if no specific keywords

@@ -4,6 +4,7 @@ Tests for cost metrics recording and aggregation.
 import pathlib
 import sqlite3
 import tempfile
+from contextlib import closing
 from cost_metrics import record_call_metrics, aggregate_run_metrics, get_run_summary
 from migrations import apply_migrations
 
@@ -37,7 +38,7 @@ def test_record_call_metrics():
         assert metric_id > 0
         
         # Verify it was stored
-        with sqlite3.connect(db_path) as conn:
+        with closing(sqlite3.connect(db_path)) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM orchestration_cost_metrics WHERE id = ?", (metric_id,))
@@ -69,7 +70,7 @@ def test_record_multiple_calls():
         record_call_metrics(db_path, "gpt-4o", 500, 250, run_id=run_id, agent_name="Agent1")
         
         # Verify all were stored
-        with sqlite3.connect(db_path) as conn:
+        with closing(sqlite3.connect(db_path)) as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT COUNT(*) FROM orchestration_cost_metrics WHERE run_id = ?", (run_id,))
             count = cursor.fetchone()[0]
@@ -125,7 +126,7 @@ def test_aggregate_stores_in_table():
         aggregate_run_metrics(db_path, run_id, run_goal="Test")
         
         # Verify stored in aggregates table
-        with sqlite3.connect(db_path) as conn:
+        with closing(sqlite3.connect(db_path)) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM orchestration_run_aggregates WHERE run_id = ?", (run_id,))
@@ -211,7 +212,7 @@ def test_update_existing_aggregate():
         aggregate_run_metrics(db_path, run_id)
         
         # Should have updated values, not duplicate records
-        with sqlite3.connect(db_path) as conn:
+        with closing(sqlite3.connect(db_path)) as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT COUNT(*) FROM orchestration_run_aggregates WHERE run_id = ?", (run_id,))
             count = cursor.fetchone()[0]

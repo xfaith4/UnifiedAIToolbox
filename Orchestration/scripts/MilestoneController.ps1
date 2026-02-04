@@ -385,12 +385,13 @@ function Split-GoalIntoMilestones {
         @{ Key = "Critic";       Name = "Validation Phase";      Description = "Test and validate the implementation" },
         @{ Key = "Synthesizer";  Name = "Synthesis Phase";       Description = "Merge outputs into a cohesive plan" },
         @{ Key = "Commissioner"; Name = "Decision Phase";        Description = "Evaluate business value and approve next steps" },
-        @{ Key = "Supervisor";   Name = "Quality Phase";         Description = "Score the run and extract learnings" }
+        @{ Key = "Supervisor";   Name = "Quality Phase";         Description = "Score the run and extract learnings" },
+        @{ Key = "Historian";    Name = "Memory Capsule";        Description = "Capture a durable run summary for reuse" }
     )
 
     $goalLower = $Goal.ToLower()
 
-    $matchAny = $goalLower -match "research|analyze|investigate|implement|build|create|code|develop|test|validate|verify|review|document|report|summarize"
+    $matchAny = $goalLower -match "research|analyze|investigate|implement|build|create|code|develop|test|validate|verify|review|document|report|summarize|history|brief"
     if (-not $matchAny) {
         # Default to full pipeline if we cannot infer intent.
         $milestones = $pipeline
@@ -411,11 +412,12 @@ function Split-GoalIntoMilestones {
             $include["Engineer"] = $true
             $include["Critic"] = $true
         }
-        if ($goalLower -match "document|report|summarize") {
+        if ($goalLower -match "document|report|summarize|history|brief") {
             $include["Researcher"] = $true
             $include["Engineer"] = $true
             $include["Critic"] = $true
             $include["Synthesizer"] = $true
+            $include["Historian"] = $true
         }
 
         # If any pipeline stage was inferred, ensure Synthesizer exists before Commissioner/Supervisor.
@@ -423,6 +425,7 @@ function Split-GoalIntoMilestones {
             $include["Synthesizer"] = $true
             $include["Commissioner"] = $true
             $include["Supervisor"] = $true
+            $include["Historian"] = $true
         }
 
         $milestones = @()

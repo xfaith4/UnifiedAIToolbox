@@ -14,7 +14,8 @@ from typing import Optional
 
 def apply_migrations(db_path: pathlib.Path) -> None:
     """Apply all pending migrations to the database."""
-    with sqlite3.connect(db_path) as conn:
+    conn = sqlite3.connect(db_path)
+    try:
         c = conn.cursor()
         
         # Check if migrations table exists
@@ -49,6 +50,11 @@ def apply_migrations(db_path: pathlib.Path) -> None:
                 )
                 conn.commit()
                 print(f"Migration {version} applied successfully")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 def _migration_001_run_feedback(cursor: sqlite3.Cursor) -> None:

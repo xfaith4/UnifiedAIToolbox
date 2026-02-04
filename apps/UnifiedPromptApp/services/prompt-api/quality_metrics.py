@@ -49,7 +49,8 @@ def record_quality_metrics(
     Returns:
         ID of the quality metrics record
     """
-    with sqlite3.connect(db_path) as conn:
+    conn = sqlite3.connect(db_path)
+    try:
         cursor = conn.cursor()
         
         # Check if table exists
@@ -91,6 +92,11 @@ def record_quality_metrics(
         
         conn.commit()
         return cursor.lastrowid
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 def get_quality_metrics(
@@ -107,7 +113,8 @@ def get_quality_metrics(
     Returns:
         Dictionary with quality metrics or None if not found
     """
-    with sqlite3.connect(db_path) as conn:
+    conn = sqlite3.connect(db_path)
+    try:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
@@ -141,6 +148,11 @@ def get_quality_metrics(
             'created_at': row['created_at'],
             'updated_at': row['updated_at']
         }
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 def get_quality_summary(
@@ -161,7 +173,8 @@ def get_quality_summary(
     Returns:
         Dictionary with summary statistics
     """
-    with sqlite3.connect(db_path) as conn:
+    conn = sqlite3.connect(db_path)
+    try:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
@@ -221,6 +234,11 @@ def get_quality_summary(
             'runs_needing_manual_fix': row['manual_fix_count'] or 0,
             'avg_time_to_result_ms': round(row['avg_time']) if row['avg_time'] is not None else None
         }
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 def get_quality_by_strategy(
@@ -235,7 +253,8 @@ def get_quality_by_strategy(
     Returns:
         List of dictionaries with per-strategy metrics
     """
-    with sqlite3.connect(db_path) as conn:
+    conn = sqlite3.connect(db_path)
+    try:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
@@ -280,6 +299,11 @@ def get_quality_by_strategy(
             })
         
         return results
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 def get_quality_by_model(
@@ -294,7 +318,8 @@ def get_quality_by_model(
     Returns:
         List of dictionaries with per-model quality metrics
     """
-    with sqlite3.connect(db_path) as conn:
+    conn = sqlite3.connect(db_path)
+    try:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
@@ -335,6 +360,11 @@ def get_quality_by_model(
             })
         
         return results
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 def get_cost_quality_efficiency(
@@ -356,7 +386,8 @@ def get_cost_quality_efficiency(
     Returns:
         Dictionary with efficiency metrics
     """
-    with sqlite3.connect(db_path) as conn:
+    conn = sqlite3.connect(db_path)
+    try:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
@@ -427,3 +458,8 @@ def get_cost_quality_efficiency(
             'quality_adjusted_cost_index': quality_adjusted_index,
             'avg_quality_score': round(avg_quality, 4) if avg_quality > 0 else None
         }
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass

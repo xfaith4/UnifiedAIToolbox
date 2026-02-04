@@ -1,5 +1,6 @@
 import json
 import sqlite3
+from contextlib import closing
 from fastapi.testclient import TestClient
 import pytest
 import textwrap
@@ -191,7 +192,7 @@ def test_orchestrator_task_ingest(tmp_path, monkeypatch):
             },
         )
         assert response.status_code == 200
-        with sqlite3.connect(app.DB_PATH) as conn:
+        with closing(sqlite3.connect(app.DB_PATH)) as conn:
             rows = conn.execute("SELECT payload FROM orchestrator_tasks").fetchall()
         assert len(rows) == 1
         payload = json.loads(rows[0][0])
@@ -234,7 +235,7 @@ def test_orchestrator_task_list_and_update(tmp_path, monkeypatch):
         updated = patch.json()["task"]
         assert updated["status"] == "running"
         assert updated["notes"] == "Supervisor acknowledged"
-        with sqlite3.connect(app.DB_PATH) as conn:
+        with closing(sqlite3.connect(app.DB_PATH)) as conn:
             stored = conn.execute("SELECT payload FROM orchestrator_tasks WHERE id = ?", (task_id,)).fetchone()
         assert stored
         updated_payload = json.loads(stored[0])
@@ -271,7 +272,7 @@ def test_orchestrator_queue_process_dispatches(tmp_path, monkeypatch):
         assert resp.status_code == 200
         body = resp.json()
         assert body["processed"] == 1
-        with sqlite3.connect(app.DB_PATH) as conn:
+        with closing(sqlite3.connect(app.DB_PATH)) as conn:
             row = conn.execute("SELECT payload FROM orchestrator_tasks").fetchone()
         task = json.loads(row[0])
         assert task["status"] == "dispatched"

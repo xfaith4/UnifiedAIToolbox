@@ -265,14 +265,18 @@ try {
 
         # --- Agent Pipeline -------------------------------------------------
         # Phase 1 (parallel): contributor agents
-        # Phase 2 (sequential): Artifact Auditor -> Contract Editor
-        # Phase 3 (sequential): Synthesizer
-        # Phase 4 (sequential): Commissioner
+        # Phase 2 (sequential): Synthesizer
+        # Phase 3 (sequential): Commissioner
+        # Phase 4 (sequential): Supervisor
+        # Phase 5 (sequential): Historian
         $Commissioner = $Agents | Where-Object { $_.name -eq "Commissioner" }
         $Synthesizer = $Agents | Where-Object { $_.name -eq "Synthesizer" }
-        $Verifier = $Agents | Where-Object { $_.name -eq "Verifier" }
-        $AuditAgents = $Agents | Where-Object { $_.name -in @("Artifact Auditor", "Contract Editor") }
-        $Phase1Agents = $Agents | Where-Object { $_.name -notin @("Commissioner", "Synthesizer", "Verifier", "Artifact Auditor", "Contract Editor") }
+        $Supervisor = $Agents | Where-Object { $_.name -eq "Supervisor" }
+        $Historian = $Agents | Where-Object { $_.name -eq "Historian" }
+        $Phase1Agents = $Agents | Where-Object { $_.name -notin @("Commissioner", "Synthesizer", "Supervisor", "Historian") }
+
+        # Track per-iteration outputs by agent name for downstream Supervisor/Historian inputs.
+        $AgentOutputs = @{}
 
         # --- Prepare work items --------------------------------------------
         $WorkItems = foreach ($A in $Phase1Agents) {
@@ -414,35 +418,7 @@ Stack Trace: $($_.ScriptStackTrace)
             }
             Write-Log -Agent $r.Agent -Content $r.Output
             $Context += "`n`n[$($r.Agent) Output]:`n$($r.Output)"
-        }
-
-        # --- Run audit + contract agents sequentially ----------------------
-        foreach ($agentName in @("Artifact Auditor", "Contract Editor")) {
-            $toRun = @($AuditAgents | Where-Object { $_.name -eq $agentName })
-            foreach ($A in $toRun) {
-                Write-AgentStatus -Agent $A.name -Status "working"
-
-                $systemPrompt = if ([string]::IsNullOrWhiteSpace($Instruction)) {
-                    $A.prompt
-                } else {
-                    "$Instruction`n`n$($A.prompt)"
-                }
-
-                $Messages = @(
-                    @{ role = "system"; content = $systemPrompt },
-                    @{ role = "user"; content = $Context }
-                )
-
-                $Output = Invoke-OpenAIRequest -Messages $Messages -AgentName $A.name
-                if (-not $Output) {
-                    Write-AgentStatus -Agent $A.name -Status "error"
-                    continue
-                }
-
-                Write-AgentStatus -Agent $A.name -Status "complete"
-                Write-Log -Agent $A.name -Content $Output
-                $Context += "`n`n[$($A.name) Output]:`n$Output"
-            }
+            $AgentOutputs[$r.Agent] = $r.Output
         }
 
         # --- Run Synthesizer sequentially ----------------------------------
@@ -470,34 +446,7 @@ Stack Trace: $($_.ScriptStackTrace)
                 Write-AgentStatus -Agent $S.name -Status "complete"
                 Write-Log -Agent $S.name -Content $Output
                 $Context += "`n`n[$($S.name) Output]:`n$Output"
-            }
-        }
-
-        # --- Run Verifier sequentially -------------------------------------
-        if ($Verifier) {
-            foreach ($V in $Verifier) {
-                Write-AgentStatus -Agent $V.name -Status "working"
-
-                $systemPrompt = if ([string]::IsNullOrWhiteSpace($Instruction)) {
-                    $V.prompt
-                } else {
-                    "$Instruction`n`n$($V.prompt)"
-                }
-
-                $Messages = @(
-                    @{ role = "system"; content = $systemPrompt },
-                    @{ role = "user"; content = $Context }
-                )
-
-                $Output = Invoke-OpenAIRequest -Messages $Messages -AgentName $V.name
-                if (-not $Output) {
-                    Write-AgentStatus -Agent $V.name -Status "error"
-                    continue
-                }
-
-                Write-AgentStatus -Agent $V.name -Status "complete"
-                Write-Log -Agent $V.name -Content $Output
-                $Context += "`n`n[$($V.name) Output]:`n$Output"
+                $AgentOutputs[$S.name] = $Output
             }
         }
 
@@ -526,6 +475,7 @@ Stack Trace: $($_.ScriptStackTrace)
                 Write-AgentStatus -Agent $C.name -Status "complete"
                 Write-Log -Agent $C.name -Content $Output
                 $Context += "`n`n[$($C.name) Output]:`n$Output"
+                $AgentOutputs[$C.name] = $Output
 
                 # --- Optional: Commissioner-triggered Swarms run ----------------
                 $swarmRequests = Get-SwarmRequestsFromText -Text $Output
@@ -610,23 +560,114 @@ Stack Trace: $($_.ScriptStackTrace)
                 }
 
                 # --- Milestone Check ---------------------------------------
-                if ($Output -match "Value Score[:\s]*(\d+)") {
-                    $Score = [int]$matches[1]
-                    if ($Score -ge 7) {
-                        Write-Host "✅ Commissioner approves (Value Score=$Score) — Milestone achieved." -ForegroundColor Green
-                        $Context += "`n[Milestone_$i]: Approved (Score=$Score)."
+                $Score = $null
+                $Recommendation = $null
+                try {
+                    $commission = $Output | ConvertFrom-Json -ErrorAction Stop
+                    if ($null -ne $commission.value_score) { $Score = [int]$commission.value_score }
+                    if ($commission.recommendation) { $Recommendation = [string]$commission.recommendation }
+                } catch {
+                    # Fallback to legacy formats.
+                    if ($Output -match "Value Score[:\s]*(\d+)") {
+                        $Score = [int]$matches[1]
+                    }
+                    if ($Output -match "Recommendation[:\s]*(GO|NO-GO|CONDITIONAL)") {
+                        $Recommendation = ($matches[1].ToLower() -replace '-', '')
+                    }
+                }
+
+                if ($null -ne $Score -or $Recommendation) {
+                    $rec = ($Recommendation ?? "").ToLowerInvariant()
+                    if ($rec -eq "go" -or ($null -ne $Score -and $Score -ge 7)) {
+                        Write-Host "✅ Commissioner approves (value_score=$Score, recommendation=$Recommendation) — Milestone achieved." -ForegroundColor Green
+                        $Context += "`n[Milestone_$i]: Approved (value_score=$Score, recommendation=$Recommendation)."
                         $Script:ShouldExit = $true
                         break
                     }
-                    else {
-                        Write-Host "🔁 Value Score=$Score — triggering refinement..." -ForegroundColor Yellow
-                        $RefineGoal = "Refine the previous design to improve Value Score from $Score to ≥7. Address Commissioner feedback specifically."
-                        $Context += "`n[Refinement Triggered]: $RefineGoal"
-                        & $PSCommandPath -Goal $RefineGoal -Model $Model -Instruction $Instruction -MaxIterations $MaxIterations -AgentConfigPath $AgentConfigPath
+                    if ($rec -eq "nogo") {
+                        Write-Host "🛑 Commissioner no-go (value_score=$Score). Ending run." -ForegroundColor Yellow
+                        $Context += "`n[Milestone_$i]: No-go (value_score=$Score)."
                         $Script:ShouldExit = $true
-                        return
+                        break
                     }
+
+                    Write-Host "🔁 Commissioner conditional (value_score=$Score) — triggering refinement..." -ForegroundColor Yellow
+                    $RefineGoal = "Refine the previous design to improve value_score from $Score to ≥7. Address Commissioner feedback specifically."
+                    $Context += "`n[Refinement Triggered]: $RefineGoal"
+                    & $PSCommandPath -Goal $RefineGoal -Model $Model -Instruction $Instruction -MaxIterations $MaxIterations -AgentConfigPath $AgentConfigPath
+                    $Script:ShouldExit = $true
+                    return
                 }
+            }
+        }
+
+        # --- Run Supervisor sequentially ----------------------------------
+        if ($Supervisor) {
+            foreach ($Sup in $Supervisor) {
+                Write-AgentStatus -Agent $Sup.name -Status "working"
+
+                $systemPrompt = if ([string]::IsNullOrWhiteSpace($Instruction)) {
+                    $Sup.prompt
+                } else {
+                    "$Instruction`n`n$($Sup.prompt)"
+                }
+
+                $input = @{
+                    run_id = $RunId
+                    goal = $Goal
+                    agent_outputs = $AgentOutputs
+                } | ConvertTo-Json -Depth 20
+
+                $Messages = @(
+                    @{ role = "system"; content = $systemPrompt },
+                    @{ role = "user"; content = $input }
+                )
+
+                $Output = Invoke-OpenAIRequest -Messages $Messages -AgentName $Sup.name
+                if (-not $Output) {
+                    Write-AgentStatus -Agent $Sup.name -Status "error"
+                    continue
+                }
+
+                Write-AgentStatus -Agent $Sup.name -Status "complete"
+                Write-Log -Agent $Sup.name -Content $Output
+                $Context += "`n`n[$($Sup.name) Output]:`n$Output"
+                $AgentOutputs[$Sup.name] = $Output
+            }
+        }
+
+        # --- Run Historian sequentially -----------------------------------
+        if ($Historian) {
+            foreach ($H in $Historian) {
+                Write-AgentStatus -Agent $H.name -Status "working"
+
+                $systemPrompt = if ([string]::IsNullOrWhiteSpace($Instruction)) {
+                    $H.prompt
+                } else {
+                    "$Instruction`n`n$($H.prompt)"
+                }
+
+                $input = @{
+                    run_id = $RunId
+                    goal = $Goal
+                    agent_outputs = $AgentOutputs
+                } | ConvertTo-Json -Depth 20
+
+                $Messages = @(
+                    @{ role = "system"; content = $systemPrompt },
+                    @{ role = "user"; content = $input }
+                )
+
+                $Output = Invoke-OpenAIRequest -Messages $Messages -AgentName $H.name
+                if (-not $Output) {
+                    Write-AgentStatus -Agent $H.name -Status "error"
+                    continue
+                }
+
+                Write-AgentStatus -Agent $H.name -Status "complete"
+                Write-Log -Agent $H.name -Content $Output
+                $Context += "`n`n[$($H.name) Output]:`n$Output"
+                $AgentOutputs[$H.name] = $Output
             }
         }
 

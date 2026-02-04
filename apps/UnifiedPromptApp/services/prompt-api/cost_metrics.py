@@ -51,9 +51,10 @@ def record_call_metrics(
     timestamp = timestamp or now_iso()
     created_at = now_iso()
     
-    with sqlite3.connect(db_path) as conn:
+    conn = sqlite3.connect(db_path)
+    try:
         cursor = conn.cursor()
-        
+
         # Check if table exists
         cursor.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='orchestration_cost_metrics'"
@@ -62,23 +63,39 @@ def record_call_metrics(
             # Table doesn't exist yet - migration hasn't run
             print("Warning: orchestration_cost_metrics table doesn't exist, skipping metrics recording")
             return -1
-        
-        cursor.execute("""
+
+        cursor.execute(
+            """
             INSERT INTO orchestration_cost_metrics (
                 run_id, timestamp, model_name, agent_name,
                 tokens_input, tokens_output,
                 cost_usd, kwh_estimated, water_liters_estimated,
                 project_name, app_name, created_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            run_id, timestamp, model, agent_name,
-            impact.tokens_input, impact.tokens_output,
-            impact.cost_usd, impact.kwh_estimated, impact.water_liters_estimated,
-            project_name, app_name, created_at
-        ))
-        
+            """,
+            (
+                run_id,
+                timestamp,
+                model,
+                agent_name,
+                impact.tokens_input,
+                impact.tokens_output,
+                impact.cost_usd,
+                impact.kwh_estimated,
+                impact.water_liters_estimated,
+                project_name,
+                app_name,
+                created_at,
+            ),
+        )
+
         conn.commit()
         return cursor.lastrowid
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 def aggregate_run_metrics(
@@ -105,7 +122,8 @@ def aggregate_run_metrics(
     Returns:
         Dictionary with aggregated metrics
     """
-    with sqlite3.connect(db_path) as conn:
+    conn = sqlite3.connect(db_path)
+    try:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
@@ -212,6 +230,11 @@ def aggregate_run_metrics(
             conn.commit()
         
         return aggregates
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 def get_run_summary(
@@ -228,7 +251,8 @@ def get_run_summary(
     Returns:
         Dictionary with run metrics or None if not found
     """
-    with sqlite3.connect(db_path) as conn:
+    conn = sqlite3.connect(db_path)
+    try:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
@@ -268,3 +292,8 @@ def get_run_summary(
             'created_at': row['created_at'],
             'updated_at': row['updated_at']
         }
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass

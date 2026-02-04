@@ -320,8 +320,12 @@ const useOrchestrator = () => {
       }
       initialContext = `The user has provided the following file content for analysis:\n\`\`\`\n${truncatedContent}\n\`\`\``;
       const fileAnalystTask: Task = {
-        id: 'task_file_analyst', name: 'Analyze Provided File', status: TaskStatus.PENDING,
-        dependencies: [], agent: { role: 'File Analyst Agent', log: [] }, artifacts: []
+        id: 'task_file_analyst',
+        name: 'Analyze Provided File',
+        status: TaskStatus.PENDING,
+        dependencies: [],
+        agent: { role: 'Researcher', specialization: 'File Intake', log: [] },
+        artifacts: [],
       };
       initialTasks.push(fileAnalystTask);
     }
@@ -351,7 +355,15 @@ const useOrchestrator = () => {
         For tasks that generate files, specify a unique, descriptive filename in parentheses within the task name, e.g., "Write the main application logic (app.py)".
         Return a single JSON object with a key "tasks", containing an array of task objects.
         Each task object must have: "id" (string), "name" (string), "dependencies" (array of task ids), and "agent" (object with "role" and optional "specialization").
-        Choose from agent roles: Planner, Architect, File Analyst Agent, Code Writer, Image Generator, Technical Writer, QA Specialist.
+        Choose from agent roles:
+        - Researcher
+        - Engineer
+        - Critic
+        - Synthesizer
+        - Commissioner
+        - Supervisor
+        - Historian
+        - Image Generator (only when an image artifact is explicitly needed)
         ${fileContent ? 'The first task in your plan *must* depend on "task_file_analyst".' : ''}
       `;
 

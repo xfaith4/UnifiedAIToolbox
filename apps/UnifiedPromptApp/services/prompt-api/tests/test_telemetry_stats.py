@@ -13,6 +13,7 @@ import sqlite3
 import datetime
 import json
 import os
+from contextlib import closing
 from pathlib import Path
 from fastapi.testclient import TestClient
 
@@ -54,7 +55,7 @@ def test_telemetry_stats_with_cost_data(test_client, test_db):
     now = datetime.datetime.now(datetime.timezone.utc)
     yesterday = now - datetime.timedelta(days=1)
     
-    with sqlite3.connect(test_db) as conn:
+    with closing(sqlite3.connect(test_db)) as conn:
         cursor = conn.cursor()
         
         # Ensure cost metrics table exists
@@ -137,7 +138,7 @@ def test_telemetry_stats_with_quality_data(test_client, test_db):
     """Test telemetry stats with quality metrics data."""
     now = datetime.datetime.now(datetime.timezone.utc)
     
-    with sqlite3.connect(test_db) as conn:
+    with closing(sqlite3.connect(test_db)) as conn:
         cursor = conn.cursor()
         
         # Ensure quality metrics table exists
@@ -213,7 +214,7 @@ def test_telemetry_stats_with_run_aggregates(test_client, test_db):
     """Test telemetry stats with orchestration run aggregates."""
     now = datetime.datetime.now(datetime.timezone.utc)
     
-    with sqlite3.connect(test_db) as conn:
+    with closing(sqlite3.connect(test_db)) as conn:
         cursor = conn.cursor()
         
         # Ensure run aggregates table exists
@@ -344,7 +345,7 @@ def test_db(tmp_path):
     db_path = tmp_path / "test_telemetry.db"
     
     # Initialize basic schema
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn:
         cursor = conn.cursor()
         
         # Create minimal schema

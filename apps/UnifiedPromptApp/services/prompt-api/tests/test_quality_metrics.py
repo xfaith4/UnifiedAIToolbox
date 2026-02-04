@@ -4,6 +4,7 @@ Tests for quality metrics recording and querying.
 import pathlib
 import sqlite3
 import tempfile
+from contextlib import closing
 from quality_metrics import (
     record_quality_metrics, get_quality_metrics, get_quality_summary,
     get_quality_by_strategy, get_quality_by_model, get_cost_quality_efficiency
@@ -43,7 +44,7 @@ def test_record_quality_metrics():
         assert metric_id > 0
         
         # Verify it was stored
-        with sqlite3.connect(db_path) as conn:
+        with closing(sqlite3.connect(db_path)) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM run_quality_metrics WHERE id = ?", (metric_id,))
