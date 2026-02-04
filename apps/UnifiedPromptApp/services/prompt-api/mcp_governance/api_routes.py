@@ -25,11 +25,40 @@ from .models import (
 )
 from . import storage
 
+# Import auth module if available
+try:
+    from auth import get_current_user, User
+    AUTH_AVAILABLE = True
+except ImportError:
+    AUTH_AVAILABLE = False
+    # Fallback type for when auth is not available
+    User = None
+
 
 logger = logging.getLogger(__name__)
 
 # Create router
 router = APIRouter(prefix="/api/mcp", tags=["mcp-governance"])
+
+
+# Helper function to get current user ID
+def get_user_id(current_user: Optional['User'] = None) -> str:
+    """Get user ID from current user, or return 'system' if not authenticated."""
+    if AUTH_AVAILABLE and current_user:
+        return current_user.username
+    return "system"
+
+
+# Dependency for optional authentication
+async def optional_current_user():
+    """Get current user if auth is available, otherwise return None."""
+    if AUTH_AVAILABLE:
+        try:
+            from auth import get_current_user
+            return await get_current_user()
+        except:
+            return None
+    return None
 
 
 # ============================================================================
@@ -74,17 +103,39 @@ async def sync_registry(request: RegistrySyncRequest):
     
     Merges discovered servers with local registry.
     """
-    # TODO: Implement registry sync logic
-    # This would integrate with mcp/ingestion_service.py
+    # Basic implementation: validate and count existing servers
+    # Full implementation would integrate with ingestion_service.py
     
-    return RegistrySyncResponse(
-        success=True,
-        servers_added=0,
-        servers_updated=0,
-        servers_total=10,
-        source_id=request.source_id or "all",
-        synced_at=datetime.utcnow()
-    )
+    try:
+        servers = storage.get_servers()
+        servers_total = len(servers)
+        
+        # In a full implementation, this would:
+        # 1. Fetch from external registries
+        # 2. Compare with local registry
+        # 3. Add/update servers as needed
+        # 4. Return actual counts
+        
+        return RegistrySyncResponse(
+            success=True,
+            servers_added=0,
+            servers_updated=0,
+            servers_total=servers_total,
+            source_id=request.source_id or "local",
+            synced_at=datetime.utcnow(),
+            errors=[]
+        )
+    except Exception as e:
+        logger.error(f"Registry sync failed: {e}")
+        return RegistrySyncResponse(
+            success=False,
+            servers_added=0,
+            servers_updated=0,
+            servers_total=0,
+            source_id=request.source_id or "local",
+            synced_at=datetime.utcnow(),
+            errors=[str(e)]
+        )
 
 
 @router.get("/registry/sources", response_model=List[RegistrySource])
@@ -94,8 +145,24 @@ async def list_registry_sources():
     
     Returns all external sources configured for registry ingestion.
     """
-    # TODO: Implement source listing
-    return []
+    # Return default sources
+    # In a full implementation, these would be stored in a config file
+    return [
+        RegistrySource(
+            source_id="official",
+            source_type="official",
+            url="https://github.com/modelcontextprotocol/servers",
+            enabled=True,
+            metadata={"description": "Official MCP Registry"}
+        ),
+        RegistrySource(
+            source_id="local",
+            source_type="custom",
+            url="file://data/mcp/servers.json",
+            enabled=True,
+            metadata={"description": "Local server registry"}
+        )
+    ]
 
 
 @router.post("/registry/sources", response_model=RegistrySource, status_code=201)
@@ -105,7 +172,20 @@ async def add_registry_source(source: RegistrySource):
     
     Configures a new external source for MCP server discovery.
     """
-    # TODO: Implement source addition
+    # Basic implementation: validate and return the source
+    # Full implementation would persist to a sources config file
+    
+    # Validate the source
+    if not source.source_id or not source.url:
+        raise HTTPException(status_code=400, detail="source_id and url are required")
+    
+    logger.info(f"Registry source added (not persisted): {source.source_id}")
+    
+    # In a full implementation, this would:
+    # 1. Validate the source URL is accessible
+    # 2. Save to sources configuration file
+    # 3. Optionally trigger a sync
+    
     return source
 
 
@@ -247,7 +327,10 @@ async def list_collections(
 
 
 @router.post("/collections", response_model=Collection, status_code=201)
-async def create_collection(collection: CollectionCreate):
+async def create_collection(
+    collection: CollectionCreate,
+    current_user: Optional['User'] = Depends(optional_current_user)
+):
     """
     Create a new collection.
     
@@ -260,7 +343,7 @@ async def create_collection(collection: CollectionCreate):
         description=collection.description,
         server_ids=collection.server_ids,
         tags=collection.tags,
-        created_by="system",  # TODO: Get from auth context
+        created_by=get_user_id(current_user),
         created_at=datetime.utcnow()
     )
     
@@ -344,7 +427,10 @@ async def list_install_records(
 
 
 @router.post("/installs", response_model=InstallRecord, status_code=201)
-async def create_install_record(record: InstallRecordCreate):
+async def create_install_record(
+    record: InstallRecordCreate,
+    current_user: Optional['User'] = Depends(optional_current_user)
+):
     """
     Create a new install record (install MCP server).
     
@@ -356,7 +442,7 @@ async def create_install_record(record: InstallRecordCreate):
         server_id=record.server_id,
         status=InstallStatus.PENDING,
         installed_at=datetime.utcnow(),
-        installed_by="system",  # TODO: Get from auth context
+        installed_by=get_user_id(current_user),
         config=record.config,
         notes=record.notes
     )
@@ -474,7 +560,10 @@ async def list_allowlists(
 
 
 @router.post("/allowlists", response_model=Allowlist, status_code=201)
-async def create_allowlist(allowlist: AllowlistCreate):
+async def create_allowlist(
+    allowlist: AllowlistCreate,
+    current_user: Optional['User'] = Depends(optional_current_user)
+):
     """
     Create a new allowlist.
     
@@ -490,7 +579,7 @@ async def create_allowlist(allowlist: AllowlistCreate):
         allowed_tools=allowlist.allowed_tools,
         denied_servers=allowlist.denied_servers,
         denied_tools=allowlist.denied_tools,
-        created_by="system",  # TODO: Get from auth context
+        created_by=get_user_id(current_user),
         created_at=datetime.utcnow(),
         expires_at=allowlist.expires_at
     )
@@ -501,8 +590,10 @@ async def create_allowlist(allowlist: AllowlistCreate):
 @router.get("/allowlists/{allowlist_id}", response_model=Allowlist)
 async def get_allowlist(allowlist_id: str):
     """Get a specific allowlist by ID."""
-    # TODO: Implement allowlist lookup
-    raise HTTPException(status_code=404, detail=f"Allowlist '{allowlist_id}' not found")
+    allowlist = storage.get_allowlist(allowlist_id)
+    if not allowlist:
+        raise HTTPException(status_code=404, detail=f"Allowlist '{allowlist_id}' not found")
+    return allowlist
 
 
 @router.put("/allowlists/{allowlist_id}", response_model=Allowlist)
@@ -512,8 +603,27 @@ async def update_allowlist(allowlist_id: str, update: AllowlistUpdate):
     
     Modifies the set of allowed/denied servers or tools.
     """
-    # TODO: Implement allowlist update
-    raise HTTPException(status_code=404, detail=f"Allowlist '{allowlist_id}' not found")
+    allowlist = storage.get_allowlist(allowlist_id)
+    if not allowlist:
+        raise HTTPException(status_code=404, detail=f"Allowlist '{allowlist_id}' not found")
+    
+    # Apply updates
+    if update.allowed_servers is not None:
+        allowlist.allowed_servers = update.allowed_servers
+    if update.allowed_collections is not None:
+        allowlist.allowed_collections = update.allowed_collections
+    if update.allowed_tools is not None:
+        allowlist.allowed_tools = update.allowed_tools
+    if update.denied_servers is not None:
+        allowlist.denied_servers = update.denied_servers
+    if update.denied_tools is not None:
+        allowlist.denied_tools = update.denied_tools
+    if update.expires_at is not None:
+        allowlist.expires_at = update.expires_at
+    
+    allowlist.updated_at = datetime.utcnow()
+    
+    return storage.save_allowlist(allowlist)
 
 
 @router.delete("/allowlists/{allowlist_id}", status_code=204)
@@ -524,8 +634,9 @@ async def delete_allowlist(allowlist_id: str):
     Removes the allowlist binding. Any operations using this allowlist
     will fall back to higher-level allowlists (user or global).
     """
-    # TODO: Implement allowlist deletion
-    raise HTTPException(status_code=404, detail=f"Allowlist '{allowlist_id}' not found")
+    success = storage.delete_allowlist(allowlist_id)
+    if not success:
+        raise HTTPException(status_code=404, detail=f"Allowlist '{allowlist_id}' not found")
 
 
 @router.post("/allowlists/bind", response_model=Allowlist, status_code=201)
@@ -561,17 +672,48 @@ async def query_audit_logs(query: AuditEventQuery):
     
     Returns redacted audit events (sensitive data already masked).
     """
-    # TODO: Implement audit log querying
-    # This would query the audit logger (JSONL or SQLite)
+    # Convert enum types to strings for storage query
+    event_types_str = [et.value for et in query.event_types] if query.event_types else None
     
-    return []
+    # Query from storage
+    events_data = storage.query_audit_events(
+        event_types=event_types_str,
+        run_id=query.run_id,
+        job_id=query.job_id,
+        user_id=query.user_id,
+        server_id=query.server_id,
+        tool_name=query.tool_name,
+        decision=query.decision,
+        start_time=query.start_time,
+        end_time=query.end_time,
+        limit=query.limit,
+        offset=query.offset
+    )
+    
+    # Convert to AuditEvent models
+    audit_events = []
+    for event_data in events_data:
+        try:
+            audit_events.append(AuditEvent(**event_data))
+        except Exception as e:
+            logger.warning(f"Failed to parse audit event: {e}")
+            continue
+    
+    return audit_events
 
 
 @router.get("/audit/events/{event_id}", response_model=AuditEvent)
 async def get_audit_event(event_id: str):
     """Get a specific audit event by ID."""
-    # TODO: Implement audit event lookup
-    raise HTTPException(status_code=404, detail=f"Audit event '{event_id}' not found")
+    event_data = storage.get_audit_event_by_id(event_id)
+    if not event_data:
+        raise HTTPException(status_code=404, detail=f"Audit event '{event_id}' not found")
+    
+    try:
+        return AuditEvent(**event_data)
+    except Exception as e:
+        logger.error(f"Failed to parse audit event: {e}")
+        raise HTTPException(status_code=500, detail="Failed to parse audit event")
 
 
 class AuditSummary(BaseModel):
@@ -600,20 +742,14 @@ async def get_audit_summary(
     
     Provides high-level metrics about policy decisions and tool usage.
     """
-    # TODO: Implement audit summary calculation
-    
-    return AuditSummary(
-        total_events=0,
-        policy_decisions=0,
-        tools_allowed=0,
-        tools_denied=0,
-        tools_executed=0,
-        tools_failed=0,
-        unique_servers=0,
-        unique_users=0,
-        time_range_start=start_time or datetime.utcnow(),
-        time_range_end=end_time or datetime.utcnow()
+    summary_data = storage.get_audit_summary(
+        start_time=start_time,
+        end_time=end_time,
+        run_id=run_id,
+        user_id=user_id
     )
+    
+    return AuditSummary(**summary_data)
 
 
 # ============================================================================

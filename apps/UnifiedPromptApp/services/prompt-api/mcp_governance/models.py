@@ -152,6 +152,7 @@ class Allowlist(BaseModel):
     
     created_at: datetime = Field(default_factory=datetime.utcnow, description="When allowlist was created")
     created_by: str = Field(..., description="User who created the allowlist")
+    updated_at: Optional[datetime] = Field(None, description="When allowlist was last updated")
     
     expires_at: Optional[datetime] = Field(None, description="When allowlist expires (None = never)")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
