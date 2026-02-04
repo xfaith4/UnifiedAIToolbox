@@ -382,14 +382,17 @@ def query_audit_events(
                     if decision and event.get('decision') != decision:
                         continue
                     
-                    # Time range filters
-                    if start_time:
-                        event_time = datetime.fromisoformat(event.get('timestamp', ''))
-                        if event_time < start_time:
-                            continue
-                    if end_time:
-                        event_time = datetime.fromisoformat(event.get('timestamp', ''))
-                        if event_time > end_time:
+                    # Time range filters (parse once for efficiency)
+                    event_timestamp = event.get('timestamp')
+                    if event_timestamp and (start_time or end_time):
+                        try:
+                            event_time = datetime.fromisoformat(event_timestamp)
+                            if start_time and event_time < start_time:
+                                continue
+                            if end_time and event_time > end_time:
+                                continue
+                        except ValueError:
+                            # Skip events with invalid timestamps
                             continue
                     
                     events.append(event)
