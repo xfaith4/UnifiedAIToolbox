@@ -24,6 +24,7 @@ from .models import (
     AuditEvent, AuditEventQuery, AuditEventType
 )
 from . import storage
+from . import registry_sync
 
 # Import auth module if available
 try:
@@ -103,30 +104,44 @@ async def sync_registry(request: RegistrySyncRequest):
     
     Merges discovered servers with local registry.
     """
-    # Basic implementation: validate and count existing servers
-    # Full implementation would integrate with ingestion_service.py
-    
     try:
-        servers = storage.get_servers()
-        servers_total = len(servers)
+        # Get existing servers
+        existing_servers = storage.get_servers()
         
-        # In a full implementation, this would:
-        # 1. Fetch from external registries
-        # 2. Compare with local registry
-        # 3. Add/update servers as needed
-        # 4. Return actual counts
-        
-        return RegistrySyncResponse(
-            success=True,
-            servers_added=0,
-            servers_updated=0,
-            servers_total=servers_total,
-            source_id=request.source_id or "local",
-            synced_at=datetime.utcnow(),
-            errors=[]
-        )
+        # Sync from official registry
+        if request.source_id is None or request.source_id == "official":
+            stats = registry_sync.sync_from_official_registry(existing_servers)
+            
+            # If sync was successful and we got new servers, save them
+            if stats.get("synced_servers") and (stats["servers_added"] > 0 or stats["servers_updated"] > 0):
+                # Save the updated servers back to storage
+                storage.save_json_file("servers.json", stats["synced_servers"])
+                logger.info(f"Saved {len(stats['synced_servers'])} servers to storage")
+            
+            return RegistrySyncResponse(
+                success=len(stats.get("errors", [])) == 0,
+                servers_added=stats["servers_added"],
+                servers_updated=stats["servers_updated"],
+                servers_total=stats["servers_total"],
+                source_id=request.source_id or "official",
+                synced_at=datetime.utcnow(),
+                errors=stats.get("errors", [])
+            )
+        else:
+            # For other sources, return the current count
+            # (GitHub sync would be implemented here in the future)
+            return RegistrySyncResponse(
+                success=True,
+                servers_added=0,
+                servers_updated=0,
+                servers_total=len(existing_servers),
+                source_id=request.source_id,
+                synced_at=datetime.utcnow(),
+                errors=[f"Source '{request.source_id}' sync not yet implemented"]
+            )
+            
     except Exception as e:
-        logger.error(f"Registry sync failed: {e}")
+        logger.error(f"Registry sync failed: {e}", exc_info=True)
         return RegistrySyncResponse(
             success=False,
             servers_added=0,
@@ -145,24 +160,30 @@ async def list_registry_sources():
     
     Returns all external sources configured for registry ingestion.
     """
-    # Return default sources
-    # In a full implementation, these would be stored in a config file
-    return [
-        RegistrySource(
-            source_id="official",
-            source_type="official",
-            url="https://github.com/modelcontextprotocol/servers",
-            enabled=True,
-            metadata={"description": "Official MCP Registry"}
-        ),
-        RegistrySource(
-            source_id="local",
-            source_type="custom",
-            url="file://data/mcp/servers.json",
-            enabled=True,
-            metadata={"description": "Local server registry"}
-        )
-    ]
+    try:
+        sources = registry_sync.load_sources_config()
+        return [
+            RegistrySource(
+                source_id=s["source_id"],
+                source_type=s["source_type"],
+                url=s["url"],
+                enabled=s.get("enabled", True),
+                metadata=s.get("metadata", {})
+            )
+            for s in sources
+        ]
+    except Exception as e:
+        logger.error(f"Failed to load registry sources: {e}")
+        # Return defaults on error
+        return [
+            RegistrySource(
+                source_id="official",
+                source_type="official",
+                url="https://registry.modelcontextprotocol.io/v1/servers",
+                enabled=True,
+                metadata={"description": "Official MCP Registry"}
+            )
+        ]
 
 
 @router.post("/registry/sources", response_model=RegistrySource, status_code=201)
@@ -172,21 +193,41 @@ async def add_registry_source(source: RegistrySource):
     
     Configures a new external source for MCP server discovery.
     """
-    # Basic implementation: validate and return the source
-    # Full implementation would persist to a sources config file
-    
     # Validate the source
     if not source.source_id or not source.url:
         raise HTTPException(status_code=400, detail="source_id and url are required")
     
-    logger.info(f"Registry source added (not persisted): {source.source_id}")
-    
-    # In a full implementation, this would:
-    # 1. Validate the source URL is accessible
-    # 2. Save to sources configuration file
-    # 3. Optionally trigger a sync
-    
-    return source
+    try:
+        # Load existing sources
+        sources = registry_sync.load_sources_config()
+        
+        # Check if source already exists
+        existing_ids = {s["source_id"] for s in sources}
+        if source.source_id in existing_ids:
+            raise HTTPException(status_code=409, detail=f"Source '{source.source_id}' already exists")
+        
+        # Add new source
+        new_source = {
+            "source_id": source.source_id,
+            "source_type": source.source_type,
+            "url": source.url,
+            "enabled": source.enabled,
+            "metadata": source.metadata,
+        }
+        sources.append(new_source)
+        
+        # Persist to config file
+        if not registry_sync.save_sources_config(sources):
+            raise HTTPException(status_code=500, detail="Failed to save source configuration")
+        
+        logger.info(f"Registry source added: {source.source_id}")
+        return source
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to add registry source: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ============================================================================
