@@ -17,6 +17,11 @@ import {
   ListItem,
   ListItemText,
   Paper,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
 } from '@mui/material'
 import {
   ArrowBack as ArrowBackIcon,
@@ -56,6 +61,8 @@ export default function ServerDetailPage() {
   const [server, setServer] = useState<ServerDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [showInstallDialog, setShowInstallDialog] = useState(false)
+  const [installNotes, setInstallNotes] = useState('')
 
   useEffect(() => {
     const loadServer = async () => {
@@ -80,6 +87,39 @@ export default function ServerDetailPage() {
       loadServer()
     }
   }, [serverId])
+
+  const handleInstallServer = async () => {
+    if (!server) return
+    
+    try {
+      const response = await fetch('http://localhost:8000/api/mcp/installs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          server_id: server.id,
+          config: {},
+          notes: installNotes || undefined,
+        }),
+      })
+      
+      if (!response.ok) throw new Error('Failed to install server')
+      
+      setShowInstallDialog(false)
+      setInstallNotes('')
+      
+      // Reload server to update installation status
+      const reloadResponse = await fetch(`http://localhost:8000/api/mcp/servers/${serverId}`)
+      if (reloadResponse.ok) {
+        const data = await reloadResponse.json()
+        setServer(data)
+      }
+      
+      alert(`Successfully installed ${server.name}`)
+    } catch (err) {
+      console.error('Error installing server:', err)
+      setError(err instanceof Error ? err.message : 'Failed to install server')
+    }
+  }
 
   if (loading) {
     return (
@@ -126,7 +166,11 @@ export default function ServerDetailPage() {
         {server.installation_status === 'installed' ? (
           <Chip label="Installed" color="success" icon={<CheckCircleIcon />} />
         ) : (
-          <Button variant="contained" color="primary">
+          <Button 
+            variant="contained" 
+            color="primary"
+            onClick={() => setShowInstallDialog(true)}
+          >
             Install Server
           </Button>
         )}
@@ -313,6 +357,41 @@ export default function ServerDetailPage() {
           )}
         </Grid>
       </Grid>
+
+      {/* Install Server Dialog */}
+      <Dialog 
+        open={showInstallDialog} 
+        onClose={() => setShowInstallDialog(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Install {server.name}</DialogTitle>
+        <DialogContent>
+          <Box display="flex" flexDirection="column" gap={2} mt={1}>
+            <Typography variant="body2" color="text.secondary">
+              {server.description}
+            </Typography>
+            <TextField
+              label="Installation Notes (optional)"
+              value={installNotes}
+              onChange={(e) => setInstallNotes(e.target.value)}
+              fullWidth
+              multiline
+              rows={3}
+              placeholder="Add any notes about this installation..."
+            />
+            <Alert severity="info">
+              This will create an installation record and enable the server for use.
+            </Alert>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowInstallDialog(false)}>Cancel</Button>
+          <Button onClick={handleInstallServer} variant="contained" color="primary">
+            Install
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }
