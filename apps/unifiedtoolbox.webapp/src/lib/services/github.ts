@@ -3,21 +3,44 @@
 import { ORCHESTRATOR_API_BASE } from './orchestratorApi'
 import type { GitHubRepo } from '@/lib/types/github'
 
-export async function listAccessibleRepos(token: string): Promise<GitHubRepo[]> {
-  const trimmedToken = token.trim()
-  if (!trimmedToken) {
-    throw new Error('A GitHub personal access token is required to list repositories.')
+type GitHubStatus = {
+  available?: boolean
+  authenticated?: boolean
+  message?: string
+}
+
+export async function getGithubStatus(): Promise<GitHubStatus | null> {
+  if (!ORCHESTRATOR_API_BASE) {
+    return null
   }
+
+  try {
+    const res = await fetch(`${ORCHESTRATOR_API_BASE}/github/status`, {
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as GitHubStatus
+    return data
+  } catch {
+    return null
+  }
+}
+
+export async function listAccessibleRepos(token?: string): Promise<GitHubRepo[]> {
+  const trimmedToken = token?.trim() ?? ''
 
   if (!ORCHESTRATOR_API_BASE) {
     throw new Error('Orchestrator API base URL is not configured.')
   }
 
+  const headers: Record<string, string> = { Accept: 'application/json' }
+  if (trimmedToken) {
+    headers.Authorization = `Bearer ${trimmedToken}`
+  }
+
   const res = await fetch(`${ORCHESTRATOR_API_BASE}/github/repos`, {
-    headers: {
-      Accept: 'application/json',
-      Authorization: `Bearer ${trimmedToken}`,
-    },
+    headers,
     cache: 'no-store',
   })
 

@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { listAccessibleRepos } from '@/lib/services/github'
+import { useEffect, useState } from 'react'
+import { getGithubStatus, listAccessibleRepos } from '@/lib/services/github'
 import { startRepoOrchestration } from '@/lib/services/orchestratorApi'
 import type { GitHubRepo } from '@/lib/types/github'
 import type { RepoOrchestrationEvent, RepoOrchestrationResult } from '@/lib/types/orchestrator'
@@ -12,6 +12,7 @@ export default function GitHubPage() {
   const [repos, setRepos] = useState<GitHubRepo[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [githubEnvReady, setGithubEnvReady] = useState(false)
 
   const [selectedRepo, setSelectedRepo] = useState<GitHubRepo | null>(null)
   const [instruction, setInstruction] = useState('')
@@ -23,9 +24,25 @@ export default function GitHubPage() {
   const [orchError, setOrchError] = useState<string | null>(null)
   const [cancelStream, setCancelStream] = useState<(() => void) | null>(null)
 
+  useEffect(() => {
+    let mounted = true
+    getGithubStatus()
+      .then((status) => {
+        if (!mounted) return
+        setGithubEnvReady(Boolean(status?.authenticated))
+      })
+      .catch(() => {
+        if (!mounted) return
+        setGithubEnvReady(false)
+      })
+    return () => {
+      mounted = false
+    }
+  }, [])
+
   async function handleFetch() {
     const trimmedToken = token.trim()
-    if (!trimmedToken) {
+    if (!trimmedToken && !githubEnvReady) {
       setError('A GitHub personal access token is required.')
       return
     }
@@ -36,7 +53,7 @@ export default function GitHubPage() {
     setOrchEvents([])
     setOrchResult(null)
     try {
-      const list = await listAccessibleRepos(trimmedToken)
+      const list = await listAccessibleRepos(trimmedToken || undefined)
       const filterTerm = filter.trim().toLowerCase()
       const filtered = filterTerm
         ? list.filter((repo) => repo.full_name.toLowerCase().includes(filterTerm))
@@ -142,7 +159,7 @@ export default function GitHubPage() {
       <button
         className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
         onClick={handleFetch}
-        disabled={!token.trim() || loading}
+        disabled={(!token.trim() && !githubEnvReady) || loading}
       >
         {loading ? 'Fetching.' : 'List Accessible Repos'}
       </button>
