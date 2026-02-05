@@ -32,6 +32,19 @@ Artifacts commonly found under `artifacts/runs/<run_id>/`:
 - API: `http://localhost:8001/api/runs`
 - Cost configuration: `config/costs.example.json`
 
+## Repo orchestration gates (optional)
+Enable safety gates for existing repos:
+```bash
+REPO_ORCHESTRATION_GATES=true
+REPO_ORCHESTRATION_GATES_STRICT=false
+REPO_ORCHESTRATION_GATES_NORMALIZE=false
+```
+
+Outputs:
+- `REPO_GATES_REPORT.json` (results)
+- `REPO_GATES_SUMMARY.md` (summary)
+- `gate-logs/` (full command logs)
+
 ## Run lifecycle (repo orchestration)
 1. Clone
 2. Intake

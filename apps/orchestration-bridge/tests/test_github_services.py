@@ -139,6 +139,54 @@ class TestGitHubCloneService:
             assert tree['type'] == "directory"
             assert len(tree['children']) >= 2
 
+    def test_clone_repository_cleans_existing_dir(self):
+        """Clone should remove an existing repo dir before cloning."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            run_dir = Path(tmpdir) / "run1"
+            run_dir.mkdir(parents=True, exist_ok=True)
+            existing_repo = run_dir / "repo"
+            existing_repo.mkdir()
+            (existing_repo / "stale.txt").write_text("stale", encoding="utf-8")
+
+            service = GitHubCloneService(clone_base_dir=run_dir)
+
+            def fake_clone(*args, **kwargs):
+                path = kwargs.get("to_path") or (args[1] if len(args) > 1 else None)
+                if path:
+                    Path(path).mkdir(parents=True, exist_ok=True)
+                return Mock()
+
+            with patch("github_integration.clone_service.Repo.clone_from", side_effect=fake_clone):
+                clone_path = service.clone_repository(
+                    "https://github.com/owner/repo.git",
+                    branch="main",
+                    clone_id="run1",
+                )
+
+            assert clone_path == existing_repo
+            assert existing_repo.exists()
+
+    def test_clone_repository_fails_when_cleanup_fails(self):
+        """Clone should fail fast if existing dir cannot be removed."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            run_dir = Path(tmpdir) / "run1"
+            run_dir.mkdir(parents=True, exist_ok=True)
+            existing_repo = run_dir / "repo"
+            existing_repo.mkdir()
+            (existing_repo / "stale.txt").write_text("stale", encoding="utf-8")
+
+            service = GitHubCloneService(clone_base_dir=run_dir)
+
+            with patch("github_integration.clone_service.cleanup_repository", return_value=False):
+                with patch("github_integration.clone_service.Repo.clone_from") as mock_clone:
+                    with pytest.raises(RepositoryCloneError, match="could not be removed"):
+                        service.clone_repository(
+                            "https://github.com/owner/repo.git",
+                            branch="main",
+                            clone_id="run1",
+                        )
+                    mock_clone.assert_not_called()
+
     def test_list_accessible_repos_requires_token(self):
         """Listing repositories should require authentication."""
         with tempfile.TemporaryDirectory() as tmpdir:

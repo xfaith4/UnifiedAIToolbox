@@ -338,8 +338,18 @@ class GitHubCloneService(GitHubClientMixin, FileTreeMixin, CloneUrlMixin):
 
             # Clean up if directory already exists
             if clone_path.exists():
-                logger.warning(f"Clone directory already exists, removing: {clone_path}")
+                logger.warning("Clone directory already exists, removing: %s", clone_path)
                 cleanup_repository(clone_path)
+                if clone_path.exists():
+                    try:
+                        entries = [p.name for p in clone_path.iterdir()][:5]
+                    except Exception:
+                        entries = []
+                    entry_hint = f" (entries: {entries})" if entries else ""
+                    raise RepositoryCloneError(
+                        "Clone destination exists and could not be removed: "
+                        f"{clone_path}{entry_hint}. Remove the directory or use a fresh run directory."
+                    )
 
             # Prepare clone URL with authentication using shared utility
             clone_url_with_auth = self._get_auth_url(repo_url, self.github_token)
@@ -348,7 +358,15 @@ class GitHubCloneService(GitHubClientMixin, FileTreeMixin, CloneUrlMixin):
             progress = CloneProgress(callback=progress_callback)
 
             # Clone repository
-            logger.info("Cloning repository to %s", clone_path)
+            logger.info(
+                "Cloning repository",
+                extra={
+                    "repo_url": safe_message(repo_url),
+                    "branch": branch or "default",
+                    "clone_id": clone_id,
+                    "clone_path": str(clone_path),
+                },
+            )
             repo = Repo.clone_from(
                 clone_url_with_auth,
                 clone_path,
@@ -356,7 +374,15 @@ class GitHubCloneService(GitHubClientMixin, FileTreeMixin, CloneUrlMixin):
                 progress=progress
             )
 
-            logger.info("Successfully cloned repository to %s", clone_path)
+            logger.info(
+                "Successfully cloned repository",
+                extra={
+                    "repo_url": safe_message(repo_url),
+                    "branch": branch or "default",
+                    "clone_id": clone_id,
+                    "clone_path": str(clone_path),
+                },
+            )
 
             return clone_path
 

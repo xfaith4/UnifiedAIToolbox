@@ -3144,6 +3144,35 @@ def _persist_repo_state(path: pathlib.Path, payload: Dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
+def _gate_status(result: Any) -> str:
+    if result is None:
+        return "skipped"
+    if isinstance(result, bool):
+        return "passed" if result else "failed"
+    if isinstance(result, dict):
+        return "passed" if result.get("passed") else "failed"
+    return "failed"
+
+
+def _summarize_repo_gates(results: Dict[str, Any]) -> Dict[str, Any]:
+    checks = {}
+    for key, value in results.items():
+        if key == "paths_to_full_logs":
+            continue
+        checks[key] = {
+            "status": _gate_status(value),
+            "details": value,
+        }
+
+    failed = [name for name, meta in checks.items() if meta["status"] == "failed"]
+    return {
+        "checks": checks,
+        "failed": failed,
+        "failed_count": len(failed),
+        "passed_count": len([1 for meta in checks.values() if meta["status"] == "passed"]),
+        "skipped_count": len([1 for meta in checks.values() if meta["status"] == "skipped"]),
+    }
+
 
 def _parse_owner_repo(repo: str) -> Tuple[str, str]:
     candidate = repo.strip()
@@ -3380,6 +3409,77 @@ async def start_repo_orchestration(req: RepoOrchestrationRequest, request: Reque
 
             if cancel_event.is_set():
                 raise TaskExecutionError("cancelled")
+
+            repo_gates_enabled = os.environ.get("REPO_ORCHESTRATION_GATES", "false").lower() == "true"
+            repo_gates_strict = os.environ.get("REPO_ORCHESTRATION_GATES_STRICT", "false").lower() == "true"
+            repo_gates_normalize = os.environ.get("REPO_ORCHESTRATION_GATES_NORMALIZE", "false").lower() == "true"
+            if repo_gates_enabled:
+                if not ORCHESTRATOR_LOGGING_AVAILABLE:
+                    logger.warning("Repo gates requested but OrchestratorVerifier is unavailable")
+                else:
+                    gate_logs_dir = run_dir / "gate-logs"
+                    verifier = OrchestratorVerifier(clone_path, log_dir=gate_logs_dir)
+                    if repo_gates_normalize:
+                        gate_results = verifier.run_all_verifications()
+                    else:
+                        gate_results = {
+                            "lint_result": verifier.verify_lint(),
+                            "build_result": verifier.verify_build(),
+                            "unit_test_result": verifier.verify_unit_tests(),
+                            "smoke_test_result": verifier.verify_smoke_tests(),
+                            "docker_compose_valid": verifier.verify_docker_compose(),
+                            "paths_to_full_logs": [],
+                        }
+                        log_paths = []
+                        for key in ["lint_result", "build_result", "unit_test_result", "smoke_test_result"]:
+                            result = gate_results.get(key)
+                            if result and isinstance(result, dict) and result.get("log_path"):
+                                log_paths.append(result["log_path"])
+                        gate_results["paths_to_full_logs"] = log_paths
+
+                    gate_summary = _summarize_repo_gates(gate_results)
+                    gate_report_path = run_dir / "REPO_GATES_REPORT.json"
+                    gate_report_path.write_text(json.dumps(gate_results, indent=2), encoding="utf-8")
+                    gate_summary_path = run_dir / "REPO_GATES_SUMMARY.md"
+                    gate_summary_lines = [
+                        "# Repo Gates Summary",
+                        "",
+                        f"- Run ID: `{run_id}`",
+                        f"- Repo: `{req.repo}`",
+                        f"- Branch: `{req.options.branch or 'default'}`",
+                        f"- Failed: {gate_summary['failed_count']}",
+                        f"- Passed: {gate_summary['passed_count']}",
+                        f"- Skipped: {gate_summary['skipped_count']}",
+                        "",
+                        "## Checks",
+                    ]
+                    for name, meta in gate_summary["checks"].items():
+                        gate_summary_lines.append(f"- **{name}**: {meta['status']}")
+                    gate_summary_path.write_text("\n".join(gate_summary_lines), encoding="utf-8")
+
+                    manifest.update(
+                        {
+                            "repo_gates": {
+                                "enabled": True,
+                                "strict": repo_gates_strict,
+                                "normalize": repo_gates_normalize,
+                                "report": str(gate_report_path),
+                                "summary": str(gate_summary_path),
+                                "results": gate_results,
+                            }
+                        }
+                    )
+                    _persist_repo_state(manifest_path, manifest)
+                    await _enqueue(
+                        {
+                            "type": "repo_gates_complete",
+                            "summary": gate_summary,
+                            "report": str(gate_report_path),
+                        }
+                    )
+
+                    if repo_gates_strict and gate_summary["failed_count"] > 0:
+                        raise TaskExecutionError("repo gates failed")
 
             coordinator = MergeCoordinator(github_token=req.options.github_token, runs_dir=BRIDGE_RUN_DIR)
             base_branch = req.options.base_branch or coordinator._detect_default_branch(clone_path)  # type: ignore[attr-defined]

@@ -7,7 +7,9 @@ including file tree generation, URL handling, and GitHub API client setup.
 
 import json
 import logging
+import os
 import shutil
+import stat
 import time
 import urllib.error
 import urllib.parse
@@ -133,15 +135,27 @@ def cleanup_repository(clone_path: Path) -> bool:
     Returns:
         True if cleanup was successful, False otherwise
     """
-    try:
-        if clone_path.exists():
-            shutil.rmtree(clone_path)
+    if not clone_path.exists():
+        return False
+
+    def _onerror(func, path, exc_info):
+        try:
+            os.chmod(path, stat.S_IWRITE)
+            func(path)
+        except Exception:
+            pass
+
+    for attempt in range(2):
+        try:
+            shutil.rmtree(clone_path, onerror=_onerror)
             logger.info(f"Cleaned up clone at {clone_path}")
             return True
-        return False
-    except Exception as e:
-        logger.error(f"Failed to cleanup clone at {clone_path}: {e}")
-        return False
+        except Exception as e:
+            if attempt == 0:
+                time.sleep(0.2)
+                continue
+            logger.error(f"Failed to cleanup clone at {clone_path}: {e}")
+            return False
 
 
 def get_authenticated_clone_url(repo_url: str, token: Optional[str]) -> str:
