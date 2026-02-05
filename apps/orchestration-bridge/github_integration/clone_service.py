@@ -7,8 +7,10 @@ and cleanup for the Codex orchestration workflow.
 
 import os
 import logging
+import re
+import subprocess
 from pathlib import Path
-from typing import Optional, Dict, Any, Callable
+from typing import Optional, Dict, Any, Callable, List
 from datetime import datetime, timezone
 import tempfile
 
@@ -79,6 +81,14 @@ class CloneProgress(RemoteProgress):
 
 class RepositoryCloneError(Exception):
     """Raised when repository cloning fails."""
+
+    def __init__(self, message: str, payload: Optional[Dict[str, Any]] = None):
+        super().__init__(message)
+        self.payload = payload
+
+
+class RepositoryPreflightError(RepositoryCloneError):
+    """Raised when preflight checks fail."""
     pass
 
 
@@ -118,6 +128,217 @@ class GitHubCloneService(GitHubClientMixin, FileTreeMixin, CloneUrlMixin):
             if resources is not None:
                 core_rate = getattr(resources, "core", None)
         return core_rate
+
+    def _build_preflight_payload(
+        self,
+        code: str,
+        user_message: str,
+        technical_details: str = "",
+        suggested_fixes: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        return {
+            "code": code,
+            "userMessage": user_message,
+            "technicalDetails": safe_message(technical_details or ""),
+            "suggestedFixes": suggested_fixes or [],
+        }
+
+    def _raise_preflight_error(
+        self,
+        code: str,
+        user_message: str,
+        technical_details: str = "",
+        suggested_fixes: Optional[List[str]] = None,
+    ) -> None:
+        payload = self._build_preflight_payload(code, user_message, technical_details, suggested_fixes)
+        raise RepositoryPreflightError(user_message, payload)
+
+    def _run_git(self, args: List[str], timeout: int = 20) -> subprocess.CompletedProcess:
+        env = os.environ.copy()
+        env.setdefault("GIT_TERMINAL_PROMPT", "0")
+        return subprocess.run(
+            args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=timeout,
+            env=env,
+        )
+
+    def _format_git_details(self, args: List[str], proc: Optional[subprocess.CompletedProcess] = None) -> str:
+        cmd = " ".join(args)
+        if proc is None:
+            return f"command={cmd}"
+        stderr = proc.stderr or ""
+        stdout = proc.stdout or ""
+        return f"command={cmd} | stderr={stderr} | stdout={stdout}"
+
+    def _ensure_destination_ready(self, clone_path: Path) -> None:
+        if os.name == "nt":
+            try:
+                full_path = str(clone_path.resolve())
+            except Exception:
+                full_path = str(clone_path.absolute())
+            if len(full_path) > 240:
+                self._raise_preflight_error(
+                    "LONG_PATHS",
+                    "Destination path is too long for Windows.",
+                    full_path,
+                    [
+                        "Shorten the repo runs directory path.",
+                        "Move the workspace closer to the drive root (e.g., C:\\repos).",
+                    ],
+                )
+
+        if clone_path.exists():
+            logger.warning("Clone directory already exists, removing: %s", clone_path)
+            cleanup_repository(clone_path)
+
+        if clone_path.exists():
+            try:
+                entries = [p.name for p in clone_path.iterdir()][:5]
+            except Exception:
+                entries = []
+            entry_hint = f" (entries: {entries})" if entries else ""
+            self._raise_preflight_error(
+                "DEST_NOT_EMPTY",
+                "Destination folder already exists and is not empty.",
+                f"Clone destination exists and could not be removed: {clone_path}{entry_hint}",
+                [
+                    "Use a fresh run directory.",
+                    "Delete the existing folder and retry.",
+                ],
+            )
+
+        clone_path.parent.mkdir(parents=True, exist_ok=True)
+        test_path = clone_path.parent / f".uaitoolbox_write_test_{os.getpid()}"
+        try:
+            test_path.write_text("ok", encoding="utf-8")
+            test_path.unlink(missing_ok=True)
+        except Exception as exc:
+            self._raise_preflight_error(
+                "PATH_NOT_WRITABLE",
+                "Destination folder is not writable.",
+                str(exc),
+                ["Check filesystem permissions.", "Choose a writable runs directory."],
+            )
+
+    def _detect_default_branch(self, repo_url: str) -> Optional[str]:
+        try:
+            if self.github_token and self.github_client:
+                owner, repo_name = self._parse_repo_url(repo_url)
+                metadata = self._fetch_repo_metadata(self.github_client, owner, repo_name)
+                if metadata.get("default_branch"):
+                    return metadata["default_branch"]
+        except Exception:
+            pass
+
+        try:
+            res = self._run_git(["git", "ls-remote", "--symref", repo_url, "HEAD"])
+        except FileNotFoundError:
+            return None
+        if res.returncode != 0:
+            return None
+        for line in (res.stdout or "").splitlines():
+            if line.startswith("ref:") and line.endswith("HEAD"):
+                parts = line.split()
+                if parts:
+                    ref = parts[0].replace("ref:", "").strip()
+                    if ref.startswith("refs/heads/"):
+                        return ref.split("refs/heads/")[-1]
+        return None
+
+    def _classify_git_error(self, stderr: str) -> str:
+        lowered = stderr.lower()
+        if "authentication failed" in lowered or "access denied" in lowered:
+            return "AUTH_REQUIRED"
+        if "repository not found" in lowered or "not authorized" in lowered or "permission denied" in lowered:
+            return "AUTH_REQUIRED"
+        if "could not resolve host" in lowered or "failed to connect" in lowered or "network" in lowered:
+            return "REPO_UNREACHABLE"
+        if "ssl" in lowered or "tls" in lowered or "certificate" in lowered:
+            return "REPO_UNREACHABLE"
+        if "timeout" in lowered or "timed out" in lowered:
+            return "REPO_UNREACHABLE"
+        return "UNKNOWN"
+
+    def _preflight(self, repo_url: str, branch: Optional[str], clone_path: Path) -> Optional[str]:
+        try:
+            res = self._run_git(["git", "--version"])
+        except FileNotFoundError as exc:
+            self._raise_preflight_error(
+                "GIT_MISSING",
+                "Git is not installed or not on PATH.",
+                self._format_git_details(["git", "--version"]),
+                ["Install Git and ensure it is available on PATH."],
+            )
+        if res.returncode != 0:
+            self._raise_preflight_error(
+                "GIT_MISSING",
+                "Git is not available.",
+                self._format_git_details(["git", "--version"], res),
+                ["Install Git and ensure it is available on PATH."],
+            )
+
+        self._ensure_destination_ready(clone_path)
+
+        resolved_branch = branch or self._detect_default_branch(repo_url)
+        if resolved_branch:
+            try:
+                probe = self._run_git(["git", "ls-remote", "--heads", repo_url, resolved_branch])
+            except Exception as exc:
+                self._raise_preflight_error(
+                    "REPO_UNREACHABLE",
+                    "Unable to reach the repository.",
+                    self._format_git_details(["git", "ls-remote", "--heads", repo_url, resolved_branch]),
+                    ["Check network connectivity.", "Verify the repository URL."],
+                )
+            if probe.returncode != 0:
+                code = self._classify_git_error(probe.stderr or "")
+                self._raise_preflight_error(
+                    code if code != "UNKNOWN" else "REPO_UNREACHABLE",
+                    "Unable to access the repository with the provided credentials.",
+                    self._format_git_details(["git", "ls-remote", "--heads", repo_url, resolved_branch], probe),
+                    [
+                        "Verify the repository URL.",
+                        "Ensure your GitHub token has access to the repository.",
+                        "Check your network connection.",
+                    ],
+                )
+            if not (probe.stdout or "").strip():
+                self._raise_preflight_error(
+                    "BRANCH_NOT_FOUND",
+                    f"Branch '{resolved_branch}' was not found.",
+                    self._format_git_details(["git", "ls-remote", "--heads", repo_url, resolved_branch], probe),
+                    [
+                        "Confirm the branch name.",
+                        "Leave branch empty to use the default branch.",
+                    ],
+                )
+        else:
+            try:
+                probe = self._run_git(["git", "ls-remote", "--heads", repo_url])
+            except Exception as exc:
+                self._raise_preflight_error(
+                    "REPO_UNREACHABLE",
+                    "Unable to reach the repository.",
+                    self._format_git_details(["git", "ls-remote", "--heads", repo_url]),
+                    ["Check network connectivity.", "Verify the repository URL."],
+                )
+            if probe.returncode != 0:
+                code = self._classify_git_error(probe.stderr or "")
+                self._raise_preflight_error(
+                    code if code != "UNKNOWN" else "REPO_UNREACHABLE",
+                    "Unable to access the repository with the provided credentials.",
+                    self._format_git_details(["git", "ls-remote", "--heads", repo_url], probe),
+                    [
+                        "Verify the repository URL.",
+                        "Ensure your GitHub token has access to the repository.",
+                        "Check your network connection.",
+                    ],
+                )
+
+        return resolved_branch
 
     def get_repo_metadata(self, owner: str, repo_name: str) -> Dict[str, Any]:
         """
@@ -336,23 +557,13 @@ class GitHubCloneService(GitHubClientMixin, FileTreeMixin, CloneUrlMixin):
             else:
                 clone_path = self.clone_base_dir / f"{repo_name}_{clone_id}"
 
-            # Clean up if directory already exists
-            if clone_path.exists():
-                logger.warning("Clone directory already exists, removing: %s", clone_path)
-                cleanup_repository(clone_path)
-                if clone_path.exists():
-                    try:
-                        entries = [p.name for p in clone_path.iterdir()][:5]
-                    except Exception:
-                        entries = []
-                    entry_hint = f" (entries: {entries})" if entries else ""
-                    raise RepositoryCloneError(
-                        "Clone destination exists and could not be removed: "
-                        f"{clone_path}{entry_hint}. Remove the directory or use a fresh run directory."
-                    )
-
             # Prepare clone URL with authentication using shared utility
             clone_url_with_auth = self._get_auth_url(repo_url, self.github_token)
+
+            # Preflight checks (git availability, connectivity, branch, destination)
+            resolved_branch = self._preflight(clone_url_with_auth, branch, clone_path)
+            if resolved_branch:
+                branch = resolved_branch
 
             # Create progress tracker
             progress = CloneProgress(callback=progress_callback)
@@ -386,6 +597,8 @@ class GitHubCloneService(GitHubClientMixin, FileTreeMixin, CloneUrlMixin):
 
             return clone_path
 
+        except RepositoryCloneError:
+            raise
         except Exception as e:
             # Clean up on failure
             if 'clone_path' in locals() and Path(clone_path).exists():

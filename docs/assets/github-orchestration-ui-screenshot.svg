@@ -1,0 +1,34 @@
+<svg width="1200" height="520" viewBox="0 0 1200 520" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="520" fill="#0f172a"/>
+  <text x="40" y="50" fill="#e2e8f0" font-family="Arial, sans-serif" font-size="24">GitHub Orchestration UI (Example)</text>
+
+  <rect x="40" y="80" width="350" height="380" rx="12" fill="#111827" stroke="#1f2937"/>
+  <text x="70" y="120" fill="#93c5fd" font-family="Arial, sans-serif" font-size="16">Run Summary</text>
+  <rect x="70" y="140" width="300" height="14" rx="6" fill="#1f2937"/>
+  <rect x="70" y="165" width="260" height="14" rx="6" fill="#1f2937"/>
+  <rect x="70" y="200" width="200" height="32" rx="8" fill="#2563eb"/>
+  <text x="85" y="222" fill="#ffffff" font-family="Arial, sans-serif" font-size="12">View Report</text>
+  <rect x="70" y="245" width="200" height="32" rx="8" fill="#1f2937"/>
+  <text x="85" y="267" fill="#e2e8f0" font-family="Arial, sans-serif" font-size="12">Open Run Folder</text>
+  <text x="70" y="315" fill="#e2e8f0" font-family="Arial, sans-serif" font-size="12">Artifacts</text>
+  <rect x="70" y="330" width="300" height="110" rx="8" fill="#0b1220" stroke="#1f2937"/>
+  <text x="85" y="355" fill="#e2e8f0" font-family="Arial, sans-serif" font-size="11">REPORT.md</text>
+  <text x="85" y="375" fill="#e2e8f0" font-family="Arial, sans-serif" font-size="11">REPORT.json</text>
+  <text x="85" y="395" fill="#e2e8f0" font-family="Arial, sans-serif" font-size="11">PATCH.diff</text>
+
+  <rect x="425" y="80" width="735" height="250" rx="12" fill="#111827" stroke="#1f2937"/>
+  <text x="455" y="120" fill="#93c5fd" font-family="Arial, sans-serif" font-size="16">Artifact Viewer</text>
+  <rect x="455" y="140" width="120" height="26" rx="8" fill="#2563eb"/>
+  <text x="475" y="158" fill="#ffffff" font-family="Arial, sans-serif" font-size="11">Rendered</text>
+  <rect x="585" y="140" width="90" height="26" rx="8" fill="#1f2937"/>
+  <text x="610" y="158" fill="#e2e8f0" font-family="Arial, sans-serif" font-size="11">Raw</text>
+  <rect x="685" y="140" width="90" height="26" rx="8" fill="#1f2937"/>
+  <text x="710" y="158" fill="#e2e8f0" font-family="Arial, sans-serif" font-size="11">Files</text>
+  <rect x="455" y="180" width="680" height="120" rx="8" fill="#0b1220" stroke="#1f2937"/>
+  <text x="470" y="205" fill="#e2e8f0" font-family="Arial, sans-serif" font-size="11"># Repo Orchestration Report</text>
+  <text x="470" y="225" fill="#e2e8f0" font-family="Arial, sans-serif" font-size="11">Summary, findings, and next steps rendered as markdown</text>
+
+  <rect x="425" y="350" width="735" height="110" rx="12" fill="#1f1320" stroke="#7f1d1d"/>
+  <text x="455" y="385" fill="#fca5a5" font-family="Arial, sans-serif" font-size="14">Friendly Error</text>
+  <text x="455" y="405" fill="#fecaca" font-family="Arial, sans-serif" font-size="11">Branch not found. Suggested fixes and technical details are available.</text>
+</svg>

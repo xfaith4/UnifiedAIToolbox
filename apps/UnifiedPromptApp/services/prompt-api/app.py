@@ -1,5 +1,5 @@
 ### BEGIN FILE: app.py
-import os, json, hashlib, sqlite3, datetime, textwrap, pathlib, sys, subprocess, re, uuid, time, threading, shutil, logging, asyncio
+import os, json, hashlib, sqlite3, datetime, textwrap, pathlib, sys, subprocess, re, uuid, time, threading, shutil, logging, asyncio, io, zipfile
 from typing import cast
 import openai
 from dataclasses import dataclass
@@ -16,6 +16,7 @@ import uvicorn # pyright: ignore[reportMissingImports]
 import yaml # pyright: ignore[reportMissingModuleSource]
 import requests # pyright: ignore[reportMissingModuleSource]
 from urllib.parse import urlparse
+from html.parser import HTMLParser
 
 from auth_github import ensure_github_token
 
@@ -3174,6 +3175,355 @@ def _summarize_repo_gates(results: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+class _HtmlTextExtractor(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.parts: List[str] = []
+        self._block_tags = {
+            "p",
+            "div",
+            "section",
+            "article",
+            "header",
+            "footer",
+            "h1",
+            "h2",
+            "h3",
+            "h4",
+            "h5",
+            "h6",
+            "ul",
+            "ol",
+            "li",
+            "pre",
+            "br",
+        }
+
+    def handle_starttag(self, tag, attrs):
+        if tag in self._block_tags:
+            self.parts.append("\n")
+        if tag == "li":
+            self.parts.append("- ")
+
+    def handle_endtag(self, tag):
+        if tag in self._block_tags:
+            self.parts.append("\n")
+
+    def handle_data(self, data):
+        if data:
+            self.parts.append(data)
+
+    def text(self) -> str:
+        raw = "".join(self.parts)
+        lines = [line.rstrip() for line in raw.splitlines()]
+        cleaned = "\n".join([line for line in lines if line.strip() != ""])
+        return cleaned.strip()
+
+
+def _extract_section_lines(text: str, keywords: List[str]) -> List[str]:
+    lines = [line.strip() for line in text.splitlines()]
+    matches: List[str] = []
+    capture = False
+    for line in lines:
+        lowered = line.lower()
+        if any(keyword in lowered for keyword in keywords):
+            capture = True
+            continue
+        if capture and line == "":
+            break
+        if capture:
+            if line.startswith("- "):
+                matches.append(line[2:].strip())
+            else:
+                matches.append(line.strip())
+    return [m for m in matches if m]
+
+
+def _build_report_from_html(
+    html_text: str,
+    repo: str,
+    branch: Optional[str],
+    run_id: str,
+    status: str,
+) -> Tuple[str, Dict[str, Any]]:
+    parser = _HtmlTextExtractor()
+    parser.feed(html_text)
+    text = parser.text()
+    summary_lines = text.splitlines()[:6]
+    summary = " ".join(summary_lines).strip()
+
+    key_findings = _extract_section_lines(text, ["finding", "key finding"])
+    recommended_actions = _extract_section_lines(text, ["recommend", "action"])
+    risks = _extract_section_lines(text, ["risk"])
+    next_steps = _extract_section_lines(text, ["next step", "next steps"])
+
+    report_json = {
+        "title": "Repo Orchestration Report",
+        "repo": repo,
+        "branch": branch,
+        "runId": run_id,
+        "status": status,
+        "summary": summary,
+        "keyFindings": key_findings,
+        "recommendedActions": recommended_actions,
+        "risks": risks,
+        "nextSteps": next_steps,
+        "generatedAt": datetime.datetime.utcnow().isoformat() + "Z",
+    }
+
+    report_lines = [
+        "# Repo Orchestration Report",
+        "",
+        f"- **Repo:** `{repo}`",
+        f"- **Branch:** `{branch or 'default'}`",
+        f"- **Run ID:** `{run_id}`",
+        f"- **Status:** `{status}`",
+        "",
+        "## Summary",
+        summary or "Summary not available.",
+        "",
+        "## Key Findings",
+        *(["- " + item for item in key_findings] if key_findings else ["- No key findings extracted."]),
+        "",
+        "## Recommended Actions",
+        *(["- " + item for item in recommended_actions] if recommended_actions else ["- No recommended actions extracted."]),
+        "",
+        "## Risks",
+        *(["- " + item for item in risks] if risks else ["- No risks extracted."]),
+        "",
+        "## Next Steps",
+        *(["- " + item for item in next_steps] if next_steps else ["- No next steps extracted."]),
+    ]
+
+    return "\n".join(report_lines), report_json
+
+
+def _report_md_from_json(report_json: Dict[str, Any]) -> str:
+    return "\n".join(
+        [
+            "# Repo Orchestration Report",
+            "",
+            f"- **Repo:** `{report_json.get('repo')}`",
+            f"- **Branch:** `{report_json.get('branch') or 'default'}`",
+            f"- **Run ID:** `{report_json.get('runId')}`",
+            f"- **Status:** `{report_json.get('status')}`",
+            "",
+            "## Summary",
+            report_json.get("summary") or "Summary not available.",
+            "",
+            "## Key Findings",
+            *(
+                ["- " + item for item in report_json.get("keyFindings", [])]
+                if report_json.get("keyFindings")
+                else ["- No key findings extracted."]
+            ),
+            "",
+            "## Recommended Actions",
+            *(
+                ["- " + item for item in report_json.get("recommendedActions", [])]
+                if report_json.get("recommendedActions")
+                else ["- No recommended actions extracted."]
+            ),
+            "",
+            "## Risks",
+            *(
+                ["- " + item for item in report_json.get("risks", [])]
+                if report_json.get("risks")
+                else ["- No risks extracted."]
+            ),
+            "",
+            "## Next Steps",
+            *(
+                ["- " + item for item in report_json.get("nextSteps", [])]
+                if report_json.get("nextSteps")
+                else ["- No next steps extracted."]
+            ),
+        ]
+    )
+
+
+def _guess_mime_type(path: pathlib.Path) -> str:
+    suffix = path.suffix.lower()
+    if suffix == ".md":
+        return "text/markdown"
+    if suffix == ".json":
+        return "application/json"
+    if suffix in (".diff", ".patch"):
+        return "text/plain"
+    if suffix in (".html", ".htm"):
+        return "text/html"
+    if suffix == ".zip":
+        return "application/zip"
+    return "application/octet-stream"
+
+
+def _artifact_record(path: pathlib.Path, artifact_id: str) -> Dict[str, Any]:
+    stat_info = path.stat()
+    return {
+        "artifactId": artifact_id,
+        "fileName": path.name,
+        "filePath": str(path),
+        "mimeType": _guess_mime_type(path),
+        "size": stat_info.st_size,
+        "createdAt": datetime.datetime.utcfromtimestamp(stat_info.st_mtime).isoformat() + "Z",
+    }
+
+
+def _slugify_artifact_id(value: str) -> str:
+    slug = re.sub(r"[^a-zA-Z0-9]+", "-", value.strip().lower()).strip("-")
+    return slug or "artifact"
+
+
+def _write_patch_diff(run_dir: pathlib.Path, execution_result: Dict[str, Any]) -> Optional[pathlib.Path]:
+    if not execution_result:
+        return None
+    tasks = execution_result.get("tasks", [])
+    if not isinstance(tasks, list):
+        return None
+    diff_chunks: List[str] = []
+    for task in tasks:
+        if not isinstance(task, dict):
+            continue
+        artifacts = task.get("artifacts", {})
+        diff_path = artifacts.get("diff")
+        task_id = task.get("task_id")
+        if diff_path and pathlib.Path(diff_path).exists():
+            diff_text = pathlib.Path(diff_path).read_text(encoding="utf-8", errors="replace")
+            diff_chunks.append(f"# Task {task_id}\n{diff_text}")
+    if not diff_chunks:
+        return None
+    patch_path = run_dir / "PATCH.diff"
+    patch_path.write_text("\n\n".join(diff_chunks), encoding="utf-8")
+    return patch_path
+
+
+def _write_evidence_index(
+    run_dir: pathlib.Path,
+    execution_result: Dict[str, Any],
+    manifest_path: pathlib.Path,
+    taskgraph_path: Optional[pathlib.Path],
+) -> pathlib.Path:
+    evidence_dir = run_dir / "EVIDENCE"
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    evidence_entries: List[Dict[str, Any]] = []
+
+    evidence_entries.append({"label": "manifest", "path": str(manifest_path)})
+    if taskgraph_path:
+        evidence_entries.append({"label": "taskgraph", "path": str(taskgraph_path)})
+
+    tasks = execution_result.get("tasks", []) if execution_result else []
+    for task in tasks if isinstance(tasks, list) else []:
+        if not isinstance(task, dict):
+            continue
+        artifacts = task.get("artifacts", {})
+        for key in ("log", "findings", "diff", "violation"):
+            if artifacts.get(key):
+                evidence_entries.append({"label": f"task_{key}", "path": artifacts[key]})
+
+    evidence_index = evidence_dir / "files.json"
+    evidence_index.write_text(json.dumps(evidence_entries, indent=2), encoding="utf-8")
+    return evidence_index
+
+
+def _build_artifacts_index(
+    run_dir: pathlib.Path,
+    repo: str,
+    branch: Optional[str],
+    run_id: str,
+    status: str,
+    execution_result: Dict[str, Any],
+    manifest_path: pathlib.Path,
+    taskgraph_path: Optional[pathlib.Path],
+    error_message: Optional[str] = None,
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    codex_runs: List[str] = []
+    tasks = execution_result.get("tasks", []) if execution_result else []
+    for task in tasks if isinstance(tasks, list) else []:
+        if isinstance(task, dict) and task.get("codex_run_id"):
+            codex_runs.append(str(task["codex_run_id"]))
+
+    synthesis_html: List[Dict[str, Any]] = []
+    html_text: Optional[str] = None
+    html_path: Optional[pathlib.Path] = None
+    existing_report_json: Optional[Dict[str, Any]] = None
+    existing_report_path = run_dir / "REPORT.json"
+    if existing_report_path.exists():
+        existing_report_json = safe_json_load(existing_report_path, default=None, context=f"report_json:{run_id}")
+
+    for codex_run_id in codex_runs:
+        candidate = run_dir / "codex_runs" / codex_run_id / "swarm-output" / "Final_Synthesis.html"
+        entry = {"codex_run_id": codex_run_id, "path": str(candidate), "exists": candidate.exists()}
+        synthesis_html.append(entry)
+        if html_text is None and candidate.exists():
+            html_path = candidate
+            html_text = candidate.read_text(encoding="utf-8", errors="replace")
+
+    if html_text:
+        report_md, report_json = _build_report_from_html(html_text, repo, branch, run_id, status)
+    elif existing_report_json:
+        report_json = existing_report_json
+        report_json.setdefault("repo", repo)
+        report_json.setdefault("branch", branch)
+        report_json.setdefault("runId", run_id)
+        report_json.setdefault("status", status)
+        report_json.setdefault("generatedAt", datetime.datetime.utcnow().isoformat() + "Z")
+        report_md = _report_md_from_json(report_json)
+    else:
+        report_json = {
+            "title": "Repo Orchestration Report",
+            "repo": repo,
+            "branch": branch,
+            "runId": run_id,
+            "status": status,
+            "summary": error_message or "No final synthesis available.",
+            "keyFindings": [],
+            "recommendedActions": [],
+            "risks": [],
+            "nextSteps": [],
+            "generatedAt": datetime.datetime.utcnow().isoformat() + "Z",
+        }
+        report_md = _report_md_from_json(report_json)
+
+    report_md_path = run_dir / "REPORT.md"
+    report_md_path.write_text(report_md, encoding="utf-8")
+
+    report_json_path = run_dir / "REPORT.json"
+    report_json_path.write_text(json.dumps(report_json, indent=2), encoding="utf-8")
+
+    patch_path = _write_patch_diff(run_dir, execution_result)
+    evidence_index = _write_evidence_index(run_dir, execution_result, manifest_path, taskgraph_path)
+
+    artifacts: List[Dict[str, Any]] = []
+    used_ids: set[str] = set()
+
+    def _add_artifact(path: pathlib.Path, preferred_id: str) -> None:
+        artifact_id = _slugify_artifact_id(preferred_id)
+        counter = 1
+        while artifact_id in used_ids:
+            counter += 1
+            artifact_id = f"{_slugify_artifact_id(preferred_id)}-{counter}"
+        used_ids.add(artifact_id)
+        artifacts.append(_artifact_record(path, artifact_id))
+
+    _add_artifact(report_md_path, "report-md")
+    _add_artifact(report_json_path, "report-json")
+    if patch_path and patch_path.exists():
+        _add_artifact(patch_path, "patch-diff")
+    if evidence_index.exists():
+        _add_artifact(evidence_index, "evidence-files")
+    if html_path and html_path.exists():
+        _add_artifact(html_path, "final-synthesis-html")
+
+    gates_report = run_dir / "REPO_GATES_REPORT.json"
+    if gates_report.exists():
+        _add_artifact(gates_report, "repo-gates-report")
+    gates_summary = run_dir / "REPO_GATES_SUMMARY.md"
+    if gates_summary.exists():
+        _add_artifact(gates_summary, "repo-gates-summary")
+
+    return artifacts, {"codex_runs": codex_runs, "synthesis_html": synthesis_html}
+
+
 def _parse_owner_repo(repo: str) -> Tuple[str, str]:
     candidate = repo.strip()
     parsed = urlparse(candidate)
@@ -3319,10 +3669,14 @@ async def start_repo_orchestration(req: RepoOrchestrationRequest, request: Reque
 
     async def _pipeline() -> None:
         manifest_path = _repo_manifest_path(run_id)
+        execution_result: Dict[str, Any] = {}
+        taskgraph_path: Optional[pathlib.Path] = None
+        merge_result: Dict[str, Any] = {}
         try:
             await _enqueue({"type": "status", "message": "accepted"})
+            orchestration_token = req.options.github_token or os.environ.get("GITHUB_TOKEN")
             clone_service = GitHubCloneService(
-                github_token=req.options.github_token,
+                github_token=orchestration_token,
                 clone_base_dir=run_dir,
             )
 
@@ -3347,7 +3701,7 @@ async def start_repo_orchestration(req: RepoOrchestrationRequest, request: Reque
                 raise TaskExecutionError("cancelled")
 
             intake_service = RepoIntakeService(
-                github_token=req.options.github_token,
+                github_token=orchestration_token,
                 runs_dir=BRIDGE_RUN_DIR,
             )
             intake = await asyncio.to_thread(
@@ -3481,7 +3835,7 @@ async def start_repo_orchestration(req: RepoOrchestrationRequest, request: Reque
                     if repo_gates_strict and gate_summary["failed_count"] > 0:
                         raise TaskExecutionError("repo gates failed")
 
-            coordinator = MergeCoordinator(github_token=req.options.github_token, runs_dir=BRIDGE_RUN_DIR)
+            coordinator = MergeCoordinator(github_token=orchestration_token, runs_dir=BRIDGE_RUN_DIR)
             base_branch = req.options.base_branch or coordinator._detect_default_branch(clone_path)  # type: ignore[attr-defined]
             integration_branch = req.options.integration_branch or f"{run_id}-integration"
             branch_map = _materialize_task_branches(
@@ -3515,6 +3869,17 @@ async def start_repo_orchestration(req: RepoOrchestrationRequest, request: Reque
             _persist_repo_state(manifest_path, manifest)
             await _enqueue({"type": "merged", "merge": merge_result})
 
+            artifacts_index, synthesis_payload = _build_artifacts_index(
+                run_dir=run_dir,
+                repo=req.repo,
+                branch=req.options.branch,
+                run_id=run_id,
+                status=merge_result.get("status", "unknown"),
+                execution_result=execution_result,
+                manifest_path=manifest_path,
+                taskgraph_path=taskgraph_path,
+            )
+
             result_payload = {
                 "run_id": run_id,
                 "status": merge_result.get("status", "unknown"),
@@ -3523,19 +3888,121 @@ async def start_repo_orchestration(req: RepoOrchestrationRequest, request: Reque
                     "run_dir": str(run_dir),
                     "manifest": str(manifest_path),
                     "result": str(_repo_result_path(run_id)),
+                    **synthesis_payload,
+                    "index": artifacts_index,
                 },
+                "artifacts_index": artifacts_index,
             }
+            manifest.update({"artifacts_index": artifacts_index})
+            _persist_repo_state(manifest_path, manifest)
             _persist_repo_state(_repo_result_path(run_id), result_payload)
             await _enqueue({"type": "complete", "final": True, "result": result_payload})
+        except RepositoryCloneError as exc:
+            error_msg = str(exc)
+            manifest.update({"status": "error", "error": error_msg})
+            if getattr(exc, "payload", None):
+                manifest["error_detail"] = exc.payload
+            _persist_repo_state(manifest_path, manifest)
+            artifacts_index, synthesis_payload = _build_artifacts_index(
+                run_dir=run_dir,
+                repo=req.repo,
+                branch=req.options.branch,
+                run_id=run_id,
+                status="error",
+                execution_result=execution_result,
+                manifest_path=manifest_path,
+                taskgraph_path=taskgraph_path,
+                error_message=error_msg,
+            )
+            result_payload = {
+                "run_id": run_id,
+                "status": "error",
+                "error": error_msg,
+                "error_detail": getattr(exc, "payload", None),
+                "artifacts": {
+                    "run_dir": str(run_dir),
+                    "manifest": str(manifest_path),
+                    "result": str(_repo_result_path(run_id)),
+                    **synthesis_payload,
+                    "index": artifacts_index,
+                },
+                "artifacts_index": artifacts_index,
+            }
+            manifest.update({"artifacts_index": artifacts_index})
+            _persist_repo_state(manifest_path, manifest)
+            _persist_repo_state(_repo_result_path(run_id), result_payload)
+            await _enqueue(
+                {
+                    "type": "error",
+                    "message": getattr(exc, "payload", {}).get("userMessage") if getattr(exc, "payload", None) else error_msg,
+                    "error": getattr(exc, "payload", None),
+                    "final": True,
+                    "result": result_payload,
+                }
+            )
         except TaskExecutionError as exc:
             error_msg = "cancelled" if str(exc) == "cancelled" else str(exc)
             manifest.update({"status": "cancelled" if str(exc) == "cancelled" else "error", "error": error_msg})
             _persist_repo_state(manifest_path, manifest)
-            await _enqueue({"type": "error", "message": error_msg, "final": True})
+            artifacts_index, synthesis_payload = _build_artifacts_index(
+                run_dir=run_dir,
+                repo=req.repo,
+                branch=req.options.branch,
+                run_id=run_id,
+                status="cancelled" if str(exc) == "cancelled" else "error",
+                execution_result=execution_result,
+                manifest_path=manifest_path,
+                taskgraph_path=taskgraph_path,
+                error_message=error_msg,
+            )
+            result_payload = {
+                "run_id": run_id,
+                "status": "cancelled" if str(exc) == "cancelled" else "error",
+                "error": error_msg,
+                "artifacts": {
+                    "run_dir": str(run_dir),
+                    "manifest": str(manifest_path),
+                    "result": str(_repo_result_path(run_id)),
+                    **synthesis_payload,
+                    "index": artifacts_index,
+                },
+                "artifacts_index": artifacts_index,
+            }
+            manifest.update({"artifacts_index": artifacts_index})
+            _persist_repo_state(manifest_path, manifest)
+            _persist_repo_state(_repo_result_path(run_id), result_payload)
+            await _enqueue({"type": "error", "message": error_msg, "final": True, "result": result_payload})
         except Exception as exc:
             manifest.update({"status": "error", "error": str(exc)})
             _persist_repo_state(manifest_path, manifest)
-            await _enqueue({"type": "error", "message": str(exc), "final": True})
+            artifacts_index, synthesis_payload = _build_artifacts_index(
+                run_dir=run_dir,
+                repo=req.repo,
+                branch=req.options.branch,
+                run_id=run_id,
+                status="error",
+                execution_result=execution_result,
+                manifest_path=manifest_path,
+                taskgraph_path=taskgraph_path,
+                error_message=str(exc),
+            )
+            result_payload = {
+                "run_id": run_id,
+                "status": "error",
+                "error": str(exc),
+                "artifacts": {
+                    "run_dir": str(run_dir),
+                    "manifest": str(manifest_path),
+                    "result": str(_repo_result_path(run_id)),
+                    **synthesis_payload,
+                    "index": artifacts_index,
+                },
+                "artifacts_index": artifacts_index,
+            }
+            manifest.update({"artifacts_index": artifacts_index})
+            _persist_repo_state(manifest_path, manifest)
+            _persist_repo_state(_repo_result_path(run_id), result_payload)
+            await _enqueue({"type": "error", "message": str(exc), "final": True, "result": result_payload})
         finally:
             async with _repo_state_lock:
                 _repo_orchestration_state.pop(run_id, None)
@@ -3571,7 +4038,97 @@ def get_repo_orchestration(run_id: str):
     result_path = _repo_result_path(run_id)
     if result_path.exists():
         data["result"] = safe_json_load(result_path, default={}, context=f"repo_result:{run_id}")
+    if data.get("result") and not data["result"].get("artifacts_index"):
+        artifacts = (data["result"].get("artifacts") or {}).get("index")
+        if artifacts:
+            data["result"]["artifacts_index"] = artifacts
     return data
+
+
+@app.get("/orchestrate/repo/{run_id}/synthesis/{codex_run_id}")
+def get_repo_synthesis_html(run_id: str, codex_run_id: str):
+    if any(sep in run_id for sep in ("/", "\\")) or any(sep in codex_run_id for sep in ("/", "\\")):
+        raise HTTPException(status_code=400, detail="Invalid run identifier")
+
+    synthesis_path = (
+        BRIDGE_RUN_DIR
+        / run_id
+        / "codex_runs"
+        / codex_run_id
+        / "swarm-output"
+        / "Final_Synthesis.html"
+    )
+    if not synthesis_path.exists():
+        raise HTTPException(status_code=404, detail="Final synthesis not found")
+
+    html = synthesis_path.read_text(encoding="utf-8", errors="replace")
+    return Response(content=html, media_type="text/html")
+
+
+def _load_artifacts_index(run_id: str) -> List[Dict[str, Any]]:
+    result_path = _repo_result_path(run_id)
+    if not result_path.exists():
+        return []
+    data = safe_json_load(result_path, default={}, context=f"repo_result:{run_id}") or {}
+    artifacts_index = data.get("artifacts_index")
+    if artifacts_index:
+        return artifacts_index
+    artifacts = (data.get("artifacts") or {}).get("index")
+    return artifacts or []
+
+
+@app.get("/orchestrate/repo/{run_id}/artifacts")
+def list_repo_artifacts(run_id: str):
+    artifacts_index = _load_artifacts_index(run_id)
+    if not artifacts_index:
+        raise HTTPException(status_code=404, detail="No artifacts found for run")
+    return {"run_id": run_id, "artifacts": artifacts_index}
+
+
+@app.get("/orchestrate/repo/{run_id}/artifacts/{artifact_id}")
+def get_repo_artifact(run_id: str, artifact_id: str):
+    artifacts_index = _load_artifacts_index(run_id)
+    match = None
+    for artifact in artifacts_index:
+        if artifact.get("artifactId") == artifact_id:
+            match = artifact
+            break
+    if not match:
+        raise HTTPException(status_code=404, detail="Artifact not found")
+
+    path = pathlib.Path(match["filePath"])
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Artifact file missing")
+
+    run_dir = BRIDGE_RUN_DIR / run_id
+    try:
+        if not str(path.resolve()).startswith(str(run_dir.resolve())):
+            raise HTTPException(status_code=403, detail="Artifact path not allowed")
+    except Exception:
+        raise HTTPException(status_code=403, detail="Artifact path not allowed")
+
+    content = path.read_text(encoding="utf-8", errors="replace")
+    return Response(content=content, media_type=match.get("mimeType") or "text/plain")
+
+
+@app.get("/orchestrate/repo/{run_id}/artifacts.zip")
+def download_repo_artifacts_zip(run_id: str):
+    artifacts_index = _load_artifacts_index(run_id)
+    if not artifacts_index:
+        raise HTTPException(status_code=404, detail="No artifacts found for run")
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as zipf:
+        for artifact in artifacts_index:
+            path = pathlib.Path(artifact["filePath"])
+            if not path.exists():
+                continue
+            arcname = pathlib.Path(artifact["fileName"]).name
+            zipf.write(path, arcname=arcname)
+
+    buffer.seek(0)
+    headers = {"Content-Disposition": f"attachment; filename={run_id}-artifacts.zip"}
+    return Response(content=buffer.getvalue(), media_type="application/zip", headers=headers)
 
 
 @app.post("/orchestrate/repo/{run_id}/cancel")

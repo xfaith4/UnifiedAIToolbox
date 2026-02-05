@@ -13,7 +13,12 @@ import json
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from github_integration.clone_service import GitHubCloneService, RepositoryCloneError, CloneProgress
+from github_integration.clone_service import (
+    GitHubCloneService,
+    RepositoryCloneError,
+    RepositoryPreflightError,
+    CloneProgress,
+)
 from github_integration.codex_service import CodexSwarmService, CodexRunStatus
 from github_integration.repo_intake_service import RepoIntakeService, RepoIntakeError
 from github_integration.supervisor_planner import SupervisorPlanner, SupervisorPlannerError
@@ -156,12 +161,13 @@ class TestGitHubCloneService:
                     Path(path).mkdir(parents=True, exist_ok=True)
                 return Mock()
 
-            with patch("github_integration.clone_service.Repo.clone_from", side_effect=fake_clone):
-                clone_path = service.clone_repository(
-                    "https://github.com/owner/repo.git",
-                    branch="main",
-                    clone_id="run1",
-                )
+            with patch("github_integration.clone_service.GitHubCloneService._preflight", return_value=None):
+                with patch("github_integration.clone_service.Repo.clone_from", side_effect=fake_clone):
+                    clone_path = service.clone_repository(
+                        "https://github.com/owner/repo.git",
+                        branch="main",
+                        clone_id="run1",
+                    )
 
             assert clone_path == existing_repo
             assert existing_repo.exists()
@@ -177,7 +183,8 @@ class TestGitHubCloneService:
 
             service = GitHubCloneService(clone_base_dir=run_dir)
 
-            with patch("github_integration.clone_service.cleanup_repository", return_value=False):
+            with patch("github_integration.clone_service.GitHubCloneService._ensure_destination_ready") as ensure_ready:
+                ensure_ready.side_effect = RepositoryCloneError("Clone destination exists and could not be removed")
                 with patch("github_integration.clone_service.Repo.clone_from") as mock_clone:
                     with pytest.raises(RepositoryCloneError, match="could not be removed"):
                         service.clone_repository(
@@ -186,6 +193,77 @@ class TestGitHubCloneService:
                             clone_id="run1",
                         )
                     mock_clone.assert_not_called()
+
+    def test_classify_git_error_codes(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            service = GitHubCloneService(clone_base_dir=Path(tmpdir))
+            assert service._classify_git_error("repository not found") == "AUTH_REQUIRED"
+            assert service._classify_git_error("authentication failed") == "AUTH_REQUIRED"
+            assert service._classify_git_error("could not resolve host") == "REPO_UNREACHABLE"
+            assert service._classify_git_error("SSL certificate problem") == "REPO_UNREACHABLE"
+
+    def test_preflight_branch_not_found(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            service = GitHubCloneService(clone_base_dir=Path(tmpdir))
+
+            def fake_run_git(args, timeout=20):
+                if args[:2] == ["git", "--version"]:
+                    return subprocess.CompletedProcess(args, 0, stdout="git version 2.0", stderr="")
+                if "ls-remote" in args:
+                    return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+                return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+            with patch.object(service, "_run_git", side_effect=fake_run_git):
+                with patch.object(service, "_ensure_destination_ready"):
+                    with pytest.raises(RepositoryPreflightError) as exc:
+                        service._preflight(
+                            "https://github.com/owner/repo.git",
+                            "missing-branch",
+                            Path(tmpdir) / "repo",
+                        )
+                    assert exc.value.payload["code"] == "BRANCH_NOT_FOUND"
+
+    def test_preflight_auth_required(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            service = GitHubCloneService(clone_base_dir=Path(tmpdir))
+
+            def fake_run_git(args, timeout=20):
+                if args[:2] == ["git", "--version"]:
+                    return subprocess.CompletedProcess(args, 0, stdout="git version 2.0", stderr="")
+                if "ls-remote" in args:
+                    return subprocess.CompletedProcess(args, 128, stdout="", stderr="repository not found")
+                return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+            with patch.object(service, "_run_git", side_effect=fake_run_git):
+                with patch.object(service, "_ensure_destination_ready"):
+                    with pytest.raises(RepositoryPreflightError) as exc:
+                        service._preflight(
+                            "https://github.com/owner/repo.git",
+                            "main",
+                            Path(tmpdir) / "repo",
+                        )
+                    assert exc.value.payload["code"] == "AUTH_REQUIRED"
+
+    def test_preflight_repo_unreachable(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            service = GitHubCloneService(clone_base_dir=Path(tmpdir))
+
+            def fake_run_git(args, timeout=20):
+                if args[:2] == ["git", "--version"]:
+                    return subprocess.CompletedProcess(args, 0, stdout="git version 2.0", stderr="")
+                if "ls-remote" in args:
+                    return subprocess.CompletedProcess(args, 128, stdout="", stderr="could not resolve host")
+                return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+            with patch.object(service, "_run_git", side_effect=fake_run_git):
+                with patch.object(service, "_ensure_destination_ready"):
+                    with pytest.raises(RepositoryPreflightError) as exc:
+                        service._preflight(
+                            "https://github.com/owner/repo.git",
+                            "main",
+                            Path(tmpdir) / "repo",
+                        )
+                    assert exc.value.payload["code"] == "REPO_UNREACHABLE"
 
     def test_list_accessible_repos_requires_token(self):
         """Listing repositories should require authentication."""

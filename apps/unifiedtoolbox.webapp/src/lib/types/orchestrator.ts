@@ -110,6 +110,14 @@ export interface RepoOrchestrationResult {
   prUrl?: string
   pr_url?: string
   artifacts?: Record<string, unknown>
+  artifacts_index?: Array<{
+    artifactId?: string
+    fileName?: string
+    filePath?: string
+    mimeType?: string
+    size?: number
+    createdAt?: string
+  }>
   cancelled?: boolean
 }
 

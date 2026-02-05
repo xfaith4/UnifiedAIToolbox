@@ -31,12 +31,16 @@ codex_out/
 swarm-output/
 runs/
 .uaitoolbox/
+!apps/unifiedtoolbox.webapp/src/app/runs/
+!apps/unifiedtoolbox.webapp/src/app/runs/**
 *.db
 *.log
 
 # Artifacts directory (build outputs, reports, collected artifacts)
 artifacts/
 !artifacts/README.md
+!apps/unifiedtoolbox.webapp/src/app/runs/**/artifacts/
+!apps/unifiedtoolbox.webapp/src/app/runs/**/artifacts/**
 
 # Binary executables
 *.exe
