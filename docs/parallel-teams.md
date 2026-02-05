@@ -1,5 +1,7 @@
 # Parallel Teams Mode
 
+Purpose: Describe safety-first parallel agent teams with deterministic assembly and ownership enforcement.
+
 Parallel Teams Mode (`PARALLEL_TEAMS=true`) is a safety-first workflow for running multiple specialist agent teams concurrently while keeping the final repo deterministic and runnable.
 
 It adds three concepts on top of the existing hardening pipeline:
@@ -109,3 +111,6 @@ Environment variables:
 - `OWNERSHIP_REPORT.md`: which artifacts were blocked and why (team/path mismatch)
 - `ASSEMBLER_REPORT.md`: duplicate/conflicting writes and deterministic resolution
 
+## Related docs
+- [Hardening](hardening.md)
+- [Orchestration](orchestration.md)

@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState } from 'react'
 import { LoadingIcon, StopIcon, UploadIcon, CloseIcon, RunIcon } from './icons'
-import type { Artifact } from '../types'
+import type { Artifact, RunMode } from '../types'
 import {
   buildBriefArtifacts,
   buildProjectBrief,
@@ -19,6 +19,8 @@ type Props = {
   isOrchestrating: boolean
   onCancelOrchestration: () => void
   onStart: (goal: string, fileContent: string | null, seedArtifacts: Artifact[]) => void
+  runMode: RunMode
+  onRunModeChange: (mode: RunMode) => void
 }
 
 const steps = [
@@ -36,7 +38,7 @@ const splitLines = (value: string) =>
     .map((v) => v.trim())
     .filter(Boolean)
 
-const RequirementsWizard: React.FC<Props> = ({ isOrchestrating, onCancelOrchestration, onStart }) => {
+const RequirementsWizard: React.FC<Props> = ({ isOrchestrating, onCancelOrchestration, onStart, runMode, onRunModeChange }) => {
   const [stepIndex, setStepIndex] = useState(0)
   const [goal, setGoal] = useState('')
   const [users, setUsers] = useState<BriefUserGroup>('me')
@@ -157,6 +159,38 @@ const RequirementsWizard: React.FC<Props> = ({ isOrchestrating, onCancelOrchestr
               Step {stepIndex + 1} of {steps.length}: {current?.title}
             </div>
           )}
+        </div>
+
+        <div className="mt-3 flex items-center justify-between gap-3 text-xs">
+          <div className="text-gray-400">Run type:</div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onRunModeChange('design')}
+              disabled={isOrchestrating}
+              className={`px-3 py-1.5 rounded-md border transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                runMode === 'design'
+                  ? 'bg-indigo-600/30 border-indigo-500 text-indigo-100'
+                  : 'bg-gray-800 border-gray-700 text-gray-200 hover:bg-gray-700'
+              }`}
+              title="Design Run: docs/specs only (no runnable repo checks)"
+            >
+              Design Run
+            </button>
+            <button
+              type="button"
+              onClick={() => onRunModeChange('build')}
+              disabled={isOrchestrating}
+              className={`px-3 py-1.5 rounded-md border transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                runMode === 'build'
+                  ? 'bg-indigo-600/30 border-indigo-500 text-indigo-100'
+                  : 'bg-gray-800 border-gray-700 text-gray-200 hover:bg-gray-700'
+              }`}
+              title="Build Run: generate runnable repo + acceptance checks"
+            >
+              Build Run
+            </button>
+          </div>
         </div>
 
         <div className="mt-3 h-2 w-full rounded-full bg-gray-900/40 overflow-hidden">
@@ -528,4 +562,3 @@ const RequirementsWizard: React.FC<Props> = ({ isOrchestrating, onCancelOrchestr
 }
 
 export default RequirementsWizard
-

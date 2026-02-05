@@ -12,6 +12,8 @@ export enum ArtifactType {
   IMAGE = 'IMAGE',
 }
 
+export type RunMode = 'design' | 'build'
+
 export interface Artifact {
   id: string;
   name: string;
@@ -45,6 +47,7 @@ export interface EnvironmentalImpact {
 export interface Session {
   id: string;
   goal: string;
+  runMode?: RunMode;
   fileContent: string | null;
   date: string;
   tasks: Task[];

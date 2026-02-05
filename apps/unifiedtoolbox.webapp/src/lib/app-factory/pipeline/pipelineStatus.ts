@@ -71,6 +71,14 @@ function mapGateStepStatus(stepStatus: GateReport['steps'][number]['status']): P
   return 'skipped'
 }
 
+function gateStageStatus(gateReport?: GateReport | null): PipelineStatus {
+  if (!gateReport) return 'pending'
+  const steps = gateReport.steps || []
+  const allSkipped = steps.length > 0 && steps.every((s) => s.status === 'skipped')
+  if (allSkipped) return 'skipped'
+  return gateReport.passed ? 'passed' : 'failed'
+}
+
 function envDocsStatus(failures: ContractFailure[], hasEnvVarsRequired: boolean): PipelineStatus {
   if (!hasEnvVarsRequired) return 'skipped'
   return failures.some((f) => f.kind === 'env_undocumented') ? 'failed' : 'passed'
@@ -154,7 +162,7 @@ export function buildEnginePipelinePayload(options: {
     stage(
       'gates',
       'Gates',
-      options.hardeningEnabled ? (gateReport && gateReport.passed ? 'passed' : 'failed') : 'skipped',
+      options.hardeningEnabled ? gateStageStatus(gateReport) : 'skipped',
       options.timings?.gates?.startedAt,
       options.timings?.gates?.endedAt,
       'GATE_REPORT.md'

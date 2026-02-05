@@ -198,9 +198,16 @@ async function readLogExcerpt(logPath: string, maxChars = 4000): Promise<string>
   }
 }
 
-async function writeGateReport(repoDir: string, steps: GateReport['steps'], healthChecks: HealthCheckResult[], logsDir: string): Promise<GateReport> {
+async function writeGateReport(
+  repoDir: string,
+  steps: GateReport['steps'],
+  healthChecks: HealthCheckResult[],
+  logsDir: string,
+  forcedPassed?: boolean
+): Promise<GateReport> {
   const reportPath = path.join(repoDir, 'GATE_REPORT.md')
-  const passed = steps.every((s) => s.status === 'passed' || s.status === 'skipped') && healthChecks.every((h) => h.passed)
+  const derivedPassed = steps.every((s) => s.status === 'passed' || s.status === 'skipped') && healthChecks.every((h) => h.passed)
+  const passed = typeof forcedPassed === 'boolean' ? forcedPassed : derivedPassed
 
   const lines: string[] = []
   lines.push('# Gate Report')
@@ -246,4 +253,20 @@ async function writeGateReport(repoDir: string, steps: GateReport['steps'], heal
 
   await fs.writeFile(reportPath, lines.join('\n'), 'utf8')
   return { passed, steps, healthChecks, reportPath, logsDir }
+}
+
+export async function writeSkippedGateReport(repoDir: string, reason: string): Promise<GateReport> {
+  const logsDir = path.join(repoDir, 'gate-logs')
+  await fs.mkdir(logsDir, { recursive: true })
+
+  const steps: GateReport['steps'] = [
+    { name: 'install', status: 'skipped', message: reason },
+    { name: 'typecheck', status: 'skipped', message: reason },
+    { name: 'lint', status: 'skipped', message: reason },
+    { name: 'build', status: 'skipped', message: reason },
+    { name: 'test', status: 'skipped', message: reason },
+    { name: 'boot', status: 'skipped', message: reason },
+  ]
+
+  return await writeGateReport(repoDir, steps, [], logsDir, false)
 }

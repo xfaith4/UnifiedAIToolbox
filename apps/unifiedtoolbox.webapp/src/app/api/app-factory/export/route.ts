@@ -1,12 +1,14 @@
 import { NextResponse } from 'next/server'
 import path from 'path'
 import { promises as fs } from 'fs'
+import crypto from 'crypto'
 import { loadRepoContract } from '@/lib/app-factory/contracts/loadContract'
 import { hardenRepo } from '@/lib/app-factory/pipeline/hardenRepo'
 import { zipDirectoryToBuffer } from '@/lib/app-factory/pipeline/zipRepo'
 import { featureFlags } from '@/lib/app-factory/flags'
 import { exportRepoLegacy } from '@/lib/app-factory/pipeline/exportRepoLegacy'
 import { loadArtifactsFromHistoryFile } from '@/lib/app-factory/history/loadArtifactsFromHistory'
+import { ingestArtifacts } from '@/lib/app-factory/pipeline/ingestArtifacts'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -23,6 +25,7 @@ type ExportRequest = {
     healthPollIntervalMs?: number
     fixerModel?: string
     apiKey?: string
+    runMode?: 'design' | 'build'
   }
 }
 
@@ -37,6 +40,14 @@ async function readTextIfExists(filePath: string, maxChars = 12000): Promise<str
   } catch {
     return null
   }
+}
+
+function safeRelativeLabel(input: string): string {
+  const raw = (input || '').replace(/\\/g, '/').trim()
+  const noDrive = raw.replace(/^[a-zA-Z]:\//, '')
+  const stripped = noDrive.replace(/^\/+/, '')
+  const parts = stripped.split('/').filter((p) => p && p !== '.' && p !== '..')
+  return parts.join('/')
 }
 
 export async function POST(req: Request) {
@@ -66,6 +77,29 @@ export async function POST(req: Request) {
 
     if (!Array.isArray(artifacts) || artifacts.length === 0) {
       return NextResponse.json({ error: 'No artifacts available to export (missing sessionId history and artifacts[])' }, { status: 400 })
+    }
+
+    const runMode = payload.config?.runMode ?? 'build'
+    if (runMode === 'design') {
+      const runId = `${payload.runLabel ? safeRelativeLabel(payload.runLabel).replace(/\//g, '-') + '-' : ''}${new Date()
+        .toISOString()
+        .replace(/[:.]/g, '-')}-${crypto.randomBytes(3).toString('hex')}`
+      const artifactsDir = path.join(workRootDir, 'design-runs', runId, 'artifacts')
+      await fs.mkdir(artifactsDir, { recursive: true })
+      await ingestArtifacts(artifactsDir, artifacts as any)
+      await fs.writeFile(
+        path.join(artifactsDir, 'DESIGN_RUN.md'),
+        `# Design Run Export\n\nThis zip contains docs/specs artifacts only (no runnable repo scaffolding).\n\nGenerated: ${new Date().toISOString()}\nSession: ${payload.sessionId || '(inline artifacts)'}\n`,
+        'utf8'
+      )
+      const zip = await zipDirectoryToBuffer(artifactsDir)
+      return new NextResponse(new Uint8Array(zip), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/zip',
+          'Content-Disposition': 'attachment; filename=\"app-factory-design.zip\"',
+        },
+      })
     }
 
     const hardeningEnabled = featureFlags.hardeningPipeline()

@@ -1,10 +1,10 @@
-# Engine Status Schema (UI)
+# Engine Status Schema
 
-This document describes the **engine run-status payload** consumed by the App Factory “Engine” UI (`apps/unifiedtoolbox.webapp/src/app/engine/_source/`).
+Purpose: Define the engine run-status snapshot consumed by the App Factory UI.
 
-It extends the existing snapshot with a `pipeline` object that reflects real repo hardening outcomes **when `HARDENING_PIPELINE=true`**.
+This snapshot is produced by `useOrchestrator()` and extended with a `pipeline` object when `HARDENING_PIPELINE=true`.
 
-## Top-level snapshot
+## Snapshot
 
 ```ts
 type OrchestratorSnapshot = {
@@ -54,6 +54,30 @@ type EnginePipelinePayload = {
 }
 ```
 
+## Session, task, and artifact
+
+`Session` is the persisted unit of work shown in history and used for App Factory export-by-`sessionId`.
+
+Key `Session` fields used by the UI and export path:
+- `id: string`
+- `goal: string`
+- `date?: string`
+- `tasks: Task[]`
+
+Each `Task` represents one planned step in the DAG:
+- `id: string`
+- `name: string`
+- `status: PENDING | RUNNING | COMPLETED | FAILED`
+- `dependencies: string[]`
+- `agent: { role: string; specialization?: string; log: string[] }`
+- `artifacts: Artifact[]`
+
+Artifacts are the primary task outputs:
+- `id: string`
+- `name: string` (often treated as a relative path during export)
+- `type: CODE | REPORT | IMAGE`
+- `content: string` (base64 for images)
+
 ## Where statuses come from
 
 - `agents`: driven by the in-browser orchestration runtime.
@@ -66,3 +90,6 @@ type EnginePipelinePayload = {
 - The pipeline stepper and “Acceptance Checks” bind to `snapshot.pipeline`.
 - When `hardeningEnabled=true`, the export flow runs `/api/app-factory/validate` and only enables “Download .zip” after `normalize+contract+gates` are `passed`.
 
+## Related docs
+- [Orchestration](orchestration.md)
+- [Hardening](hardening.md)

@@ -189,25 +189,16 @@ See [AGENTS.md](AGENTS.md) for orchestration rules and definition of done.
 
 ## 📚 Documentation
 
-### Core Documentation
-
-- **Architecture Overview** - [docs/help/architecture.md](docs/help/architecture.md)
-- **Architecture Facts** - [docs/ARCHITECTURE_FACTS.md](docs/ARCHITECTURE_FACTS.md)
-- **API Reference** - [docs/help/api-reference.md](docs/help/api-reference.md)
-
-### Advanced Features
-
-- **MCP Library & Governance** - [docs/MCP_LIBRARY_WALKTHROUGH.md](docs/MCP_LIBRARY_WALKTHROUGH.md)
-- **Artifact Normalization** - [docs/ARTIFACT_NORMALIZATION.md](docs/ARTIFACT_NORMALIZATION.md)
-- **Orchestration Run Tracking** - [docs/ORCHESTRATION_RUN_TRACKING.md](docs/ORCHESTRATION_RUN_TRACKING.md)
-- **PromptOps Guide** - [docs/PROMPTOPS.md](docs/PROMPTOPS.md)
-- **GitHub Integration** - [docs/GITHUB_INTEGRATION.md](docs/GITHUB_INTEGRATION.md)
-- **MCP Registry Ingestion** - [docs/MCP_REGISTRY_INGESTION.md](docs/MCP_REGISTRY_INGESTION.md)
-
-### Guides
-
-- **Demo Guide** - [docs/DEMO.md](docs/DEMO.md)
-- **Prompt Chain Recreation** - [docs/PROMPT_CHAIN_RECREATION.md](docs/PROMPT_CHAIN_RECREATION.md)
+- **Start here** - [docs/README.md](docs/README.md)
+- **Getting started** - [docs/getting-started.md](docs/getting-started.md)
+- **Architecture** - [docs/architecture.md](docs/architecture.md)
+- **Orchestration** - [docs/orchestration.md](docs/orchestration.md)
+- **Hardening** - [docs/hardening.md](docs/hardening.md)
+- **Integrations** - [docs/integrations.md](docs/integrations.md)
+- **Telemetry** - [docs/telemetry.md](docs/telemetry.md)
+- **Cost analytics** - [docs/cost-analytics.md](docs/cost-analytics.md)
+- **Workflows** - [docs/workflows.md](docs/workflows.md)
+- **MCP docs** - [docs/mcp/README.md](docs/mcp/README.md)
 
 ## 🛠️ Development
 
@@ -285,7 +276,7 @@ This project is licensed under the MIT License.
 
 ## 📞 Support
 
-- **Documentation**: [docs/help/](docs/help/)
+- **Documentation**: [docs/README.md](docs/README.md)
 - **Issues**: [GitHub Issues](https://github.com/xfaith4/UnifiedAIToolbox/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/xfaith4/UnifiedAIToolbox/discussions)
 

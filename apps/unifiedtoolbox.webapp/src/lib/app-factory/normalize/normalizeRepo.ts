@@ -76,8 +76,12 @@ export async function normalizeRepo(repoDir: string, contract: RepoContract): Pr
   const changedFiles: NormalizedFileChange[] = []
   const violations: NormalizationViolation[] = []
 
-  const allFiles = await listFilesRecursively(repoDir)
-  for (const filePath of allFiles) {
+  const queue = await listFilesRecursively(repoDir)
+  const seen = new Set(queue.map((p) => path.resolve(p)))
+
+  while (queue.length) {
+    const filePath = queue.shift()
+    if (!filePath) continue
     if (!isCodeFile(filePath, contract)) continue
 
     const stat = await fs.stat(filePath)
@@ -88,6 +92,14 @@ export async function normalizeRepo(repoDir: string, contract: RepoContract): Pr
 
     const split = await splitBundledBlobIfNeeded(repoDir, filePath, raw)
     if (split.didSplit) {
+      for (const createdRel of split.created) {
+        const createdFull = path.join(repoDir, createdRel)
+        const resolved = path.resolve(createdFull)
+        if (!seen.has(resolved)) {
+          queue.push(createdFull)
+          seen.add(resolved)
+        }
+      }
       changedFiles.push({
         filePath: path.relative(repoDir, filePath).replace(/\\/g, '/'),
         edits: [{ kind: 'blob-split', detail: split.message }, { kind: 'blob-split', detail: `Created: ${split.created.join(', ')}` }],

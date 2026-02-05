@@ -1,4 +1,6 @@
-# Project Brief (Wizard Output)
+# Project Brief
+
+Purpose: Define the requirements wizard output that seeds orchestration runs.
 
 The requirements wizard (behind `REQUIREMENT_WIZARD=true`) produces a structured `project_brief.json` that becomes the **canonical input** for orchestration.
 
@@ -49,5 +51,8 @@ When the wizard is enabled:
 - The orchestration “goal prompt” becomes a short synthesized brief derived from the project brief.
 - The canonical JSON is included (verbatim) and also saved as `project_brief.json` as an artifact.
 
-See `docs/examples/project_brief_example.json` for a sample.
+See `docs/archive/examples/project_brief_example.json` for a sample.
 
+## Related docs
+- [Orchestration](orchestration.md)
+- [Getting started](getting-started.md)

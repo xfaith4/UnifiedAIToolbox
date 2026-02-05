@@ -14,9 +14,21 @@ export const DEFAULT_CODE_FILE_FORBIDDEN: ForbiddenPattern[] = [
     flags: 'mi',
   },
   {
+    id: 'slash-file-marker',
+    description: "File wrappers like '//// FILE:' are not allowed in code files",
+    pattern: '^\\s*\\/{2,}\\s*File\\s*:',
+    flags: 'mi',
+  },
+  {
     id: 'frontmatter-marker',
     description: 'YAML frontmatter markers are not allowed in code files',
     pattern: '^(?:\\uFEFF)?\\s*---\\s*$',
+    flags: 'm',
+  },
+  {
+    id: 'ellipsis-placeholder',
+    description: "Ellipsis placeholders like '...' are not allowed in generated code",
+    pattern: '^\\s*(?:(?:\\/\\/|#|--|;)\\s*)?\\.{3,}\\s*$',
     flags: 'm',
   },
   {
@@ -32,4 +44,3 @@ export const DEFAULT_CODE_FILE_FORBIDDEN: ForbiddenPattern[] = [
     flags: 'mi',
   },
 ]
-

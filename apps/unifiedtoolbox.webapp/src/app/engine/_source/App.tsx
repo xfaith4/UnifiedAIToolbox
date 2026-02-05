@@ -18,7 +18,7 @@ import PipelineStepper from './components/PipelineStepper';
 import RunFileModal from './components/RunFileModal';
 
 import useOrchestrator from './hooks/useOrchestrator';
-import type { Task, Artifact } from './types';
+import type { Task, Artifact, RunMode } from './types';
 import type { EnginePipelinePayload } from '@/lib/app-factory/pipeline/pipelineStatus';
 
 const App: React.FC = () => {
@@ -107,11 +107,11 @@ const App: React.FC = () => {
     }
   }, [tasks.length, viewMode]);
 
-  const handleGoalSubmit = (goal: string, fileContent: string | null, seedArtifacts?: Artifact[]) => {
+  const handleGoalSubmit = (goal: string, fileContent: string | null, seedArtifacts: Artifact[] | undefined, runMode: RunMode) => {
     if (activeView !== 'live') {
       setActiveView('live');
     }
-    startOrchestration(goal, fileContent, seedArtifacts);
+    startOrchestration(goal, fileContent, seedArtifacts, runMode);
     setSelectedTaskId(null);
   };
 
@@ -121,6 +121,7 @@ const App: React.FC = () => {
     if (!pipeline?.hardeningEnabled) return
     if (!isComplete) return
     if (!liveSession?.id) return
+    if (liveSession?.runMode === 'design') return
     if (autoValidatedSessionId === liveSession.id) return
 
     const normalize = pipeline.stages.find((s) => s.id === 'normalize')?.status
@@ -150,7 +151,7 @@ const App: React.FC = () => {
             runLabel: 'ui-auto-validate',
             sessionId: liveSession.id,
             artifacts: [],
-            config: { apiKey: apiKey || undefined },
+            config: { apiKey: apiKey || undefined, runMode: liveSession?.runMode || 'build' },
           }),
         })
         const json = await res.json().catch(() => null)
@@ -282,6 +283,7 @@ const App: React.FC = () => {
         onClose={() => setShowExport(false)}
         tasks={displayedSession?.tasks ?? []}
         sessionId={displayedSession?.id ?? null}
+        runMode={displayedSession?.runMode ?? 'build'}
         pipeline={pipeline}
         setPipeline={setPipeline}
       />

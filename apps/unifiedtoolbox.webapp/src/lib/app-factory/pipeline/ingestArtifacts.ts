@@ -11,6 +11,52 @@ export type AppFactoryArtifact = {
   sourceTaskName?: string
 }
 
+const DENY_SEGMENTS = new Set([
+  '.git',
+  'node_modules',
+  '.next',
+  '.turbo',
+  'dist',
+  'build',
+  'out',
+  'coverage',
+  '.vercel',
+  '.output',
+  '.cache',
+  '.pnpm-store',
+  '.uaitoolbox',
+])
+
+const ALLOW_EXTENSIONLESS_NAMES = new Set([
+  // common repo root files
+  'LICENSE',
+  'NOTICE',
+  'COPYING',
+  'README',
+  'CODEOWNERS',
+  'Dockerfile',
+  'Makefile',
+  // common dotfiles (path.extname returns '' for these)
+  '.gitignore',
+  '.gitattributes',
+  '.editorconfig',
+  '.npmrc',
+  '.nvmrc',
+  '.node-version',
+  '.prettierrc',
+  '.prettierignore',
+  '.eslintignore',
+  '.eslintrc',
+  '.env',
+  '.env.example',
+  '.env.local',
+  '.env.production',
+  '.env.development',
+  '.env.test',
+])
+
+const JUNK_FILENAMES = new Set(['.ds_store', 'thumbs.db', 'desktop.ini'])
+
 export type PlannedArtifactWrite = {
   index: number
   artifact: AppFactoryArtifact
@@ -54,6 +100,53 @@ function sanitizeSegment(seg: string): string {
   // Avoid empty segments and trailing dots/spaces (Windows).
   const trimmed = cleaned.replace(/[. ]+$/g, '')
   return trimmed || '_'
+}
+
+function firstDeniedSegment(relPath: string): string | null {
+  const parts = String(relPath || '')
+    .replace(/\\/g, '/')
+    .split('/')
+    .filter(Boolean)
+  for (const p of parts) {
+    if (DENY_SEGMENTS.has(p)) return p
+  }
+  return null
+}
+
+function isExtensionlessJunk(relPath: string): boolean {
+  const base = path.posix.basename(String(relPath || '').replace(/\\/g, '/'))
+  const ext = path.posix.extname(base)
+  if (ext) return false
+  if (ALLOW_EXTENSIONLESS_NAMES.has(base)) return false
+  return true
+}
+
+function looksLikePromptFragmentOnly(content: string): boolean {
+  const text = String(content || '').trim()
+  if (!text) return false
+  // avoid penalizing long docs; this filter targets small junk fragments
+  if (text.length > 12000) return false
+
+  const lower = text.toLowerCase()
+  const signals = [
+    'you are an ai',
+    'you are a supervisor',
+    'mission',
+    'non-negotiable',
+    'definition of done',
+    'agents & responsibilities',
+    'execution rules',
+    'begin by',
+    'return raw json',
+    'do not skip',
+  ]
+  const signalCount = signals.reduce((sum, s) => sum + (lower.includes(s) ? 1 : 0), 0)
+
+  const codeLike =
+    /(^|\n)\s*(import|export|function|class|const|let|var|type|interface|enum|def|package)\b/m.test(text) ||
+    /[{};]\s*$/m.test(text)
+
+  return signalCount >= 2 && !codeLike
 }
 
 function looksLikeMultiTargetOrGlob(name: string): boolean {
@@ -162,6 +255,29 @@ export async function ingestArtifacts(
       }
 
       const rel = entry.relPath || safeRelativePath(originalName)
+      const denied = firstDeniedSegment(rel)
+      if (denied) {
+        items.push({ originalName, status: 'skipped', reason: `blocked path segment '${denied}'`, sourceTeamId: art.sourceTeamId, sourceTaskId: art.sourceTaskId })
+        continue
+      }
+
+      const baseLower = path.posix.basename(rel.replace(/\\/g, '/')).toLowerCase()
+      if (JUNK_FILENAMES.has(baseLower)) {
+        items.push({ originalName, status: 'skipped', reason: `junk file '${baseLower}'`, sourceTeamId: art.sourceTeamId, sourceTaskId: art.sourceTaskId })
+        continue
+      }
+
+      if (isExtensionlessJunk(rel)) {
+        items.push({ originalName, status: 'skipped', reason: 'blocked extensionless junk file', sourceTeamId: art.sourceTeamId, sourceTaskId: art.sourceTaskId })
+        continue
+      }
+
+      // Block tiny prompt-only fragments in unexpected locations (keeps docs/ and prompts/ intact).
+      if (!rel.startsWith('docs/') && !rel.startsWith('prompts/') && looksLikePromptFragmentOnly(art.content || '')) {
+        items.push({ originalName, status: 'skipped', reason: 'blocked prompt-fragment-only file', sourceTeamId: art.sourceTeamId, sourceTaskId: art.sourceTaskId })
+        continue
+      }
+
       const full = entry.fullPath || ensureWithinRepo(repoDir, rel)
       await fs.mkdir(path.dirname(full), { recursive: true })
 

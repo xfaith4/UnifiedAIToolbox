@@ -76,5 +76,45 @@ describe('normalizeRepo', () => {
       expect(res.violations[0]?.filePath).toBe('a.ts')
     })
   })
-})
 
+  it('splits repeated //// FILE: markers into real files', async () => {
+    await withTempDir(async (dir) => {
+      const bundle = path.join(dir, 'bundle.ts')
+      await fs.writeFile(
+        bundle,
+        [
+          '//// FILE: src/a.ts',
+          'export const a = 1',
+          '',
+          '//// FILE: src/b.ts',
+          'export const b = 2',
+          '',
+        ].join('\n'),
+        'utf8'
+      )
+
+      const res = await normalizeRepo(dir, contract)
+      expect(res.violations.length).toBe(0)
+
+      const aText = await fs.readFile(path.join(dir, 'src', 'a.ts'), 'utf8')
+      const bText = await fs.readFile(path.join(dir, 'src', 'b.ts'), 'utf8')
+      expect(aText).toContain('export const a = 1')
+      expect(bText).toContain('export const b = 2')
+
+      const stub = await fs.readFile(bundle, 'utf8')
+      expect(stub).toContain('split by the normalizer')
+    })
+  })
+
+  it('fails on ellipsis placeholders with line numbers', async () => {
+    await withTempDir(async (dir) => {
+      const file = path.join(dir, 'a.ts')
+      await fs.writeFile(file, 'export const x = 1\n...\nexport const y = 2\n', 'utf8')
+      const res = await normalizeRepo(dir, contract)
+      expect(res.violations.length).toBeGreaterThan(0)
+      const v = res.violations.find((x) => x.filePath === 'a.ts')
+      expect(v).toBeTruthy()
+      expect(v?.matches?.some((m) => m.line === 2)).toBe(true)
+    })
+  })
+})

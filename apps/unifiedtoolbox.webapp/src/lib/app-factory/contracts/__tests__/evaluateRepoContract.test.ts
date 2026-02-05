@@ -51,5 +51,51 @@ describe('evaluateRepoContract', () => {
       expect(res.failures.some((f) => f.kind === 'forbidden_pattern')).toBe(true)
     })
   })
-})
 
+  it('enforces root package.json name/private/scripts', async () => {
+    await withTempDir(async (dir) => {
+      await fs.writeFile(path.join(dir, 'package.json'), JSON.stringify({}), 'utf8')
+      const contract: RepoContract = {
+        stackId: 'test',
+        requiredFilesAll: [],
+        requiredFilesAny: [],
+        codeFileExtensions: ['.ts'],
+        forbiddenPatternsByExtension: {},
+        installCommand: 'true',
+        buildCommand: 'true',
+      }
+      const res = await evaluateRepoContract(dir, contract)
+      expect(res.passed).toBe(false)
+      const invalid = res.failures.find((f) => f.kind === 'invalid_root_package_json') as any
+      expect(invalid).toBeTruthy()
+      expect(Array.isArray(invalid.missing)).toBe(true)
+      expect(invalid.missing).toEqual(expect.arrayContaining(['name', 'private', 'scripts']))
+    })
+  })
+
+  it('requires pnpm-workspace.yaml when monorepo structure is detected', async () => {
+    await withTempDir(async (dir) => {
+      await fs.writeFile(
+        path.join(dir, 'package.json'),
+        JSON.stringify({ name: 'x', private: true, scripts: { build: 'echo ok' } }),
+        'utf8'
+      )
+      await fs.mkdir(path.join(dir, 'apps', 'web'), { recursive: true })
+      await fs.writeFile(path.join(dir, 'apps', 'web', 'package.json'), JSON.stringify({ name: 'web', private: true, scripts: { dev: 'echo ok' } }), 'utf8')
+
+      const contract: RepoContract = {
+        stackId: 'test',
+        requiredFilesAll: [],
+        requiredFilesAny: [],
+        codeFileExtensions: ['.ts'],
+        forbiddenPatternsByExtension: {},
+        installCommand: 'true',
+        buildCommand: 'true',
+      }
+
+      const res = await evaluateRepoContract(dir, contract)
+      expect(res.passed).toBe(false)
+      expect(res.failures.some((f) => f.kind === 'missing_pnpm_workspace')).toBe(true)
+    })
+  })
+})

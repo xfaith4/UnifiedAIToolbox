@@ -1,5 +1,5 @@
 import OpenAI from 'openai'
-import type { Session, Task, Artifact } from '../types'
+import type { Session, Task, Artifact, RunMode } from '../types'
 import { ArtifactType, TaskStatus } from '../types'
 import type { EnginePipelinePayload } from '@/lib/app-factory/pipeline/pipelineStatus'
 import { buildEnginePipelinePayload } from '@/lib/app-factory/pipeline/pipelineStatus'
@@ -444,7 +444,7 @@ class OrchestratorRuntime {
     this.emit()
   }
 
-  startOrchestration = async (goal: string, fileContent: string | null, seedArtifacts?: Artifact[]) => {
+  startOrchestration = async (goal: string, fileContent: string | null, seedArtifacts: Artifact[] | undefined, runMode: RunMode = 'build') => {
     const token = this.nextRunToken()
     this.setSnapshot({ isOrchestrating: true, isComplete: false })
     this.snapshot = { ...this.snapshot, pipeline: makeInitialPipeline(this.snapshot.pipeline.hardeningEnabled) }
@@ -489,6 +489,7 @@ class OrchestratorRuntime {
     const newSession: Session = {
       id: simpleId(),
       goal,
+      runMode,
       fileContent,
       date: new Date().toISOString(),
       tasks: [],
@@ -537,8 +538,14 @@ class OrchestratorRuntime {
         `
         : ''
 
+      const runModeInstruction =
+        runMode === 'design'
+          ? `This is a DESIGN RUN: generate docs/specs only. Do NOT generate runnable repo scaffolding. Put outputs under docs/ (and optionally prompts/).`
+          : `This is a BUILD RUN: generate a runnable repo with real files. Avoid placeholders like '...'. Avoid bundled multi-file blobs; output one artifact per real file path.`
+
       const planPrompt = `
         As a Supervisor AI, create a detailed, parallelizable plan to achieve the following goal: "${goal}".
+        ${runModeInstruction}
         ${initialContext ? `Start by using the following context:\n${initialContext}` : ''}
         The plan must be a Directed Acyclic Graph (DAG) of tasks.
         For tasks that generate files, specify a unique, descriptive filename in parentheses within the task name, e.g., "Write the main application logic (app.py)".

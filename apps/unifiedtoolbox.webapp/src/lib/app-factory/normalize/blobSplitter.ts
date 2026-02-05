@@ -6,7 +6,12 @@ export type BlobSplitResult =
   | { didSplit: false }
   | { didSplit: true; created: string[]; replacedWith: string; message: string }
 
-const FILE_MARKER_RE = /^\s*(?:#{1,6}\s*)?File\s*:\s*(.+?)\s*$/
+// Supports markers like:
+// - "## File: path/to/file.ts"
+// - "//// FILE: path/to/file.ts"
+// - "// FILE: path/to/file.ts"
+// - "FILE: path/to/file.ts"
+const FILE_MARKER_RE = /^\s*(?:(?:\/{2,}|#{1,6})\s*)?file\s*:\s*(.+?)\s*$/i
 
 function safeRelativePath(input: string): string {
   const raw = (input || '').replace(/\\/g, '/').trim()
@@ -83,4 +88,3 @@ export async function splitBundledBlobIfNeeded(repoDir: string, filePath: string
     message: `Split bundled blob into ${created.length} file(s)`,
   }
 }
-

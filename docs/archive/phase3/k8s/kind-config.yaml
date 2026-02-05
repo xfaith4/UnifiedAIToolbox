@@ -1,0 +1,26 @@
+# kind configuration for Phase 3 local development
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: unified-dev
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - containerPort: 5432
+        hostPort: 5432
+        listenAddress: "0.0.0.0"
+      - containerPort: 6379
+        hostPort: 6379
+        listenAddress: "0.0.0.0"
+      - containerPort: 8000
+        hostPort: 8000
+        listenAddress: "0.0.0.0"
+      - containerPort: 9090
+        hostPort: 9090
+        listenAddress: "0.0.0.0"
+      - containerPort: 3001
+        hostPort: 3001
+        listenAddress: "0.0.0.0"
+  - role: worker
+  - role: worker
+networking:
+  kubeProxyMode: "iptables"

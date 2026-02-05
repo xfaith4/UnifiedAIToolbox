@@ -1,3 +1,17 @@
 {
-  "installs": []
+  "installs": [
+    {
+      "install_id": "c36da296-7b0a-4e6d-8549-e69ff09d130a",
+      "server_id": "git-ingest",
+      "status": "pending",
+      "installed_at": "2026-02-05 20:18:49.184808",
+      "installed_by": "system",
+      "enabled_at": null,
+      "disabled_at": null,
+      "version": null,
+      "config": {},
+      "metadata": {},
+      "notes": null
+    }
+  ]
 }

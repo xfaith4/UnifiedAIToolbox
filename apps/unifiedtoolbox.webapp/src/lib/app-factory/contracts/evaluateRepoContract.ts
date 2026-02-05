@@ -8,6 +8,9 @@ export type ContractFailure =
   | { kind: 'missing_required_file'; pattern: string; message: string }
   | { kind: 'missing_required_any'; patterns: string[]; message: string }
   | { kind: 'env_undocumented'; envVar: string; message: string }
+  | { kind: 'invalid_root_package_json'; missing: string[]; message: string }
+  | { kind: 'missing_pnpm_workspace'; message: string }
+  | { kind: 'missing_app_package_json'; appDir: string; message: string }
   | {
       kind: 'forbidden_pattern'
       filePath: string
@@ -85,6 +88,24 @@ async function readTextIfExists(filePath: string): Promise<string | null> {
   }
 }
 
+async function fileExists(filePath: string): Promise<boolean> {
+  try {
+    const stat = await fs.stat(filePath)
+    return stat.isFile()
+  } catch {
+    return false
+  }
+}
+
+async function dirExists(dirPath: string): Promise<boolean> {
+  try {
+    const stat = await fs.stat(dirPath)
+    return stat.isDirectory()
+  } catch {
+    return false
+  }
+}
+
 function isEnvVarDocumented(envVar: string, docs: { name: string; content: string }[]): boolean {
   const name = envVar.trim()
   if (!name) return false
@@ -97,6 +118,66 @@ export async function evaluateRepoContract(repoDir: string, contract: RepoContra
   const failures: ContractFailure[] = []
   const allFiles = await listFilesRecursively(repoDir)
   const allRel = allFiles.map((f) => relPosix(repoDir, f))
+
+  // Workspace validity: if this looks like a Node repo (has package.json), enforce basic root/workspace invariants.
+  const rootPkgPath = path.join(repoDir, 'package.json')
+  if (await fileExists(rootPkgPath)) {
+    try {
+      const pkg = JSON.parse(await fs.readFile(rootPkgPath, 'utf8')) as any
+      const missing: string[] = []
+      if (typeof pkg?.name !== 'string' || !String(pkg.name).trim()) missing.push('name')
+      if (typeof pkg?.private !== 'boolean') missing.push('private')
+      if (!pkg?.scripts || typeof pkg.scripts !== 'object' || Array.isArray(pkg.scripts) || Object.keys(pkg.scripts).length === 0) missing.push('scripts')
+      if (missing.length) {
+        failures.push({
+          kind: 'invalid_root_package_json',
+          missing,
+          message: `Invalid root package.json (missing/invalid: ${missing.join(', ')})`,
+        })
+      }
+
+      const pnpmWorkspacePath = path.join(repoDir, 'pnpm-workspace.yaml')
+      const hasPnpmWorkspace = await fileExists(pnpmWorkspacePath)
+      const hasAppsPackages = allRel.some((p) => /^apps\/[^/]+\/package\.json$/.test(p))
+      const hasPackagesPackages = allRel.some((p) => /^packages\/[^/]+\/package\.json$/.test(p))
+      const hasWorkspacesField = typeof pkg?.workspaces !== 'undefined'
+      const isMonorepo = hasWorkspacesField || hasAppsPackages || hasPackagesPackages
+      if (isMonorepo && !hasPnpmWorkspace) {
+        failures.push({
+          kind: 'missing_pnpm_workspace',
+          message: 'Monorepo detected (workspaces/apps/packages) but pnpm-workspace.yaml is missing',
+        })
+      }
+
+      const appsDir = path.join(repoDir, 'apps')
+      if (await dirExists(appsDir)) {
+        const appDirs = new Set<string>()
+        for (const rel of allRel) {
+          if (!rel.startsWith('apps/')) continue
+          const parts = rel.split('/')
+          if (parts.length < 3) continue
+          if (!parts[1]) continue
+          appDirs.add(parts[1])
+        }
+        for (const appDir of Array.from(appDirs).sort()) {
+          const appPkgRel = `apps/${appDir}/package.json`
+          if (!allRel.includes(appPkgRel)) {
+            failures.push({
+              kind: 'missing_app_package_json',
+              appDir,
+              message: `Missing package.json for app '${appDir}' (expected ${appPkgRel})`,
+            })
+          }
+        }
+      }
+    } catch (err) {
+      failures.push({
+        kind: 'invalid_root_package_json',
+        missing: ['parse'],
+        message: `Invalid root package.json (parse error: ${err instanceof Error ? err.message : String(err)})`,
+      })
+    }
+  }
 
   const requiredFilesAll = contract.requiredFilesAll.map((pattern) => {
     const re = globToRegExp(pattern)

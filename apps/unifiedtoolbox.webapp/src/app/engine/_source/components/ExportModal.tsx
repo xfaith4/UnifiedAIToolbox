@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import type { Task, Artifact } from '../types';
+import type { Task, Artifact, RunMode } from '../types';
 import { CloseIcon, DownloadIcon, PaperclipIcon, LoadingIcon } from './icons';
 import type { EnginePipelinePayload, PipelineStage } from '@/lib/app-factory/pipeline/pipelineStatus'
 
@@ -8,6 +8,7 @@ interface ExportModalProps {
   onClose: () => void;
   tasks: Task[];
   sessionId?: string | null;
+  runMode?: RunMode;
   pipeline: EnginePipelinePayload
   setPipeline: (pipeline: EnginePipelinePayload) => void
 }
@@ -21,7 +22,7 @@ function isRunnable(pipeline: EnginePipelinePayload): boolean {
   return stageStatus(pipeline, 'normalize') === 'passed' && stageStatus(pipeline, 'contract') === 'passed' && stageStatus(pipeline, 'gates') === 'passed'
 }
 
-const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, tasks, sessionId = null, pipeline, setPipeline }) => {
+const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, tasks, sessionId = null, runMode = 'build', pipeline, setPipeline }) => {
   const [isZipping, setIsZipping] = useState(false);
   const [lastValidationError, setLastValidationError] = useState<string | null>(null)
 
@@ -47,6 +48,10 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, tasks, sessi
   if (!isOpen) return null;
 
   const validateHardening = async (): Promise<EnginePipelinePayload | null> => {
+    if (runMode === 'design') {
+      setLastValidationError('Design Run selected: acceptance checks are skipped. Switch to Build Run to validate a runnable repo.')
+      return null
+    }
     setLastValidationError(null)
     const startedAt = new Date().toISOString()
     setPipeline({
@@ -75,6 +80,7 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, tasks, sessi
             })),
         config: {
           apiKey: apiKey || undefined,
+          runMode,
         },
       }),
     })
@@ -103,7 +109,7 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, tasks, sessi
     const blob = await res.blob()
     const link = document.createElement('a')
     link.href = URL.createObjectURL(blob)
-    link.download = 'app-factory-repo.zip'
+    link.download = runMode === 'design' ? 'app-factory-design.zip' : 'app-factory-repo.zip'
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
@@ -128,6 +134,7 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, tasks, sessi
             })),
         config: {
           apiKey: apiKey || undefined,
+          runMode,
         },
       }),
     })
@@ -167,6 +174,10 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, tasks, sessi
     if (isZipping) return
     setIsZipping(true)
     try {
+      if (runMode === 'design') {
+        await downloadLegacy()
+        return
+      }
       if (pipeline.hardeningEnabled) {
         if (!isRunnable(pipeline) || !pipeline.runId) {
           alert('Export blocked: repo failed normalization/contract/gates. Run acceptance checks and fix failures first.')
@@ -233,7 +244,7 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, tasks, sessi
           <button onClick={onClose} className="px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded-lg transition-colors">
             Close
           </button>
-          {pipeline.hardeningEnabled ? (
+          {pipeline.hardeningEnabled && runMode !== 'design' ? (
             <>
               <button
                 onClick={handleValidate}
@@ -272,7 +283,7 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, tasks, sessi
               ) : (
                 <>
                   <DownloadIcon className="w-5 h-5 mr-2" />
-                  Download Project as .zip
+                  {runMode === 'design' ? 'Download docs as .zip' : 'Download Project as .zip'}
                 </>
               )}
             </button>

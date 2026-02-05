@@ -22,6 +22,7 @@ type ExportRequest = {
     healthPollIntervalMs?: number
     fixerModel?: string
     apiKey?: string
+    runMode?: 'design' | 'build'
   }
 }
 
@@ -38,6 +39,12 @@ export async function POST(req: Request) {
     }
 
     if (!payload?.stackId) return NextResponse.json({ error: 'Missing stackId' }, { status: 400 })
+    if (payload.config?.runMode === 'design') {
+      return NextResponse.json(
+        { error: 'Design Run selected: validation is not applicable (no runnable repo). Use export instead, or switch to Build Run.' },
+        { status: 400 }
+      )
+    }
     const contract = loadRepoContract(payload.stackId)
     const workRootDir = path.resolve(process.cwd(), '..', '..', '.uaitoolbox', 'app-factory')
 

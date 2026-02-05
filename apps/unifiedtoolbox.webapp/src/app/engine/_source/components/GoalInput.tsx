@@ -5,16 +5,17 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { RunIcon, LoadingIcon, UploadIcon, CloseIcon, StopIcon } from './icons';
 import RequirementsWizard from './RequirementsWizard';
-import type { Artifact } from '../types';
+import type { Artifact, RunMode } from '../types';
 
 interface GoalInputProps {
-  onGoalSubmit: (goal: string, fileContent: string | null, seedArtifacts?: Artifact[]) => void;
+  onGoalSubmit: (goal: string, fileContent: string | null, seedArtifacts: Artifact[] | undefined, runMode: RunMode) => void;
   isOrchestrating: boolean;
   onCancelOrchestration: () => void;
 }
 
 const GoalInput: React.FC<GoalInputProps> = ({ onGoalSubmit, isOrchestrating, onCancelOrchestration }) => {
   const [wizardEnabled, setWizardEnabled] = useState(false)
+  const [runMode, setRunMode] = useState<RunMode>('build')
   const [goal, setGoal] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -44,14 +45,14 @@ const GoalInput: React.FC<GoalInputProps> = ({ onGoalSubmit, isOrchestrating, on
         const reader = new FileReader();
         reader.onload = (event) => {
           const content = event.target?.result as string;
-          onGoalSubmit(goal, content, undefined);
+          onGoalSubmit(goal, content, undefined, runMode);
         };
         reader.onerror = () => {
           alert("Error reading file.");
         }
         reader.readAsText(file);
       } else {
-        onGoalSubmit(goal, null, undefined);
+        onGoalSubmit(goal, null, undefined, runMode);
       }
     }
   };
@@ -74,7 +75,9 @@ const GoalInput: React.FC<GoalInputProps> = ({ onGoalSubmit, isOrchestrating, on
       <RequirementsWizard
         isOrchestrating={isOrchestrating}
         onCancelOrchestration={onCancelOrchestration}
-        onStart={(goalText, fileContent, seedArtifacts) => onGoalSubmit(goalText, fileContent, seedArtifacts)}
+        runMode={runMode}
+        onRunModeChange={setRunMode}
+        onStart={(goalText, fileContent, seedArtifacts) => onGoalSubmit(goalText, fileContent, seedArtifacts, runMode)}
       />
     )
   }
@@ -82,6 +85,37 @@ const GoalInput: React.FC<GoalInputProps> = ({ onGoalSubmit, isOrchestrating, on
   return (
     <div className="p-4 border-b border-gray-700 bg-gray-900/50">
       <form onSubmit={handleSubmit} className="space-y-3">
+        <div className="flex items-center justify-between gap-3 text-xs">
+          <div className="text-gray-400">Run type:</div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setRunMode('design')}
+              disabled={isOrchestrating}
+              className={`px-3 py-1.5 rounded-md border transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                runMode === 'design'
+                  ? 'bg-indigo-600/30 border-indigo-500 text-indigo-100'
+                  : 'bg-gray-800 border-gray-700 text-gray-200 hover:bg-gray-700'
+              }`}
+              title="Design Run: docs/specs only (no runnable repo checks)"
+            >
+              Design Run
+            </button>
+            <button
+              type="button"
+              onClick={() => setRunMode('build')}
+              disabled={isOrchestrating}
+              className={`px-3 py-1.5 rounded-md border transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                runMode === 'build'
+                  ? 'bg-indigo-600/30 border-indigo-500 text-indigo-100'
+                  : 'bg-gray-800 border-gray-700 text-gray-200 hover:bg-gray-700'
+              }`}
+              title="Build Run: generate runnable repo + acceptance checks"
+            >
+              Build Run
+            </button>
+          </div>
+        </div>
         <div className="flex gap-3">
             <input
               type="text"

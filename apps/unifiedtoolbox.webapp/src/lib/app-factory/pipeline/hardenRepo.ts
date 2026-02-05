@@ -5,7 +5,7 @@ import type { RepoContract } from '../contracts/RepoContract'
 import { assembleRepo } from '../assemble/assembleRepo'
 import { normalizeRepo, type NormalizeRepoResult } from '../normalize/normalizeRepo'
 import { evaluateRepoContract, type RepoContractEvaluation } from '../contracts/evaluateRepoContract'
-import { runGates, type GateReport } from '../gates/runGates'
+import { runGates, writeSkippedGateReport, type GateReport } from '../gates/runGates'
 import { repairLoop } from '../repair/repairLoop'
 import { removeGitDir } from '../repair/patchApplier'
 import { ingestArtifacts, type AppFactoryArtifact as IngestArtifact } from './ingestArtifacts'
@@ -119,11 +119,17 @@ export async function hardenRepo(options: {
   let gateReport: GateReport
   {
     const startedAt = new Date().toISOString()
-    gateReport = await runGates(repoDir, options.contract, {
-      gateTimeoutSeconds: cfg.gateTimeoutSeconds,
-      bootTimeoutSeconds: cfg.bootTimeoutSeconds,
-      healthPollIntervalMs: cfg.healthPollIntervalMs,
-    })
+    const canRunGatesNow = normalization.violations.length === 0 && contractEval.passed
+    gateReport = canRunGatesNow
+      ? await runGates(repoDir, options.contract, {
+          gateTimeoutSeconds: cfg.gateTimeoutSeconds,
+          bootTimeoutSeconds: cfg.bootTimeoutSeconds,
+          healthPollIntervalMs: cfg.healthPollIntervalMs,
+        })
+      : await writeSkippedGateReport(
+          repoDir,
+          normalization.violations.length > 0 ? 'Skipped: normalization violations present' : 'Skipped: contract failed'
+        )
     const endedAt = new Date().toISOString()
     timings.gates = { startedAt, endedAt }
   }
@@ -278,11 +284,17 @@ export async function hardenRepo(options: {
     onCycle: async () => {
       const newNormalization = await normalizeRepo(repoDir, options.contract)
       const newContractEval = await evaluateRepoContract(repoDir, options.contract)
-      const newGateReport = await runGates(repoDir, options.contract, {
-        gateTimeoutSeconds: cfg.gateTimeoutSeconds,
-        bootTimeoutSeconds: cfg.bootTimeoutSeconds,
-        healthPollIntervalMs: cfg.healthPollIntervalMs,
-      })
+      const canRunGates = newNormalization.violations.length === 0 && newContractEval.passed
+      const newGateReport = canRunGates
+        ? await runGates(repoDir, options.contract, {
+            gateTimeoutSeconds: cfg.gateTimeoutSeconds,
+            bootTimeoutSeconds: cfg.bootTimeoutSeconds,
+            healthPollIntervalMs: cfg.healthPollIntervalMs,
+          })
+        : await writeSkippedGateReport(
+            repoDir,
+            newNormalization.violations.length > 0 ? 'Skipped: normalization violations present' : 'Skipped: contract failed'
+          )
       return { normalization: newNormalization, contractEval: newContractEval, gateReport: newGateReport }
     },
   })
@@ -291,11 +303,19 @@ export async function hardenRepo(options: {
 
   normalization = await normalizeRepo(repoDir, options.contract)
   contractEval = await evaluateRepoContract(repoDir, options.contract)
-  gateReport = await runGates(repoDir, options.contract, {
-    gateTimeoutSeconds: cfg.gateTimeoutSeconds,
-    bootTimeoutSeconds: cfg.bootTimeoutSeconds,
-    healthPollIntervalMs: cfg.healthPollIntervalMs,
-  })
+  {
+    const canRunGates = normalization.violations.length === 0 && contractEval.passed
+    gateReport = canRunGates
+      ? await runGates(repoDir, options.contract, {
+          gateTimeoutSeconds: cfg.gateTimeoutSeconds,
+          bootTimeoutSeconds: cfg.bootTimeoutSeconds,
+          healthPollIntervalMs: cfg.healthPollIntervalMs,
+        })
+      : await writeSkippedGateReport(
+          repoDir,
+          normalization.violations.length > 0 ? 'Skipped: normalization violations present' : 'Skipped: contract failed'
+        )
+  }
 
   await removeGitDir(repoDir)
 
