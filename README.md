@@ -179,6 +179,7 @@ The AI Toolbox follows a lightweight orchestration workflow for Codex-driven cha
 ### Artifact Locations
 
 - **Local orchestration artifacts**: `.uaitoolbox/` or `runs/` (git-ignored)
+- **App Factory runs**: `.uaitoolbox/app-factory/runs/<runId>/` (generated repo + hardening reports during export)
 - **Prompts**: `data/prompts/` (YAML)
 - **Agents**: `data/agents/` (YAML/JSON)
 - **Run tracking**: `apps/orchestration-bridge/runs/` (JSON)

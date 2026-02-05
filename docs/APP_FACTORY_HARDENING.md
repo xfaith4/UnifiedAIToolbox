@@ -2,6 +2,9 @@
 
 This repo’s App Factory export path hardens generated artifacts so the resulting repo zip is **runnable by construction**.
 
+Enable enforcement with:
+- `HARDENING_PIPELINE=true`
+
 ## Pipeline
 
 1. **Assemble**: Create minimal missing build plumbing for the selected stack (only when files are missing).
@@ -11,11 +14,25 @@ This repo’s App Factory export path hardens generated artifacts so the resulti
 5. **Patch-only Repair Loop** (max `MAX_REPAIR_CYCLES`, default 3): If gates fail, call the Fixer model for a unified diff, apply via `git apply`, then re-run normalize + gates. Writes `PATCHLOG.md` + `patches/`.
 
 All reports are written into the exported repo root:
+- `ARTIFACT_INGEST_REPORT.md` (where artifacts were stored; unsafe names go under `orphaned/`)
 - `ASSEMBLY_REPORT.md`
 - `NORMALIZATION_REPORT.md`
 - `REPO_CONTRACT.json`
 - `GATE_REPORT.md` + `gate-logs/`
 - `PATCHLOG.md` + `patches/`
+- `RUN_DIAGNOSTICS.md` + `run_state_snapshot.json` + `run_config_snapshot.json` + `artifact_tree.txt`
+
+## Default stack used by the UI
+
+The App Factory UI export currently targets:
+- `node-next-app-npm` (single Next.js app using npm)
+
+The repo also includes an example workspace contract:
+- `node-next-fastify-pnpm` (pnpm workspace + Next.js web + Fastify API)
+
+## Request sizing note (why sessionId is used)
+
+Export requests can be large if they include full file contents. The UI prefers sending a `sessionId`, and the export endpoint loads artifacts from the persisted history file under `data/orchestrator-history/`.
 
 ## Adding a new stack contract
 
@@ -52,4 +69,3 @@ Environment variables (defaults shown):
 Fixer API key resolution (server-side):
 - Prefer `OPENAI_API_KEY`
 - Fallback: `NEXT_PUBLIC_OPENAI_API_KEY` / `NEXT_PUBLIC_API_KEY`
-

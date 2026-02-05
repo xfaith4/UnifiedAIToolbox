@@ -14,9 +14,12 @@ import SessionHistoryPanel from './components/SessionHistoryPanel';
 import FeedbackModal from './components/FeedbackModal';
 import SettingsModal from './components/SettingsModal';
 import ApiKeyModal from './components/ApiKeyModal';
+import PipelineStepper from './components/PipelineStepper';
+import RunFileModal from './components/RunFileModal';
 
 import useOrchestrator from './hooks/useOrchestrator';
-import type { Task } from './types';
+import type { Task, Artifact } from './types';
+import type { EnginePipelinePayload } from '@/lib/app-factory/pipeline/pipelineStatus';
 
 const App: React.FC = () => {
   const {
@@ -24,6 +27,8 @@ const App: React.FC = () => {
     history,
     isOrchestrating,
     isComplete,
+    pipeline,
+    setPipeline,
     startOrchestration,
     runFeedback,
     cancelOrchestration,
@@ -42,6 +47,8 @@ const App: React.FC = () => {
   const [showFeedback, setShowFeedback] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [isApiKeyMissing, setIsApiKeyMissing] = useState(false);
+  const [viewFile, setViewFile] = useState<{ runId: string; relPath: string } | null>(null);
+  const [autoValidatedSessionId, setAutoValidatedSessionId] = useState<string | null>(null);
 
   // Timer effect to update elapsed time when orchestrating
   useEffect(() => {
@@ -100,13 +107,68 @@ const App: React.FC = () => {
     }
   }, [tasks.length, viewMode]);
 
-  const handleGoalSubmit = (goal: string, fileContent: string | null) => {
+  const handleGoalSubmit = (goal: string, fileContent: string | null, seedArtifacts?: Artifact[]) => {
     if (activeView !== 'live') {
       setActiveView('live');
     }
-    startOrchestration(goal, fileContent);
+    startOrchestration(goal, fileContent, seedArtifacts);
     setSelectedTaskId(null);
   };
+
+  useEffect(() => {
+    // Auto-run hardening validation for the live session once agents complete (when enabled),
+    // so the Export button only enables after gates pass.
+    if (!pipeline?.hardeningEnabled) return
+    if (!isComplete) return
+    if (!liveSession?.id) return
+    if (autoValidatedSessionId === liveSession.id) return
+
+    const normalize = pipeline.stages.find((s) => s.id === 'normalize')?.status
+    const contract = pipeline.stages.find((s) => s.id === 'contract')?.status
+    const gates = pipeline.stages.find((s) => s.id === 'gates')?.status
+    const alreadyPassed = normalize === 'passed' && contract === 'passed' && gates === 'passed'
+    const alreadyRunning = [normalize, contract, gates].some((s) => s === 'running')
+    if (alreadyPassed || alreadyRunning) return
+
+    let cancelled = false
+    const run = async () => {
+      const startedAt = new Date().toISOString()
+      setPipeline({
+        ...pipeline,
+        stages: pipeline.stages.map((s) =>
+          ['decision-lock', 'teams', 'assemble', 'normalize', 'contract', 'gates', 'repair', 'export'].includes(s.id) ? { ...s, status: 'running', startedAt } : s
+        ),
+      } as EnginePipelinePayload)
+
+      try {
+        const apiKey = process.env.NEXT_PUBLIC_API_KEY || process.env.NEXT_PUBLIC_OPENAI_API_KEY || ''
+        const res = await fetch('/api/app-factory/validate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            stackId: 'node-next-app-npm',
+            runLabel: 'ui-auto-validate',
+            sessionId: liveSession.id,
+            artifacts: [],
+            config: { apiKey: apiKey || undefined },
+          }),
+        })
+        const json = await res.json().catch(() => null)
+        if (!cancelled && json?.pipeline) {
+          setPipeline(json.pipeline as EnginePipelinePayload)
+        }
+      } catch {
+        // ignore
+      } finally {
+        if (!cancelled) setAutoValidatedSessionId(liveSession.id)
+      }
+    }
+
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [pipeline, isComplete, liveSession?.id, autoValidatedSessionId, setPipeline]);
 
   const handleSelectTask = (task: Task) => {
     setSelectedTaskId(task.id);
@@ -162,7 +224,15 @@ const App: React.FC = () => {
           isOrchestrating={isOrchestrating}
           onCancelOrchestration={cancelOrchestration}
         />
-        <ExpectedOutputsPanel onLearnMore={() => setShowDefinitions(true)} />
+        <PipelineStepper pipeline={pipeline} />
+        <ExpectedOutputsPanel
+          onLearnMore={() => setShowDefinitions(true)}
+          pipeline={pipeline}
+          onViewFile={(relPath) => {
+            if (!pipeline?.runId) return
+            setViewFile({ runId: pipeline.runId, relPath })
+          }}
+        />
         <div className="flex-1 flex overflow-hidden">
           <div className="flex-1 flex flex-col min-w-0">
             <RunMonitorPanel
@@ -211,6 +281,9 @@ const App: React.FC = () => {
         isOpen={showExport}
         onClose={() => setShowExport(false)}
         tasks={displayedSession?.tasks ?? []}
+        sessionId={displayedSession?.id ?? null}
+        pipeline={pipeline}
+        setPipeline={setPipeline}
       />
 
       <FeedbackModal
@@ -225,6 +298,15 @@ const App: React.FC = () => {
         onClose={() => setShowSettings(false)}
         isApiKeyConfigured={!isApiKeyMissing}
       />
+
+      {viewFile && (
+        <RunFileModal
+          isOpen={true}
+          onClose={() => setViewFile(null)}
+          runId={viewFile.runId}
+          relPath={viewFile.relPath}
+        />
+      )}
     </div>
   );
 };

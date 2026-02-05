@@ -8,12 +8,14 @@ import { evaluateRepoContract, type RepoContractEvaluation } from '../contracts/
 import { runGates, type GateReport } from '../gates/runGates'
 import { repairLoop } from '../repair/repairLoop'
 import { removeGitDir } from '../repair/patchApplier'
+import { ingestArtifacts, type AppFactoryArtifact as IngestArtifact } from './ingestArtifacts'
+import { writeRunDiagnosticsBundle } from '../diagnostics/writeRunDiagnosticsBundle'
+import { featureFlags } from '../flags'
+import { planArtifactWrites } from './ingestArtifacts'
+import { prepareParallelArtifacts, type ParallelPrepareResult } from '../parallel/prepareParallelArtifacts'
+import { runDecisionLock, type DecisionLockResult } from '../parallel/decisionLock'
 
-export type AppFactoryArtifact = {
-  name: string
-  type?: string
-  content: string
-}
+export type AppFactoryArtifact = IngestArtifact
 
 export type HardeningConfig = {
   maxRepairCycles: number
@@ -25,12 +27,19 @@ export type HardeningConfig = {
 }
 
 export type HardenRepoResult = {
+  runId: string
   repoDir: string
   passed: boolean
   normalization: NormalizeRepoResult
   contractEval: RepoContractEvaluation
   gateReport: GateReport
   repair?: { attemptedCycles: number; patchLogPath: string }
+  parallel?: {
+    enabled: boolean
+    prepare?: { passed: boolean; ownershipPassed: boolean; assemblerPassed: boolean; ownershipReportPath: string; assemblerReportPath: string }
+    decisionLock?: { contractHash: string; reportPath: string }
+  }
+  timings?: Partial<Record<'assemble' | 'normalize' | 'contract' | 'gates' | 'repair' | 'decisionLock', { startedAt: string; endedAt: string }>>
 }
 
 export function defaultHardeningConfig(): HardeningConfig {
@@ -58,24 +67,6 @@ function safeRelativePath(input: string): string {
   return parts.join('/')
 }
 
-async function writeArtifacts(repoDir: string, artifacts: AppFactoryArtifact[]): Promise<void> {
-  for (const art of artifacts) {
-    if (!art?.name) continue
-    const rel = safeRelativePath(art.name)
-    if (!rel) continue
-    const full = path.join(repoDir, rel)
-    await fs.mkdir(path.dirname(full), { recursive: true })
-
-    if (art.type === 'IMAGE') {
-      const buf = Buffer.from(art.content, 'base64')
-      await fs.writeFile(full, buf)
-      continue
-    }
-
-    await fs.writeFile(full, (art.content || '').replace(/\r\n/g, '\n'), 'utf8')
-  }
-}
-
 export async function hardenRepo(options: {
   artifacts: AppFactoryArtifact[]
   contract: RepoContract
@@ -84,6 +75,7 @@ export async function hardenRepo(options: {
   config?: Partial<HardeningConfig>
 }): Promise<HardenRepoResult> {
   const cfg = { ...defaultHardeningConfig(), ...(options.config || {}) }
+  const parallelEnabled = featureFlags.parallelTeams()
   const runId = `${options.runLabel ? safeRelativePath(options.runLabel).replace(/\//g, '-') + '-' : ''}${new Date()
     .toISOString()
     .replace(/[:.]/g, '-')}-${crypto.randomBytes(3).toString('hex')}`
@@ -91,21 +83,105 @@ export async function hardenRepo(options: {
   const repoDir = path.join(options.workRootDir, 'runs', runId, 'repo')
   await fs.mkdir(repoDir, { recursive: true })
 
-  await writeArtifacts(repoDir, options.artifacts)
+  let parallelPrepare: ParallelPrepareResult | null = null
+  if (parallelEnabled) {
+    const planned = planArtifactWrites(repoDir, options.artifacts)
+    parallelPrepare = await prepareParallelArtifacts(repoDir, planned)
+    await ingestArtifacts(repoDir, parallelPrepare.selectedArtifacts, { plannedWrites: planArtifactWrites(repoDir, parallelPrepare.selectedArtifacts) })
+  } else {
+    await ingestArtifacts(repoDir, options.artifacts)
+  }
 
-  await assembleRepo(repoDir, options.contract)
+  const timings: HardenRepoResult['timings'] = {}
+  {
+    const startedAt = new Date().toISOString()
+    await assembleRepo(repoDir, options.contract)
+    const endedAt = new Date().toISOString()
+    timings.assemble = { startedAt, endedAt }
+  }
 
-  let normalization = await normalizeRepo(repoDir, options.contract)
-  let contractEval = await evaluateRepoContract(repoDir, options.contract)
-  let gateReport = await runGates(repoDir, options.contract, {
-    gateTimeoutSeconds: cfg.gateTimeoutSeconds,
-    bootTimeoutSeconds: cfg.bootTimeoutSeconds,
-    healthPollIntervalMs: cfg.healthPollIntervalMs,
-  })
+  let normalization: NormalizeRepoResult
+  {
+    const startedAt = new Date().toISOString()
+    normalization = await normalizeRepo(repoDir, options.contract)
+    const endedAt = new Date().toISOString()
+    timings.normalize = { startedAt, endedAt }
+  }
 
-  if (normalization.violations.length === 0 && contractEval.passed && gateReport.passed) {
+  let contractEval: RepoContractEvaluation
+  {
+    const startedAt = new Date().toISOString()
+    contractEval = await evaluateRepoContract(repoDir, options.contract)
+    const endedAt = new Date().toISOString()
+    timings.contract = { startedAt, endedAt }
+  }
+
+  let gateReport: GateReport
+  {
+    const startedAt = new Date().toISOString()
+    gateReport = await runGates(repoDir, options.contract, {
+      gateTimeoutSeconds: cfg.gateTimeoutSeconds,
+      bootTimeoutSeconds: cfg.bootTimeoutSeconds,
+      healthPollIntervalMs: cfg.healthPollIntervalMs,
+    })
+    const endedAt = new Date().toISOString()
+    timings.gates = { startedAt, endedAt }
+  }
+
+  let decisionLock: DecisionLockResult | null = null
+  if (parallelEnabled) {
+    const startedAt = new Date().toISOString()
+    decisionLock = await runDecisionLock(repoDir, options.contract)
+    const endedAt = new Date().toISOString()
+    timings.decisionLock = { startedAt, endedAt }
+  }
+
+  const parallelPassed = !parallelEnabled || Boolean(parallelPrepare?.passed)
+  if (normalization.violations.length === 0 && contractEval.passed && gateReport.passed && parallelPassed) {
     await removeGitDir(repoDir)
-    return { repoDir, passed: true, normalization, contractEval, gateReport }
+    await writeRunDiagnosticsBundle({
+      repoDir,
+      runId,
+      stackId: options.contract.stackId,
+      contract: options.contract,
+      config: cfg,
+      passed: true,
+      normalization,
+      contractEval,
+      gateReport,
+    })
+    return {
+      runId,
+      repoDir,
+      passed: true,
+      normalization,
+      contractEval,
+      gateReport,
+      parallel: parallelEnabled
+        ? {
+            enabled: true,
+            prepare: parallelPrepare
+              ? {
+                  passed: parallelPrepare.passed,
+                  ownershipPassed: parallelPrepare.ownership.passed,
+                  assemblerPassed: parallelPrepare.assembler.passed,
+                  ownershipReportPath: parallelPrepare.ownership.reportPath,
+                  assemblerReportPath: parallelPrepare.assembler.reportPath,
+                }
+              : undefined,
+            decisionLock: decisionLock ? { contractHash: decisionLock.contractHash, reportPath: decisionLock.reportPath } : undefined,
+          }
+        : { enabled: false },
+      timings,
+    }
+  }
+
+  if (parallelEnabled && parallelPrepare && !parallelPrepare.passed) {
+    await fs.writeFile(
+      path.join(repoDir, 'PATCHLOG.md'),
+      '# Patch Log\n\nRepair loop skipped: parallel teams ownership/conflict checks failed.\nSee `OWNERSHIP_REPORT.md` and `ASSEMBLER_REPORT.md`.\n',
+      'utf8'
+    )
   }
 
   if (!cfg.apiKey) {
@@ -115,9 +191,83 @@ export async function hardenRepo(options: {
       'utf8'
     )
     await removeGitDir(repoDir)
-    return { repoDir, passed: false, normalization, contractEval, gateReport, repair: { attemptedCycles: 0, patchLogPath: path.join(repoDir, 'PATCHLOG.md') } }
+    await writeRunDiagnosticsBundle({
+      repoDir,
+      runId,
+      stackId: options.contract.stackId,
+      contract: options.contract,
+      config: cfg,
+      passed: false,
+      normalization,
+      contractEval,
+      gateReport,
+      repair: { attemptedCycles: 0, patchLogPath: path.join(repoDir, 'PATCHLOG.md') },
+    })
+    return {
+      runId,
+      repoDir,
+      passed: false,
+      normalization,
+      contractEval,
+      gateReport,
+      parallel: parallelEnabled
+        ? {
+            enabled: true,
+            prepare: parallelPrepare
+              ? {
+                  passed: parallelPrepare.passed,
+                  ownershipPassed: parallelPrepare.ownership.passed,
+                  assemblerPassed: parallelPrepare.assembler.passed,
+                  ownershipReportPath: parallelPrepare.ownership.reportPath,
+                  assemblerReportPath: parallelPrepare.assembler.reportPath,
+                }
+              : undefined,
+            decisionLock: decisionLock ? { contractHash: decisionLock.contractHash, reportPath: decisionLock.reportPath } : undefined,
+          }
+        : { enabled: false },
+      repair: { attemptedCycles: 0, patchLogPath: path.join(repoDir, 'PATCHLOG.md') },
+      timings,
+    }
   }
 
+  if (parallelEnabled && parallelPrepare && !parallelPrepare.passed) {
+    await removeGitDir(repoDir)
+    await writeRunDiagnosticsBundle({
+      repoDir,
+      runId,
+      stackId: options.contract.stackId,
+      contract: options.contract,
+      config: cfg,
+      passed: false,
+      normalization,
+      contractEval,
+      gateReport,
+      repair: { attemptedCycles: 0, patchLogPath: path.join(repoDir, 'PATCHLOG.md') },
+    })
+    return {
+      runId,
+      repoDir,
+      passed: false,
+      normalization,
+      contractEval,
+      gateReport,
+      parallel: {
+        enabled: true,
+        prepare: {
+          passed: false,
+          ownershipPassed: parallelPrepare.ownership.passed,
+          assemblerPassed: parallelPrepare.assembler.passed,
+          ownershipReportPath: parallelPrepare.ownership.reportPath,
+          assemblerReportPath: parallelPrepare.assembler.reportPath,
+        },
+        decisionLock: decisionLock ? { contractHash: decisionLock.contractHash, reportPath: decisionLock.reportPath } : undefined,
+      },
+      repair: { attemptedCycles: 0, patchLogPath: path.join(repoDir, 'PATCHLOG.md') },
+      timings,
+    }
+  }
+
+  const repairStartedAt = new Date().toISOString()
   const repair = await repairLoop({
     repoDir,
     contract: options.contract,
@@ -136,6 +286,8 @@ export async function hardenRepo(options: {
       return { normalization: newNormalization, contractEval: newContractEval, gateReport: newGateReport }
     },
   })
+  const repairEndedAt = new Date().toISOString()
+  timings.repair = { startedAt: repairStartedAt, endedAt: repairEndedAt }
 
   normalization = await normalizeRepo(repoDir, options.contract)
   contractEval = await evaluateRepoContract(repoDir, options.contract)
@@ -147,13 +299,43 @@ export async function hardenRepo(options: {
 
   await removeGitDir(repoDir)
 
-  return {
+  const passed = normalization.violations.length === 0 && contractEval.passed && gateReport.passed
+  await writeRunDiagnosticsBundle({
     repoDir,
-    passed: normalization.violations.length === 0 && contractEval.passed && gateReport.passed,
+    runId,
+    stackId: options.contract.stackId,
+    contract: options.contract,
+    config: cfg,
+    passed,
     normalization,
     contractEval,
     gateReport,
     repair: { attemptedCycles: repair.attemptedCycles, patchLogPath: repair.patchLogPath },
+  })
+
+  return {
+    runId,
+    repoDir,
+    passed,
+    normalization,
+    contractEval,
+    gateReport,
+    parallel: parallelEnabled
+      ? {
+          enabled: true,
+          prepare: parallelPrepare
+            ? {
+                passed: parallelPrepare.passed,
+                ownershipPassed: parallelPrepare.ownership.passed,
+                assemblerPassed: parallelPrepare.assembler.passed,
+                ownershipReportPath: parallelPrepare.ownership.reportPath,
+                assemblerReportPath: parallelPrepare.assembler.reportPath,
+              }
+            : undefined,
+          decisionLock: decisionLock ? { contractHash: decisionLock.contractHash, reportPath: decisionLock.reportPath } : undefined,
+        }
+      : { enabled: false },
+    repair: { attemptedCycles: repair.attemptedCycles, patchLogPath: repair.patchLogPath },
+    timings,
   }
 }
-

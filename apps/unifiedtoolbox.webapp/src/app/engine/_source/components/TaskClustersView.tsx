@@ -4,10 +4,20 @@ import { TaskStatus } from '../types'
 
 type ClusterKey = string
 
+function inferTeamLabel(task: Task): string {
+  const spec = (task.agent?.specialization || '').toLowerCase()
+  const name = (task.name || '').toLowerCase()
+  const hay = `${spec}\n${name}`
+  if (hay.includes('shared contracts') || hay.includes('contracts team') || hay.includes('decision lock')) return 'Shared Contracts'
+  if (hay.includes('platform team') || hay.includes('infra team') || hay.includes('devops') || hay.includes('platform')) return 'Platform'
+  if (hay.includes('api team') || hay.includes('backend') || hay.includes('api')) return 'API'
+  if (hay.includes('ui team') || hay.includes('frontend') || hay.includes('web team') || hay.includes('ui')) return 'UI'
+  if (hay.includes('data/ml') || hay.includes('data ml') || hay.includes('ml team') || hay.includes('data team')) return 'Data/ML'
+  return 'Other'
+}
+
 function agentKey(task: Task): string {
-  const role = task.agent?.role || 'Unknown Agent'
-  const spec = task.agent?.specialization?.trim()
-  return spec ? `${role} — ${spec}` : role
+  return inferTeamLabel(task)
 }
 
 function statusBadgeClasses(status: TaskStatus): string {
@@ -201,4 +211,3 @@ const TaskClustersView: React.FC<Props> = ({ tasks, selectedTaskId, onSelectTask
 }
 
 export default TaskClustersView
-

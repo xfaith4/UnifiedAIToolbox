@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "createdAt": "2026-02-05T12:00:00.000Z",
+  "goal": "Help me track my personal goals and stay on schedule with gentle reminders.",
+  "users": "me",
+  "coreWorkflow": [
+    "Create a goal",
+    "Break it into weekly tasks",
+    "Mark tasks done",
+    "Review progress"
+  ],
+  "inputs": [
+    "manual_entry"
+  ],
+  "outputs": [
+    "dashboard",
+    "alerts",
+    "export"
+  ],
+  "mustHave": [
+    "Create and edit goals",
+    "Create tasks and mark them done",
+    "See a simple progress view"
+  ],
+  "niceToHave": [
+    "Export progress",
+    "Dark mode"
+  ],
+  "runLocation": "my_computer",
+  "offline": "not_sure",
+  "dataSource": "manual",
+  "hasCredentials": "no",
+  "sensitivity": "not_sure",
+  "successCriteria": [
+    "I can create a goal and tasks in under 2 minutes",
+    "I can mark tasks done and see progress update",
+    "The app runs without any API keys and shows realistic sample data"
+  ],
+  "demo_mode_required": true,
+  "nonFunctional": {
+    "mobileFriendly": true,
+    "exports": "csv",
+    "performance": "feels_fast"
+  }
+}
+

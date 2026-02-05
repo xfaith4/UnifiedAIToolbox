@@ -1,7 +1,7 @@
-import { promises as fs } from 'fs';
 import path from 'path';
 import { NextResponse } from 'next/server';
 import type { Session, EnvironmentalImpact } from '@/app/engine/_source/types';
+import { readSessionsFile, writeSessionsFile } from '@/lib/app-factory/history/sessionsStore'
 
 export const dynamic = 'force-dynamic';
 
@@ -9,27 +9,14 @@ const HISTORY_DIR = path.resolve(process.cwd(), '..', '..', 'data', 'orchestrato
 const HISTORY_FILE = path.join(HISTORY_DIR, 'sessions.json');
 const MAX_HISTORY_ITEMS = 50;
 
-async function ensureHistoryDir(): Promise<void> {
-  await fs.mkdir(HISTORY_DIR, { recursive: true });
-}
-
 async function readHistory(): Promise<Session[]> {
-  await ensureHistoryDir();
-  try {
-    const raw = await fs.readFile(HISTORY_FILE, 'utf8');
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as Session[]) : [];
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-      console.warn('[api/engine/history] Failed to read history file:', error);
-    }
-    return [];
-  }
+  const res = await readSessionsFile<Session>(HISTORY_FILE)
+  if (res.error) console.warn('[api/engine/history] Failed to read history file:', res.error)
+  return Array.isArray(res.sessions) ? res.sessions : []
 }
 
 async function writeHistory(history: Session[]): Promise<void> {
-  await ensureHistoryDir();
-  await fs.writeFile(HISTORY_FILE, JSON.stringify(history, null, 2), 'utf8');
+  await writeSessionsFile(HISTORY_FILE, history)
 }
 
 function normalizeSession(raw: unknown): Session | null {

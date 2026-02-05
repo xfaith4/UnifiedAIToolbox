@@ -7,7 +7,7 @@ import { DEFAULT_CODE_FILE_FORBIDDEN } from './defaultForbidden'
 export type ContractFailure =
   | { kind: 'missing_required_file'; pattern: string; message: string }
   | { kind: 'missing_required_any'; patterns: string[]; message: string }
-  | { kind: 'env_missing'; envVar: string; message: string }
+  | { kind: 'env_undocumented'; envVar: string; message: string }
   | {
       kind: 'forbidden_pattern'
       filePath: string
@@ -23,7 +23,7 @@ export type RepoContractEvaluation = {
   passed: boolean
   requiredFilesAll: { pattern: string; matched: string[] }[]
   requiredFilesAny: { patterns: string[]; matched: string[] }[]
-  env: { name: string; present: boolean }[]
+  env: { name: string; documented: boolean }[]
   failures: ContractFailure[]
   reportPath: string
 }
@@ -75,6 +75,24 @@ function mergeForbidden<T extends { id: string }>(defaults: T[], overrides: T[])
   return Array.from(byId.values())
 }
 
+async function readTextIfExists(filePath: string): Promise<string | null> {
+  try {
+    const stat = await fs.stat(filePath)
+    if (!stat.isFile() || stat.size > TEXT_FILE_MAX_BYTES) return null
+    return await fs.readFile(filePath, 'utf8')
+  } catch {
+    return null
+  }
+}
+
+function isEnvVarDocumented(envVar: string, docs: { name: string; content: string }[]): boolean {
+  const name = envVar.trim()
+  if (!name) return false
+  const envRe = new RegExp(`^\\s*${name.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}\\s*=`, 'm')
+  const wordRe = new RegExp(`\\b${name.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}\\b`)
+  return docs.some((d) => (d.name.startsWith('.env') ? envRe.test(d.content) : wordRe.test(d.content)))
+}
+
 export async function evaluateRepoContract(repoDir: string, contract: RepoContract): Promise<RepoContractEvaluation> {
   const failures: ContractFailure[] = []
   const allFiles = await listFilesRecursively(repoDir)
@@ -110,12 +128,19 @@ export async function evaluateRepoContract(repoDir: string, contract: RepoContra
     return { patterns, matched: uniq }
   })
 
+  const docFiles: { name: string; content: string }[] = []
+  const candidates = ['.env.example', '.env.template', '.env.sample', '.env.local.example', 'README.md']
+  for (const f of candidates) {
+    const content = await readTextIfExists(path.join(repoDir, f))
+    if (content) docFiles.push({ name: f, content })
+  }
+
   const env = (contract.envVarsRequired || []).map((envVar) => {
-    const present = Boolean(process.env[envVar])
-    if (!present) {
-      failures.push({ kind: 'env_missing', envVar, message: `Missing required env var '${envVar}'` })
+    const documented = isEnvVarDocumented(envVar, docFiles)
+    if (!documented) {
+      failures.push({ kind: 'env_undocumented', envVar, message: `Env var '${envVar}' is required by contract but not documented in .env.example/README.md` })
     }
-    return { name: envVar, present }
+    return { name: envVar, documented }
   })
 
   for (const fullPath of allFiles) {

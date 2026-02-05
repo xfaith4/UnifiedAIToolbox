@@ -2,19 +2,40 @@
 
 
 
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { RunIcon, LoadingIcon, UploadIcon, CloseIcon, StopIcon } from './icons';
+import RequirementsWizard from './RequirementsWizard';
+import type { Artifact } from '../types';
 
 interface GoalInputProps {
-  onGoalSubmit: (goal: string, fileContent: string | null) => void;
+  onGoalSubmit: (goal: string, fileContent: string | null, seedArtifacts?: Artifact[]) => void;
   isOrchestrating: boolean;
   onCancelOrchestration: () => void;
 }
 
 const GoalInput: React.FC<GoalInputProps> = ({ onGoalSubmit, isOrchestrating, onCancelOrchestration }) => {
+  const [wizardEnabled, setWizardEnabled] = useState(false)
   const [goal, setGoal] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      try {
+        const res = await fetch('/api/app-factory/flags', { cache: 'no-store' })
+        if (!res.ok) return
+        const json = (await res.json()) as { REQUIREMENT_WIZARD?: boolean }
+        if (!cancelled) setWizardEnabled(Boolean(json?.REQUIREMENT_WIZARD))
+      } catch {
+        // ignore
+      }
+    }
+    void load()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,14 +44,14 @@ const GoalInput: React.FC<GoalInputProps> = ({ onGoalSubmit, isOrchestrating, on
         const reader = new FileReader();
         reader.onload = (event) => {
           const content = event.target?.result as string;
-          onGoalSubmit(goal, content);
+          onGoalSubmit(goal, content, undefined);
         };
         reader.onerror = () => {
           alert("Error reading file.");
         }
         reader.readAsText(file);
       } else {
-        onGoalSubmit(goal, null);
+        onGoalSubmit(goal, null, undefined);
       }
     }
   };
@@ -47,6 +68,16 @@ const GoalInput: React.FC<GoalInputProps> = ({ onGoalSubmit, isOrchestrating, on
         fileInputRef.current.value = "";
     }
   };
+
+  if (wizardEnabled) {
+    return (
+      <RequirementsWizard
+        isOrchestrating={isOrchestrating}
+        onCancelOrchestration={onCancelOrchestration}
+        onStart={(goalText, fileContent, seedArtifacts) => onGoalSubmit(goalText, fileContent, seedArtifacts)}
+      />
+    )
+  }
 
   return (
     <div className="p-4 border-b border-gray-700 bg-gray-900/50">
