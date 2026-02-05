@@ -1,5 +1,4 @@
 import React, { useState, useMemo } from 'react';
-import JSZip from 'jszip';
 import type { Task, Artifact } from '../types';
 import { CloseIcon, DownloadIcon, PaperclipIcon, LoadingIcon } from './icons';
 
@@ -38,21 +37,41 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, tasks }) => 
     setIsZipping(true);
 
     try {
-      const zip = new JSZip();
+      const apiKey =
+        process.env.NEXT_PUBLIC_API_KEY || process.env.NEXT_PUBLIC_OPENAI_API_KEY || '';
 
-      uniqueArtifacts.forEach(artifact => {
-        if (artifact.type === 'IMAGE') {
-          zip.file(artifact.name, artifact.content, { base64: true });
-        } else {
-          zip.file(artifact.name, artifact.content);
-        }
-      });
+      const res = await fetch('/api/app-factory/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          stackId: 'node-next-fastify-pnpm',
+          runLabel: 'ui-export',
+          artifacts: uniqueArtifacts.map((a) => ({
+            name: a.name,
+            type: a.type,
+            content: a.content,
+          })),
+          config: {
+            apiKey: apiKey || undefined,
+          },
+        }),
+      })
 
-      const blob = await zip.generateAsync({ type: 'blob' });
+      if (!res.ok) {
+        const detail = await res.text()
+        console.error('[app-factory export] failed', res.status, detail)
+        alert(
+          `Export blocked: repo failed normalization/contract/gates.\n\nHTTP ${res.status}\n\n` +
+            (detail.length > 1200 ? detail.slice(0, 1200) + '…' : detail)
+        )
+        return
+      }
+
+      const blob = await res.blob()
 
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
-      link.download = 'app-factory-artifacts.zip';
+      link.download = 'app-factory-repo.zip';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);

@@ -1,0 +1,184 @@
+{
+  "stackId": "node-next-fastify-pnpm",
+  "description": "Node + pnpm workspace + Next.js web + Fastify API",
+  "requiredFilesAll": [
+    "package.json",
+    "pnpm-workspace.yaml",
+    "apps/web/package.json",
+    "apps/web/tsconfig.json",
+    "apps/web/next.config.*",
+    "apps/web/app/page.tsx",
+    "apps/api/package.json",
+    "apps/api/tsconfig.json",
+    "apps/api/src/server.ts"
+  ],
+  "requiredFilesAny": [],
+  "codeFileExtensions": [
+    ".ts",
+    ".tsx",
+    ".js",
+    ".jsx",
+    ".mjs",
+    ".cjs",
+    ".mts",
+    ".cts",
+    ".py",
+    ".go",
+    ".cs",
+    ".java",
+    ".rb",
+    ".ps1",
+    ".sh",
+    ".php",
+    ".rs",
+    ".c",
+    ".cpp",
+    ".h",
+    ".hpp",
+    ".swift",
+    ".kt"
+  ],
+  "forbiddenPatternsByExtension": {
+    ".ts": [
+      {
+        "id": "md-fence",
+        "description": "Markdown code fences are not allowed in code files",
+        "pattern": "^\\s*```",
+        "flags": "m"
+      },
+      {
+        "id": "file-header",
+        "description": "File wrappers like '## File:' are not allowed in code files",
+        "pattern": "^\\s*#{1,6}\\s*File\\s*:",
+        "flags": "mi"
+      },
+      {
+        "id": "frontmatter-marker",
+        "description": "YAML frontmatter markers are not allowed in code files",
+        "pattern": "^(?:\\uFEFF)?\\s*---\\s*$",
+        "flags": "m"
+      }
+    ],
+    ".tsx": [
+      {
+        "id": "md-fence",
+        "description": "Markdown code fences are not allowed in code files",
+        "pattern": "^\\s*```",
+        "flags": "m"
+      },
+      {
+        "id": "file-header",
+        "description": "File wrappers like '## File:' are not allowed in code files",
+        "pattern": "^\\s*#{1,6}\\s*File\\s*:",
+        "flags": "mi"
+      },
+      {
+        "id": "frontmatter-marker",
+        "description": "YAML frontmatter markers are not allowed in code files",
+        "pattern": "^(?:\\uFEFF)?\\s*---\\s*$",
+        "flags": "m"
+      }
+    ],
+    ".js": [
+      {
+        "id": "md-fence",
+        "description": "Markdown code fences are not allowed in code files",
+        "pattern": "^\\s*```",
+        "flags": "m"
+      },
+      {
+        "id": "file-header",
+        "description": "File wrappers like '## File:' are not allowed in code files",
+        "pattern": "^\\s*#{1,6}\\s*File\\s*:",
+        "flags": "mi"
+      },
+      {
+        "id": "frontmatter-marker",
+        "description": "YAML frontmatter markers are not allowed in code files",
+        "pattern": "^(?:\\uFEFF)?\\s*---\\s*$",
+        "flags": "m"
+      }
+    ],
+    ".jsx": [
+      {
+        "id": "md-fence",
+        "description": "Markdown code fences are not allowed in code files",
+        "pattern": "^\\s*```",
+        "flags": "m"
+      },
+      {
+        "id": "file-header",
+        "description": "File wrappers like '## File:' are not allowed in code files",
+        "pattern": "^\\s*#{1,6}\\s*File\\s*:",
+        "flags": "mi"
+      },
+      {
+        "id": "frontmatter-marker",
+        "description": "YAML frontmatter markers are not allowed in code files",
+        "pattern": "^(?:\\uFEFF)?\\s*---\\s*$",
+        "flags": "m"
+      }
+    ],
+    ".py": [
+      {
+        "id": "md-fence",
+        "description": "Markdown code fences are not allowed in code files",
+        "pattern": "^\\s*```",
+        "flags": "m"
+      },
+      {
+        "id": "file-header",
+        "description": "File wrappers like '## File:' are not allowed in code files",
+        "pattern": "^\\s*#{1,6}\\s*File\\s*:",
+        "flags": "mi"
+      },
+      {
+        "id": "frontmatter-marker",
+        "description": "YAML frontmatter markers are not allowed in code files",
+        "pattern": "^(?:\\uFEFF)?\\s*---\\s*$",
+        "flags": "m"
+      }
+    ],
+    ".ps1": [
+      {
+        "id": "md-fence",
+        "description": "Markdown code fences are not allowed in code files",
+        "pattern": "^\\s*```",
+        "flags": "m"
+      },
+      {
+        "id": "file-header",
+        "description": "File wrappers like '## File:' are not allowed in code files",
+        "pattern": "^\\s*#{1,6}\\s*File\\s*:",
+        "flags": "mi"
+      },
+      {
+        "id": "frontmatter-marker",
+        "description": "YAML frontmatter markers are not allowed in code files",
+        "pattern": "^(?:\\uFEFF)?\\s*---\\s*$",
+        "flags": "m"
+      }
+    ]
+  },
+  "envVarsRequired": [],
+  "installCommand": "pnpm install",
+  "typecheckCommand": "pnpm -r typecheck",
+  "lintCommand": "pnpm -r lint",
+  "buildCommand": "pnpm -r build",
+  "bootCommands": [
+    {
+      "name": "api-dev",
+      "command": "pnpm --filter api dev",
+      "env": { "PORT": "3001", "HOST": "127.0.0.1" }
+    },
+    {
+      "name": "web-dev",
+      "command": "pnpm --filter web dev",
+      "env": { "PORT": "3000", "HOSTNAME": "127.0.0.1" }
+    }
+  ],
+  "healthChecks": [
+    { "name": "api-health", "url": "http://127.0.0.1:3001/health", "expectedStatus": 200, "timeoutSeconds": 120 },
+    { "name": "web-root", "url": "http://127.0.0.1:3000", "expectedStatus": 200, "timeoutSeconds": 120 }
+  ]
+}
