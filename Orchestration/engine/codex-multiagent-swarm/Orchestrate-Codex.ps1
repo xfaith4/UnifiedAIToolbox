@@ -152,24 +152,24 @@ function Write-AgentStatusLine {
         timestamp = (Get-Date -Format "o")
     }
     foreach ($k in $Extra.Keys) { $row[$k] = $Extra[$k] }
-    ($row | ConvertTo-Json -Compress) | Add-Content -Path $statusPath
+    ($row | ConvertTo-Json -Compress) | Add-Content -LiteralPath $statusPath
 }
 
 function Resolve-SwarmsPython {
     param([string]$ToolboxRoot)
 
     $py = $env:SWARMS_PYTHON_BIN
-    if (-not [string]::IsNullOrWhiteSpace($py) -and (Test-Path $py)) { return $py }
+    if (-not [string]::IsNullOrWhiteSpace($py) -and (Test-Path -LiteralPath $py)) { return $py }
 
     $candidate = Join-Path $ToolboxRoot ".uaitoolbox\\swarms\\.venv\\Scripts\\python.exe"
-    if (Test-Path $candidate) { return $candidate }
+    if (Test-Path -LiteralPath $candidate) { return $candidate }
 
     # Try to bootstrap the Swarms venv if available
     $setup = Join-Path $ToolboxRoot "scripts\\Setup-Swarms.ps1"
-    if (Test-Path $setup) {
+    if (Test-Path -LiteralPath $setup) {
         try {
             $resolved = & $setup -Quiet
-            if ($resolved -and (Test-Path $resolved)) { return $resolved }
+            if ($resolved -and (Test-Path -LiteralPath $resolved)) { return $resolved }
         } catch { }
     }
 
@@ -188,7 +188,7 @@ function Invoke-SwarmsRun {
     )
 
     $runner = Join-Path $ToolboxRoot "scripts\\swarms\\toolbox_runner.py"
-    if (-not (Test-Path $runner)) {
+    if (-not (Test-Path -LiteralPath $runner)) {
         throw "Swarms runner not found: $runner"
     }
 
@@ -230,7 +230,7 @@ function Get-RepositoryStructure {
     Write-Log "Analyzing repository structure at: $Path"
     
     $structure = @{
-        RootPath     = (Resolve-Path $Path).Path
+        RootPath     = (Resolve-Path -LiteralPath $Path).Path
         TotalFiles   = 0
         FileTypes    = @{}
         Directories  = @()
@@ -246,7 +246,7 @@ function Get-RepositoryStructure {
     $excludePattern = '[\\/](' + ($excludeDirs -join '|') + ')[\\/]'
     
     try {
-        $files = Get-ChildItem -Path $Path -Recurse -File -ErrorAction SilentlyContinue | 
+        $files = Get-ChildItem -LiteralPath $Path -Recurse -File -ErrorAction SilentlyContinue | 
         Where-Object { $_.FullName -notmatch $excludePattern }
         
         $structure.TotalFiles = $files.Count
@@ -284,7 +284,7 @@ function Get-RepositoryStructure {
         # Check for CI/CD
         $ciPaths = @(".github", ".gitlab-ci.yml", "azure-pipelines.yml", "Jenkinsfile")
         foreach ($ciPath in $ciPaths) {
-            if (Test-Path (Join-Path $Path $ciPath)) {
+            if (Test-Path -LiteralPath (Join-Path $Path $ciPath)) {
                 $structure.HasCI = $true
                 break
             }
@@ -366,7 +366,7 @@ function Invoke-AgentExecution {
     foreach ($agent in $Agents) {
         $agentType = $agent.Type
         $agentOutput = Join-Path $OutputDir $agentType
-        New-Item -ItemType Directory -Path $agentOutput -Force | Out-Null
+        [System.IO.Directory]::CreateDirectory($agentOutput) | Out-Null
         
         Write-Log "Executing agent: $agentType"
         
@@ -391,7 +391,7 @@ function Invoke-AgentExecution {
             
             # Create mock log file
             $logPath = Join-Path $agentOutput "agent.log"
-            "[DryRun] Agent $agentType would execute here" | Set-Content -Path $logPath
+            "[DryRun] Agent $agentType would execute here" | Set-Content -LiteralPath $logPath
             
             $results += $result
         }
@@ -411,7 +411,7 @@ function Invoke-AgentExecution {
             
             # Create log file
             $logPath = Join-Path $agentOutput "agent.log"
-            "Agent $agentType execution log" | Set-Content -Path $logPath
+            "Agent $agentType execution log" | Set-Content -LiteralPath $logPath
             
             $results += $result
         }
@@ -453,7 +453,7 @@ function Export-SwarmSummary {
     }
     
     $summaryPath = Join-Path $OutputDir "swarm-summary.json"
-    $summary | ConvertTo-Json -Depth 10 | Set-Content -Path $summaryPath -Encoding UTF8
+    $summary | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $summaryPath -Encoding UTF8
     
     Write-Log "Summary saved to: $summaryPath" -Level Success
     
@@ -479,7 +479,7 @@ function Export-SwarmResults {
     }
     
     $resultsPath = Join-Path $OutputDir "swarm-results.json"
-    $resultsData | ConvertTo-Json -Depth 10 | Set-Content -Path $resultsPath -Encoding UTF8
+    $resultsData | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $resultsPath -Encoding UTF8
     
     Write-Log "Results saved to: $resultsPath" -Level Success
     
@@ -501,7 +501,7 @@ try {
     Write-Log "Work Directory: $WorkDir"
     
     # Validate repository path
-    if (-not (Test-Path $RepoRoot)) {
+    if (-not (Test-Path -LiteralPath $RepoRoot)) {
         throw "Repository path does not exist: $RepoRoot"
     }
     
@@ -513,7 +513,7 @@ try {
     else {
         $resolvedOutputDir = Join-Path $RepoRoot $OutputDir
     }
-    New-Item -ItemType Directory -Path $resolvedOutputDir -Force | Out-Null
+    [System.IO.Directory]::CreateDirectory($resolvedOutputDir) | Out-Null
     Write-Log "Output directory created: $resolvedOutputDir"
 
     # Create work directory
@@ -524,7 +524,7 @@ try {
     else {
         $resolvedWorkDir = Join-Path $RepoRoot $WorkDir
     }
-    New-Item -ItemType Directory -Path $resolvedWorkDir -Force | Out-Null
+    [System.IO.Directory]::CreateDirectory($resolvedWorkDir) | Out-Null
     Write-Log "Work directory created: $resolvedWorkDir"
     
     # Step 1: Analyze repository
@@ -539,7 +539,7 @@ try {
     Write-Log "Step 3: Executing Swarms engine" -Level Info
     Write-AgentStatusLine -OutputDir $resolvedOutputDir -Agent "SwarmsEngine" -Status "working" -Extra @{ model = $Model }
 
-    Push-Location -Path $resolvedWorkDir
+    Push-Location -LiteralPath $resolvedWorkDir
     try {
         if ($DryRun) {
             $swarmPayload = [pscustomobject]@{
@@ -550,7 +550,7 @@ try {
             }
         } else {
             $agentNames = @($selectedAgents | ForEach-Object { $_.Type })
-            $swarmPayload = Invoke-SwarmsRun -ToolboxRoot (Resolve-Path (Join-Path $PSScriptRoot '..\\..\\..')).Path `
+            $swarmPayload = Invoke-SwarmsRun -ToolboxRoot (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\\..\\..')).Path `
                 -RepoRoot $RepoRoot `
                 -Goal $Goal `
                 -Model $Model `
@@ -567,22 +567,22 @@ try {
     # Step 4: Export summary + synthesis compatible with bridge consumers
     Write-Log "Step 4: Writing outputs" -Level Info
     $swarmResultPath = Join-Path $resolvedOutputDir "swarm-result.json"
-    $swarmPayload | ConvertTo-Json -Depth 50 | Set-Content -Path $swarmResultPath -Encoding UTF8
+    $swarmPayload | ConvertTo-Json -Depth 50 | Set-Content -LiteralPath $swarmResultPath -Encoding UTF8
 
     $finalPath = Join-Path $resolvedOutputDir "Final_Synthesis.txt"
     $finalText = $swarmPayload.result
     if ($finalText -isnot [string]) {
         $finalText = ($swarmPayload.result | ConvertTo-Json -Depth 50)
     }
-    $finalText | Out-File -FilePath $finalPath -Encoding UTF8
+    $finalText | Out-File -LiteralPath $finalPath -Encoding UTF8
 
     # Generate a standardized HTML page for the final synthesis (best-effort)
     try {
-        $toolboxRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\\..\\..')).Path
+        $toolboxRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\\..\\..')).Path
         $converter = Join-Path $toolboxRoot "scripts\\Convert-FinalSynthesisToHtml.ps1"
-        if (Test-Path $converter) {
+        if (Test-Path -LiteralPath $converter) {
             $htmlPath = Join-Path $resolvedOutputDir "Final_Synthesis.html"
-            $runId = Split-Path -Leaf $resolvedOutputDir
+            $runId = [System.IO.Path]::GetFileName($resolvedOutputDir)
             & $converter -TextPath $finalPath -OutputPath $htmlPath -Title "Final Synthesis" -RunId $runId -Model $Model -RepoRoot $RepoRoot -Goal $Goal | Out-Null
             Write-Log "Wrote HTML synthesis: $htmlPath" -Level Info
         }
@@ -604,7 +604,7 @@ try {
         Swarm = $swarmPayload.swarmType
         Status = $swarmPayload.status
     }
-    ($summary | ConvertTo-Json -Depth 10) | Set-Content -Path (Join-Path $resolvedOutputDir "orchestration-summary.json") -Encoding UTF8
+    ($summary | ConvertTo-Json -Depth 10) | Set-Content -LiteralPath (Join-Path $resolvedOutputDir "orchestration-summary.json") -Encoding UTF8
 
     Write-Log "=== Orchestration Completed Successfully ===" -Level Success
     Write-Log "Total agents executed: $($selectedAgents.Count)"

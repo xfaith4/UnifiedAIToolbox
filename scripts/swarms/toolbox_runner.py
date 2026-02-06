@@ -59,7 +59,19 @@ def _safe_json(obj: Any) -> str:
 
 def _print_payload(payload: Dict[str, Any]) -> None:
     try:
-        print(_safe_json(payload))
+        # Ensure UTF-8 output even on Windows consoles defaulting to cp1252
+        if hasattr(sys.stdout, "reconfigure"):
+            try:
+                sys.stdout.reconfigure(encoding="utf-8")
+            except Exception:
+                pass
+        text = _safe_json(payload)
+        try:
+            print(text)
+        except UnicodeEncodeError:
+            # Fallback: write UTF-8 bytes directly
+            sys.stdout.buffer.write(text.encode("utf-8", errors="replace") + b"\n")
+            sys.stdout.flush()
     except (BrokenPipeError, OSError):
         # When stdout is closed early by a consumer (e.g., piping to `head`), avoid crashing.
         pass

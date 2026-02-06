@@ -236,7 +236,7 @@ class CodexSwarmService:
 
                 # Stream output
                 line_count = 0
-                with open(log_file, 'w') as log:
+                with open(log_file, 'w', encoding='utf-8') as log:
                     async for line_bytes in process.stdout:
                         line = line_bytes.decode('utf-8', errors='replace').strip()
                         log.write(line + '\n')
@@ -268,12 +268,14 @@ class CodexSwarmService:
                             stdout=subprocess.PIPE,
                             stderr=subprocess.STDOUT,
                             text=True,
+                            encoding="utf-8",
+                            errors="replace",
                             bufsize=1,
                             cwd=str(repo_path)
                         )
                         run_info['process'] = proc
                         line_count = 0
-                        with open(log_file, 'w') as log:
+                        with open(log_file, 'w', encoding='utf-8') as log:
                             for line in proc.stdout or []:
                                 line = line.rstrip()
                                 log.write(line + '\n')

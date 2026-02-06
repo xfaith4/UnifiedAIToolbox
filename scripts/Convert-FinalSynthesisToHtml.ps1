@@ -51,8 +51,8 @@ $ErrorActionPreference = 'Stop'
 
 Add-Type -AssemblyName System.Web
 
-$resolvedTextPath = (Resolve-Path $TextPath).Path
-if (-not (Test-Path $resolvedTextPath)) {
+$resolvedTextPath = (Resolve-Path -LiteralPath $TextPath).Path
+if (-not (Test-Path -LiteralPath $resolvedTextPath)) {
     throw "TextPath not found: $TextPath"
 }
 
@@ -86,10 +86,11 @@ if (-not [string]::IsNullOrWhiteSpace($Goal)) {
 
 $downloadHint = ""
 try {
-    $outDir = Split-Path -Parent $OutputPath
-    $txtName = Split-Path -Leaf $resolvedTextPath
-    $outName = Split-Path -Leaf $OutputPath
-    if ($outDir -and (Split-Path -Parent $resolvedTextPath) -eq $outDir -and $txtName -and $outName) {
+    $outDir = [System.IO.Path]::GetDirectoryName($OutputPath)
+    $txtName = [System.IO.Path]::GetFileName($resolvedTextPath)
+    $outName = [System.IO.Path]::GetFileName($OutputPath)
+    $txtDir = [System.IO.Path]::GetDirectoryName($resolvedTextPath)
+    if ($outDir -and $txtDir -and $txtDir -eq $outDir -and $txtName -and $outName) {
         $downloadHint = "<a class=""btn"" href=""$([System.Web.HttpUtility]::HtmlEncode($txtName))"" download>Download .txt</a>"
     }
 } catch { }
@@ -258,7 +259,7 @@ $html = @"
       <div class="meta-grid">
         $(Format-OptionalRow -Label "Model" -Value $Model)
         $(Format-OptionalRow -Label "Repo Root" -Value $RepoRoot)
-        $(Format-OptionalRow -Label "Text File" -Value (Split-Path -Leaf $resolvedTextPath))
+        $(Format-OptionalRow -Label "Text File" -Value ([System.IO.Path]::GetFileName($resolvedTextPath)))
       </div>
       $goalBlock
     </div>
@@ -307,4 +308,3 @@ $html = @"
 
 $html | Out-File -FilePath $OutputPath -Encoding UTF8
 Write-Host "Wrote HTML: $OutputPath" -ForegroundColor Green
-

@@ -435,6 +435,10 @@ def sanitize_run_id(raw: str, max_length: int = 120) -> str:
     # Replace each invalid character with underscore
     for char in INVALID_PATH_CHARS:
         result = result.replace(char, '_')
+
+    # Replace any remaining unsafe characters (including [] and commas) with underscores
+    # Keep only letters, numbers, dot, dash, and underscore to avoid shell/glob issues.
+    result = re.sub(r'[^A-Za-z0-9._-]+', '_', result)
     
     # Collapse multiple consecutive underscores into a single underscore
     result = re.sub(r'_+', '_', result)

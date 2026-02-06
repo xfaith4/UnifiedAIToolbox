@@ -60,10 +60,16 @@ export default function GitHubPage() {
   }, [orchResult])
 
   const runId = (orchResult?.run_id || orchResult?.runId || '') as string
-  const runDir = (() => {
+  const runDir = useMemo(() => {
     const artifacts = orchResult?.artifacts as Record<string, unknown> | undefined
-    return typeof artifacts?.run_dir === 'string' ? (artifacts.run_dir as string) : undefined
-  })()
+    if (typeof artifacts?.run_dir === 'string') return artifacts.run_dir as string
+    const candidate = artifactsIndex.find((item) => typeof item.filePath === 'string')?.filePath
+    if (typeof candidate === 'string') {
+      const normalized = candidate.replace(/\\/g, '/')
+      return normalized.slice(0, normalized.lastIndexOf('/'))
+    }
+    return undefined
+  }, [orchResult, artifactsIndex])
   const logsDir = runDir ? joinPath(runDir, 'codex_runs') : undefined
   const gateLogsDir = runDir ? joinPath(runDir, 'gate-logs') : undefined
 
@@ -348,6 +354,11 @@ export default function GitHubPage() {
               </button>
             )}
             {orchError && <span className="text-sm text-rose-400">{orchError}</span>}
+            {!uiV2 && logsDir && (
+              <a className="text-sm text-blue-200 underline" href={toFileUrl(logsDir)} target="_blank" rel="noreferrer">
+                Open Logs Folder
+              </a>
+            )}
           </div>
 
           <div className="space-y-2 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
@@ -488,6 +499,40 @@ export default function GitHubPage() {
                       >
                         Copy Run ID
                       </button>
+                    )}
+                  </div>
+                )}
+                {!uiV2 && (runDir || logsDir || (gateLogsDir && hasRepoGates)) && (
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    {runDir && (
+                      <a
+                        className="rounded border border-emerald-500/40 px-2 py-1 text-emerald-100 hover:bg-emerald-800/40"
+                        href={toFileUrl(runDir)}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Open Run Folder
+                      </a>
+                    )}
+                    {logsDir && (
+                      <a
+                        className="rounded border border-emerald-500/40 px-2 py-1 text-emerald-100 hover:bg-emerald-800/40"
+                        href={toFileUrl(logsDir)}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Open Logs Folder
+                      </a>
+                    )}
+                    {gateLogsDir && hasRepoGates && (
+                      <a
+                        className="rounded border border-emerald-500/40 px-2 py-1 text-emerald-100 hover:bg-emerald-800/40"
+                        href={toFileUrl(gateLogsDir)}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Open Gate Logs
+                      </a>
                     )}
                   </div>
                 )}
