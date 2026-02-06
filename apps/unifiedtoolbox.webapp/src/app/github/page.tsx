@@ -38,6 +38,11 @@ export default function GitHubPage() {
   const [showTechDetails, setShowTechDetails] = useState(false)
 
   const toFileUrl = (path: string) => `file:///${path.replace(/\\/g, '/')}`
+  const joinPath = (base: string, segment: string) => {
+    const separator = base.includes('\\') ? '\\' : '/'
+    if (base.endsWith(separator)) return `${base}${segment}`
+    return `${base}${separator}${segment}`
+  }
   const copyText = async (value: string) => {
     try {
       await navigator.clipboard.writeText(value)
@@ -59,6 +64,8 @@ export default function GitHubPage() {
     const artifacts = orchResult?.artifacts as Record<string, unknown> | undefined
     return typeof artifacts?.run_dir === 'string' ? (artifacts.run_dir as string) : undefined
   })()
+  const logsDir = runDir ? joinPath(runDir, 'codex_runs') : undefined
+  const gateLogsDir = runDir ? joinPath(runDir, 'gate-logs') : undefined
 
   const reportArtifactId = useMemo(() => {
     const report = artifactsIndex.find((item) => (item as Record<string, unknown>)['fileName'] === 'REPORT.md')
@@ -96,6 +103,31 @@ export default function GitHubPage() {
       }
     })
   }, [orchEvents])
+
+  const lastErrorEvent = useMemo(() => {
+    const reversed = [...orchEvents].reverse()
+    return reversed.find((ev) => {
+      const message = String(ev.message || '').toLowerCase()
+      const type = String(ev.type || '').toLowerCase()
+      return type === 'error' || message.includes('failed') || message.includes('error')
+    })
+  }, [orchEvents])
+
+  const errorSummary = useMemo(() => {
+    if (errorDetails?.userMessage) return String(errorDetails.userMessage)
+    if (orchError) return orchError
+    if (lastErrorEvent?.message) return String(lastErrorEvent.message)
+    const status = String(orchResult?.status || '').toLowerCase()
+    if (status && ['error', 'failed', 'validation_failed', 'cancelled'].includes(status)) {
+      return `Run finished with status: ${status}`
+    }
+    return null
+  }, [errorDetails, orchError, lastErrorEvent, orchResult])
+
+  const hasRepoGates = useMemo(
+    () => artifactsIndex.some((item) => String(item.fileName || '').startsWith('REPO_GATES_')),
+    [artifactsIndex]
+  )
 
   useEffect(() => {
     let mounted = true
@@ -403,6 +435,26 @@ export default function GitHubPage() {
                         Open Run Folder
                       </a>
                     )}
+                    {logsDir && (
+                      <a
+                        className="rounded border border-emerald-500/40 px-2 py-1 text-emerald-100 hover:bg-emerald-800/40"
+                        href={toFileUrl(logsDir)}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Open Logs Folder
+                      </a>
+                    )}
+                    {gateLogsDir && hasRepoGates && (
+                      <a
+                        className="rounded border border-emerald-500/40 px-2 py-1 text-emerald-100 hover:bg-emerald-800/40"
+                        href={toFileUrl(gateLogsDir)}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Open Gate Logs
+                      </a>
+                    )}
                     {runId && ORCHESTRATOR_API_BASE && (
                       <a
                         className="rounded border border-emerald-500/40 px-2 py-1 text-emerald-100 hover:bg-emerald-800/40"
@@ -474,16 +526,21 @@ export default function GitHubPage() {
                 )}
               </div>
             )}
-            {uiV2 && errorDetails && (
+            {uiV2 && (errorDetails || errorSummary) && (
               <div className="rounded border border-rose-800 bg-rose-900/30 px-3 py-2 text-sm text-rose-100 space-y-2">
                 <div className="font-semibold">Run Error</div>
-                <div>{String(errorDetails.userMessage || orchError || 'Run failed')}</div>
-                {Array.isArray(errorDetails.suggestedFixes) && errorDetails.suggestedFixes.length > 0 && (
+                <div>{String(errorDetails?.userMessage || errorSummary || orchError || 'Run failed')}</div>
+                {Array.isArray(errorDetails?.suggestedFixes) && errorDetails.suggestedFixes.length > 0 && (
                   <ul className="list-disc pl-5 text-xs text-rose-100">
-                    {errorDetails.suggestedFixes.map((fix, idx) => (
+                    {errorDetails?.suggestedFixes?.map((fix, idx) => (
                       <li key={idx}>{String(fix)}</li>
                     ))}
                   </ul>
+                )}
+                {logsDir && (
+                  <a className="text-xs text-rose-200 underline" href={toFileUrl(logsDir)} target="_blank" rel="noreferrer">
+                    Open logs folder
+                  </a>
                 )}
                 <button
                   className="text-xs text-rose-200 underline"
@@ -493,7 +550,12 @@ export default function GitHubPage() {
                 </button>
                 {showTechDetails && (
                   <pre className="rounded border border-rose-800/60 bg-rose-950/40 p-2 text-[11px] text-rose-100 whitespace-pre-wrap">
-                    {String(errorDetails.technicalDetails || orchError || '')}
+                    {String(
+                      errorDetails?.technicalDetails ||
+                        (lastErrorEvent ? JSON.stringify(lastErrorEvent, null, 2) : '') ||
+                        orchError ||
+                        ''
+                    )}
                   </pre>
                 )}
               </div>
