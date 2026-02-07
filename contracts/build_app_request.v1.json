@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "contracts/build_app_request.v1.json",
+  "title": "Build App Request v1",
+  "type": "object",
+  "required": ["job_type", "goal", "app"],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "job_type": { "type": "string", "enum": ["build_new_app"] },
+    "goal": { "type": "string" },
+    "app": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "stack": { "type": "string" }
+      }
+    },
+    "requirements": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "budget": {
+      "type": "object",
+      "properties": {
+        "max_time_minutes": { "type": "integer" },
+        "max_cost_usd": { "type": "number" },
+        "max_tokens": { "type": "integer" }
+      }
+    },
+    "logging": {
+      "type": "object",
+      "properties": {
+        "level": { "type": "string" },
+        "verbose": { "type": "boolean" }
+      }
+    },
+    "agent_roster": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "metadata": {
+      "type": "object"
+    }
+  }
+}

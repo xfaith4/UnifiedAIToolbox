@@ -138,7 +138,15 @@ function Resolve-JobRouting {
 
     $jobConfig = Get-JobTypeConfig -JobType $JobType -RegistryPath $JobTypesPath
 
-    $schemaPath = Resolve-RepoPath -Path $jobConfig.schema -RepoRoot $RepoRoot
+    $contractSchema = if ($jobConfig.contract_schema) { $jobConfig.contract_schema } else { $jobConfig.schema }
+    if (-not $contractSchema) {
+        throw "Job type config missing contract_schema"
+    }
+    $schemaPath = Resolve-RepoPath -Path $contractSchema -RepoRoot $RepoRoot
+    $requestSchemaPath = $null
+    if ($jobConfig.request_schema) {
+        $requestSchemaPath = Resolve-RepoPath -Path $jobConfig.request_schema -RepoRoot $RepoRoot
+    }
     $pipelinePath = Resolve-RepoPath -Path $jobConfig.pipeline_template -RepoRoot $RepoRoot
     $pipeline = Get-PipelineTemplate -TemplatePath $pipelinePath
 
@@ -158,16 +166,24 @@ function Resolve-JobRouting {
         throw ("Stage policy violation: " + ($policyCheck.Errors -join "; "))
     }
 
+    $defaultAgents = $jobConfig.default_agents
+    if (-not $defaultAgents) { $defaultAgents = $jobConfig.default_agent_roster }
+
     return [pscustomobject]@{
         JobType = $JobType
         SchemaPath = $schemaPath
+        RequestSchemaPath = $requestSchemaPath
         PipelineTemplatePath = $pipelinePath
         Pipeline = $pipeline
         Stages = $stages
         StageIds = $stageIds
-        DefaultAgentRoster = $jobConfig.default_agent_roster
+        DefaultAgentRoster = $defaultAgents
         GatePolicy = $jobConfig.gate_policy
         ArtifactPolicy = $jobConfig.artifact_policy
+        CommandPolicy = $jobConfig.command_policy
+        SupervisorPolicy = $jobConfig.supervisor_policy
+        ContractDefaults = $jobConfig.contract_defaults
+        Defaults = $jobConfig.defaults
         StagePolicy = $jobConfig.stage_policy
     }
 }

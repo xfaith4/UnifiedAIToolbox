@@ -2,23 +2,63 @@
 
 
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { RunIcon, LoadingIcon, UploadIcon, CloseIcon, StopIcon } from './icons';
 import RequirementsWizard from './RequirementsWizard';
 import type { Artifact, RunMode } from '../types';
+import type { JobTypeSummary, JobTypeField } from '../hooks/useJobTypes'
 
 interface GoalInputProps {
-  onGoalSubmit: (goal: string, fileContent: string | null, seedArtifacts: Artifact[] | undefined, runMode: RunMode) => void;
+  onGoalSubmit: (goal: string, fileContent: string | null, seedArtifacts: Artifact[] | undefined, runMode: RunMode, requestPayload?: Record<string, any>) => void;
   isOrchestrating: boolean;
   onCancelOrchestration: () => void;
+  jobType: string;
+  jobTypeConfig?: JobTypeSummary | null;
+  jobTypeOptions: Array<{ id: string; label: string }>;
+  onJobTypeChange: (jobType: string) => void;
 }
 
-const GoalInput: React.FC<GoalInputProps> = ({ onGoalSubmit, isOrchestrating, onCancelOrchestration }) => {
+const GoalInput: React.FC<GoalInputProps> = ({ onGoalSubmit, isOrchestrating, onCancelOrchestration, jobType, jobTypeConfig, jobTypeOptions, onJobTypeChange }) => {
   const [wizardEnabled, setWizardEnabled] = useState(false)
   const [runMode, setRunMode] = useState<RunMode>('build')
   const [goal, setGoal] = useState('');
   const [file, setFile] = useState<File | null>(null);
+  const [requestValues, setRequestValues] = useState<Record<string, string>>({})
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const requiredFields = useMemo<JobTypeField[]>(() => {
+    if (!jobTypeConfig?.request_fields) return []
+    return jobTypeConfig.request_fields.filter((field) => field.path !== 'goal' && field.path !== 'job_type')
+  }, [jobTypeConfig])
+
+  const requiredFilled = useMemo(() => {
+    if (requiredFields.length === 0) return true
+    return requiredFields.every((field) => Boolean(requestValues[field.path]))
+  }, [requiredFields, requestValues])
+
+  const setRequestValue = (path: string, value: string) => {
+    setRequestValues((prev) => ({ ...prev, [path]: value }))
+  }
+
+  const buildRequestPayload = (goalText: string) => {
+    const payload: Record<string, any> = { job_type: jobType, goal: goalText }
+    for (const field of requiredFields) {
+      const value = requestValues[field.path]
+      if (!value) continue
+      const parts = field.path.split('.')
+      let cursor: any = payload
+      for (let i = 0; i < parts.length; i++) {
+        const key = parts[i]
+        if (i === parts.length - 1) {
+          cursor[key] = value
+        } else {
+          if (!cursor[key]) cursor[key] = {}
+          cursor = cursor[key]
+        }
+      }
+    }
+    return payload
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -38,21 +78,26 @@ const GoalInput: React.FC<GoalInputProps> = ({ onGoalSubmit, isOrchestrating, on
     }
   }, [])
 
+  useEffect(() => {
+    setRequestValues({})
+  }, [jobType])
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (goal.trim() && !isOrchestrating) {
+    if (goal.trim() && requiredFilled && !isOrchestrating) {
+      const requestPayload = buildRequestPayload(goal)
       if (file) {
         const reader = new FileReader();
         reader.onload = (event) => {
           const content = event.target?.result as string;
-          onGoalSubmit(goal, content, undefined, runMode);
+          onGoalSubmit(goal, content, undefined, runMode, requestPayload);
         };
         reader.onerror = () => {
           alert("Error reading file.");
         }
         reader.readAsText(file);
       } else {
-        onGoalSubmit(goal, null, undefined, runMode);
+        onGoalSubmit(goal, null, undefined, runMode, requestPayload);
       }
     }
   };
@@ -70,21 +115,111 @@ const GoalInput: React.FC<GoalInputProps> = ({ onGoalSubmit, isOrchestrating, on
     }
   };
 
-  if (wizardEnabled) {
+  const useWizard = wizardEnabled && jobType === 'build_new_app'
+
+  if (useWizard) {
     return (
-      <RequirementsWizard
-        isOrchestrating={isOrchestrating}
-        onCancelOrchestration={onCancelOrchestration}
-        runMode={runMode}
-        onRunModeChange={setRunMode}
-        onStart={(goalText, fileContent, seedArtifacts) => onGoalSubmit(goalText, fileContent, seedArtifacts, runMode)}
-      />
+      <div className="p-4 border-b border-gray-700 bg-gray-900/50">
+        <div className="max-w-6xl mx-auto space-y-4">
+          <div className="flex items-center justify-between gap-3 text-xs">
+            <div className="text-gray-400">Job type:</div>
+            <div className="flex items-center gap-2">
+              {jobTypeOptions.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => onJobTypeChange(option.id)}
+                  disabled={isOrchestrating}
+                  className={`px-3 py-1.5 rounded-md border transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                    jobType === option.id
+                      ? 'bg-indigo-600/30 border-indigo-500 text-indigo-100'
+                      : 'bg-gray-800 border-gray-700 text-gray-200 hover:bg-gray-700'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {requiredFields.length > 0 && (
+            <div className="rounded-lg border border-gray-700 bg-gray-900/40 p-3">
+              <div className="text-xs font-semibold text-gray-300">Required inputs</div>
+              <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                {requiredFields.map((field) => (
+                  <label key={field.path} className="flex flex-col gap-1 text-gray-300">
+                    <span className="text-xs text-gray-400">{field.label}</span>
+                    {field.enum && field.enum.length ? (
+                      <select
+                        value={requestValues[field.path] || ''}
+                        onChange={(e) => setRequestValue(field.path, e.target.value)}
+                        disabled={isOrchestrating}
+                        className="px-3 py-2 bg-gray-900/40 border border-gray-700 rounded text-sm"
+                      >
+                        <option value="">Select...</option>
+                        {field.enum.map((opt) => (
+                          <option key={opt} value={opt}>
+                            {opt}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        value={requestValues[field.path] || ''}
+                        onChange={(e) => setRequestValue(field.path, e.target.value)}
+                        disabled={isOrchestrating}
+                        className="px-3 py-2 bg-gray-900/40 border border-gray-700 rounded text-sm"
+                        placeholder={`Enter ${field.label.toLowerCase()}`}
+                      />
+                    )}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <RequirementsWizard
+            isOrchestrating={isOrchestrating}
+            onCancelOrchestration={onCancelOrchestration}
+            runMode={runMode}
+            onRunModeChange={setRunMode}
+            onStart={(goalText, fileContent, seedArtifacts) => {
+              if (!requiredFilled) {
+                alert('Please complete the required inputs before starting.')
+                return
+              }
+              onGoalSubmit(goalText, fileContent, seedArtifacts, runMode, buildRequestPayload(goalText))
+            }}
+          />
+        </div>
+      </div>
     )
   }
 
   return (
     <div className="p-4 border-b border-gray-700 bg-gray-900/50">
       <form onSubmit={handleSubmit} className="space-y-3">
+        <div className="flex items-center justify-between gap-3 text-xs">
+          <div className="text-gray-400">Job type:</div>
+          <div className="flex items-center gap-2">
+            {jobTypeOptions.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => onJobTypeChange(option.id)}
+                disabled={isOrchestrating}
+                className={`px-3 py-1.5 rounded-md border transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                  jobType === option.id
+                    ? 'bg-indigo-600/30 border-indigo-500 text-indigo-100'
+                    : 'bg-gray-800 border-gray-700 text-gray-200 hover:bg-gray-700'
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="flex items-center justify-between gap-3 text-xs">
           <div className="text-gray-400">Run type:</div>
           <div className="flex items-center gap-2">
@@ -116,6 +251,42 @@ const GoalInput: React.FC<GoalInputProps> = ({ onGoalSubmit, isOrchestrating, on
             </button>
           </div>
         </div>
+        {requiredFields.length > 0 && (
+          <div className="rounded-lg border border-gray-700 bg-gray-900/40 p-3">
+            <div className="text-xs font-semibold text-gray-300">Required inputs</div>
+            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+              {requiredFields.map((field) => (
+                <label key={field.path} className="flex flex-col gap-1 text-gray-300">
+                  <span className="text-xs text-gray-400">{field.label}</span>
+                  {field.enum && field.enum.length ? (
+                    <select
+                      value={requestValues[field.path] || ''}
+                      onChange={(e) => setRequestValue(field.path, e.target.value)}
+                      disabled={isOrchestrating}
+                      className="px-3 py-2 bg-gray-900/40 border border-gray-700 rounded text-sm"
+                    >
+                      <option value="">Select...</option>
+                      {field.enum.map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      value={requestValues[field.path] || ''}
+                      onChange={(e) => setRequestValue(field.path, e.target.value)}
+                      disabled={isOrchestrating}
+                      className="px-3 py-2 bg-gray-900/40 border border-gray-700 rounded text-sm"
+                      placeholder={`Enter ${field.label.toLowerCase()}`}
+                    />
+                  )}
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="flex gap-3">
             <input
               type="text"
@@ -144,11 +315,11 @@ const GoalInput: React.FC<GoalInputProps> = ({ onGoalSubmit, isOrchestrating, on
             ) : (
               <button
                 type="submit"
-                disabled={!goal.trim() || isOrchestrating}
+                disabled={!goal.trim() || !requiredFilled || isOrchestrating}
                 className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg flex items-center transition-colors disabled:bg-indigo-400 disabled:cursor-not-allowed"
               >
                 <RunIcon className="w-5 h-5 mr-2" />
-                Start App Factory
+                Start App Lifecycle
               </button>
             )}
         </div>

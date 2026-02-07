@@ -12,6 +12,7 @@ interface HeaderProps {
   totalCost: number | null;
   waterUsage: number | null;
   elapsedTime: number | null;
+  jobTypeLabel?: string;
 }
 
 const Header: React.FC<HeaderProps> = ({ 
@@ -23,7 +24,8 @@ const Header: React.FC<HeaderProps> = ({
   isOrchestrationComplete,
   totalCost,
   waterUsage,
-  elapsedTime
+  elapsedTime,
+  jobTypeLabel
 }) => {
   // Format elapsed time as MM:SS
   const formatElapsedTime = (seconds: number) => {
@@ -38,13 +40,13 @@ const Header: React.FC<HeaderProps> = ({
         <LogoIcon className="w-8 h-8 mr-3 text-indigo-400" />
         <div className="flex flex-col">
           <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-xl font-bold text-gray-100">App Factory</h1>
+            <h1 className="text-xl font-bold text-gray-100">App Lifecycle</h1>
             <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-500/15 text-indigo-200 border border-indigo-500/25">
-              Job Type: App Factory
+              Job Type: {jobTypeLabel || 'App Lifecycle'}
             </span>
           </div>
           <p className="text-xs text-gray-400">
-            Application Factory — generates full application artifacts from a goal + inputs.
+            Unified lifecycle console — create new apps or maintain existing ones.
           </p>
         </div>
       </div>

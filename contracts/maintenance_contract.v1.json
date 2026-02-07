@@ -14,7 +14,9 @@
         "change_surface",
         "baseline",
         "command_policy",
-        "repo_context_ref"
+        "repo_context_ref",
+        "pr_policy",
+        "conflict_policy"
       ],
       "properties": {
         "repo": {
@@ -145,6 +147,28 @@
           "properties": {
             "path": { "type": "string" },
             "hash_sha256": { "type": "string" }
+          }
+        },
+        "pr_policy": {
+          "type": "object",
+          "required": ["mode", "branch_prefix", "draft_on_high_risk", "title_template", "body_template"],
+          "properties": {
+            "mode": { "type": "string", "enum": ["create_pr", "disabled"] },
+            "branch_prefix": { "type": "string" },
+            "draft_on_high_risk": { "type": "boolean" },
+            "title_template": { "type": "string" },
+            "body_template": { "type": "string" }
+          }
+        },
+        "conflict_policy": {
+          "type": "object",
+          "required": ["max_open_prs", "base_branch_strategy"],
+          "properties": {
+            "max_open_prs": { "type": "integer" },
+            "base_branch_strategy": {
+              "type": "string",
+              "enum": ["default_branch", "target_branch", "explicit"]
+            }
           }
         },
         "diff_gate": {

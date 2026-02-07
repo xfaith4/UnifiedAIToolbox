@@ -76,6 +76,10 @@ param(
 
     ,
     [Parameter(Mandatory = $false)]
+    [string]$RequestPath
+
+    ,
+    [Parameter(Mandatory = $false)]
     [switch]$ValidateOnly
 )
 
@@ -92,6 +96,10 @@ $script:JobType = $null
 $script:Contract = $null
 $script:ContractHash = $null
 $script:ContractPath = $null
+$script:RequestPath = $null
+$script:Request = $null
+$script:RequestSchemaPath = $null
+$script:ResolvedContractPath = $null
 $script:JobTypesPath = $null
 $script:Routing = $null
 $script:RepoContextSchemaPath = $null
@@ -140,7 +148,9 @@ function Write-RunManifest {
         [Parameter(Mandatory = $true)]$Routing,
         [Parameter(Mandatory = $true)][string]$ContractPath,
         [Parameter(Mandatory = $true)][string]$ContractHash,
-        [Parameter(Mandatory = $true)][bool]$ValidateOnly
+        [Parameter(Mandatory = $true)][bool]$ValidateOnly,
+        [string]$RequestPath,
+        [string]$RequestSchemaPath
     )
 
     $manifest = [pscustomobject]@{
@@ -151,6 +161,12 @@ function Write-RunManifest {
         goal           = $GoalText
         output_dir     = $OutputDir
         contract_hash  = $ContractHash
+        request        = $(if ($RequestPath) {
+            [pscustomobject]@{
+                path = $RequestPath
+                schema = $RequestSchemaPath
+            }
+        } else { $null })
         contract       = [pscustomobject]@{
             path        = $ContractPath
             schema      = $Routing.SchemaPath
@@ -162,7 +178,15 @@ function Write-RunManifest {
             agent_roster       = $Routing.DefaultAgentRoster
             gate_policy        = $Routing.GatePolicy
             artifact_policy    = $Routing.ArtifactPolicy
+            command_policy     = $Routing.CommandPolicy
+            supervisor_policy  = $Routing.SupervisorPolicy
             stage_policy       = $Routing.StagePolicy
+        }
+        resolved_policies = [pscustomobject]@{
+            gate_policy = $Routing.GatePolicy
+            artifact_policy = $Routing.ArtifactPolicy
+            command_policy = $Routing.CommandPolicy
+            supervisor_policy = $Routing.SupervisorPolicy
         }
         validate_only  = $ValidateOnly
     }
@@ -170,6 +194,151 @@ function Write-RunManifest {
     $manifestPath = Join-Path $OutputDir "run_manifest.json"
     $manifest | ConvertTo-Json -Depth 20 | Set-Content -Path $manifestPath -Encoding UTF8
     return $manifestPath
+}
+
+function Get-RequiredArtifactSpecs {
+    param([AllowNull()]$ArtifactPolicy)
+
+    $specs = @()
+    if (-not $ArtifactPolicy) { return $specs }
+
+    $reqArtifacts = $null
+    if ($ArtifactPolicy.required_artifacts) { $reqArtifacts = $ArtifactPolicy.required_artifacts }
+    if ($reqArtifacts) {
+        foreach ($entry in @($reqArtifacts)) {
+            if ($entry -is [string]) {
+                $specs += [pscustomobject]@{ name = $entry; path = $entry }
+            }
+            else {
+                $name = $entry.name
+                $path = if ($entry.path) { $entry.path } else { $entry.name }
+                if ($name) {
+                    $specs += [pscustomobject]@{ name = $name; path = $path }
+                }
+            }
+        }
+    }
+    elseif ($ArtifactPolicy.required) {
+        foreach ($name in @($ArtifactPolicy.required)) {
+            if ($name) { $specs += [pscustomobject]@{ name = $name; path = $name } }
+        }
+    }
+
+    return @($specs | Select-Object -Unique -Property name, path)
+}
+
+function Assert-RequiredArtifacts {
+    param(
+        [Parameter(Mandatory = $true)][string]$OutputDir,
+        [Parameter(Mandatory = $true)]$ArtifactPolicy
+    )
+    $requiredSpecs = Get-RequiredArtifactSpecs -ArtifactPolicy $ArtifactPolicy
+    if ($requiredSpecs.Count -eq 0) { return }
+
+    $missing = @()
+    foreach ($spec in $requiredSpecs) {
+        $candidate = $spec.path
+        if (-not $candidate) { continue }
+        $full = if ([System.IO.Path]::IsPathRooted($candidate)) { $candidate } else { Join-Path $OutputDir $candidate }
+        if (-not (Test-Path -LiteralPath $full)) {
+            $missing += $spec.name
+        }
+    }
+
+    if ($missing.Count -gt 0) {
+        throw ("Missing required artifacts: " + ($missing | Sort-Object -Unique) -join ", ")
+    }
+}
+
+function Normalize-CommandString {
+    param([Parameter(Mandatory = $true)][string]$Command)
+    return (($Command.Trim()) -replace "\s+", " ")
+}
+
+function Assert-CommandPolicyCompliance {
+    param(
+        [Parameter(Mandatory = $true)]$Contract,
+        [Parameter(Mandatory = $true)][string]$OutputDir
+    )
+
+    if (-not $Contract -or -not $Contract.command_policy) { return }
+    $policy = $Contract.command_policy
+    if (-not $policy.only_from_repo_context) { return }
+
+    $repoContextPath = $null
+    if ($Contract.repo_context_ref -and $Contract.repo_context_ref.path) {
+        $repoContextPath = $Contract.repo_context_ref.path
+    }
+    if (-not $repoContextPath) { $repoContextPath = "repo_context.json" }
+
+    $repoContextFull = if ([System.IO.Path]::IsPathRooted($repoContextPath)) { $repoContextPath } else { Join-Path $OutputDir $repoContextPath }
+    if (-not (Test-Path -LiteralPath $repoContextFull)) {
+        $waiver = $policy.waiver
+        if ($waiver -and $waiver.reason) {
+            Write-Log "Command policy waiver used: $($waiver.reason)" -Level "WARN"
+            return
+        }
+        throw "Command policy requires repo_context.json, but it was not found."
+    }
+
+    $evidencePath = Join-Path $OutputDir "evidence.json"
+    if (-not (Test-Path -LiteralPath $evidencePath)) { return }
+
+    $repoContext = Get-Content -Raw -LiteralPath $repoContextFull | ConvertFrom-Json -Depth 50
+    $allowed = @()
+    if ($repoContext.discovery -and $repoContext.discovery.commands) { $allowed = @($repoContext.discovery.commands) }
+
+    $evidence = Get-Content -Raw -LiteralPath $evidencePath | ConvertFrom-Json -Depth 50
+    $commandsRun = @()
+    if ($evidence.commands_run) { $commandsRun = @($evidence.commands_run) }
+
+    $allowedMap = @{}
+    foreach ($cmd in $allowed) {
+        $text = Normalize-CommandString -Command ([string]$cmd.command)
+        if ($text) { $allowedMap[$text] = $true }
+    }
+
+    $violations = @()
+    foreach ($cmd in $commandsRun) {
+        $text = Normalize-CommandString -Command ([string]$cmd.command)
+        if (-not $text) { continue }
+        if (-not $allowedMap.ContainsKey($text)) {
+            $violations += $text
+        }
+    }
+
+    if ($violations.Count -gt 0) {
+        throw ("Command policy violation (not in repo_context): " + ($violations | Sort-Object -Unique) -join ", ")
+    }
+}
+
+function Build-SupervisorContext {
+    param(
+        [Parameter(Mandatory = $true)]$Routing,
+        [Parameter(Mandatory = $true)][string]$OutputDir
+    )
+
+    $requiredSpecs = Get-RequiredArtifactSpecs -ArtifactPolicy $Routing.ArtifactPolicy
+    $missing = @()
+    foreach ($spec in $requiredSpecs) {
+        $candidate = if ($spec.path) { $spec.path } else { $spec.name }
+        if (-not $candidate) { continue }
+        $full = if ([System.IO.Path]::IsPathRooted($candidate)) { $candidate } else { Join-Path $OutputDir $candidate }
+        if (-not (Test-Path -LiteralPath $full)) { $missing += $spec.name }
+    }
+
+    $context = [pscustomobject]@{
+        job_type = $script:JobType
+        pipeline_template = $Routing.PipelineTemplatePath
+        gate_policy = $Routing.GatePolicy
+        artifact_policy = $Routing.ArtifactPolicy
+        required_artifacts = $requiredSpecs
+        missing_artifacts = @($missing | Sort-Object -Unique)
+        command_policy = $Routing.CommandPolicy
+        supervisor_policy = $Routing.SupervisorPolicy
+    }
+
+    return ($context | ConvertTo-Json -Depth 20)
 }
 
 function Initialize-LearningPatterns {
@@ -722,6 +891,15 @@ $schemaJson
 "@
     }
 
+    $supervisorContext = ""
+    if ($agentName -eq "Supervisor" -and $script:Routing) {
+        $supervisorContext = @"
+
+SUPERVISOR CONTEXT (job type policies + compliance snapshot):
+$(Build-SupervisorContext -Routing $script:Routing -OutputDir $OutputDir)
+"@
+    }
+
     $userPrompt = @"
 $((Get-LearningContextBlock))
 
@@ -743,6 +921,7 @@ Your task:
 - If relevant, include bullet lists, code blocks, and explicit next steps.
 
 $contractBlock
+$supervisorContext
 "@
 
     # Call the LLM (or run deterministic agents)
@@ -787,6 +966,20 @@ $contractBlock
         $content = Get-Content -Raw -LiteralPath $reviewPath
         $llmResult = @{ RawResponse = @{ review_gate = $true } }
         $outputPath = $reviewPath
+        $skipWrite = $true
+    }
+    elseif ($agentName -eq "PRPublisher") {
+        $repoRoot = Get-RepoRoot
+        $publisherPath = Join-Path $repoRoot "supervisor\\pr_publisher.ps1"
+        if (-not (Test-Path -LiteralPath $publisherPath)) {
+            throw "PR publisher not found at $publisherPath"
+        }
+        . $publisherPath
+
+        $result = Invoke-PRPublisher -Contract $script:Contract -OutputDir $OutputDir -RepoContextPath (Join-Path $OutputDir "repo_context.json")
+        $content = Get-Content -Raw -LiteralPath $result.PrJsonPath
+        $llmResult = @{ RawResponse = @{ pr_publisher = $true } }
+        $outputPath = $result.PrJsonPath
         $skipWrite = $true
     }
     elseif ($DryRun -and $EnforceContracts -and $agentDef -and $agentDef.io_contract -and $agentDef.io_contract.output_schema) {
@@ -1027,15 +1220,28 @@ try {
     $script:JobTypesPath = Join-Path $repoRoot "job_types.json"
     $script:RepoContextSchemaPath = Join-Path $repoRoot "contracts\\repo_context_schema.v1.json"
 
-    if (-not $ContractPath) {
-        throw "ContractPath is required. Provide -ContractPath with a job contract JSON."
+    if ($ContractPath -and $RequestPath) {
+        throw "Provide only one of -ContractPath or -RequestPath."
     }
-    if (-not (Test-Path -LiteralPath $ContractPath)) {
-        throw "Contract file not found: $ContractPath"
+    if (-not $ContractPath -and -not $RequestPath) {
+        throw "ContractPath or RequestPath is required. Provide a job contract or request JSON."
     }
-    $script:ContractPath = $ContractPath
 
-    $contractPreview = Get-Content -Raw -LiteralPath $ContractPath | ConvertFrom-Json -Depth 50
+    $requestPreview = $null
+    if ($RequestPath) {
+        if (-not (Test-Path -LiteralPath $RequestPath)) {
+            throw "Request file not found: $RequestPath"
+        }
+        $requestPreview = Get-Content -Raw -LiteralPath $RequestPath | ConvertFrom-Json -Depth 50
+    }
+
+    $contractPreview = $null
+    if ($ContractPath) {
+        if (-not (Test-Path -LiteralPath $ContractPath)) {
+            throw "Contract file not found: $ContractPath"
+        }
+        $contractPreview = Get-Content -Raw -LiteralPath $ContractPath | ConvertFrom-Json -Depth 50
+    }
 
     $resolvedJobType = $JobType
     $jobTypeSource = $null
@@ -1043,6 +1249,10 @@ try {
         if ($env:UAIT_JOB_TYPE) {
             $resolvedJobType = $env:UAIT_JOB_TYPE
             $jobTypeSource = "env"
+        }
+        elseif ($requestPreview -and $requestPreview.job_type) {
+            $resolvedJobType = $requestPreview.job_type
+            $jobTypeSource = "request"
         }
         elseif ($contractPreview -and $contractPreview.job_type) {
             $resolvedJobType = $contractPreview.job_type
@@ -1057,16 +1267,38 @@ try {
     if ($jobTypeSource -eq "env") {
         Write-Log "JobType not provided; using UAIT_JOB_TYPE='$resolvedJobType'." -Level "WARN"
     }
+    elseif ($jobTypeSource -eq "request") {
+        Write-Log "JobType not provided; using request job_type '$resolvedJobType'." -Level "WARN"
+    }
     elseif ($jobTypeSource -eq "contract") {
         Write-Log "JobType not provided; using contract job_type '$resolvedJobType'." -Level "WARN"
     }
 
-    $jobConfig = Get-JobTypeConfig -JobType $script:JobType -RegistryPath $script:JobTypesPath
-    $schemaPath = Resolve-RepoPath -Path $jobConfig.schema -RepoRoot $repoRoot
+    $OutputDir = Resolve-OutputDirectory -BaseDir $OutputDir -JobType $script:JobType
 
-    $contractResult = Assert-Contract -ContractPath $ContractPath -SchemaPath $schemaPath -ExpectedJobType $script:JobType
-    $script:Contract = $contractResult.Contract
-    $script:ContractHash = $contractResult.ContractHash
+    $jobConfig = Get-JobTypeConfig -JobType $script:JobType -RegistryPath $script:JobTypesPath
+    if ($RequestPath) {
+        $compilerPath = Join-Path $repoRoot "supervisor\\contract_compiler.ps1"
+        if (-not (Test-Path -LiteralPath $compilerPath)) {
+            throw "Contract compiler not found at $compilerPath"
+        }
+        . $compilerPath
+        $compileResult = Invoke-ContractCompiler -RequestPath $RequestPath -JobTypesPath $script:JobTypesPath -RepoRoot $repoRoot -OutputDir $OutputDir
+        $script:RequestPath = $RequestPath
+        $script:Request = $compileResult.Request
+        $script:RequestSchemaPath = $compileResult.RequestSchemaPath
+        $script:ContractPath = $compileResult.ContractPath
+        $script:ResolvedContractPath = $compileResult.ContractPath
+        $script:Contract = $compileResult.Contract
+        $script:ContractHash = $compileResult.ContractHash
+    }
+    else {
+        $schemaPath = Resolve-RepoPath -Path $(if ($jobConfig.contract_schema) { $jobConfig.contract_schema } else { $jobConfig.schema }) -RepoRoot $repoRoot
+        $script:ContractPath = $ContractPath
+        $contractResult = Assert-Contract -ContractPath $ContractPath -SchemaPath $schemaPath -ExpectedJobType $script:JobType
+        $script:Contract = $contractResult.Contract
+        $script:ContractHash = $contractResult.ContractHash
+    }
 
     $script:Routing = Resolve-JobRouting -JobType $script:JobType -JobTypesPath $script:JobTypesPath -RepoRoot $repoRoot -Contract $script:Contract
 
@@ -1097,8 +1329,6 @@ try {
         Write-Log "Goal text does not match contract.goal; using resolved goal text." -Level "WARN"
     }
 
-    $OutputDir = Resolve-OutputDirectory -BaseDir $OutputDir -JobType $script:JobType
-
     # Initialize orchestration
     $context = Initialize-Orchestration -GoalText $goalText
     
@@ -1108,7 +1338,10 @@ try {
         $DryRun = $true
     }
 
-    Write-Log "Contract: $ContractPath"
+    Write-Log "Contract: $script:ContractPath"
+    if ($script:RequestPath) {
+        Write-Log "Request: $script:RequestPath"
+    }
     Write-Log "Contract hash: $script:ContractHash"
     Write-Log "Pipeline template: $($script:Routing.PipelineTemplatePath)"
 
@@ -1116,9 +1349,11 @@ try {
         -OutputDir $OutputDir `
         -GoalText $goalText `
         -Routing $script:Routing `
-        -ContractPath $ContractPath `
+        -ContractPath $script:ContractPath `
         -ContractHash $script:ContractHash `
-        -ValidateOnly:$ValidateOnly
+        -ValidateOnly:$ValidateOnly `
+        -RequestPath $script:RequestPath `
+        -RequestSchemaPath $script:RequestSchemaPath
     Write-Log "Run manifest saved to: $manifestPath"
 
     if ($ValidateOnly) {
@@ -1152,6 +1387,10 @@ try {
     
     # Complete orchestration
     $summary = Complete-Orchestration -Context $context
+
+    # Enforce policy compliance after run
+    Assert-CommandPolicyCompliance -Contract $script:Contract -OutputDir $OutputDir
+    Assert-RequiredArtifacts -OutputDir $OutputDir -ArtifactPolicy $script:Routing.ArtifactPolicy
     
     Write-Host ""
     Write-Host "Orchestration completed successfully!" -ForegroundColor Green

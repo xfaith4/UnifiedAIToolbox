@@ -16,8 +16,10 @@ import SettingsModal from './components/SettingsModal';
 import ApiKeyModal from './components/ApiKeyModal';
 import PipelineStepper from './components/PipelineStepper';
 import RunFileModal from './components/RunFileModal';
+import JobTypeOverviewPanel from './components/JobTypeOverviewPanel';
 
 import useOrchestrator from './hooks/useOrchestrator';
+import { useJobTypes } from './hooks/useJobTypes';
 import type { Task, Artifact, RunMode } from './types';
 import type { EnginePipelinePayload } from '@/lib/app-factory/pipeline/pipelineStatus';
 
@@ -34,6 +36,20 @@ const App: React.FC = () => {
     cancelOrchestration,
     clearHistory
   } = useOrchestrator();
+
+  const { data: jobTypesData } = useJobTypes()
+  const [jobType, setJobType] = useState<string>('build_new_app')
+  const jobTypeConfig = jobTypesData?.job_types?.[jobType] ?? null
+  const jobTypeOptions = useMemo(
+    () =>
+      jobTypesData
+        ? Object.values(jobTypesData.job_types).map((entry) => ({ id: entry.id, label: entry.label || entry.id }))
+        : [
+            { id: 'build_new_app', label: 'Create New' },
+            { id: 'maintain_existing_app', label: 'Maintain Existing' },
+          ],
+    [jobTypesData]
+  )
 
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<'live' | string>('live');
@@ -107,11 +123,17 @@ const App: React.FC = () => {
     }
   }, [tasks.length, viewMode]);
 
-  const handleGoalSubmit = (goal: string, fileContent: string | null, seedArtifacts: Artifact[] | undefined, runMode: RunMode) => {
+  const handleGoalSubmit = (
+    goal: string,
+    fileContent: string | null,
+    seedArtifacts: Artifact[] | undefined,
+    runMode: RunMode,
+    requestPayload?: Record<string, any>
+  ) => {
     if (activeView !== 'live') {
       setActiveView('live');
     }
-    startOrchestration(goal, fileContent, seedArtifacts, runMode);
+    startOrchestration(goal, fileContent, seedArtifacts, runMode, { ...(requestPayload || {}), job_type: jobType });
     setSelectedTaskId(null);
   };
 
@@ -218,13 +240,19 @@ const App: React.FC = () => {
         totalCost={totalCost}
         waterUsage={displayedSession?.waterUsage || null}
         elapsedTime={isOrchestrating ? elapsedTime : null}
+        jobTypeLabel={jobTypeConfig?.label || jobType}
       />
       <main className="flex-1 flex flex-col overflow-hidden">
         <GoalInput
           onGoalSubmit={handleGoalSubmit}
           isOrchestrating={isOrchestrating}
           onCancelOrchestration={cancelOrchestration}
+          jobType={jobType}
+          jobTypeConfig={jobTypeConfig}
+          jobTypeOptions={jobTypeOptions}
+          onJobTypeChange={setJobType}
         />
+        <JobTypeOverviewPanel jobType={jobType} config={jobTypeConfig} />
         <PipelineStepper pipeline={pipeline} />
         <ExpectedOutputsPanel
           onLearnMore={() => setShowDefinitions(true)}

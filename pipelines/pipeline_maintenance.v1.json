@@ -45,6 +45,12 @@
       "agent": "Commissioner"
     },
     {
+      "id": "PRPublisher",
+      "name": "PR Publication",
+      "description": "Create maintenance branch and open/update PR with evidence",
+      "agent": "PRPublisher"
+    },
+    {
       "id": "Supervisor",
       "name": "Quality Phase",
       "description": "Score the run and extract learnings",

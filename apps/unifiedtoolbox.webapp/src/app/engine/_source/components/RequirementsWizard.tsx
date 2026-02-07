@@ -550,7 +550,7 @@ const RequirementsWizard: React.FC<Props> = ({ isOrchestrating, onCancelOrchestr
                   className="px-5 py-2 rounded bg-indigo-600 hover:bg-indigo-700 text-white font-bold flex items-center disabled:bg-indigo-400 disabled:cursor-not-allowed"
                 >
                   <RunIcon className="w-5 h-5 mr-2" />
-                  Start App Factory
+                  Start App Lifecycle
                 </button>
               )}
             </div>

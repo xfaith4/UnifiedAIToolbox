@@ -1,10 +1,12 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "job_types": {
     "build_new_app": {
-      "schema": "contracts/build_app_contract.v1.json",
+      "label": "Create New App",
+      "request_schema": "contracts/build_app_request.v1.json",
+      "contract_schema": "contracts/build_app_contract.v1.json",
       "pipeline_template": "pipelines/pipeline_build_app.v1.json",
-      "default_agent_roster": [
+      "default_agents": [
         "Researcher",
         "Engineer",
         "Critic",
@@ -13,14 +15,45 @@
         "Supervisor",
         "Historian"
       ],
+      "defaults": {
+        "schema_version": "1.0",
+        "budget": { "max_time_minutes": 60 },
+        "logging": { "level": "info" }
+      },
       "gate_policy": {
         "mode": "standard",
-        "gates": ["quality", "safety"]
+        "gates": ["quality", "safety"],
+        "baseline": { "mode": "required_pass", "required": false },
+        "change": { "required_tests": false },
+        "diff": {
+          "forbidden_paths": [],
+          "lockfiles": "allow",
+          "max_files_touched": { "soft": 200, "hard": 500 },
+          "max_loc_changed": { "soft": 2000, "hard": 5000 }
+        },
+        "waivers": { "allowed": [], "required_justification": true }
       },
       "artifact_policy": {
         "mode": "standard",
-        "required": ["orchestration-summary.json"]
+        "required_artifacts": [
+          { "name": "orchestration-summary.json", "origin": "engine" }
+        ],
+        "optional_artifacts": []
       },
+      "command_policy": {
+        "only_from_repo_context": false,
+        "min_confidence_auto_run": 0.7,
+        "allowed_sources": [
+          { "source": "ci", "min_confidence": 0.7 },
+          { "source": "docs", "min_confidence": 0.7 },
+          { "source": "convention", "min_confidence": 0.9 }
+        ]
+      },
+      "supervisor_policy": {
+        "rubric_id": "build_new_app.v1",
+        "required_checks": ["gate_compliance", "artifact_compliance"]
+      },
+      "contract_defaults": {},
       "stage_policy": {
         "required": [
           "Researcher",
@@ -33,12 +66,24 @@
         ],
         "optional": [],
         "forbidden": []
-      }
+      },
+      "schema": "contracts/build_app_contract.v1.json",
+      "default_agent_roster": [
+        "Researcher",
+        "Engineer",
+        "Critic",
+        "Synthesizer",
+        "Commissioner",
+        "Supervisor",
+        "Historian"
+      ]
     },
     "maintain_existing_app": {
-      "schema": "contracts/maintenance_contract.v1.json",
+      "label": "Maintain Existing App",
+      "request_schema": "contracts/maintenance_request.v1.json",
+      "contract_schema": "contracts/maintenance_contract.v1.json",
       "pipeline_template": "pipelines/pipeline_maintenance.v1.json",
-      "default_agent_roster": [
+      "default_agents": [
         "RepoContextBuilder",
         "Researcher",
         "Engineer",
@@ -46,16 +91,101 @@
         "Critic",
         "Synthesizer",
         "Commissioner",
+        "PRPublisher",
         "Supervisor",
         "Historian"
       ],
+      "defaults": {
+        "schema_version": "1.0",
+        "budget": { "max_time_minutes": 45 },
+        "logging": { "level": "info" }
+      },
       "gate_policy": {
         "mode": "strict",
-        "gates": ["baseline", "change", "diff"]
+        "gates": ["baseline", "change", "diff", "review"],
+        "baseline": { "mode": "required_pass", "required": true },
+        "change": { "required_tests": true },
+        "diff": {
+          "forbidden_paths": [".git", ".uaitoolbox", ".codex_out", "artifacts", "logs"],
+          "lockfiles": "deny",
+          "max_files_touched": { "soft": 25, "hard": 60 },
+          "max_loc_changed": { "soft": 400, "hard": 1000 }
+        },
+        "waivers": { "allowed": ["baseline", "diff", "command"], "required_justification": true }
       },
       "artifact_policy": {
         "mode": "standard",
-        "required": ["repo_context.json", "evidence.json", "changeset.summary.json", "changeset.patch"]
+        "required_artifacts": [
+          { "name": "repo_context.json", "origin": "engine" },
+          { "name": "evidence.json", "origin": "engine" },
+          { "name": "changeset.summary.json", "origin": "engine" },
+          { "name": "changeset.patch", "origin": "engine" },
+          { "name": "review_gate.json", "origin": "engine" },
+          { "name": "pr.json", "origin": "engine" },
+          { "name": "pr.md", "origin": "engine" }
+        ],
+        "optional_artifacts": [
+          { "name": "review_gate.md", "origin": "engine" },
+          { "name": "pr_description.md", "origin": "engine" },
+          { "name": "rollback.md", "origin": "engine" }
+        ]
+      },
+      "command_policy": {
+        "only_from_repo_context": true,
+        "min_confidence_auto_run": 0.7,
+        "allowed_sources": [
+          { "source": "ci", "min_confidence": 0.7 },
+          { "source": "docs", "min_confidence": 0.7 }
+        ]
+      },
+      "supervisor_policy": {
+        "rubric_id": "maintenance.v1",
+        "required_checks": ["gate_compliance", "artifact_compliance", "command_compliance"]
+      },
+      "contract_defaults": {
+        "constraints": {
+          "hard": {
+            "no_stack_change": true,
+            "dependency_updates": "disallow",
+            "forbidden_paths": [".git", ".uaitoolbox", ".codex_out", "artifacts", "logs"],
+            "forbidden_file_patterns": ["*.pem", "*.key", "*.pfx", "*.p12", "id_rsa*", ".env", ".env.*"],
+            "max_loc_changed": 1000,
+            "max_files_touched": 60
+          },
+          "soft": {
+            "max_loc_changed": 400,
+            "max_files_touched": 25,
+            "require_acknowledgment": true,
+            "acknowledged": false
+          }
+        },
+        "change_surface": {
+          "allowed_paths": [],
+          "forbidden_paths": [".git", ".uaitoolbox", ".codex_out", "artifacts", "logs"],
+          "forbidden_file_patterns": ["*.pem", "*.key", "*.pfx", "*.p12", "id_rsa*", ".env", ".env.*"],
+          "touch_policy": {
+            "ci_workflows": "deny",
+            "dependency_manifests": "deny",
+            "infra": "deny"
+          }
+        },
+        "baseline": { "mode": "required_pass" },
+        "pr_policy": {
+          "mode": "create_pr",
+          "branch_prefix": "maintenance",
+          "draft_on_high_risk": true,
+          "title_template": "Maintenance: {{goal}}",
+          "body_template": "## Summary\n{{summary}}\n\n## Evidence\n{{evidence}}\n\n## Risk\n{{risk}}\n\n## Rollback\n{{rollback}}\n"
+        },
+        "conflict_policy": {
+          "max_open_prs": 5,
+          "base_branch_strategy": "default_branch"
+        },
+        "command_policy": {
+          "only_from_repo_context": true,
+          "thresholds": { "min_confidence_auto_run": 0.7, "allow_convention": false }
+        },
+        "repo_context_ref": { "path": "AUTO", "hash_sha256": "AUTO" }
       },
       "stage_policy": {
         "required": [
@@ -66,12 +196,26 @@
           "Critic",
           "Synthesizer",
           "Commissioner",
+          "PRPublisher",
           "Supervisor",
           "Historian"
         ],
         "optional": [],
         "forbidden": ["AppFactoryBootstrap"]
-      }
+      },
+      "schema": "contracts/maintenance_contract.v1.json",
+      "default_agent_roster": [
+        "RepoContextBuilder",
+        "Researcher",
+        "Engineer",
+        "ReviewGate",
+        "Critic",
+        "Synthesizer",
+        "Commissioner",
+        "PRPublisher",
+        "Supervisor",
+        "Historian"
+      ]
     }
   }
 }

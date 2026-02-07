@@ -38,12 +38,12 @@ BeforeAll {
         goal = 'Fix a bug'
         intent = 'bugfix'
         risk_level = 'low'
-        agent_roster = @('RepoContextBuilder', 'Researcher', 'Engineer', 'ReviewGate', 'Critic', 'Synthesizer', 'Commissioner', 'Supervisor', 'Historian')
+        agent_roster = @('RepoContextBuilder', 'Researcher', 'Engineer', 'ReviewGate', 'Critic', 'Synthesizer', 'Commissioner', 'PRPublisher', 'Supervisor', 'Historian')
         budget = @{ max_time_minutes = 45 }
         logging = @{ level = 'info' }
         artifact_policy = @{ mode = 'standard'; required = @('repo_context.json', 'evidence.json', 'changeset.summary.json', 'changeset.patch') }
         gate_policy = @{ mode = 'strict'; gates = @('baseline', 'change', 'diff') }
-        stages = @('RepoContextBuilder', 'Researcher', 'Engineer', 'ReviewGate', 'Critic', 'Synthesizer', 'Commissioner', 'Supervisor', 'Historian')
+        stages = @('RepoContextBuilder', 'Researcher', 'Engineer', 'ReviewGate', 'Critic', 'Synthesizer', 'Commissioner', 'PRPublisher', 'Supervisor', 'Historian')
         repo = @{ full_name = 'owner/repo' }
         ref = @{ branch = 'main' }
         constraints = @{
@@ -59,6 +59,8 @@ BeforeAll {
         baseline = @{ mode = 'required_pass' }
         command_policy = @{ only_from_repo_context = $true; thresholds = @{ min_confidence_auto_run = 0.7; allow_convention = $false } }
         repo_context_ref = @{ path = 'repo_context.json' }
+        pr_policy = @{ mode = 'create_pr'; branch_prefix = 'maintenance'; draft_on_high_risk = $true; title_template = 'Maintenance: {{goal}}'; body_template = '## Summary\n{{summary}}\n\n## Evidence\n{{evidence}}\n\n## Risk\n{{risk}}\n\n## Rollback\n{{rollback}}\n' }
+        conflict_policy = @{ max_open_prs = 5; base_branch_strategy = 'default_branch' }
     }
     $maintenanceContract | ConvertTo-Json -Depth 20 | Set-Content -Path $script:MaintenanceContractPath -Encoding UTF8
 
@@ -83,7 +85,7 @@ BeforeAll {
         run_id = 'test-run-forbidden'
         goal = 'Forbidden stage test'
         intent = 'bugfix'
-        agent_roster = @('RepoContextBuilder', 'Researcher', 'Engineer', 'ReviewGate', 'Critic', 'Synthesizer', 'Commissioner', 'Supervisor', 'Historian')
+        agent_roster = @('RepoContextBuilder', 'Researcher', 'Engineer', 'ReviewGate', 'Critic', 'Synthesizer', 'Commissioner', 'PRPublisher', 'Supervisor', 'Historian')
         budget = @{ max_time_minutes = 15 }
         logging = @{ level = 'info' }
         artifact_policy = @{ mode = 'standard' }
@@ -104,6 +106,8 @@ BeforeAll {
         baseline = @{ mode = 'required_pass' }
         command_policy = @{ only_from_repo_context = $true; thresholds = @{ min_confidence_auto_run = 0.7; allow_convention = $false } }
         repo_context_ref = @{ path = 'repo_context.json' }
+        pr_policy = @{ mode = 'create_pr'; branch_prefix = 'maintenance'; draft_on_high_risk = $true; title_template = 'Maintenance: {{goal}}'; body_template = '## Summary\n{{summary}}\n\n## Evidence\n{{evidence}}\n\n## Risk\n{{risk}}\n\n## Rollback\n{{rollback}}\n' }
+        conflict_policy = @{ max_open_prs = 5; base_branch_strategy = 'default_branch' }
     }
     $forbiddenStage | ConvertTo-Json -Depth 20 | Set-Content -Path $script:ForbiddenStageContractPath -Encoding UTF8
 }

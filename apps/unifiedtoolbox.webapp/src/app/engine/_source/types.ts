@@ -47,6 +47,8 @@ export interface EnvironmentalImpact {
 export interface Session {
   id: string;
   goal: string;
+  jobType?: string;
+  requestPayload?: Record<string, any>;
   runMode?: RunMode;
   fileContent: string | null;
   date: string;

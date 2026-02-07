@@ -170,6 +170,7 @@ const sanitizeSessionForLocalCache = (session: Session): Session => {
   return {
     id: session.id,
     goal: safeGoal,
+    jobType: session.jobType,
     fileContent: null,
     date: session.date || new Date().toISOString(),
     environmentalImpact: session.environmentalImpact ?? null,
@@ -444,7 +445,13 @@ class OrchestratorRuntime {
     this.emit()
   }
 
-  startOrchestration = async (goal: string, fileContent: string | null, seedArtifacts: Artifact[] | undefined, runMode: RunMode = 'build') => {
+  startOrchestration = async (
+    goal: string,
+    fileContent: string | null,
+    seedArtifacts: Artifact[] | undefined,
+    runMode: RunMode = 'build',
+    requestPayload?: Record<string, any>
+  ) => {
     const token = this.nextRunToken()
     this.setSnapshot({ isOrchestrating: true, isComplete: false })
     this.snapshot = { ...this.snapshot, pipeline: makeInitialPipeline(this.snapshot.pipeline.hardeningEnabled) }
@@ -456,6 +463,9 @@ class OrchestratorRuntime {
     let plannerRawText: string | null = null
 
     let initialContext = ''
+    if (requestPayload && Object.keys(requestPayload).length > 0) {
+      initialContext += `Request payload:\n${JSON.stringify(requestPayload, null, 2)}\n`
+    }
     const initialTasks: Task[] = []
     const hasBriefSeed = Array.isArray(seedArtifacts) && seedArtifacts.length > 0
 
@@ -489,6 +499,8 @@ class OrchestratorRuntime {
     const newSession: Session = {
       id: simpleId(),
       goal,
+      jobType: requestPayload?.job_type,
+      requestPayload: requestPayload || undefined,
       runMode,
       fileContent,
       date: new Date().toISOString(),

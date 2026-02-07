@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.0",
+  "run_id": "2026-02-07T01:23:45Z",
+  "status": "created",
+  "repository": {
+    "full_name": "owner/repo",
+    "url": "https://github.com/owner/repo",
+    "local_path": "C:\\\\repos\\\\repo"
+  },
+  "branch": {
+    "name": "maintenance/20260207T012345Z/fix-login-bug",
+    "base": "main"
+  },
+  "conflict": {
+    "level": "low",
+    "open_pr_count": 1,
+    "max_open_prs": 5,
+    "high_churn": false,
+    "reasons": []
+  },
+  "base_branch_decision": {
+    "strategy": "default_branch",
+    "selected": "main",
+    "options": ["main"],
+    "reason": "default"
+  },
+  "pr": {
+    "number": 42,
+    "url": "https://github.com/owner/repo/pull/42",
+    "state": "open",
+    "draft": false,
+    "title": "Maintenance: Fix login bug",
+    "body": "## Summary\n- Goal: Fix login bug\n\n## Evidence\n- pnpm test\n\n## Risk\n- Risk level: low\n- Conflict risk: low\n\n## Rollback\nRollback plan not provided.",
+    "head": "maintenance/20260207T012345Z/fix-login-bug",
+    "base": "main"
+  },
+  "errors": []
+}
