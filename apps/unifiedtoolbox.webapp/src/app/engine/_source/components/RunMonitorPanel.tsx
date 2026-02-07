@@ -40,6 +40,9 @@ const RunMonitorPanel: React.FC<Props> = ({ tasks, isOrchestrating, viewMode, on
 
     const agentSet = new Set<string>()
     const activeAgentSet = new Set<string>()
+    const completedAgentSet = new Set<string>()
+    const failedAgentSet = new Set<string>()
+    const pendingAgentSet = new Set<string>()
     const byAgent: Record<string, { total: number; running: number; completed: number; failed: number; pending: number }> = {}
 
     for (const t of tasks) {
@@ -52,24 +55,33 @@ const RunMonitorPanel: React.FC<Props> = ({ tasks, isOrchestrating, viewMode, on
         activeAgentSet.add(key)
       } else if (t.status === TaskStatus.COMPLETED) {
         byAgent[key].completed += 1
+        completedAgentSet.add(key)
       } else if (t.status === TaskStatus.FAILED) {
         byAgent[key].failed += 1
+        failedAgentSet.add(key)
       } else {
         byAgent[key].pending += 1
+        pendingAgentSet.add(key)
       }
     }
 
     const totalAgents = agentSet.size
     const activeAgents = activeAgentSet.size
+    const completedAgents = completedAgentSet.size
+    const failedAgents = failedAgentSet.size
+    const pendingAgents = pendingAgentSet.size
     const done = completed + failed
     const percent = totalTasks > 0 ? Math.round((done / totalTasks) * 100) : 0
 
-    const topAgents = Object.entries(byAgent)
+    const allAgents = Object.entries(byAgent)
       .map(([agent, s]) => ({ agent, ...s }))
       .sort((a, b) => (b.running > 0 ? 1 : 0) - (a.running > 0 ? 1 : 0) || b.total - a.total || a.agent.localeCompare(b.agent))
-      .slice(0, 10)
 
-    return { totalTasks, completed, failed, running, pending, totalAgents, activeAgents, percent, topAgents }
+    return { 
+      totalTasks, completed, failed, running, pending, 
+      totalAgents, activeAgents, completedAgents, failedAgents, pendingAgents,
+      percent, allAgents 
+    }
   }, [tasks])
 
   const statusLabel = isOrchestrating ? 'running' : tasks.length ? 'completed' : 'idle'
@@ -82,9 +94,6 @@ const RunMonitorPanel: React.FC<Props> = ({ tasks, isOrchestrating, viewMode, on
             <h2 className="text-sm font-semibold text-gray-200">Run Monitor</h2>
             <span className={`rounded-full border px-2 py-0.5 text-[11px] ${statusPill(statusLabel)}`}>
               status: {statusLabel}
-            </span>
-            <span className="rounded-full border border-gray-700 bg-gray-900/40 px-2 py-0.5 text-[11px] text-gray-200">
-              agents active: {summary.activeAgents}/{summary.totalAgents}
             </span>
             <span className="rounded-full border border-gray-700 bg-gray-900/40 px-2 py-0.5 text-[11px] text-gray-200">
               tasks: {summary.totalTasks} · done: {summary.completed + summary.failed}/{summary.totalTasks} ({summary.percent}%)
@@ -121,19 +130,55 @@ const RunMonitorPanel: React.FC<Props> = ({ tasks, isOrchestrating, viewMode, on
           <div className="h-full bg-indigo-500/70" style={{ width: `${summary.percent}%` }} />
         </div>
 
-        {summary.topAgents.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {summary.topAgents.map((a) => (
-              <span
-                key={a.agent}
-                className={`rounded-full border px-2 py-0.5 text-[11px] ${
-                  a.running > 0 ? 'border-blue-500/40 bg-blue-500/10 text-blue-200' : 'border-gray-700 bg-gray-900/40 text-gray-200'
-                }`}
-                title={`running:${a.running} pending:${a.pending} completed:${a.completed} failed:${a.failed}`}
-              >
-                {a.agent}: {a.running > 0 ? `${a.running} running` : `${a.total} tasks`}
-              </span>
-            ))}
+        {/* Agent Status Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="rounded-lg border border-blue-500/40 bg-blue-500/10 p-3">
+            <div className="text-xs text-blue-200 uppercase tracking-wide">Active</div>
+            <div className="mt-1 text-2xl font-bold text-blue-100">{summary.activeAgents}</div>
+            <div className="mt-1 text-[10px] text-blue-200/70">{summary.running} tasks running</div>
+          </div>
+          <div className="rounded-lg border border-gray-700 bg-gray-900/40 p-3">
+            <div className="text-xs text-gray-200 uppercase tracking-wide">Pending</div>
+            <div className="mt-1 text-2xl font-bold text-gray-100">{summary.pendingAgents}</div>
+            <div className="mt-1 text-[10px] text-gray-200/70">{summary.pending} tasks queued</div>
+          </div>
+          <div className="rounded-lg border border-green-500/40 bg-green-500/10 p-3">
+            <div className="text-xs text-green-200 uppercase tracking-wide">Completed</div>
+            <div className="mt-1 text-2xl font-bold text-green-100">{summary.completedAgents}</div>
+            <div className="mt-1 text-[10px] text-green-200/70">{summary.completed} tasks done</div>
+          </div>
+          <div className="rounded-lg border border-red-500/40 bg-red-500/10 p-3">
+            <div className="text-xs text-red-200 uppercase tracking-wide">Failed</div>
+            <div className="mt-1 text-2xl font-bold text-red-100">{summary.failedAgents}</div>
+            <div className="mt-1 text-[10px] text-red-200/70">{summary.failed} tasks failed</div>
+          </div>
+        </div>
+
+        {/* All Agents List */}
+        {summary.allAgents.length > 0 && (
+          <div>
+            <div className="mb-2 text-xs uppercase tracking-wide text-gray-400">
+              All Agents ({summary.totalAgents})
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {summary.allAgents.map((a) => (
+                <span
+                  key={a.agent}
+                  className={`rounded-full border px-2 py-0.5 text-[11px] ${
+                    a.running > 0 
+                      ? 'border-blue-500/40 bg-blue-500/10 text-blue-200' 
+                      : a.failed > 0
+                      ? 'border-red-500/40 bg-red-500/10 text-red-200'
+                      : a.completed > 0
+                      ? 'border-green-500/40 bg-green-500/10 text-green-200'
+                      : 'border-gray-700 bg-gray-900/40 text-gray-200'
+                  }`}
+                  title={`running:${a.running} pending:${a.pending} completed:${a.completed} failed:${a.failed}`}
+                >
+                  {a.agent}: {a.running > 0 ? `${a.running} active` : a.failed > 0 ? `${a.failed} failed` : a.completed > 0 ? `${a.completed} done` : `${a.pending} queued`}
+                </span>
+              ))}
+            </div>
           </div>
         )}
       </div>
