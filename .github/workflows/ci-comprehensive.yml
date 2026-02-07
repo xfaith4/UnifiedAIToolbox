@@ -196,6 +196,9 @@ jobs:
       - name: Lint Next.js app
         run: npm run lint
       
+      - name: Run app-factory tests
+        run: npm run test
+      
       - name: Build web app
         run: npm run build
         env:
@@ -339,12 +342,12 @@ jobs:
           echo "### Coverage checklist" >> $GITHUB_STEP_SUMMARY
           echo "- [$(checkbox "$powershell_result")] PowerShell modules lint & tests" >> $GITHUB_STEP_SUMMARY
           echo "- [$(checkbox "$python_result")] Prompt API lint & pytest with coverage" >> $GITHUB_STEP_SUMMARY
-          echo "- [$(checkbox "$webapp_result")] Unified web app lint & build" >> $GITHUB_STEP_SUMMARY
+          echo "- [$(checkbox "$webapp_result")] Unified web app lint, app-factory tests & build" >> $GITHUB_STEP_SUMMARY
           echo "- [$(checkbox "$desktop_result")] Desktop app build" >> $GITHUB_STEP_SUMMARY
           echo "- [$(checkbox "$smoke_result")] Smoke checks (API import & PowerShell smoke)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Follow-up coverage tasks" >> $GITHUB_STEP_SUMMARY
-          echo "- [ ] Add automated tests for the unified web app (currently lint/build only)" >> $GITHUB_STEP_SUMMARY
+          echo "- [x] App-factory unit tests added (51 tests covering gates, assemble, provenance, contracts, pipeline, runs, etc.)" >> $GITHUB_STEP_SUMMARY
           echo "- [ ] Add automated tests for desktop applications (currently build-only)" >> $GITHUB_STEP_SUMMARY
           echo "- [ ] Expand integration smoke tests beyond import and basic PowerShell checks" >> $GITHUB_STEP_SUMMARY
           
