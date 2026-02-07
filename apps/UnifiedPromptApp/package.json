@@ -1,0 +1,14 @@
+{
+  "name": "unified-prompt-app",
+  "version": "1.0.0",
+  "description": "FastAPI backend for prompt management and AI orchestration",
+  "private": true,
+  "scripts": {
+    "test": "echo 'Python tests managed via pytest - see requirements.txt'"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xfaith4/UnifiedAIToolbox.git",
+    "directory": "apps/UnifiedPromptApp"
+  }
+}

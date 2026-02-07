@@ -1,0 +1,24 @@
+{
+  "name": "unified-ai-toolbox",
+  "version": "2.0.0",
+  "private": true,
+  "description": "AI orchestration platform for managing prompts, agents, and AI workflows",
+  "scripts": {
+    "dev": "echo 'Use launch.sh or Start-Toolbox.ps1 to start the development environment'",
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspaces",
+    "lint": "npm run lint --workspaces",
+    "clean": "rm -rf node_modules apps/*/node_modules packages/*/node_modules"
+  },
+  "workspaces": [
+    "apps/unifiedtoolbox.webapp",
+    "apps/orchestration-bridge",
+    "apps/UnifiedPromptApp"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xfaith4/UnifiedAIToolbox.git"
+  },
+  "author": "xfaith4",
+  "license": "MIT"
+}
