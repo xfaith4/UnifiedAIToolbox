@@ -50,7 +50,12 @@ interface ServerDetail {
     endpoint_hint?: string
   }
   installation_status?: string
-  install_record?: any
+  install_record?: {
+    installed_at?: string
+    version?: string
+    location?: string
+    [key: string]: unknown
+  }
 }
 
 export default function ServerDetailPage() {
@@ -236,7 +241,7 @@ export default function ServerDetailPage() {
 
               <Paper variant="outlined" sx={{ p: 2, bgcolor: 'grey.50' }}>
                 <Typography variant="subtitle2" gutterBottom>
-                  Permission Footprint ("Blast Radius")
+                  Permission Footprint (&quot;Blast Radius&quot;)
                 </Typography>
                 <List dense>
                   {server.capabilities.map((cap) => (

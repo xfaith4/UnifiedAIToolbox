@@ -86,7 +86,7 @@ export async function POST(req: Request) {
         .replace(/[:.]/g, '-')}-${crypto.randomBytes(3).toString('hex')}`
       const artifactsDir = path.join(workRootDir, 'design-runs', runId, 'artifacts')
       await fs.mkdir(artifactsDir, { recursive: true })
-      await ingestArtifacts(artifactsDir, artifacts as any)
+      await ingestArtifacts(artifactsDir, artifacts as { name: string; type?: string; content: string }[])
       await fs.writeFile(
         path.join(artifactsDir, 'DESIGN_RUN.md'),
         `# Design Run Export\n\nThis zip contains docs/specs artifacts only (no runnable repo scaffolding).\n\nGenerated: ${new Date().toISOString()}\nSession: ${payload.sessionId || '(inline artifacts)'}\n`,

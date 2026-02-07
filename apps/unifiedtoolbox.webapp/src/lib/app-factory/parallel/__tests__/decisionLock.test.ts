@@ -15,7 +15,7 @@ describe('decision lock', () => {
       forbiddenPatternsByExtension: {},
       installCommand: 'pnpm i',
       buildCommand: 'pnpm build',
-    } as any
+    }
 
     const first = await runDecisionLock(repoDir, contract)
     const second = await runDecisionLock(repoDir, contract)

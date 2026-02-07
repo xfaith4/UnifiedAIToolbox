@@ -66,10 +66,12 @@ describe('evaluateRepoContract', () => {
       }
       const res = await evaluateRepoContract(dir, contract)
       expect(res.passed).toBe(false)
-      const invalid = res.failures.find((f) => f.kind === 'invalid_root_package_json') as any
+      const invalid = res.failures.find((f) => f.kind === 'invalid_root_package_json')
       expect(invalid).toBeTruthy()
-      expect(Array.isArray(invalid.missing)).toBe(true)
-      expect(invalid.missing).toEqual(expect.arrayContaining(['name', 'private', 'scripts']))
+      if (invalid && invalid.kind === 'invalid_root_package_json') {
+        expect(Array.isArray(invalid.missing)).toBe(true)
+        expect(invalid.missing).toEqual(expect.arrayContaining(['name', 'private', 'scripts']))
+      }
     })
   })
 

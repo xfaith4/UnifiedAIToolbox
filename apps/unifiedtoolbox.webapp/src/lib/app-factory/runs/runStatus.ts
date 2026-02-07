@@ -42,7 +42,7 @@ async function fileExists(filePath: string): Promise<boolean> {
   }
 }
 
-async function readJsonIfExists(filePath: string): Promise<any | null> {
+async function readJsonIfExists(filePath: string): Promise<unknown | null> {
   if (!(await fileExists(filePath))) return null
   try {
     const raw = await fs.readFile(filePath, 'utf8')
@@ -220,17 +220,18 @@ async function listArtifacts(artifactDir: string): Promise<RunArtifact[]> {
   return out.sort((a, b) => a.path.localeCompare(b.path))
 }
 
-function mapArtifactsIndex(index: any[]): RunArtifact[] {
+function mapArtifactsIndex(index: unknown[]): RunArtifact[] {
   const records: RunArtifact[] = []
   for (const entry of index) {
     if (!entry || typeof entry !== 'object') continue
-    const rel = String(entry.relativePath || entry.path || entry.fileName || '')
+    const entryObj = entry as Record<string, unknown>
+    const rel = String(entryObj.relativePath || entryObj.path || entryObj.fileName || '')
     if (!rel) continue
     records.push({
       path: rel.replace(/\\/g, '/'),
-      type: entry.mimeType ? String(entry.mimeType) : undefined,
-      bytes: typeof entry.size === 'number' ? entry.size : undefined,
-      mtime: entry.createdAt ? String(entry.createdAt) : undefined,
+      type: entryObj.mimeType ? String(entryObj.mimeType) : undefined,
+      bytes: typeof entryObj.size === 'number' ? entryObj.size : undefined,
+      mtime: entryObj.createdAt ? String(entryObj.createdAt) : undefined,
       exists: true,
     })
   }
@@ -310,13 +311,16 @@ export async function loadRunStatus(runId: string, options: RunStatusOptions = {
   const artifactsDir = path.join(runDir, 'artifacts')
   let artifacts: RunArtifact[] = []
   if (Array.isArray(runStateJson?.artifacts)) {
-    artifacts = runStateJson.artifacts.map((entry: any) => ({
-      path: String(entry.path || ''),
-      exists: entry.exists !== false,
-      bytes: typeof entry.bytes === 'number' ? entry.bytes : undefined,
-      mtime: entry.mtime ? String(entry.mtime) : undefined,
-      type: entry.type ? String(entry.type) : undefined,
-    }))
+    artifacts = (runStateJson.artifacts as unknown[]).map((entry) => {
+      const entryObj = entry as Record<string, unknown>
+      return {
+        path: String(entryObj.path || ''),
+        exists: entryObj.exists !== false,
+        bytes: typeof entryObj.bytes === 'number' ? entryObj.bytes : undefined,
+        mtime: entryObj.mtime ? String(entryObj.mtime) : undefined,
+        type: entryObj.type ? String(entryObj.type) : undefined,
+      }
+    })
   } else if (await fileExists(artifactsDir)) {
     artifacts = await listArtifacts(artifactsDir)
   } else {

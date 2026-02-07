@@ -118,14 +118,15 @@ describe('githubTopicService', () => {
       })
 
       const manyTopics = Array.from({ length: 100 }, (_, i) => `topic-${i}`)
-      const result = await setRepositoryTopics(
+      await setRepositoryTopics(
         { token: 'ghp_test', owner: 'test', repo: 'test' },
         manyTopics
       )
 
       // Check that only 50 topics were sent
-      const callArgs = (global.fetch as any).mock.calls[0]
-      const body = JSON.parse(callArgs[1].body)
+      const fetchMock = global.fetch as jest.Mock
+      const callArgs = fetchMock.mock.calls[0]
+      const body = JSON.parse(callArgs[1].body as string)
       expect(body.names.length).toBeLessThanOrEqual(50)
     })
 
@@ -141,8 +142,9 @@ describe('githubTopicService', () => {
         [longTopic]
       )
 
-      const callArgs = (global.fetch as any).mock.calls[0]
-      const body = JSON.parse(callArgs[1].body)
+      const fetchMock = global.fetch as jest.Mock
+      const callArgs = fetchMock.mock.calls[0]
+      const body = JSON.parse(callArgs[1].body as string)
       expect(body.names[0].length).toBeLessThanOrEqual(50)
     })
 
@@ -157,8 +159,9 @@ describe('githubTopicService', () => {
         ['Test@Topic#123!']
       )
 
-      const callArgs = (global.fetch as any).mock.calls[0]
-      const body = JSON.parse(callArgs[1].body)
+      const fetchMock = global.fetch as jest.Mock
+      const callArgs = fetchMock.mock.calls[0]
+      const body = JSON.parse(callArgs[1].body as string)
       // Should be normalized to only contain alphanumeric and hyphens
       expect(body.names[0]).toMatch(/^[a-z0-9-]+$/)
     })

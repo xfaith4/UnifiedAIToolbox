@@ -82,7 +82,7 @@ export async function scanPromptLibrary(): Promise<PromptData[]> {
       const filePath = path.join(PROMPTS_DIR, file)
       try {
         const content = fs.readFileSync(filePath, 'utf8')
-        const data = yaml.load(content) as any
+        const data = yaml.load(content) as Record<string, unknown>
 
         // Determine category from metadata first, then fall back to filename
         let category = 'General'
@@ -162,7 +162,7 @@ export async function scanAgentLibrary(): Promise<AgentData[]> {
       const filePath = path.join(AGENTS_DIR, file)
       try {
         const content = fs.readFileSync(filePath, 'utf8')
-        const data = yaml.load(content) as any
+        const data = yaml.load(content) as Record<string, unknown>
 
         agents.push({
           id: data.id || file,

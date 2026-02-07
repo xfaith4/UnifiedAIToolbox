@@ -5,7 +5,8 @@ import { NextResponse } from 'next/server'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-type JsonObject = Record<string, any>
+type JsonValue = string | number | boolean | null | JsonObject | JsonValue[]
+type JsonObject = Record<string, JsonValue>
 
 function readJson(filePath: string): JsonObject {
   const raw = fs.readFileSync(filePath, 'utf8')
@@ -107,7 +108,7 @@ export async function GET() {
       const requestFields = requestSchema ? extractRequiredFields(requestSchema) : []
       const pipeline = pipelinePath && fs.existsSync(pipelinePath) ? readJson(pipelinePath) : null
       const stages = Array.isArray(pipeline?.stages)
-        ? pipeline.stages.map((s: any) => ({ id: s.id, name: s.name, description: s.description }))
+        ? (pipeline.stages as JsonObject[]).map((s) => ({ id: s.id, name: s.name, description: s.description }))
         : []
 
       const defaultAgents = (entry as JsonObject).default_agents || (entry as JsonObject).default_agent_roster || []
@@ -128,7 +129,8 @@ export async function GET() {
     }
 
     return NextResponse.json(response)
-  } catch (error: any) {
-    return NextResponse.json({ error: error?.message || 'Failed to load job types.' }, { status: 500 })
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Failed to load job types.'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }
