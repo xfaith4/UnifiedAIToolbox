@@ -178,15 +178,33 @@ export async function GET(req: Request, { params }: { params: { runId: string } 
   }
 }
 
+/**
+ * Check if a file exists at the given path
+ */
 async function fileExists(filePath: string): Promise<boolean> {
   try {
     const stat = await fs.stat(filePath)
     return stat.isFile()
-  } catch {
+  } catch (err) {
+    // ENOENT is expected for missing files
+    if (err && typeof err === 'object' && 'code' in err && err.code === 'ENOENT') {
+      return false
+    }
+    // Log other filesystem errors (permissions, etc.)
+    console.error(`[export] Error checking file existence ${filePath}:`, err instanceof Error ? err.message : String(err))
     return false
   }
 }
 
+/**
+ * Recursively list all files in a directory tree
+ * 
+ * Security: Validates all paths to prevent traversal outside baseDir.
+ * - Resolves full paths to handle symlinks correctly
+ * - Ensures resolved paths are within baseDir boundary
+ * - Logs and skips any paths that escape the base directory
+ * - Continues processing even if individual directories fail to read
+ */
 async function listFilesRecursive(baseDir: string): Promise<string[]> {
   const out: string[] = []
   const stack: string[] = [baseDir]
