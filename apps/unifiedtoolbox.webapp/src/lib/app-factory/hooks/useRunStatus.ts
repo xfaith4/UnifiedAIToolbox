@@ -94,7 +94,6 @@ export function useRunStatus(
   // Initial fetch
   useEffect(() => {
     if (!runId) return
-    isMountedRef.current = true
     void fetchStatus()
     return () => {
       isMountedRef.current = false

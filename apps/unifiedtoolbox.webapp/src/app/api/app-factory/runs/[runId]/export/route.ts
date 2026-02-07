@@ -201,7 +201,8 @@ async function listFilesRecursive(baseDir: string): Promise<string[]> {
         const resolved = path.resolve(full)
         
         // Security: prevent path traversal via symlinks
-        if (!resolved.startsWith(resolvedBase + path.sep) && resolved !== resolvedBase) {
+        // Allow the base directory itself and any path that starts with base + separator
+        if (resolved !== resolvedBase && !resolved.startsWith(resolvedBase + path.sep)) {
           console.warn(`[export] Skipping path outside base directory: ${full}`)
           continue
         }

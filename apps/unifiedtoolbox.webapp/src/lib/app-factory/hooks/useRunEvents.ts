@@ -131,7 +131,6 @@ export function useRunEvents(
   // Initial fetch
   useEffect(() => {
     if (!runId) return
-    isMountedRef.current = true
     void fetchEvents()
     return () => {
       isMountedRef.current = false
