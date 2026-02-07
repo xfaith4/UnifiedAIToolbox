@@ -53,6 +53,14 @@ export function useRunEvents(
   const lastCursorRef = useRef<string | null>(null)
   const seenEventsRef = useRef<Set<string>>(new Set())
   const isMountedRef = useRef(true)
+  
+  // Reset mounted ref when component mounts
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+    }
+  }, [])
 
   const fetchEvents = useCallback(async () => {
     if (!runId || !isMountedRef.current) {
@@ -132,9 +140,6 @@ export function useRunEvents(
   useEffect(() => {
     if (!runId) return
     void fetchEvents()
-    return () => {
-      isMountedRef.current = false
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runId]) // Only fetch when runId changes
 
@@ -162,7 +167,6 @@ export function useRunEvents(
     schedulePoll()
 
     return () => {
-      isMountedRef.current = false
       if (pollTimeoutRef.current) {
         clearTimeout(pollTimeoutRef.current)
         pollTimeoutRef.current = null

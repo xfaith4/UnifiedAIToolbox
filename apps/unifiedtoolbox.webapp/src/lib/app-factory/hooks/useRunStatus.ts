@@ -47,6 +47,14 @@ export function useRunStatus(
   const pollTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const prevStatusRef = useRef<RunStatusResponse | null>(null)
   const isMountedRef = useRef(true)
+  
+  // Reset mounted ref when component mounts
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+    }
+  }, [])
 
   const fetchStatus = useCallback(async () => {
     if (!runId || !isMountedRef.current) {
@@ -95,9 +103,6 @@ export function useRunStatus(
   useEffect(() => {
     if (!runId) return
     void fetchStatus()
-    return () => {
-      isMountedRef.current = false
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runId]) // Only fetch when runId changes
 
@@ -134,7 +139,6 @@ export function useRunStatus(
     schedulePoll()
 
     return () => {
-      isMountedRef.current = false
       if (pollTimeoutRef.current) {
         clearTimeout(pollTimeoutRef.current)
         pollTimeoutRef.current = null
