@@ -82,14 +82,15 @@ export async function scanPromptLibrary(): Promise<PromptData[]> {
       const filePath = path.join(PROMPTS_DIR, file)
       try {
         const content = fs.readFileSync(filePath, 'utf8')
-        const data = yaml.load(content) as any
+        const data = yaml.load(content) as Record<string, unknown>
 
         // Determine category from metadata first, then fall back to filename
         let category = 'General'
         
         // Check telemetry tags first (most reliable)
-        if (data.telemetry?.tags) {
-          const tags = data.telemetry.tags
+        const telemetry = data.telemetry as Record<string, unknown> | undefined
+        if (telemetry?.tags && Array.isArray(telemetry.tags)) {
+          const tags = telemetry.tags as string[]
           if (tags.includes('supervisor')) category = 'Supervisor'
           else if (tags.includes('engineering') || tags.includes('powershell') || tags.includes('sql')) category = 'Engineer'
           else if (tags.includes('analytics') || tags.includes('research')) category = 'Researcher'
@@ -118,15 +119,18 @@ export async function scanPromptLibrary(): Promise<PromptData[]> {
         const hasTests = files.some(f => f.startsWith(baseName) && f.includes('.tests.'))
         const hasDocs = files.some(f => f.startsWith(baseName) && f.includes('.meta.'))
 
+        // Get validated tags array
+        const validatedTags = telemetry && Array.isArray(telemetry.tags) ? telemetry.tags as string[] : []
+
         prompts.push({
-          id: data.id || file,
-          version: data.version,
+          id: String(data.id || file),
+          version: data.version as string | undefined,
           category,
-          tags: data.telemetry?.tags || [],
-          status: data.status || 'active',
-          risk_tier: data.risk_tier,
-          owners: data.owners,
-          telemetry: data.telemetry,
+          tags: validatedTags,
+          status: String(data.status || 'active'),
+          risk_tier: data.risk_tier as string | undefined,
+          owners: data.owners as string[] | undefined,
+          telemetry: telemetry as { tags?: string[]; pii?: string } | undefined,
           hasTests,
           hasDocs,
           filePath: file,
@@ -162,15 +166,18 @@ export async function scanAgentLibrary(): Promise<AgentData[]> {
       const filePath = path.join(AGENTS_DIR, file)
       try {
         const content = fs.readFileSync(filePath, 'utf8')
-        const data = yaml.load(content) as any
+        const data = yaml.load(content) as Record<string, unknown>
+
+        // Validate capabilities is an array before casting
+        const validatedCapabilities = Array.isArray(data.capabilities) ? data.capabilities as string[] : []
 
         agents.push({
-          id: data.id || file,
-          name: data.name || file.replace('.yaml', ''),
-          role: data.role || 'Unknown',
-          capabilities: data.capabilities || [],
-          status: data.status || 'active',
-          routing_hints: data.routing_hints,
+          id: String(data.id || file),
+          name: String(data.name || file.replace('.yaml', '')),
+          role: String(data.role || 'Unknown'),
+          capabilities: validatedCapabilities,
+          status: String(data.status || 'active'),
+          routing_hints: data.routing_hints as { preferred_models?: string[] } | undefined,
           filePath: file,
         })
       } catch (error) {

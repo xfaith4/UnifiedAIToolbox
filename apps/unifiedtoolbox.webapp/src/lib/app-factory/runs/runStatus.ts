@@ -42,7 +42,7 @@ async function fileExists(filePath: string): Promise<boolean> {
   }
 }
 
-async function readJsonIfExists(filePath: string): Promise<any | null> {
+async function readJsonIfExists(filePath: string): Promise<unknown | null> {
   if (!(await fileExists(filePath))) return null
   try {
     const raw = await fs.readFile(filePath, 'utf8')
@@ -220,21 +220,34 @@ async function listArtifacts(artifactDir: string): Promise<RunArtifact[]> {
   return out.sort((a, b) => a.path.localeCompare(b.path))
 }
 
-function mapArtifactsIndex(index: any[]): RunArtifact[] {
+function mapArtifactsIndex(index: unknown[]): RunArtifact[] {
   const records: RunArtifact[] = []
   for (const entry of index) {
     if (!entry || typeof entry !== 'object') continue
-    const rel = String(entry.relativePath || entry.path || entry.fileName || '')
+    const entryObj = entry as Record<string, unknown>
+    const rel = String(entryObj.relativePath || entryObj.path || entryObj.fileName || '')
     if (!rel) continue
     records.push({
       path: rel.replace(/\\/g, '/'),
-      type: entry.mimeType ? String(entry.mimeType) : undefined,
-      bytes: typeof entry.size === 'number' ? entry.size : undefined,
-      mtime: entry.createdAt ? String(entry.createdAt) : undefined,
+      type: entryObj.mimeType ? String(entryObj.mimeType) : undefined,
+      bytes: typeof entryObj.size === 'number' ? entryObj.size : undefined,
+      mtime: entryObj.createdAt ? String(entryObj.createdAt) : undefined,
       exists: true,
     })
   }
   return records
+}
+
+/**
+ * Helper to extract first valid string value from multiple JSON sources
+ */
+function getFirstString(...values: unknown[]): string | undefined {
+  for (const val of values) {
+    if (val != null && val !== '') {
+      return String(val)
+    }
+  }
+  return undefined
 }
 
 export async function loadRunStatus(runId: string, options: RunStatusOptions = {}): Promise<RunStatusResponse | null> {
@@ -253,10 +266,10 @@ export async function loadRunStatus(runId: string, options: RunStatusOptions = {
   const manifestPath = path.join(runDir, 'run_manifest.json')
   const summaryPath = path.join(runDir, 'orchestration-summary.json')
 
-  const runStateJson = await readJsonIfExists(statePath)
-  const statusJson = await readJsonIfExists(statusPath)
-  const manifestJson = await readJsonIfExists(manifestPath)
-  const summaryJson = await readJsonIfExists(summaryPath)
+  const runStateJson = await readJsonIfExists(statePath) as Record<string, unknown> | null
+  const statusJson = await readJsonIfExists(statusPath) as Record<string, unknown> | null
+  const manifestJson = await readJsonIfExists(manifestPath) as Record<string, unknown> | null
+  const summaryJson = await readJsonIfExists(summaryPath) as Record<string, unknown> | null
 
   const jobType =
     runStateJson?.job_type ||
@@ -284,19 +297,22 @@ export async function loadRunStatus(runId: string, options: RunStatusOptions = {
         finishedAt: stage.finished_at || stage.finishedAt,
       })
     }
-  } else if (Array.isArray(manifestJson?.routing?.stages)) {
-    for (const stageId of manifestJson.routing.stages) {
-      stages.push({ id: String(stageId), status: 'pending' })
+  } else if (manifestJson && typeof manifestJson === 'object') {
+    const routing = (manifestJson as Record<string, unknown>).routing as Record<string, unknown> | undefined
+    if (routing && Array.isArray(routing.stages)) {
+      for (const stageId of routing.stages) {
+        stages.push({ id: String(stageId), status: 'pending' })
+      }
     }
   }
 
   const status =
     normalizeState(
-      runStateJson?.status ||
+      String(runStateJson?.status ||
         statusJson?.state ||
         statusJson?.status ||
         summaryJson?.status ||
-        summaryJson?.Status
+        summaryJson?.Status || '')
     ) || 'running'
 
   let currentStage = runStateJson?.current_stage || statusJson?.current_stage || statusJson?.currentStage || null
@@ -310,13 +326,16 @@ export async function loadRunStatus(runId: string, options: RunStatusOptions = {
   const artifactsDir = path.join(runDir, 'artifacts')
   let artifacts: RunArtifact[] = []
   if (Array.isArray(runStateJson?.artifacts)) {
-    artifacts = runStateJson.artifacts.map((entry: any) => ({
-      path: String(entry.path || ''),
-      exists: entry.exists !== false,
-      bytes: typeof entry.bytes === 'number' ? entry.bytes : undefined,
-      mtime: entry.mtime ? String(entry.mtime) : undefined,
-      type: entry.type ? String(entry.type) : undefined,
-    }))
+    artifacts = (runStateJson.artifacts as unknown[]).map((entry) => {
+      const entryObj = entry as Record<string, unknown>
+      return {
+        path: String(entryObj.path || ''),
+        exists: entryObj.exists !== false,
+        bytes: typeof entryObj.bytes === 'number' ? entryObj.bytes : undefined,
+        mtime: entryObj.mtime ? String(entryObj.mtime) : undefined,
+        type: entryObj.type ? String(entryObj.type) : undefined,
+      }
+    })
   } else if (await fileExists(artifactsDir)) {
     artifacts = await listArtifacts(artifactsDir)
   } else {
@@ -326,14 +345,17 @@ export async function loadRunStatus(runId: string, options: RunStatusOptions = {
     }
   }
 
-  const prJson =
-    (await readJsonIfExists(path.join(artifactsDir, 'pr.json'))) ||
-    (await readJsonIfExists(path.join(runDir, 'pr.json')))
+  const prJson = (await readJsonIfExists(path.join(artifactsDir, 'pr.json'))) ||
+    (await readJsonIfExists(path.join(runDir, 'pr.json'))) as Record<string, unknown> | null
 
-  const prUrlFromJson = prJson?.pr?.url || prJson?.pr_url
+  const prData = prJson && typeof prJson === 'object' ? prJson as Record<string, unknown> : null
+  const prNested = prData?.pr as Record<string, unknown> | undefined
+  const prUrlFromJson = prNested?.url || prData?.pr_url
+  
+  const runStateLinks = runStateJson?.links as Record<string, unknown> | undefined
   const links = {
-    pr_url: runStateJson?.links?.pr_url || (prUrlFromJson ? String(prUrlFromJson) : undefined),
-    repo_url: runStateJson?.links?.repo_url || runStateJson?.links?.repo,
+    pr_url: getFirstString(runStateLinks?.pr_url, prUrlFromJson),
+    repo_url: getFirstString(runStateLinks?.repo_url, runStateLinks?.repo),
   }
 
   const stageCount =
@@ -357,19 +379,19 @@ export async function loadRunStatus(runId: string, options: RunStatusOptions = {
 
   return {
     runId,
-    jobType,
+    jobType: jobType ? String(jobType) : undefined,
     status,
-    currentStage,
+    currentStage: currentStage ? String(currentStage) : null,
     stageIndex: typeof stageIndex === 'number' ? stageIndex : undefined,
     stageCount,
     progress,
-    startedAt: runStateJson?.started_at || statusJson?.started_at || statusJson?.startedAt || summaryJson?.StartTime || summaryJson?.started_at,
-    updatedAt: runStateJson?.updated_at || statusJson?.updated_at || statusJson?.updatedAt,
-    endedAt: runStateJson?.ended_at || statusJson?.finished_at || statusJson?.finishedAt || summaryJson?.EndTime || summaryJson?.ended_at,
+    startedAt: getFirstString(runStateJson?.started_at, statusJson?.started_at, statusJson?.startedAt, summaryJson?.StartTime, summaryJson?.started_at),
+    updatedAt: getFirstString(runStateJson?.updated_at, statusJson?.updated_at, statusJson?.updatedAt),
+    endedAt: getFirstString(runStateJson?.ended_at, statusJson?.finished_at, statusJson?.finishedAt, summaryJson?.EndTime, summaryJson?.ended_at),
     stages,
     events,
     artifacts,
-    risk: runStateJson?.risk,
+    risk: runStateJson?.risk as { level?: 'low' | 'medium' | 'high'; reasons?: string[] } | undefined,
     links,
     errors: Array.isArray(runStateJson?.errors) ? runStateJson.errors : undefined,
     warnings: Array.isArray(runStateJson?.warnings) ? runStateJson.warnings : undefined,

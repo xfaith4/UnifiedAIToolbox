@@ -68,6 +68,24 @@ interface SearchFilters {
   installation_status: string
 }
 
+interface MCPCollection {
+  id: string
+  name: string
+  description?: string
+  server_ids: string[]
+  tags: string[]
+  created_at?: string
+}
+
+interface MCPInstallation {
+  server_id: string
+  name: string
+  status: string
+  installed_at?: string
+  version?: string
+  location?: string
+}
+
 export default function MCPLibraryPage() {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState(0)
@@ -83,7 +101,7 @@ export default function MCPLibraryPage() {
   })
   
   // Collections state
-  const [collections, setCollections] = useState<any[]>([])
+  const [collections, setCollections] = useState<MCPCollection[]>([])
   const [collectionsLoading, setCollectionsLoading] = useState(false)
   const [showCreateCollection, setShowCreateCollection] = useState(false)
   const [newCollection, setNewCollection] = useState({
@@ -94,7 +112,7 @@ export default function MCPLibraryPage() {
   })
   
   // Installations state
-  const [installations, setInstallations] = useState<any[]>([])
+  const [installations, setInstallations] = useState<MCPInstallation[]>([])
   const [installationsLoading, setInstallationsLoading] = useState(false)
   
   // Install dialog state
@@ -268,7 +286,6 @@ export default function MCPLibraryPage() {
     } else if (activeTab === 2) {
       loadInstallations()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab])
 
   const handleSearch = () => {
@@ -286,7 +303,7 @@ export default function MCPLibraryPage() {
     }
   }
 
-  const getStatusColor = (installStatus: string) => {
+  const getStatusColor = (installStatus: string): 'success' | 'default' => {
     return installStatus === 'installed' ? 'success' : 'default'
   }
 
@@ -310,7 +327,7 @@ export default function MCPLibraryPage() {
 
           <Chip 
             label={server.installation_status}
-            color={getStatusColor(server.installation_status) as any}
+            color={getStatusColor(server.installation_status)}
             size="small"
             sx={{ mb: 1 }}
           />

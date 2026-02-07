@@ -123,7 +123,7 @@ export async function evaluateRepoContract(repoDir: string, contract: RepoContra
   const rootPkgPath = path.join(repoDir, 'package.json')
   if (await fileExists(rootPkgPath)) {
     try {
-      const pkg = JSON.parse(await fs.readFile(rootPkgPath, 'utf8')) as any
+      const pkg: PackageJson = JSON.parse(await fs.readFile(rootPkgPath, 'utf8'))
       const missing: string[] = []
       if (typeof pkg?.name !== 'string' || !String(pkg.name).trim()) missing.push('name')
       if (typeof pkg?.private !== 'boolean') missing.push('private')

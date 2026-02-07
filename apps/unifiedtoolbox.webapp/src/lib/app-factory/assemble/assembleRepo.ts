@@ -288,7 +288,6 @@ export async function assembleRepo(repoDir: string, contract: RepoContract): Pro
       'ESLint config for next lint'
     )
 
-    const hasSrcApp = await fileExists(path.join(repoDir, 'src', 'app', 'page.tsx'))
     const hasRootApp = await fileExists(path.join(repoDir, 'app', 'page.tsx'))
     const appRoot = hasRootApp ? 'app' : 'src/app'
 
