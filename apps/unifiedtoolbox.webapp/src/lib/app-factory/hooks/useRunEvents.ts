@@ -52,9 +52,10 @@ export function useRunEvents(
   const pollTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const lastCursorRef = useRef<string | null>(null)
   const seenEventsRef = useRef<Set<string>>(new Set())
+  const isMountedRef = useRef(true)
 
   const fetchEvents = useCallback(async () => {
-    if (!runId) {
+    if (!runId || !isMountedRef.current) {
       setEvents([])
       setLoading(false)
       setError('No run ID provided')
@@ -78,6 +79,8 @@ export function useRunEvents(
       }
 
       const data = await response.json() as { events: RunEvent[]; cursor: string | null }
+      
+      if (!isMountedRef.current) return
       
       if (accumulate) {
         // Append new events using ref for efficient deduplication
@@ -105,9 +108,12 @@ export function useRunEvents(
 
       setError(null)
     } catch (err) {
+      if (!isMountedRef.current) return
       setError(err instanceof Error ? err.message : 'Failed to fetch run events')
     } finally {
-      setLoading(false)
+      if (isMountedRef.current) {
+        setLoading(false)
+      }
     }
   }, [runId, limit, accumulate])
 
@@ -125,7 +131,11 @@ export function useRunEvents(
   // Initial fetch
   useEffect(() => {
     if (!runId) return
+    isMountedRef.current = true
     void fetchEvents()
+    return () => {
+      isMountedRef.current = false
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runId]) // Only fetch when runId changes
 
@@ -139,9 +149,13 @@ export function useRunEvents(
     setIsPollActive(true)
 
     const schedulePoll = () => {
+      if (!isMountedRef.current) return
       pollTimeoutRef.current = setTimeout(() => {
+        if (!isMountedRef.current) return
         void fetchEvents().then(() => {
-          schedulePoll()
+          if (isMountedRef.current) {
+            schedulePoll()
+          }
         })
       }, pollInterval)
     }
@@ -149,6 +163,7 @@ export function useRunEvents(
     schedulePoll()
 
     return () => {
+      isMountedRef.current = false
       if (pollTimeoutRef.current) {
         clearTimeout(pollTimeoutRef.current)
         pollTimeoutRef.current = null

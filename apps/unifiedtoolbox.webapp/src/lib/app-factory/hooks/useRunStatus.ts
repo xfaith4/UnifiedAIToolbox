@@ -46,9 +46,10 @@ export function useRunStatus(
 
   const pollTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const prevStatusRef = useRef<RunStatusResponse | null>(null)
+  const isMountedRef = useRef(true)
 
   const fetchStatus = useCallback(async () => {
-    if (!runId) {
+    if (!runId || !isMountedRef.current) {
       setStatus(null)
       setLoading(false)
       setError('No run ID provided')
@@ -64,6 +65,9 @@ export function useRunStatus(
       }
 
       const data = await response.json() as RunStatusResponse
+      
+      if (!isMountedRef.current) return
+      
       setStatus(data)
       setError(null)
 
@@ -73,9 +77,12 @@ export function useRunStatus(
       }
       prevStatusRef.current = data
     } catch (err) {
+      if (!isMountedRef.current) return
       setError(err instanceof Error ? err.message : 'Failed to fetch run status')
     } finally {
-      setLoading(false)
+      if (isMountedRef.current) {
+        setLoading(false)
+      }
     }
   }, [runId, onStatusChange])
 
@@ -87,7 +94,11 @@ export function useRunStatus(
   // Initial fetch
   useEffect(() => {
     if (!runId) return
+    isMountedRef.current = true
     void fetchStatus()
+    return () => {
+      isMountedRef.current = false
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runId]) // Only fetch when runId changes
 
@@ -107,11 +118,13 @@ export function useRunStatus(
     setIsPollActive(true)
 
     const schedulePoll = () => {
+      if (!isMountedRef.current) return
       pollTimeoutRef.current = setTimeout(async () => {
+        if (!isMountedRef.current) return
         await fetchStatus()
         // Check the updated status after fetch
         const currentStatus = prevStatusRef.current
-        if (currentStatus && !TERMINAL_STATES.has(currentStatus.status)) {
+        if (isMountedRef.current && currentStatus && !TERMINAL_STATES.has(currentStatus.status)) {
           schedulePoll()
         } else {
           setIsPollActive(false)
@@ -122,6 +135,7 @@ export function useRunStatus(
     schedulePoll()
 
     return () => {
+      isMountedRef.current = false
       if (pollTimeoutRef.current) {
         clearTimeout(pollTimeoutRef.current)
         pollTimeoutRef.current = null

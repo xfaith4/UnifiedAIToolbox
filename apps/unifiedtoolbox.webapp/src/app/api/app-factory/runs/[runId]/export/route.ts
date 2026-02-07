@@ -190,12 +190,22 @@ async function fileExists(filePath: string): Promise<boolean> {
 async function listFilesRecursive(baseDir: string): Promise<string[]> {
   const out: string[] = []
   const stack: string[] = [baseDir]
+  const resolvedBase = path.resolve(baseDir)
+  
   while (stack.length) {
     const current = stack.pop()!
     try {
       const entries = await fs.readdir(current, { withFileTypes: true })
       for (const entry of entries) {
         const full = path.join(current, entry.name)
+        const resolved = path.resolve(full)
+        
+        // Security: prevent path traversal via symlinks
+        if (!resolved.startsWith(resolvedBase + path.sep) && resolved !== resolvedBase) {
+          console.warn(`[export] Skipping path outside base directory: ${full}`)
+          continue
+        }
+        
         if (entry.isDirectory()) {
           stack.push(full)
         } else if (entry.isFile()) {
@@ -203,8 +213,8 @@ async function listFilesRecursive(baseDir: string): Promise<string[]> {
         }
       }
     } catch (err) {
-      // Skip directories that can't be read (permissions, etc.)
-      // Log would be helpful in production, but continue processing
+      // Log permission/IO errors but continue processing other directories
+      console.error(`[export] Failed to read directory ${current}:`, err instanceof Error ? err.message : String(err))
       continue
     }
   }
