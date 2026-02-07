@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import path from 'path'
 import { promises as fs } from 'fs'
+import JSZip from 'jszip'
 import { zipDirectoryToBuffer } from '@/lib/app-factory/pipeline/zipRepo'
 import { getRunsRoot, isValidRunId } from '@/lib/app-factory/runs/runStatus'
 
@@ -96,7 +97,22 @@ export async function GET(req: Request, { params }: { params: { runId: string } 
 
   // Parse scope parameter: 'artifacts' or 'full' (default: artifacts)
   const url = new URL(req.url)
-  const scope = url.searchParams.get('scope') || 'artifacts'
+  const scopeParam = url.searchParams.get('scope') || 'artifacts'
+  
+  // Validate scope parameter
+  if (scopeParam !== 'artifacts' && scopeParam !== 'full') {
+    return NextResponse.json(
+      {
+        error: {
+          code: 'INVALID_SCOPE',
+          message: `Invalid scope parameter: ${scopeParam}. Valid values are 'artifacts' or 'full'.`,
+        },
+      },
+      { status: 400 }
+    )
+  }
+  
+  const scope = scopeParam
 
   try {
     let zip: Buffer
@@ -110,7 +126,6 @@ export async function GET(req: Request, { params }: { params: { runId: string } 
       const runStateFile = path.join(runDir, 'run_state.json')
       const manifestFile = path.join(runDir, 'run_manifest.json')
       
-      const JSZip = (await import('jszip')).default
       const zipObj = new JSZip()
       
       // Add artifacts directory if it exists

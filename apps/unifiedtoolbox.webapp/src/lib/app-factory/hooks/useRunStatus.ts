@@ -67,8 +67,8 @@ export function useRunStatus(
       setStatus(data)
       setError(null)
 
-      // Fire change callback if status changed
-      if (onStatusChange && prevStatusRef.current?.status !== data.status) {
+      // Fire change callback if status changed (including initial load)
+      if (onStatusChange && (!prevStatusRef.current || prevStatusRef.current.status !== data.status)) {
         onStatusChange(data)
       }
       prevStatusRef.current = data
