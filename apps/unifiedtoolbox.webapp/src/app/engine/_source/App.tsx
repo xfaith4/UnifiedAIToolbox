@@ -17,9 +17,11 @@ import ApiKeyModal from './components/ApiKeyModal';
 import PipelineStepper from './components/PipelineStepper';
 import RunFileModal from './components/RunFileModal';
 import JobTypeOverviewPanel from './components/JobTypeOverviewPanel';
+import MaintenanceRunPanel from './components/MaintenanceRunPanel';
 
 import useOrchestrator from './hooks/useOrchestrator';
 import { useJobTypes } from './hooks/useJobTypes';
+import { useRunStatus } from './hooks/useRunStatus';
 import type { Task, Artifact, RunMode } from './types';
 import type { EnginePipelinePayload } from '@/lib/app-factory/pipeline/pipelineStatus';
 
@@ -40,6 +42,7 @@ const App: React.FC = () => {
   const { data: jobTypesData } = useJobTypes()
   const [jobType, setJobType] = useState<string>('build_new_app')
   const jobTypeConfig = jobTypesData?.job_types?.[jobType] ?? null
+  const isMaintenance = jobType === 'maintain_existing_app'
   const jobTypeOptions = useMemo(
     () =>
       jobTypesData
@@ -55,6 +58,11 @@ const App: React.FC = () => {
   const [activeView, setActiveView] = useState<'live' | string>('live');
   const [viewMode, setViewMode] = useState<'clusters' | 'graph'>('clusters');
   const [elapsedTime, setElapsedTime] = useState<number>(0);
+  const [maintenanceRunId, setMaintenanceRunId] = useState<string | null>(null)
+  const [maintenanceStartError, setMaintenanceStartError] = useState<string | null>(null)
+  const [maintenanceRunning, setMaintenanceRunning] = useState(false)
+  const { status: maintenanceStatus, error: maintenanceStatusError, loading: maintenanceStatusLoading } = useRunStatus(maintenanceRunId, { enabled: isMaintenance })
+  const maintenanceError = maintenanceStartError || maintenanceStatusError
 
   // Modal and Panel States
   const [showExport, setShowExport] = useState(false);
@@ -87,6 +95,28 @@ const App: React.FC = () => {
     }
   }, []);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const stored = window.localStorage.getItem('app-factory:last-maintenance-run')
+    if (stored && !maintenanceRunId) setMaintenanceRunId(stored)
+  }, [maintenanceRunId])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (maintenanceRunId) {
+      window.localStorage.setItem('app-factory:last-maintenance-run', maintenanceRunId)
+    } else {
+      window.localStorage.removeItem('app-factory:last-maintenance-run')
+    }
+  }, [maintenanceRunId])
+
+  useEffect(() => {
+    if (!isMaintenance) return
+    const state = maintenanceStatus?.state
+    if (!state) return
+    setMaintenanceRunning(state === 'queued' || state === 'running')
+  }, [isMaintenance, maintenanceStatus?.state])
+
   const displayedSession = useMemo(() => {
     if (activeView === 'live') return liveSession;
     return history.find(s => s.id === activeView) || null;
@@ -95,13 +125,16 @@ const App: React.FC = () => {
   // Fix: The "Export" button is now enabled for any completed session,
   // including historical ones, not just the "live" completed session.
   const isExportAvailable = useMemo(() => {
+    if (isMaintenance) {
+      return Boolean(maintenanceRunId)
+    }
     if (activeView !== 'live') {
       // Any historical session is considered complete and is exportable.
       return !!history.find(s => s.id === activeView);
     }
     // For the live view, it's exportable only when the orchestration is complete.
     return isComplete;
-  }, [activeView, history, isComplete]);
+  }, [activeView, history, isComplete, isMaintenance, maintenanceRunId]);
 
   const totalCost = useMemo(() => {
     if (!displayedSession) return null;
@@ -115,6 +148,35 @@ const App: React.FC = () => {
 
   const tasks = displayedSession?.tasks || [];
   const selectedTask = useMemo(() => tasks.find(t => t.id === selectedTaskId) || null, [tasks, selectedTaskId]);
+
+  const startMaintenanceRun = async (requestPayload?: Record<string, any>) => {
+    setMaintenanceStartError(null)
+    setMaintenanceRunning(true)
+    try {
+      const res = await fetch('/api/app-factory/runs/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ request: requestPayload || { job_type: 'maintain_existing_app' } }),
+      })
+      const json = await res.json().catch(() => null)
+      if (!res.ok) {
+        const msg = json?.error?.message || `Failed to start maintenance run (${res.status})`
+        setMaintenanceStartError(msg)
+        setMaintenanceRunning(false)
+        return
+      }
+      const runId = json?.runId as string | undefined
+      if (runId) {
+        setMaintenanceRunId(runId)
+      } else {
+        setMaintenanceStartError('Run started but runId was missing from response.')
+        setMaintenanceRunning(false)
+      }
+    } catch (err) {
+      setMaintenanceStartError(err instanceof Error ? err.message : 'Failed to start maintenance run.')
+      setMaintenanceRunning(false)
+    }
+  }
 
   useEffect(() => {
     // Auto-default to clusters when task count gets large (graph becomes noisy).
@@ -132,6 +194,10 @@ const App: React.FC = () => {
   ) => {
     if (activeView !== 'live') {
       setActiveView('live');
+    }
+    if (isMaintenance) {
+      void startMaintenanceRun({ ...(requestPayload || {}), job_type: jobType, goal })
+      return
     }
     startOrchestration(goal, fileContent, seedArtifacts, runMode, { ...(requestPayload || {}), job_type: jobType });
     setSelectedTaskId(null);
@@ -245,7 +311,7 @@ const App: React.FC = () => {
       <main className="flex-1 flex flex-col overflow-hidden">
         <GoalInput
           onGoalSubmit={handleGoalSubmit}
-          isOrchestrating={isOrchestrating}
+          isOrchestrating={isMaintenance ? maintenanceRunning : isOrchestrating}
           onCancelOrchestration={cancelOrchestration}
           jobType={jobType}
           jobTypeConfig={jobTypeConfig}
@@ -253,20 +319,31 @@ const App: React.FC = () => {
           onJobTypeChange={setJobType}
         />
         <JobTypeOverviewPanel jobType={jobType} config={jobTypeConfig} />
-        <PipelineStepper pipeline={pipeline} />
-        <ExpectedOutputsPanel
-          onLearnMore={() => setShowDefinitions(true)}
-          pipeline={pipeline}
-          onViewFile={(relPath) => {
-            if (!pipeline?.runId) return
-            setViewFile({ runId: pipeline.runId, relPath })
-          }}
-        />
+        {isMaintenance ? (
+          <MaintenanceRunPanel
+            runId={maintenanceRunId}
+            status={maintenanceStatus}
+            loading={maintenanceStatusLoading}
+            error={maintenanceError}
+          />
+        ) : (
+          <>
+            <PipelineStepper pipeline={pipeline} />
+            <ExpectedOutputsPanel
+              onLearnMore={() => setShowDefinitions(true)}
+              pipeline={pipeline}
+              onViewFile={(relPath) => {
+                if (!pipeline?.runId) return
+                setViewFile({ runId: pipeline.runId, relPath })
+              }}
+            />
+          </>
+        )}
         <div className="flex-1 flex overflow-hidden">
           <div className="flex-1 flex flex-col min-w-0">
             <RunMonitorPanel
               tasks={tasks}
-              isOrchestrating={isOrchestrating}
+              isOrchestrating={isMaintenance ? maintenanceRunning : isOrchestrating}
               viewMode={viewMode}
               onChangeViewMode={setViewMode}
             />
@@ -314,6 +391,9 @@ const App: React.FC = () => {
         runMode={displayedSession?.runMode ?? 'build'}
         pipeline={pipeline}
         setPipeline={setPipeline}
+        runId={isMaintenance ? maintenanceRunId : pipeline.runId}
+        runArtifacts={isMaintenance ? maintenanceStatus?.artifacts ?? [] : undefined}
+        useRunArtifactsExport={isMaintenance}
       />
 
       <FeedbackModal

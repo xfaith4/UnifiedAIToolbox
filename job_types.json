@@ -133,6 +133,8 @@
         "optional_artifacts": [
           { "name": "review_gate.md", "origin": "engine" },
           { "name": "pr_description.md", "origin": "engine" },
+          { "name": "pr_error.md", "origin": "engine" },
+          { "name": "run_error.md", "origin": "engine" },
           { "name": "rollback.md", "origin": "engine" }
         ]
       },

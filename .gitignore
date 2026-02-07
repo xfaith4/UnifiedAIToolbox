@@ -33,6 +33,10 @@ runs/
 .uaitoolbox/
 !apps/unifiedtoolbox.webapp/src/app/runs/
 !apps/unifiedtoolbox.webapp/src/app/runs/**
+!apps/unifiedtoolbox.webapp/src/app/api/app-factory/runs/
+!apps/unifiedtoolbox.webapp/src/app/api/app-factory/runs/**
+!apps/unifiedtoolbox.webapp/src/lib/app-factory/runs/
+!apps/unifiedtoolbox.webapp/src/lib/app-factory/runs/**
 *.db
 *.log
 

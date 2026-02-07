@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import type { Task, Artifact, RunMode } from '../types';
 import { CloseIcon, DownloadIcon, PaperclipIcon, LoadingIcon } from './icons';
 import type { EnginePipelinePayload, PipelineStage } from '@/lib/app-factory/pipeline/pipelineStatus'
+import type { RunArtifact } from '@/lib/app-factory/runs/types'
 
 interface ExportModalProps {
   isOpen: boolean;
@@ -11,6 +12,9 @@ interface ExportModalProps {
   runMode?: RunMode;
   pipeline: EnginePipelinePayload
   setPipeline: (pipeline: EnginePipelinePayload) => void
+  runId?: string | null
+  runArtifacts?: RunArtifact[]
+  useRunArtifactsExport?: boolean
 }
 
 function stageStatus(pipeline: EnginePipelinePayload, id: PipelineStage['id']) {
@@ -22,7 +26,18 @@ function isRunnable(pipeline: EnginePipelinePayload): boolean {
   return stageStatus(pipeline, 'normalize') === 'passed' && stageStatus(pipeline, 'contract') === 'passed' && stageStatus(pipeline, 'gates') === 'passed'
 }
 
-const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, tasks, sessionId = null, runMode = 'build', pipeline, setPipeline }) => {
+const ExportModal: React.FC<ExportModalProps> = ({
+  isOpen,
+  onClose,
+  tasks,
+  sessionId = null,
+  runMode = 'build',
+  pipeline,
+  setPipeline,
+  runId,
+  runArtifacts,
+  useRunArtifactsExport = false,
+}) => {
   const [isZipping, setIsZipping] = useState(false);
   const [lastValidationError, setLastValidationError] = useState<string | null>(null)
 
@@ -44,6 +59,16 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, tasks, sessi
     }
     return Array.from(artifactMap.values());
   }, [tasks]);
+
+  const runArtifactItems = useMemo(() => {
+    if (!Array.isArray(runArtifacts) || runArtifacts.length === 0) return []
+    return runArtifacts.map((artifact) => ({
+      name: artifact.path,
+      type: artifact.type || 'file',
+    }))
+  }, [runArtifacts])
+
+  const displayArtifacts = runArtifactItems.length > 0 ? runArtifactItems : uniqueArtifacts
 
   if (!isOpen) return null;
 
@@ -97,11 +122,16 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, tasks, sessi
   }
 
   const downloadFromRun = async (runId: string) => {
-    const res = await fetch('/api/app-factory/export-run', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ runId }),
-    })
+    const res = await fetch(
+      useRunArtifactsExport ? `/api/app-factory/runs/${encodeURIComponent(runId)}/export` : '/api/app-factory/export-run',
+      useRunArtifactsExport
+        ? { method: 'GET' }
+        : {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ runId }),
+          }
+    )
     if (!res.ok) {
       const text = await res.text()
       throw new Error(`export-run failed: HTTP ${res.status}\n${text}`)
@@ -109,7 +139,7 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, tasks, sessi
     const blob = await res.blob()
     const link = document.createElement('a')
     link.href = URL.createObjectURL(blob)
-    link.download = runMode === 'design' ? 'app-factory-design.zip' : 'app-factory-repo.zip'
+    link.download = `run-${runId}-artifacts.zip`
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
@@ -174,6 +204,10 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, tasks, sessi
     if (isZipping) return
     setIsZipping(true)
     try {
+      if (useRunArtifactsExport && runId) {
+        await downloadFromRun(runId)
+        return
+      }
       if (runMode === 'design') {
         await downloadLegacy()
         return
@@ -225,10 +259,10 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, tasks, sessi
             <h3 className="flex items-center text-lg font-semibold mb-3">
               <PaperclipIcon className="w-5 h-5 mr-2 text-indigo-400" /> Generated Artifacts
             </h3>
-            {uniqueArtifacts.length > 0 ? (
+            {displayArtifacts.length > 0 ? (
               <ul className="space-y-2">
-                {uniqueArtifacts.map(artifact => (
-                  <li key={artifact.id} className="flex items-center justify-between bg-gray-900/50 p-2 rounded">
+                {displayArtifacts.map((artifact, index) => (
+                  <li key={`${artifact.name}-${index}`} className="flex items-center justify-between bg-gray-900/50 p-2 rounded">
                     <span className="font-mono text-sm">{artifact.name}</span>
                     <span className="text-xs px-2 py-1 bg-indigo-500/20 text-indigo-300 rounded-full">{artifact.type}</span>
                   </li>
@@ -248,7 +282,7 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, tasks, sessi
             <>
               <button
                 onClick={handleValidate}
-                disabled={isZipping || uniqueArtifacts.length === 0}
+                disabled={isZipping || displayArtifacts.length === 0 || useRunArtifactsExport}
                 className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white font-semibold rounded-lg flex items-center transition-colors disabled:opacity-60 disabled:cursor-wait"
               >
                 {isZipping ? (
@@ -262,7 +296,7 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, tasks, sessi
               </button>
               <button
                 onClick={handleDownloadZip}
-                disabled={isZipping || uniqueArtifacts.length === 0 || !isRunnable(pipeline) || !pipeline.runId}
+                disabled={isZipping || displayArtifacts.length === 0 || (!useRunArtifactsExport && (!isRunnable(pipeline) || !pipeline.runId))}
                 className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg flex items-center transition-colors disabled:bg-indigo-400 disabled:cursor-not-allowed"
               >
                 <DownloadIcon className="w-5 h-5 mr-2" />
@@ -272,7 +306,7 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, tasks, sessi
           ) : (
             <button
               onClick={handleDownloadZip}
-              disabled={isZipping || uniqueArtifacts.length === 0}
+              disabled={isZipping || displayArtifacts.length === 0}
               className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg flex items-center transition-colors disabled:bg-indigo-400 disabled:cursor-wait"
             >
               {isZipping ? (

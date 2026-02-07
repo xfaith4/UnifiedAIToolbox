@@ -103,6 +103,10 @@ $script:ResolvedContractPath = $null
 $script:JobTypesPath = $null
 $script:Routing = $null
 $script:RepoContextSchemaPath = $null
+$script:StatusPath = $null
+$script:EventsPath = $null
+$script:EventsLogPath = $null
+$script:RunStatus = $null
 
 function Get-RepoRoot {
     return (Resolve-Path (Join-Path $PSScriptRoot "..\\..")).Path
@@ -119,6 +123,14 @@ function Resolve-OutputDirectory {
         $null = New-Item -ItemType Directory -Path $root -Force
     }
 
+    $markers = @("request.json", "status.json", "run_manifest.json")
+    foreach ($marker in $markers) {
+        $markerPath = Join-Path $root $marker
+        if (Test-Path -LiteralPath $markerPath -PathType Leaf) {
+            return $root
+        }
+    }
+
     $leaf = Split-Path -Path $root -Leaf
     $resolved = if ($leaf -ne $JobType) { Join-Path $root $JobType } else { $root }
     if (-not (Test-Path -Path $resolved -PathType Container)) {
@@ -133,6 +145,7 @@ function New-MilestonesFromStages {
 
     return @($Stages | ForEach-Object {
         @{
+            Id          = $_.id
             Name        = $(if ($_.name) { $_.name } else { $_.id })
             Description = $_.description
             Agent       = $(if ($_.agent) { $_.agent } else { $_.id })
@@ -320,6 +333,32 @@ function Get-RequiredArtifactSpecs {
     return @($specs | Select-Object -Unique -Property name, path)
 }
 
+function Get-OptionalArtifactSpecs {
+    param([AllowNull()]$ArtifactPolicy)
+
+    $specs = @()
+    if (-not $ArtifactPolicy) { return $specs }
+
+    $optArtifacts = $null
+    if ($ArtifactPolicy.optional_artifacts) { $optArtifacts = $ArtifactPolicy.optional_artifacts }
+    if ($optArtifacts) {
+        foreach ($entry in @($optArtifacts)) {
+            if ($entry -is [string]) {
+                $specs += [pscustomobject]@{ name = $entry; path = $entry }
+            }
+            else {
+                $name = $entry.name
+                $path = if ($entry.path) { $entry.path } else { $entry.name }
+                if ($name) {
+                    $specs += [pscustomobject]@{ name = $name; path = $path }
+                }
+            }
+        }
+    }
+
+    return @($specs | Select-Object -Unique -Property name, path)
+}
+
 function Assert-RequiredArtifacts {
     param(
         [Parameter(Mandatory = $true)][string]$OutputDir,
@@ -341,6 +380,67 @@ function Assert-RequiredArtifacts {
     if ($missing.Count -gt 0) {
         throw ("Missing required artifacts: " + ($missing | Sort-Object -Unique) -join ", ")
     }
+}
+
+function Write-RunErrorArtifact {
+    param(
+        [Parameter(Mandatory = $true)][string]$OutputDir,
+        [Parameter(Mandatory = $true)][string]$Message
+    )
+    if (-not (Test-Path -LiteralPath $OutputDir)) {
+        New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
+    }
+    $path = Join-Path $OutputDir "run_error.md"
+    $content = @(
+        "# Run Error",
+        "",
+        $Message
+    ) -join "`n"
+    $content | Set-Content -Path $path -Encoding UTF8
+    return $path
+}
+
+function Write-RunArtifactsBundle {
+    param(
+        [Parameter(Mandatory = $true)][string]$OutputDir,
+        [AllowNull()]$ArtifactPolicy
+    )
+
+    $artifactRoot = Join-Path $OutputDir "artifacts"
+    if (-not (Test-Path -LiteralPath $artifactRoot)) {
+        New-Item -ItemType Directory -Path $artifactRoot -Force | Out-Null
+    }
+
+    $specs = @()
+    $specs += Get-RequiredArtifactSpecs -ArtifactPolicy $ArtifactPolicy
+    $specs += Get-OptionalArtifactSpecs -ArtifactPolicy $ArtifactPolicy
+    foreach ($name in @("run_error.md", "pr_error.md")) {
+        $path = Join-Path $OutputDir $name
+        if (Test-Path -LiteralPath $path) {
+            $specs += [pscustomobject]@{ name = $name; path = $name }
+        }
+    }
+    $specs = @($specs | Select-Object -Unique -Property name, path)
+
+    foreach ($spec in $specs) {
+        $candidate = if ($spec.path) { $spec.path } else { $spec.name }
+        if (-not $candidate) { continue }
+        $source = if ([System.IO.Path]::IsPathRooted($candidate)) { $candidate } else { Join-Path $OutputDir $candidate }
+        if (-not (Test-Path -LiteralPath $source)) { continue }
+
+        $targetRel = $candidate
+        $targetFull = [System.IO.Path]::GetFullPath((Join-Path $artifactRoot $targetRel))
+        $artifactRootFull = [System.IO.Path]::GetFullPath($artifactRoot)
+        if (-not $targetFull.StartsWith($artifactRootFull, [System.StringComparison]::OrdinalIgnoreCase)) { continue }
+
+        $targetDir = Split-Path -Parent $targetFull
+        if (-not (Test-Path -LiteralPath $targetDir)) {
+            New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+        }
+        Copy-Item -LiteralPath $source -Destination $targetFull -Force
+    }
+
+    return $artifactRoot
 }
 
 function Normalize-CommandString {
@@ -696,6 +796,153 @@ function Write-Log {
     if ($script:LogFile) {
         Add-Content -Path $script:LogFile -Value $logLine
     }
+    if ($script:EventsPath) {
+        try {
+            Append-RunEvent -Level $Level -Stage $null -Message $Message
+        }
+        catch { }
+    }
+}
+
+function Save-RunStatus {
+    if (-not $script:RunStatus -or -not $script:StatusPath) { return }
+    $script:RunStatus.updated_at = (Get-Date).ToUniversalTime().ToString("o")
+    $script:RunStatus | ConvertTo-Json -Depth 20 | Set-Content -Path $script:StatusPath -Encoding UTF8
+}
+
+function Append-RunEvent {
+    param(
+        [string]$Level = "info",
+        [AllowNull()][string]$Stage,
+        [string]$Message,
+        $Data = $null
+    )
+    if (-not $script:EventsPath) { return }
+    $record = [ordered]@{
+        ts = (Get-Date).ToUniversalTime().ToString("o")
+        level = $Level.ToLowerInvariant()
+        stage = $Stage
+        message = $Message
+        data = $Data
+    }
+    $line = ($record | ConvertTo-Json -Depth 10 -Compress)
+    Add-Content -Path $script:EventsPath -Value $line
+    if ($script:EventsLogPath) {
+        $stamp = (Get-Date).ToUniversalTime().ToString("o")
+        $tag = if ($Stage) { $Stage } else { "run" }
+        Add-Content -Path $script:EventsLogPath -Value ("[{0}] [{1}] [{2}] {3}" -f $stamp, $Level.ToUpperInvariant(), $tag, $Message)
+    }
+}
+
+function Initialize-RunStatus {
+    param(
+        [Parameter(Mandatory = $true)][string]$OutputDir,
+        [Parameter(Mandatory = $true)][array]$Stages
+    )
+    $script:StatusPath = Join-Path $OutputDir "status.json"
+    $script:EventsPath = Join-Path $OutputDir "events.jsonl"
+    $script:EventsLogPath = Join-Path $OutputDir "events.log"
+
+    $now = (Get-Date).ToUniversalTime().ToString("o")
+    $stageRecords = @()
+    foreach ($stage in $Stages) {
+        $id = $null
+        $name = $null
+        if ($stage.PSObject.Properties.Name -contains "id") { $id = $stage.id }
+        if ($stage.PSObject.Properties.Name -contains "name") { $name = $stage.name }
+        if (-not $id -and $stage.PSObject.Properties.Name -contains "Id") { $id = $stage.Id }
+        if (-not $name -and $stage.PSObject.Properties.Name -contains "Name") { $name = $stage.Name }
+        if (-not $id -and $stage.PSObject.Properties.Name -contains "Agent") { $id = $stage.Agent }
+        if (-not $name) { $name = $id }
+        if (-not $id) { continue }
+        $stageRecords += [pscustomobject]@{
+            id = $id
+            name = $name
+            status = "pending"
+            started_at = $null
+            finished_at = $null
+        }
+    }
+
+    $pipelineId = $null
+    if ($script:Contract -and $script:Contract.pipeline_id) {
+        $pipelineId = $script:Contract.pipeline_id
+    }
+    elseif ($script:Routing -and $script:Routing.PipelineId) {
+        $pipelineId = $script:Routing.PipelineId
+    }
+
+    $script:RunStatus = [ordered]@{
+        schema_version = "1.0"
+        run_id = $script:RunId
+        job_type = $script:JobType
+        contract_universe = $(if ($script:Contract) { $script:Contract.contract_universe } else { $null })
+        contract_version = $(if ($script:Contract) { $script:Contract.contract_version } else { $null })
+        pipeline_id = $pipelineId
+        state = "running"
+        started_at = $now
+        updated_at = $now
+        finished_at = $null
+        current_stage = $(if ($stageRecords.Count -gt 0) { $stageRecords[0].id } else { $null })
+        stages = @($stageRecords)
+        error = $null
+    }
+
+    Save-RunStatus
+    Append-RunEvent -Level "info" -Stage $script:RunStatus.current_stage -Message "Run started"
+}
+
+function Get-StageRecord {
+    param([string]$StageId)
+    if (-not $script:RunStatus -or -not $script:RunStatus.stages) { return $null }
+    return @($script:RunStatus.stages | Where-Object { $_.id -eq $StageId } | Select-Object -First 1)[0]
+}
+
+function Set-StageStatus {
+    param(
+        [Parameter(Mandatory = $true)][string]$StageId,
+        [Parameter(Mandatory = $true)][string]$Status
+    )
+    if (-not $script:RunStatus) { return }
+    $stage = Get-StageRecord -StageId $StageId
+    if (-not $stage) {
+        $stage = [pscustomobject]@{
+            id = $StageId
+            name = $StageId
+            status = "pending"
+            started_at = $null
+            finished_at = $null
+        }
+        $script:RunStatus.stages += $stage
+    }
+
+    $now = (Get-Date).ToUniversalTime().ToString("o")
+    if ($Status -eq "running" -and -not $stage.started_at) { $stage.started_at = $now }
+    if ($Status -in @("succeeded","failed","skipped")) { $stage.finished_at = $now }
+    $stage.status = $Status
+    if ($Status -eq "running") { $script:RunStatus.current_stage = $StageId }
+    Save-RunStatus
+    Append-RunEvent -Level $(if ($Status -eq "failed") { "error" } else { "info" }) -Stage $StageId -Message ("Stage {0}: {1}" -f $StageId, $Status)
+}
+
+function Set-RunState {
+    param(
+        [Parameter(Mandatory = $true)][string]$State,
+        [string]$ErrorMessage
+    )
+    if (-not $script:RunStatus) { return }
+    $script:RunStatus.state = $State
+    if ($State -in @("succeeded","failed")) {
+        $script:RunStatus.finished_at = (Get-Date).ToUniversalTime().ToString("o")
+    }
+    if ($ErrorMessage) {
+        $script:RunStatus.error = [pscustomobject]@{
+            code = "RUN_FAILED"
+            message = $ErrorMessage
+        }
+    }
+    Save-RunStatus
+    Append-RunEvent -Level $(if ($State -eq "failed") { "error" } else { "info" }) -Stage $script:RunStatus.current_stage -Message ("Run {0}" -f $State)
 }
 
 function Initialize-Orchestration {
@@ -709,7 +956,12 @@ function Initialize-Orchestration {
     }
 
     if (-not $script:RunId) {
-        $script:RunId = "{0}_{1}" -f (Get-Date).ToUniversalTime().ToString("yyyyMMddTHHmmssZ"), ([Guid]::NewGuid().ToString("N").Substring(0, 8))
+        if ($script:Contract -and $script:Contract.run_id -and $script:Contract.run_id -ne "AUTO") {
+            $script:RunId = $script:Contract.run_id
+        }
+        else {
+            $script:RunId = "{0}_{1}" -f (Get-Date).ToUniversalTime().ToString("yyyyMMddTHHmmssZ"), ([Guid]::NewGuid().ToString("N").Substring(0, 8))
+        }
     }
     Write-Log "RunId: $($script:RunId)"
     
@@ -1136,70 +1388,83 @@ function Execute-MilestonePipeline {
 
     foreach ($milestone in $Milestones) {
         $milestoneStart = Get-Date
+        $stageId = $null
+        if ($milestone.PSObject.Properties.Name -contains "Id" -and $milestone.Id) { $stageId = $milestone.Id }
+        if (-not $stageId -and $milestone.Agent) { $stageId = $milestone.Agent }
+        if ($stageId) { Set-StageStatus -StageId $stageId -Status "running" }
+
         Write-Log "Executing milestone: $($milestone.Name)"
         Write-Log "  Agent: $($milestone.Agent)"
         Write-Log "  Description: $($milestone.Description)"
 
-        # Call the AI agent for this milestone
-        $agentResult = Invoke-MilestoneAgent `
-            -GoalText   $GoalText `
-            -Milestone  $milestone `
-            -Upstream   $upstream `
-            -Model      $Model `
-            -OutputDir  $OutputDir
+        try {
+            # Call the AI agent for this milestone
+            $agentResult = Invoke-MilestoneAgent `
+                -GoalText   $GoalText `
+                -Milestone  $milestone `
+                -Upstream   $upstream `
+                -Model      $Model `
+                -OutputDir  $OutputDir
 
-        $milestoneEnd = Get-Date
+            $milestoneEnd = Get-Date
 
-        # Record the result in a simple object for the final orchestration_results JSON
-        $excerpt = ""
-        if ($agentResult.Output) {
-            $excerpt = $agentResult.Output.Substring(0, [Math]::Min(280, $agentResult.Output.Length))
-        }
-        
-        $results += [pscustomobject]@{
-            Name        = $milestone.Name
-            Agent       = $milestone.Agent
-            Description = $milestone.Description
-            Status      = "completed"
-            StartedAt   = $milestoneStart.ToString("o")
-            CompletedAt = $milestoneEnd.ToString("o")
-            DurationSeconds = [math]::Round(($milestoneEnd - $milestoneStart).TotalSeconds, 2)
-            Inputs      = [pscustomobject]@{
-                Goal = $GoalText
-                Model = $Model
-                UpstreamAgents = @($upstream.Keys)
+            # Record the result in a simple object for the final orchestration_results JSON
+            $excerpt = ""
+            if ($agentResult.Output) {
+                $excerpt = $agentResult.Output.Substring(0, [Math]::Min(280, $agentResult.Output.Length))
             }
-            OutputPath  = $agentResult.OutputPath
-            Excerpt     = $excerpt
-            Output      = $agentResult.Output
-            ContractOk  = $agentResult.ContractOk
-            ContractError = $agentResult.ContractError
-        }
+            
+            $results += [pscustomobject]@{
+                Name        = $milestone.Name
+                Agent       = $milestone.Agent
+                Description = $milestone.Description
+                Status      = "completed"
+                StartedAt   = $milestoneStart.ToString("o")
+                CompletedAt = $milestoneEnd.ToString("o")
+                DurationSeconds = [math]::Round(($milestoneEnd - $milestoneStart).TotalSeconds, 2)
+                Inputs      = [pscustomobject]@{
+                    Goal = $GoalText
+                    Model = $Model
+                    UpstreamAgents = @($upstream.Keys)
+                }
+                OutputPath  = $agentResult.OutputPath
+                Excerpt     = $excerpt
+                Output      = $agentResult.Output
+                ContractOk  = $agentResult.ContractOk
+                ContractError = $agentResult.ContractError
+            }
 
-        # Make current output available to downstream milestones.
-        $upstream[$milestone.Agent] = $agentResult
+            # Make current output available to downstream milestones.
+            $upstream[$milestone.Agent] = $agentResult
 
-        if ($script:JobType -eq "maintain_existing_app" -and $milestone.Agent -eq "RepoContextBuilder") {
-            $gateFn = Get-Command -Name Test-BaselineGate -ErrorAction SilentlyContinue
-            if ($gateFn) {
-                $repoContextPath = Join-Path $OutputDir "repo_context.json"
-                $baselineGate = Test-BaselineGate -RepoContextPath $repoContextPath -Contract $script:Contract
-                if (-not $baselineGate.Ok) {
-                    $msg = "Baseline gate failed: " + ($baselineGate.Errors -join "; ")
-                    throw $msg
+            if ($script:JobType -eq "maintain_existing_app" -and $milestone.Agent -eq "RepoContextBuilder") {
+                $gateFn = Get-Command -Name Test-BaselineGate -ErrorAction SilentlyContinue
+                if ($gateFn) {
+                    $repoContextPath = Join-Path $OutputDir "repo_context.json"
+                    $baselineGate = Test-BaselineGate -RepoContextPath $repoContextPath -Contract $script:Contract
+                    if (-not $baselineGate.Ok) {
+                        $msg = "Baseline gate failed: " + ($baselineGate.Errors -join "; ")
+                        throw $msg
+                    }
                 }
             }
-        }
 
-        if ($milestone.Agent -eq "Supervisor" -and $agentResult.ContractOk) {
-            Update-LearningFromSupervisor `
-                -SupervisorRawJson $agentResult.Output `
-                -GoalText $GoalText `
-                -Model $Model `
-                -OutputDir $OutputDir
-        }
+            if ($milestone.Agent -eq "Supervisor" -and $agentResult.ContractOk) {
+                Update-LearningFromSupervisor `
+                    -SupervisorRawJson $agentResult.Output `
+                    -GoalText $GoalText `
+                    -Model $Model `
+                    -OutputDir $OutputDir
+            }
 
-        Write-Log "  Milestone completed: $($milestone.Name)"
+            if ($stageId) { Set-StageStatus -StageId $stageId -Status "succeeded" }
+            Write-Log "  Milestone completed: $($milestone.Name)"
+        }
+        catch {
+            if ($stageId) { Set-StageStatus -StageId $stageId -Status "failed" }
+            Append-RunEvent -Level "error" -Stage $stageId -Message ("Milestone failed: {0}" -f $_)
+            throw
+        }
     }
 
     return , $results               # Return as array, even for a single milestone
@@ -1467,8 +1732,13 @@ try {
         -RequestSchemaPath $script:RequestSchemaPath
     Write-Log "Run manifest saved to: $manifestPath"
 
+    if ($script:Routing -and $script:Routing.Stages) {
+        Initialize-RunStatus -OutputDir $OutputDir -Stages $script:Routing.Stages
+    }
+
     if ($ValidateOnly) {
         Write-Log "Validation only mode enabled; exiting before execution."
+        Set-RunState -State "succeeded"
         exit 0
     }
 
@@ -1499,14 +1769,21 @@ try {
     # Complete orchestration
     $summary = Complete-Orchestration -Context $context
 
+    # Enforce policy compliance after run
+    Assert-CommandPolicyCompliance -Contract $script:Contract -OutputDir $OutputDir
+    Assert-RequiredArtifacts -OutputDir $OutputDir -ArtifactPolicy $script:Routing.ArtifactPolicy
+
+    $artifactBundle = Write-RunArtifactsBundle -OutputDir $OutputDir -ArtifactPolicy $script:Routing.ArtifactPolicy
+    if ($artifactBundle) {
+        Write-Log "Artifacts bundle saved to: $artifactBundle"
+    }
+
     $artifactIndexPath = Write-ArtifactIndex -OutputDir $OutputDir
     if ($artifactIndexPath) {
         Write-Log "Artifact index saved to: $artifactIndexPath"
     }
 
-    # Enforce policy compliance after run
-    Assert-CommandPolicyCompliance -Contract $script:Contract -OutputDir $OutputDir
-    Assert-RequiredArtifacts -OutputDir $OutputDir -ArtifactPolicy $script:Routing.ArtifactPolicy
+    Set-RunState -State "succeeded"
     
     Write-Host ""
     Write-Host "Orchestration completed successfully!" -ForegroundColor Green
@@ -1515,10 +1792,13 @@ try {
     exit 0
 }
 catch {
-    Write-Log "Orchestration failed: $_" -Level "ERROR"
-    Write-Host "Orchestration failed: $_" -ForegroundColor Red
+    $errorMessage = ("{0}" -f $_)
+    Write-Log "Orchestration failed: $errorMessage" -Level "ERROR"
+    Write-Host "Orchestration failed: $errorMessage" -ForegroundColor Red
     try {
         if ($OutputDir -and (Test-Path -LiteralPath $OutputDir)) {
+            Write-RunErrorArtifact -OutputDir $OutputDir -Message ("Orchestration failed: {0}" -f $errorMessage) | Out-Null
+            Write-RunArtifactsBundle -OutputDir $OutputDir -ArtifactPolicy $(if ($script:Routing) { $script:Routing.ArtifactPolicy } else { $null }) | Out-Null
             $artifactIndexPath = Write-ArtifactIndex -OutputDir $OutputDir
             if ($artifactIndexPath) {
                 Write-Log "Artifact index saved to: $artifactIndexPath"
@@ -1528,6 +1808,10 @@ catch {
     catch {
         # swallow artifact index errors on failure
     }
+    try {
+        Set-RunState -State "failed" -ErrorMessage $errorMessage
+    }
+    catch { }
     exit 1
 }
 }

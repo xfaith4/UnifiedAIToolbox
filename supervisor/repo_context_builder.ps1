@@ -917,7 +917,7 @@ function Invoke-RepoContextBuilder {
     }
 
     $policyHooks = [pscustomobject]@{
-        pr_status = [pscustomobject]@{ status = "not_collected"; target_branches = @() }
+        pr_status = [pscustomobject]@{ status = "not_collected"; target_branches = @(); open_pr_count = $null }
         release = [pscustomobject]@{ status = "not_collected"; tags_present = $false; versioning_scheme = "" }
         security = [pscustomobject]@{ status = "not_collected"; dependency_update_policy = "" }
     }

@@ -83,6 +83,30 @@ function Write-PrArtifacts {
     }
 }
 
+function Write-PrError {
+    param(
+        [Parameter(Mandatory = $true)][string]$OutputDir,
+        [Parameter(Mandatory = $true)][string]$Message,
+        [string]$SuggestedFix
+    )
+    if (-not (Test-Path -LiteralPath $OutputDir)) {
+        New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
+    }
+    $path = Join-Path $OutputDir "pr_error.md"
+    $lines = @(
+        "# PR Publication Error",
+        "",
+        $Message
+    )
+    if ($SuggestedFix) {
+        $lines += ""
+        $lines += "Suggested fix:"
+        $lines += $SuggestedFix
+    }
+    $lines -join "`n" | Set-Content -Path $path -Encoding UTF8
+    return $path
+}
+
 function Get-RepoContext {
     param([string]$RepoContextPath)
     if (-not $RepoContextPath) { return $null }
@@ -137,10 +161,28 @@ function Invoke-PRPublisher {
     $conflictPolicy = Get-PropValue -Object $Contract -Name "conflict_policy" -Default $null
 
     if (-not $prPolicy) {
-        throw "PRPublisher requires pr_policy in the contract."
+        $payload = [pscustomobject]@{
+            schema_version = "1.0"
+            run_id = $runId
+            status = "failed"
+            errors = @([pscustomobject]@{ code = "PR_POLICY_MISSING"; message = "pr_policy is required." })
+        }
+        $md = "# PR Publication`n`nFailed: pr_policy missing."
+        Write-PrArtifacts -OutputDir $OutputDir -Payload $payload -Markdown $md | Out-Null
+        Write-PrError -OutputDir $OutputDir -Message "pr_policy missing in contract." -SuggestedFix "Add pr_policy defaults in job_types.json or include pr_policy in the request." | Out-Null
+        throw "PRPublisher failed: pr_policy missing."
     }
     if (-not $conflictPolicy) {
-        throw "PRPublisher requires conflict_policy in the contract."
+        $payload = [pscustomobject]@{
+            schema_version = "1.0"
+            run_id = $runId
+            status = "failed"
+            errors = @([pscustomobject]@{ code = "CONFLICT_POLICY_MISSING"; message = "conflict_policy is required." })
+        }
+        $md = "# PR Publication`n`nFailed: conflict_policy missing."
+        Write-PrArtifacts -OutputDir $OutputDir -Payload $payload -Markdown $md | Out-Null
+        Write-PrError -OutputDir $OutputDir -Message "conflict_policy missing in contract." -SuggestedFix "Add conflict_policy defaults in job_types.json or include conflict_policy in the request." | Out-Null
+        throw "PRPublisher failed: conflict_policy missing."
     }
 
     $prMode = Get-PropValue -Object $prPolicy -Name "mode" -Default "create_pr"
@@ -149,13 +191,14 @@ function Invoke-PRPublisher {
             schema_version = "1.0"
             run_id = $runId
             status = "failed"
-            error = [pscustomobject]@{
+            errors = @([pscustomobject]@{
                 code = "PR_POLICY_DISABLED"
                 message = "pr_policy.mode is not create_pr."
-            }
+            })
         }
         $md = "# PR Publication`n`nFailed: pr_policy.mode is not create_pr."
         Write-PrArtifacts -OutputDir $OutputDir -Payload $payload -Markdown $md | Out-Null
+        Write-PrError -OutputDir $OutputDir -Message "pr_policy.mode is not create_pr." -SuggestedFix "Set pr_policy.mode to create_pr in the contract." | Out-Null
         throw "PRPublisher failed: pr_policy.mode is not create_pr."
     }
 
@@ -164,13 +207,14 @@ function Invoke-PRPublisher {
             schema_version = "1.0"
             run_id = $runId
             status = "failed"
-            error = [pscustomobject]@{
+            errors = @([pscustomobject]@{
                 code = "REPO_PATH_MISSING"
                 message = "Repository path not found in contract or repo_context.json."
-            }
+            })
         }
         $md = "# PR Publication`n`nFailed: repository path missing."
         Write-PrArtifacts -OutputDir $OutputDir -Payload $payload -Markdown $md | Out-Null
+        Write-PrError -OutputDir $OutputDir -Message "Repository path not found in contract or repo_context.json." -SuggestedFix "Provide repo.local_path or ensure repo_context.json includes repo.root_path." | Out-Null
         throw "PRPublisher failed: repository path missing."
     }
 
@@ -179,13 +223,14 @@ function Invoke-PRPublisher {
             schema_version = "1.0"
             run_id = $runId
             status = "failed"
-            error = [pscustomobject]@{
+            errors = @([pscustomobject]@{
                 code = "GIT_MISSING"
                 message = "git executable not found."
-            }
+            })
         }
         $md = "# PR Publication`n`nFailed: git not available."
         Write-PrArtifacts -OutputDir $OutputDir -Payload $payload -Markdown $md | Out-Null
+        Write-PrError -OutputDir $OutputDir -Message "git executable not found." -SuggestedFix "Install git and ensure it is on PATH." | Out-Null
         throw "PRPublisher failed: git not available."
     }
 
@@ -336,6 +381,7 @@ function Invoke-PRPublisher {
         schema_version = "1.0"
         run_id = $runId
         status = "pending"
+        draft = $isDraft
         repository = [pscustomobject]@{
             full_name = $repoFullName
             url = $repoUrl
@@ -365,9 +411,19 @@ function Invoke-PRPublisher {
     $gitStatus = & git -C $repoPath status --porcelain 2>$null
     $changes = @($gitStatus | Where-Object { $_ -and $_.Trim().Length -gt 0 })
     if ($changes.Count -eq 0) {
+        $patchPath = Join-Path $OutputDir "changeset.patch"
+        if (Test-Path -LiteralPath $patchPath) {
+            Write-StageLog "No working tree changes detected; applying changeset.patch"
+            & git -C $repoPath apply $patchPath 2>$null | Out-Null
+            $gitStatus = & git -C $repoPath status --porcelain 2>$null
+            $changes = @($gitStatus | Where-Object { $_ -and $_.Trim().Length -gt 0 })
+        }
+    }
+    if ($changes.Count -eq 0) {
         $prPayload.status = "failed"
         $prPayload.errors += [pscustomobject]@{ code = "NO_CHANGES"; message = "No changes detected to publish." }
-        $result = Write-PrArtifacts -OutputDir $OutputDir -Payload $prPayload -Markdown $prMarkdown
+        Write-PrArtifacts -OutputDir $OutputDir -Payload $prPayload -Markdown $prMarkdown | Out-Null
+        Write-PrError -OutputDir $OutputDir -Message "No changes detected to publish." -SuggestedFix "Ensure changeset.patch exists or the repo working tree contains changes." | Out-Null
         throw "PRPublisher failed: no changes detected."
     }
 
@@ -384,6 +440,7 @@ function Invoke-PRPublisher {
         $prPayload.status = "failed"
         $prPayload.errors += [pscustomobject]@{ code = "GIT_CHECKOUT_FAILED"; message = "Failed to checkout branch $branchName from $baseBranch." }
         Write-PrArtifacts -OutputDir $OutputDir -Payload $prPayload -Markdown $prMarkdown | Out-Null
+        Write-PrError -OutputDir $OutputDir -Message "Failed to checkout branch $branchName from $baseBranch." -SuggestedFix "Verify the base branch exists and the repo is clean." | Out-Null
         throw "PRPublisher failed: git checkout failed."
     }
 
@@ -399,6 +456,7 @@ function Invoke-PRPublisher {
         $prPayload.status = "failed"
         $prPayload.errors += [pscustomobject]@{ code = "GIT_COMMIT_FAILED"; message = "Failed to commit changes on $branchName." }
         Write-PrArtifacts -OutputDir $OutputDir -Payload $prPayload -Markdown $prMarkdown | Out-Null
+        Write-PrError -OutputDir $OutputDir -Message "Failed to commit changes on $branchName." -SuggestedFix "Check git status for conflicts and ensure user.name/user.email are configured." | Out-Null
         throw "PRPublisher failed: git commit failed."
     }
 
@@ -407,6 +465,7 @@ function Invoke-PRPublisher {
         $prPayload.status = "failed"
         $prPayload.errors += [pscustomobject]@{ code = "NO_REMOTE"; message = "No origin remote configured." }
         Write-PrArtifacts -OutputDir $OutputDir -Payload $prPayload -Markdown $prMarkdown | Out-Null
+        Write-PrError -OutputDir $OutputDir -Message "No origin remote configured." -SuggestedFix "Add an origin remote to the repo before publishing a PR." | Out-Null
         throw "PRPublisher failed: origin remote missing."
     }
 
@@ -415,6 +474,7 @@ function Invoke-PRPublisher {
         $prPayload.status = "failed"
         $prPayload.errors += [pscustomobject]@{ code = "GIT_PUSH_FAILED"; message = "Failed to push branch $branchName to origin." }
         Write-PrArtifacts -OutputDir $OutputDir -Payload $prPayload -Markdown $prMarkdown | Out-Null
+        Write-PrError -OutputDir $OutputDir -Message "Failed to push branch $branchName to origin." -SuggestedFix "Verify git credentials and network access to origin." | Out-Null
         throw "PRPublisher failed: git push failed."
     }
 
@@ -422,6 +482,7 @@ function Invoke-PRPublisher {
         $prPayload.status = "failed"
         $prPayload.errors += [pscustomobject]@{ code = "REPO_FULL_NAME_MISSING"; message = "repo.full_name is required to create PR." }
         Write-PrArtifacts -OutputDir $OutputDir -Payload $prPayload -Markdown $prMarkdown | Out-Null
+        Write-PrError -OutputDir $OutputDir -Message "repo.full_name is required to create PR." -SuggestedFix "Set repo.full_name to owner/repo in the contract request." | Out-Null
         throw "PRPublisher failed: repo.full_name missing."
     }
 
@@ -430,6 +491,7 @@ function Invoke-PRPublisher {
         $prPayload.status = "failed"
         $prPayload.errors += [pscustomobject]@{ code = "GITHUB_TOKEN_MISSING"; message = "GITHUB_TOKEN is required to create PR." }
         Write-PrArtifacts -OutputDir $OutputDir -Payload $prPayload -Markdown $prMarkdown | Out-Null
+        Write-PrError -OutputDir $OutputDir -Message "GITHUB_TOKEN is required to create PR." -SuggestedFix "Set GITHUB_TOKEN with repo scope in the environment." | Out-Null
         throw "PRPublisher failed: GITHUB_TOKEN missing."
     }
 
@@ -449,6 +511,7 @@ function Invoke-PRPublisher {
         $prPayload.status = "failed"
         $prPayload.errors += [pscustomobject]@{ code = "INVALID_REPO_FULL_NAME"; message = "repo.full_name must be in owner/repo format." }
         Write-PrArtifacts -OutputDir $OutputDir -Payload $prPayload -Markdown $prMarkdown | Out-Null
+        Write-PrError -OutputDir $OutputDir -Message "repo.full_name must be in owner/repo format." -SuggestedFix "Use the form owner/repo in the maintenance request." | Out-Null
         throw "PRPublisher failed: invalid repo.full_name."
     }
 
@@ -489,6 +552,7 @@ function Invoke-PRPublisher {
             $prPayload.status = "failed"
             $prPayload.errors += [pscustomobject]@{ code = "PR_CREATE_FAILED"; message = $errorText }
             Write-PrArtifacts -OutputDir $OutputDir -Payload $prPayload -Markdown $prMarkdown | Out-Null
+            Write-PrError -OutputDir $OutputDir -Message "Failed to create PR." -SuggestedFix $errorText | Out-Null
             throw "PRPublisher failed: PR creation failed."
         }
     }

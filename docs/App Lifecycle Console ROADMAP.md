@@ -164,31 +164,58 @@ Below is a phased plan that gets value early, keeps risk contained, and forces t
 
 ---
 
-# Phase 5 — PR-first workflow: branch/PR orchestration + “conflict avoidance”
+You are Codex acting as a senior engineer modifying the Unified AI Toolbox orchestration system.
 
-### Goals
+Goal (Phase 5): Implement a PR-first maintenance workflow with conflict-avoidance guardrails.
 
-* Make maintenance produce PRs predictably and reduce conflicts by design.
+Context:
 
-### Deliverables
+* The system supports multiple job types via job_types.json (build_new_app, maintain_existing_app).
+* Maintenance already uses RepoContextBuilder + ReviewGate and requires artifacts: repo_context.json, evidence.json, changeset.summary.json, changeset.patch.
+* Repo context schema includes policy_hooks.pr_status.open_pr_count and target_branches; use these for conflict risk signals.
+* Maintenance pipeline currently ends at Historian; it does not create PRs yet.
 
-* PR workflow policy:
+Hard requirements:
 
-  * create maintenance branch naming convention: `maintenance/<run_id>/<slug>`
-  * PR template body auto-generated (summary, evidence, rollback)
-* “Conflict avoidance” guardrail:
+1) Add a new maintenance-only pipeline stage named PRPublisher (or equivalent) that:
+   * Creates/updates a branch named: maintenance/<run_id>/<slug>
+   * Opens a GitHub PR as the primary artifact
+   * Emits pr.json (machine-readable) and pr.md (human summary)
+   * Includes PR template sections: Summary, Evidence, Risk, Rollback
+2) Update job_types.json so maintain_existing_app artifact_policy.required includes pr.json and pr.md (PR is required; if PR cannot be created, fail with a clear reason artifact).
+3) Implement conflict-avoidance guardrail:
+   * Read repo_context.json policy_hooks.pr_status.open_pr_count
+   * If open_pr_count > configured threshold OR repo_context warnings indicate high churn:
+     * Create PR as DRAFT by default
+     * Require a recorded base-branch decision in pr.json (default branch vs specific branch)
+4) Update maintenance_contract.v1 schema + compiler defaults to include:
+   * pr_policy (mode, branch prefix, draft_on_high_risk, title/body templates)
+   * conflict_policy (max_open_prs, base_branch_strategy)
+5) Update Supervisor rubric so scoring is job_type-aware:
+   * For maintain_existing_app: score gates, evidence quality, diff discipline, and PR artifact completion
+   * For build_new_app: keep existing rubric
+6) Keep all changes minimal and contract-driven. Do not change job types semantics beyond Phase 5 scope.
 
-  * If open PRs > N or churn high:
+Deliverables:
 
-    * warn and require choice: base on default branch vs base on PR branch
-* Artifact viewer:
+* Modified schemas and templates:
+  * contracts/maintenance_contract.v1.json (updated)
+  * job_types.json (updated required artifacts for maintenance)
+  * pipelines/pipeline_maintenance.v1.json (insert PRPublisher stage)
+* New implementation module/script for PRPublisher stage
+* Any necessary updates in job_router / contract_compiler / validator so the new fields validate and defaults apply
+* Example artifacts (sample pr.json/pr.md) to show expected output shape
 
-  * “PR created” link + diff summary + files touched list
+Constraints:
 
-### Acceptance criteria
+* Do not invent build/test commands; only use commands discovered in repo_context.json.
+* No stack change: do not introduce new runtime dependencies unless already present.
+* Prefer PowerShell implementations when feasible.
 
-* Maintenance runs end with a PR artifact every time (or a clear failure reason).
-* System provides “risk: low/med/high” signal based on repo status.
+Output:
+
+* Provide a concise change list + file-by-file patch style guidance (with exact file paths).
+* Include the final PRPublisher stage contract I/O shape and artifact examples.
 
 ---
 

@@ -46,8 +46,8 @@ const ALLOW_EXTENSIONLESS_NAMES = new Set([
 
 const JUNK_FILENAMES = new Set(['.ds_store', 'thumbs.db', 'desktop.ini'])
 
-function firstDeniedDir(fullPath: string): string | null {
-  const parts = String(fullPath || '')
+function firstDeniedDir(relPath: string): string | null {
+  const parts = String(relPath || '')
     .replace(/\\/g, '/')
     .split('/')
     .filter(Boolean)
@@ -78,7 +78,8 @@ async function listFiles(baseDir: string): Promise<string[]> {
         if (DENY_DIRS.has(entry.name)) continue
         stack.push(full)
       } else if (entry.isFile()) {
-        const denied = firstDeniedDir(full)
+        const rel = path.relative(baseDir, full).replace(/\\/g, '/')
+        const denied = firstDeniedDir(rel)
         if (denied) continue
         const nameLower = entry.name.toLowerCase()
         if (JUNK_FILENAMES.has(nameLower)) continue
