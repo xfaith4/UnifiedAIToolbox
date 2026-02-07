@@ -1,0 +1,136 @@
+'use client'
+
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type { RunStatusResponse } from '../runs/types'
+
+type UseRunStatusOptions = {
+  /**
+   * Polling interval in milliseconds. Set to 0 to disable polling.
+   * @default 2000
+   */
+  pollInterval?: number
+  /**
+   * Whether to automatically poll when the run is in a non-terminal state.
+   * @default true
+   */
+  autoPoll?: boolean
+  /**
+   * Callback fired when status changes
+   */
+  onStatusChange?: (status: RunStatusResponse) => void
+}
+
+type UseRunStatusResult = {
+  status: RunStatusResponse | null
+  loading: boolean
+  error: string | null
+  refetch: () => Promise<void>
+  isPollActive: boolean
+}
+
+const TERMINAL_STATES = new Set(['succeeded', 'failed'])
+
+/**
+ * Hook for polling run status from the API
+ */
+export function useRunStatus(
+  runId: string | null | undefined,
+  options: UseRunStatusOptions = {}
+): UseRunStatusResult {
+  const { pollInterval = 2000, autoPoll = true, onStatusChange } = options
+
+  const [status, setStatus] = useState<RunStatusResponse | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [isPollActive, setIsPollActive] = useState(false)
+
+  const pollTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const prevStatusRef = useRef<RunStatusResponse | null>(null)
+
+  const fetchStatus = useCallback(async () => {
+    if (!runId) {
+      setStatus(null)
+      setLoading(false)
+      setError('No run ID provided')
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/app-factory/runs/${encodeURIComponent(runId)}/status`)
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData?.error?.message || `Failed to fetch status: ${response.status}`)
+      }
+
+      const data = await response.json() as RunStatusResponse
+      setStatus(data)
+      setError(null)
+
+      // Fire change callback if status changed
+      if (onStatusChange && prevStatusRef.current?.status !== data.status) {
+        onStatusChange(data)
+      }
+      prevStatusRef.current = data
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch run status')
+    } finally {
+      setLoading(false)
+    }
+  }, [runId, onStatusChange])
+
+  const refetch = useCallback(async () => {
+    setLoading(true)
+    await fetchStatus()
+  }, [fetchStatus])
+
+  // Initial fetch
+  useEffect(() => {
+    if (!runId) return
+    void fetchStatus()
+  }, [runId, fetchStatus])
+
+  // Polling logic
+  useEffect(() => {
+    if (!runId || !autoPoll || pollInterval <= 0) {
+      setIsPollActive(false)
+      return
+    }
+
+    // Don't poll if we're in a terminal state
+    if (status && TERMINAL_STATES.has(status.status)) {
+      setIsPollActive(false)
+      return
+    }
+
+    setIsPollActive(true)
+
+    const schedulePoll = () => {
+      pollTimeoutRef.current = setTimeout(() => {
+        void fetchStatus().then(() => {
+          // Schedule next poll if still needed
+          if (status && !TERMINAL_STATES.has(status.status)) {
+            schedulePoll()
+          }
+        })
+      }, pollInterval)
+    }
+
+    schedulePoll()
+
+    return () => {
+      if (pollTimeoutRef.current) {
+        clearTimeout(pollTimeoutRef.current)
+        pollTimeoutRef.current = null
+      }
+    }
+  }, [runId, status, autoPoll, pollInterval, fetchStatus])
+
+  return {
+    status,
+    loading,
+    error,
+    refetch,
+    isPollActive,
+  }
+}

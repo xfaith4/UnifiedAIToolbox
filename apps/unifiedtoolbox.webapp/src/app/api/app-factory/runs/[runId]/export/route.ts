@@ -94,13 +94,64 @@ export async function GET(req: Request, { params }: { params: { runId: string } 
     )
   }
 
+  // Parse scope parameter: 'artifacts' or 'full' (default: artifacts)
+  const url = new URL(req.url)
+  const scope = url.searchParams.get('scope') || 'artifacts'
+
   try {
-    const zip = await zipDirectoryToBuffer(runDir)
+    let zip: Buffer
+    let filename: string
+
+    if (scope === 'artifacts') {
+      // Export only artifacts/ + status.json + run_manifest.json
+      filename = `${runId}-artifacts.zip`
+      const artifactsDir = path.join(runDir, 'artifacts')
+      const statusFile = path.join(runDir, 'status.json')
+      const runStateFile = path.join(runDir, 'run_state.json')
+      const manifestFile = path.join(runDir, 'run_manifest.json')
+      
+      const JSZip = (await import('jszip')).default
+      const zipObj = new JSZip()
+      
+      // Add artifacts directory if it exists
+      if (await dirExists(artifactsDir)) {
+        const artifactFiles = await listFilesRecursive(artifactsDir)
+        for (const file of artifactFiles) {
+          const rel = path.relative(runDir, file).replace(/\\/g, '/')
+          const buf = await fs.readFile(file)
+          zipObj.file(rel, buf)
+        }
+      }
+      
+      // Add status.json if exists
+      if (await fileExists(statusFile)) {
+        const buf = await fs.readFile(statusFile)
+        zipObj.file('status.json', buf)
+      } else if (await fileExists(runStateFile)) {
+        // Fallback to run_state.json
+        const buf = await fs.readFile(runStateFile)
+        zipObj.file('run_state.json', buf)
+      }
+      
+      // Add run_manifest.json if exists
+      if (await fileExists(manifestFile)) {
+        const buf = await fs.readFile(manifestFile)
+        zipObj.file('run_manifest.json', buf)
+      }
+      
+      const arrayBuffer = await zipObj.generateAsync({ type: 'arraybuffer' })
+      zip = Buffer.from(arrayBuffer)
+    } else {
+      // Export full run directory
+      filename = `${runId}-full.zip`
+      zip = await zipDirectoryToBuffer(runDir)
+    }
+
     return new NextResponse(new Uint8Array(zip), {
       status: 200,
       headers: {
         'Content-Type': 'application/zip',
-        'Content-Disposition': `attachment; filename="run-${runId}.zip"`,
+        'Content-Disposition': `attachment; filename="${filename}"`,
         'Cache-Control': 'no-store',
       },
     })
@@ -110,4 +161,32 @@ export async function GET(req: Request, { params }: { params: { runId: string } 
       { status: 500 }
     )
   }
+}
+
+async function fileExists(filePath: string): Promise<boolean> {
+  try {
+    const stat = await fs.stat(filePath)
+    return stat.isFile()
+  } catch {
+    return false
+  }
+}
+
+async function listFilesRecursive(baseDir: string): Promise<string[]> {
+  const out: string[] = []
+  const stack: string[] = [baseDir]
+  while (stack.length) {
+    const current = stack.pop()
+    if (!current) continue
+    const entries = await fs.readdir(current, { withFileTypes: true })
+    for (const entry of entries) {
+      const full = path.join(current, entry.name)
+      if (entry.isDirectory()) {
+        stack.push(full)
+      } else if (entry.isFile()) {
+        out.push(full)
+      }
+    }
+  }
+  return out
 }
