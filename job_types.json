@@ -1,0 +1,75 @@
+{
+  "schema_version": "1.0",
+  "job_types": {
+    "build_new_app": {
+      "schema": "contracts/build_app_contract.v1.json",
+      "pipeline_template": "pipelines/pipeline_build_app.v1.json",
+      "default_agent_roster": [
+        "Researcher",
+        "Engineer",
+        "Critic",
+        "Synthesizer",
+        "Commissioner",
+        "Supervisor",
+        "Historian"
+      ],
+      "gate_policy": {
+        "mode": "standard",
+        "gates": ["quality", "safety"]
+      },
+      "artifact_policy": {
+        "mode": "standard",
+        "required": ["orchestration-summary.json"]
+      },
+      "stage_policy": {
+        "required": [
+          "Researcher",
+          "Engineer",
+          "Critic",
+          "Synthesizer",
+          "Commissioner",
+          "Supervisor",
+          "Historian"
+        ],
+        "optional": [],
+        "forbidden": []
+      }
+    },
+    "maintain_existing_app": {
+      "schema": "contracts/maintenance_contract.v1.json",
+      "pipeline_template": "pipelines/pipeline_maintenance.v1.json",
+      "default_agent_roster": [
+        "RepoContextBuilder",
+        "Researcher",
+        "Engineer",
+        "Critic",
+        "Synthesizer",
+        "Commissioner",
+        "Supervisor",
+        "Historian"
+      ],
+      "gate_policy": {
+        "mode": "strict",
+        "gates": ["baseline", "change", "diff"]
+      },
+      "artifact_policy": {
+        "mode": "standard",
+        "required": ["repo_context.json", "PATCH.diff"]
+      },
+      "stage_policy": {
+        "required": [
+          "RepoContextBuilder",
+          "Researcher",
+          "Engineer",
+          "Critic",
+          "Synthesizer",
+          "Commissioner",
+          "Supervisor",
+          "Historian"
+        ],
+        "optional": [],
+        "forbidden": ["AppFactoryBootstrap"]
+      }
+    }
+  }
+}

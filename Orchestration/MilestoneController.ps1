@@ -37,6 +37,18 @@ param(
     ,
     [Parameter(Mandatory = $false)]
     [switch]$DisableLearning
+
+    ,
+    [Parameter(Mandatory = $false)]
+    [string]$JobType
+
+    ,
+    [Parameter(Mandatory = $false)]
+    [string]$ContractPath
+
+    ,
+    [Parameter(Mandatory = $false)]
+    [switch]$ValidateOnly
 )
 
 ### BEGIN: OutputDirDefaults
@@ -74,7 +86,10 @@ Write-Verbose "Dispatching to inner orchestrator: $innerScript"
     -LearningPatternsPath $LearningPatternsPath `
     -LearningTopN $LearningTopN `
     -LearningMaxRuns $LearningMaxRuns `
-    -DisableLearning:$DisableLearning
+    -DisableLearning:$DisableLearning `
+    -JobType $JobType `
+    -ContractPath $ContractPath `
+    -ValidateOnly:$ValidateOnly
 
 # Preserve exit code for the caller (Python / uvicorn side)
 exit $LASTEXITCODE

@@ -1,24 +1,70 @@
 {
-  "title": "Repo Orchestration Report",
-  "repo": "xfaith4/GenesysAudits",
-  "branch": "main",
-  "runId": "repo-evaluate-this-repo-00c28e",
-  "status": "merged",
-  "summary": "The run completed with a standardized report, artifact index, and optional patch output for review.",
-  "keyFindings": [
-    "Found inconsistent logging configuration across service modules.",
-    "Missing unit tests for preflight error classification."
+  "schema_version": "1.0",
+  "run_id": "repo-evaluate-this-repo-00c28e",
+  "repo": {
+    "url": "https://github.com/xfaith4/GenesysAudits.git",
+    "branch": "main",
+    "commit_before": "3d2c9e0f2a1b0e9f4c2d1a0b9c8d7e6f5a4b3c2d",
+    "commit_after": "7f6e5d4c3b2a1908f7e6d5c4b3a2f1e0d9c8b7a6"
+  },
+  "outcome": "changes_applied",
+  "summary": {
+    "headline": "Changes applied and ready for review",
+    "what_happened": [
+      "Supervisor completed the repo orchestration and produced a patch.",
+      "Verification ran with 3 commands passed and 1 failed."
+    ],
+    "next_actions": [
+      "Review PATCH.diff for change details.",
+      "Inspect verification logs for the failed build step."
+    ]
+  },
+  "verification": {
+    "commands": [
+      {
+        "name": "install",
+        "cmd": "pnpm install",
+        "exit_code": 0,
+        "log_artifact": "gate-logs/install.log"
+      },
+      {
+        "name": "build",
+        "cmd": "pnpm build",
+        "exit_code": 1,
+        "log_artifact": "gate-logs/build.log"
+      }
+    ]
+  },
+  "changes": {
+    "files_changed": [
+      "src/services/logger.ts",
+      "src/tests/preflight.spec.ts"
+    ],
+    "patch_artifact": "PATCH.diff"
+  },
+  "findings": {
+    "todo_count": 12,
+    "placeholder_count": 3,
+    "high_risk_items": [
+      {
+        "path": "src/services/logger.ts",
+        "line": 42,
+        "kind": "TODO",
+        "note": "TODO: unify logging format"
+      }
+    ],
+    "findings_artifact": "placeholder-scan.json"
+  },
+  "blockers": [
+    {
+      "code": "MISSING_ENV",
+      "message": "Missing API key X",
+      "suggested_fix": "Add X to .env"
+    }
   ],
-  "recommendedActions": [
-    "Consolidate logging config into a shared module.",
-    "Add unit tests for clone preflight classification cases."
-  ],
-  "risks": [
-    "Clone preflight errors may mask underlying network instability without verbose logs."
-  ],
-  "nextSteps": [
-    "Review REPORT.md and PATCH.diff for change details.",
-    "Run the artifact viewer to validate markdown and JSON rendering."
-  ],
-  "generatedAt": "2026-02-05T20:12:01Z"
+  "artifacts": {
+    "report_md": "REPORT.md",
+    "verification_md": "verification.md",
+    "verification_json": "verification.json"
+  }
 }

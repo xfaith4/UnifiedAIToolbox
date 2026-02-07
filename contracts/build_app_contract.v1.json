@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "contracts/build_app_contract.v1.json",
+  "title": "Build App Contract v1",
+  "allOf": [
+    { "$ref": "common_run_contract.v1.json" },
+    {
+      "type": "object",
+      "required": ["app"],
+      "properties": {
+        "app": {
+          "type": "object",
+          "required": ["name"],
+          "properties": {
+            "name": { "type": "string" },
+            "description": { "type": "string" },
+            "stack": { "type": "string" }
+          }
+        },
+        "requirements": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  ]
+}

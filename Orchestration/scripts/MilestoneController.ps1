@@ -65,19 +65,111 @@ param(
 
     [Parameter(Mandatory = $false)]
     [switch]$DisableLearning
+
+    ,
+    [Parameter(Mandatory = $false)]
+    [string]$JobType
+
+    ,
+    [Parameter(Mandatory = $false)]
+    [string]$ContractPath
+
+    ,
+    [Parameter(Mandatory = $false)]
+    [switch]$ValidateOnly
 )
 
 # Script configuration
 $ErrorActionPreference = "Stop"
 $script:StartTime = Get-Date
 $script:RunId = $null
+$script:LogFile = $null
 $script:AgentLibrary = $null
 $script:AgentLibraryPath = (Join-Path $PSScriptRoot "..\\agents\\agent-library.json")
 $script:LearningPatterns = @()
 $script:LearningPatternsPath = $null
+$script:JobType = $null
+$script:Contract = $null
+$script:ContractHash = $null
+$script:ContractPath = $null
+$script:JobTypesPath = $null
+$script:Routing = $null
+$script:RepoContextSchemaPath = $null
 
 function Get-RepoRoot {
     return (Resolve-Path (Join-Path $PSScriptRoot "..\\..")).Path
+}
+
+function Resolve-OutputDirectory {
+    param(
+        [Parameter(Mandatory = $true)][string]$BaseDir,
+        [Parameter(Mandatory = $true)][string]$JobType
+    )
+
+    $root = if ([string]::IsNullOrWhiteSpace($BaseDir)) { "." } else { $BaseDir }
+    if (-not (Test-Path -Path $root -PathType Container)) {
+        $null = New-Item -ItemType Directory -Path $root -Force
+    }
+
+    $leaf = Split-Path -Path $root -Leaf
+    $resolved = if ($leaf -ne $JobType) { Join-Path $root $JobType } else { $root }
+    if (-not (Test-Path -Path $resolved -PathType Container)) {
+        $null = New-Item -ItemType Directory -Path $resolved -Force
+    }
+
+    return $resolved
+}
+
+function New-MilestonesFromStages {
+    param([Parameter(Mandatory = $true)][array]$Stages)
+
+    return @($Stages | ForEach-Object {
+        @{
+            Name        = $(if ($_.name) { $_.name } else { $_.id })
+            Description = $_.description
+            Agent       = $(if ($_.agent) { $_.agent } else { $_.id })
+            Status      = "pending"
+        }
+    })
+}
+
+function Write-RunManifest {
+    param(
+        [Parameter(Mandatory = $true)][string]$OutputDir,
+        [Parameter(Mandatory = $true)][string]$GoalText,
+        [Parameter(Mandatory = $true)]$Routing,
+        [Parameter(Mandatory = $true)][string]$ContractPath,
+        [Parameter(Mandatory = $true)][string]$ContractHash,
+        [Parameter(Mandatory = $true)][bool]$ValidateOnly
+    )
+
+    $manifest = [pscustomobject]@{
+        schema_version = "1.0"
+        run_id         = $script:RunId
+        created_utc    = (Get-Date).ToUniversalTime().ToString("o")
+        job_type       = $script:JobType
+        goal           = $GoalText
+        output_dir     = $OutputDir
+        contract_hash  = $ContractHash
+        contract       = [pscustomobject]@{
+            path        = $ContractPath
+            schema      = $Routing.SchemaPath
+            hash_sha256 = $ContractHash
+        }
+        routing = [pscustomobject]@{
+            pipeline_template = $Routing.PipelineTemplatePath
+            stages            = $Routing.StageIds
+            agent_roster       = $Routing.DefaultAgentRoster
+            gate_policy        = $Routing.GatePolicy
+            artifact_policy    = $Routing.ArtifactPolicy
+            stage_policy       = $Routing.StagePolicy
+        }
+        validate_only  = $ValidateOnly
+    }
+
+    $manifestPath = Join-Path $OutputDir "run_manifest.json"
+    $manifest | ConvertTo-Json -Depth 20 | Set-Content -Path $manifestPath -Encoding UTF8
+    return $manifestPath
 }
 
 function Initialize-LearningPatterns {
@@ -333,7 +425,8 @@ function New-StubFromSchema {
 function Write-Log {
     param([string]$Message, [string]$Level = "INFO")
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    $logLine = "[$timestamp] [$Level] $Message"
+    $jobTag = if ($script:JobType) { $script:JobType } else { "unknown" }
+    $logLine = "[$timestamp] [$Level] [$jobTag] $Message"
     Write-Host $logLine
     if ($script:LogFile) {
         Add-Content -Path $script:LogFile -Value $logLine
@@ -346,6 +439,9 @@ function Initialize-Orchestration {
     Write-Log "Initializing AI Orchestration"
     Write-Log "Goal: $GoalText"
     Write-Log "Model: $Model"
+    if ($script:JobType) {
+        Write-Log "JobType: $script:JobType"
+    }
 
     if (-not $script:RunId) {
         $script:RunId = "{0}_{1}" -f (Get-Date).ToUniversalTime().ToString("yyyyMMddTHHmmssZ"), ([Guid]::NewGuid().ToString("N").Substring(0, 8))
@@ -586,6 +682,7 @@ function Invoke-MilestoneAgent {
 
     $agentDef = Get-AgentDefinition -AgentName $agentName
     $systemPrompt = if ($agentDef -and $agentDef.prompt) { [string]$agentDef.prompt } else { "You are a helpful senior engineer assisting with this project." }
+    $skipWrite = $false
 
     # Build the user-side prompt that the model sees for this phase
     $upstreamSummary = ""
@@ -648,9 +745,39 @@ Your task:
 $contractBlock
 "@
 
-    # Call the LLM
+    # Call the LLM (or run deterministic agents)
     $llmResult = $null
-    if ($DryRun -and $EnforceContracts -and $agentDef -and $agentDef.io_contract -and $agentDef.io_contract.output_schema) {
+    $content = $null
+    if ($agentName -eq "RepoContextBuilder") {
+        $repoRoot = Get-RepoRoot
+        $builderPath = Join-Path $repoRoot "supervisor\\repo_context_builder.ps1"
+        if (-not (Test-Path -LiteralPath $builderPath)) {
+            throw "Repo context builder not found at $builderPath"
+        }
+        . $builderPath
+
+        $schemaPath = $script:RepoContextSchemaPath
+        if (-not $schemaPath) {
+            $schemaPath = Join-Path $repoRoot "contracts\\repo_context_schema.v1.json"
+        }
+
+        $repoPathOverride = $null
+        if ($script:Contract -and $script:Contract.repo -and $script:Contract.repo.local_path) {
+            $repoPathOverride = $script:Contract.repo.local_path
+        }
+
+        $repoContextResult = Invoke-RepoContextBuilder `
+            -RepoRoot $repoPathOverride `
+            -ContractPath $script:ContractPath `
+            -OutputDir $OutputDir `
+            -SchemaPath $schemaPath
+
+        $content = Get-Content -Raw -LiteralPath $repoContextResult.RepoContextPath
+        $llmResult = @{ RawResponse = @{ repo_context = $true; discovery = $repoContextResult.DiscoveryPath; baseline = $repoContextResult.BaselinePath } }
+        $outputPath = $repoContextResult.RepoContextPath
+        $skipWrite = $true
+    }
+    elseif ($DryRun -and $EnforceContracts -and $agentDef -and $agentDef.io_contract -and $agentDef.io_contract.output_schema) {
         $stub = New-StubFromSchema -Schema $agentDef.io_contract.output_schema
         $content = $stub | ConvertTo-Json -Depth 20
         $llmResult = @{ RawResponse = @{ simulated = $true } }
@@ -672,9 +799,10 @@ $contractBlock
     # Persist the milestone output to disk for inspection
     $safeName = [Regex]::Replace($Milestone.Name, "[^\w\-]+", "_")
     $fileName = if ($EnforceContracts) { "milestone_{0}.json" -f $safeName } else { "milestone_{0}.md" -f $safeName }
-    $outputPath = Join-Path -Path $OutputDir -ChildPath $fileName
-
-    $content | Out-File -FilePath $outputPath -Encoding UTF8
+    if (-not $skipWrite) {
+        $outputPath = Join-Path -Path $OutputDir -ChildPath $fileName
+        $content | Out-File -FilePath $outputPath -Encoding UTF8
+    }
 
     return @{
         Output     = $content
@@ -814,6 +942,8 @@ function Complete-Orchestration {
     $summary = @{
         Goal                = $Context.Goal
         Model               = $Context.Model
+        RunId               = $Context.RunId
+        JobType             = $script:JobType
         StartTime           = $Context.StartTime.ToString("o")
         EndTime             = $endTime.ToString("o")
         DurationSeconds     = [math]::Round($duration.TotalSeconds, 2)
@@ -833,6 +963,7 @@ function Complete-Orchestration {
         Goal = $Context.Goal
         Model = $Context.Model
         RunId = $Context.RunId
+        JobType = $script:JobType
         StartTime = $Context.StartTime.ToString("o")
         EndTime = $endTime.ToString("o")
         DurationSeconds = [math]::Round($duration.TotalSeconds, 2)
@@ -848,8 +979,70 @@ function Complete-Orchestration {
 }
 
 # Main execution
+$script:IsDotSourced = ($MyInvocation.InvocationName -eq '.')
+if (-not $script:IsDotSourced) {
 try {
-    # Determine goal text: prioritize -Goal parameter, then -GoalFile, then default
+    $repoRoot = Get-RepoRoot
+    $validatorPath = Join-Path $repoRoot "supervisor\\contract_validator.ps1"
+    $routerPath = Join-Path $repoRoot "supervisor\\job_router.ps1"
+
+    if (-not (Test-Path -LiteralPath $validatorPath)) {
+        throw "Contract validator not found at $validatorPath"
+    }
+    if (-not (Test-Path -LiteralPath $routerPath)) {
+        throw "Job router not found at $routerPath"
+    }
+
+    . $validatorPath
+    . $routerPath
+
+    $script:JobTypesPath = Join-Path $repoRoot "job_types.json"
+    $script:RepoContextSchemaPath = Join-Path $repoRoot "contracts\\repo_context_schema.v1.json"
+
+    if (-not $ContractPath) {
+        throw "ContractPath is required. Provide -ContractPath with a job contract JSON."
+    }
+    if (-not (Test-Path -LiteralPath $ContractPath)) {
+        throw "Contract file not found: $ContractPath"
+    }
+    $script:ContractPath = $ContractPath
+
+    $contractPreview = Get-Content -Raw -LiteralPath $ContractPath | ConvertFrom-Json -Depth 50
+
+    $resolvedJobType = $JobType
+    $jobTypeSource = $null
+    if (-not $resolvedJobType) {
+        if ($env:UAIT_JOB_TYPE) {
+            $resolvedJobType = $env:UAIT_JOB_TYPE
+            $jobTypeSource = "env"
+        }
+        elseif ($contractPreview -and $contractPreview.job_type) {
+            $resolvedJobType = $contractPreview.job_type
+            $jobTypeSource = "contract"
+        }
+    }
+    if (-not $resolvedJobType) {
+        throw "JobType is required. Pass -JobType or set UAIT_JOB_TYPE."
+    }
+    $script:JobType = $resolvedJobType
+
+    if ($jobTypeSource -eq "env") {
+        Write-Log "JobType not provided; using UAIT_JOB_TYPE='$resolvedJobType'." -Level "WARN"
+    }
+    elseif ($jobTypeSource -eq "contract") {
+        Write-Log "JobType not provided; using contract job_type '$resolvedJobType'." -Level "WARN"
+    }
+
+    $jobConfig = Get-JobTypeConfig -JobType $script:JobType -RegistryPath $script:JobTypesPath
+    $schemaPath = Resolve-RepoPath -Path $jobConfig.schema -RepoRoot $repoRoot
+
+    $contractResult = Assert-Contract -ContractPath $ContractPath -SchemaPath $schemaPath -ExpectedJobType $script:JobType
+    $script:Contract = $contractResult.Contract
+    $script:ContractHash = $contractResult.ContractHash
+
+    $script:Routing = Resolve-JobRouting -JobType $script:JobType -JobTypesPath $script:JobTypesPath -RepoRoot $repoRoot -Contract $script:Contract
+
+    # Determine goal text: prioritize -Goal parameter, then -GoalFile, then contract.goal, then default
     if (-not [string]::IsNullOrEmpty($Goal)) {
         $goalText = $Goal
         Write-Log "Using goal text from -Goal parameter"
@@ -863,11 +1056,21 @@ try {
             throw "Goal file not found: $GoalFile"
         }
     }
+    elseif ($script:Contract -and $script:Contract.goal) {
+        $goalText = $script:Contract.goal
+        Write-Log "Using goal text from contract.goal"
+    }
     else {
         $goalText = "Execute default orchestration workflow"
-        Write-Log "No goal or goal file provided, using default goal" -Level "WARN"
+        Write-Log "No goal, goal file, or contract goal provided; using default goal" -Level "WARN"
     }
-    
+
+    if ($script:Contract -and $script:Contract.goal -and ($goalText -ne $script:Contract.goal)) {
+        Write-Log "Goal text does not match contract.goal; using resolved goal text." -Level "WARN"
+    }
+
+    $OutputDir = Resolve-OutputDirectory -BaseDir $OutputDir -JobType $script:JobType
+
     # Initialize orchestration
     $context = Initialize-Orchestration -GoalText $goalText
     
@@ -877,8 +1080,38 @@ try {
         $DryRun = $true
     }
 
-    # Generate milestones
-    $milestones = Split-GoalIntoMilestones -Goal $goalText
+    Write-Log "Contract: $ContractPath"
+    Write-Log "Contract hash: $script:ContractHash"
+    Write-Log "Pipeline template: $($script:Routing.PipelineTemplatePath)"
+
+    $manifestPath = Write-RunManifest `
+        -OutputDir $OutputDir `
+        -GoalText $goalText `
+        -Routing $script:Routing `
+        -ContractPath $ContractPath `
+        -ContractHash $script:ContractHash `
+        -ValidateOnly:$ValidateOnly
+    Write-Log "Run manifest saved to: $manifestPath"
+
+    if ($ValidateOnly) {
+        Write-Log "Validation only mode enabled; exiting before execution."
+        exit 0
+    }
+
+    # Generate milestones from the routed pipeline
+    $milestones = New-MilestonesFromStages -Stages $script:Routing.Stages
+
+    if ($null -eq $milestones -or $milestones.Count -eq 0) {
+        Write-Log "No milestones were generated from pipeline. Creating a default milestone." -Level "WARN"
+        $milestones = @(
+            @{
+                Name = "Default Milestone"
+                Description = "Automatically created milestone"
+                Agent = "DefaultAgent"
+                Status = "pending"
+            }
+        )
+    }
     
     # Execute milestones with the AI-backed pipeline (simulated when -DryRun is set).
     $pipelineResults = Execute-MilestonePipeline `
@@ -902,4 +1135,5 @@ catch {
     Write-Log "Orchestration failed: $_" -Level "ERROR"
     Write-Host "Orchestration failed: $_" -ForegroundColor Red
     exit 1
+}
 }

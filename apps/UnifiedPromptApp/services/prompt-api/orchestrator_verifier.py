@@ -45,7 +45,7 @@ class OrchestratorVerifier:
         cwd: Optional[Path] = None,
         timeout: int = 300,
         log_name: Optional[str] = None,
-    ) -> Tuple[bool, str, Optional[str]]:
+    ) -> Tuple[bool, str, Optional[str], int]:
         """
         Run a shell command and capture output.
         
@@ -56,7 +56,7 @@ class OrchestratorVerifier:
             log_name: Name for log file (if None, logs not saved)
             
         Returns:
-            Tuple of (success, short_output, log_path)
+            Tuple of (success, short_output, log_path, returncode)
         """
         cwd = cwd or self.run_dir
         log_path = None
@@ -83,21 +83,21 @@ class OrchestratorVerifier:
                 log_path = str(self.log_dir / f"{log_name}.log")
                 Path(log_path).write_text(output, encoding='utf-8')
             
-            return success, short_output, log_path
+            return success, short_output, log_path, result.returncode
             
         except subprocess.TimeoutExpired:
             error_msg = f"Command timed out after {timeout}s"
             if log_name:
                 log_path = str(self.log_dir / f"{log_name}.log")
                 Path(log_path).write_text(error_msg, encoding='utf-8')
-            return False, error_msg, log_path
+            return False, error_msg, log_path, -1
             
         except Exception as e:
             error_msg = f"Command failed: {e}"
             if log_name:
                 log_path = str(self.log_dir / f"{log_name}.log")
                 Path(log_path).write_text(error_msg, encoding='utf-8')
-            return False, error_msg, log_path
+            return False, error_msg, log_path, -1
     
     def verify_lint(self) -> Optional[Dict[str, Any]]:
         """
@@ -117,7 +117,7 @@ class OrchestratorVerifier:
         
         for config_file, command in lint_configs:
             if (self.run_dir / config_file).exists():
-                passed, output, log_path = self._run_command(
+                passed, output, log_path, returncode = self._run_command(
                     command,
                     log_name="lint",
                     timeout=120,
@@ -126,6 +126,8 @@ class OrchestratorVerifier:
                     "passed": passed,
                     "output": output,
                     "log_path": log_path,
+                    "command": " ".join(command),
+                    "exit_code": returncode,
                 }
         
         return None
@@ -158,7 +160,7 @@ class OrchestratorVerifier:
                     except Exception:
                         continue
                 
-                passed, output, log_path = self._run_command(
+                passed, output, log_path, returncode = self._run_command(
                     command,
                     log_name="build",
                     timeout=600,
@@ -167,6 +169,8 @@ class OrchestratorVerifier:
                     "passed": passed,
                     "output": output,
                     "log_path": log_path,
+                    "command": " ".join(command),
+                    "exit_code": returncode,
                 }
         
         return None
@@ -199,7 +203,7 @@ class OrchestratorVerifier:
                     except Exception:
                         continue
                 
-                passed, output, log_path = self._run_command(
+                passed, output, log_path, returncode = self._run_command(
                     command,
                     log_name="unit_tests",
                     timeout=600,
@@ -208,6 +212,8 @@ class OrchestratorVerifier:
                     "passed": passed,
                     "output": output,
                     "log_path": log_path,
+                    "command": " ".join(command),
+                    "exit_code": returncode,
                 }
         
         return None
@@ -238,7 +244,7 @@ class OrchestratorVerifier:
                     except Exception:
                         continue
                 
-                passed, output, log_path = self._run_command(
+                passed, output, log_path, returncode = self._run_command(
                     command,
                     log_name="smoke_tests",
                     timeout=300,
@@ -247,27 +253,34 @@ class OrchestratorVerifier:
                     "passed": passed,
                     "output": output,
                     "log_path": log_path,
+                    "command": " ".join(command),
+                    "exit_code": returncode,
                 }
         
         return None
     
-    def verify_docker_compose(self) -> Optional[bool]:
+    def verify_docker_compose(self) -> Optional[Dict[str, Any]]:
         """
         Validate docker-compose file if it exists.
         
         Returns:
-            True if valid, False if invalid, None if no compose file
+            Dict with passed, output, command, exit_code or None if no compose file
         """
         compose_files = ["docker-compose.yml", "docker-compose.yaml"]
         
         for compose_file in compose_files:
             if (self.run_dir / compose_file).exists():
-                passed, output, _ = self._run_command(
+                passed, output, _, returncode = self._run_command(
                     ["docker-compose", "-f", compose_file, "config"],
                     log_name="docker_compose_validation",
                     timeout=30,
                 )
-                return passed
+                return {
+                    "passed": passed,
+                    "output": output,
+                    "command": f"docker-compose -f {compose_file} config",
+                    "exit_code": returncode,
+                }
         
         return None
     

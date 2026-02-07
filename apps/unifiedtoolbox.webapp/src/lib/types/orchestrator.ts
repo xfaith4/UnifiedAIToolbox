@@ -133,3 +133,75 @@ export interface RepoOrchestrationEvent {
   [key: string]: unknown
 }
 
+export type RepoReportOutcome = 'changes_applied' | 'no_changes_by_design' | 'blocked' | 'failed'
+
+export interface RepoReportCommand {
+  name?: string
+  cmd?: string | null
+  exit_code?: number | null
+  log_artifact?: string | null
+}
+
+export interface RepoReportFindingsItem {
+  path?: string
+  line?: number
+  kind?: string
+  note?: string
+}
+
+export interface RepoOrchestrationReport {
+  schema_version: string
+  run_id: string
+  repo: {
+    url?: string
+    branch?: string
+    commit_before?: string | null
+    commit_after?: string | null
+  }
+  outcome: RepoReportOutcome
+  summary: {
+    headline?: string
+    what_happened?: string[]
+    next_actions?: string[]
+  }
+  verification?: {
+    commands?: RepoReportCommand[]
+  }
+  changes?: {
+    files_changed?: string[]
+    patch_artifact?: string | null
+  }
+  findings?: {
+    todo_count?: number
+    placeholder_count?: number
+    high_risk_items?: RepoReportFindingsItem[]
+    findings_artifact?: string | null
+  }
+  blockers?: Array<{
+    code?: string
+    message?: string
+    suggested_fix?: string | null
+  }>
+  artifacts?: {
+    report_md?: string
+    verification_md?: string | null
+    verification_json?: string | null
+  }
+}
+
+export interface RepoRunReportSummary {
+  outcome?: RepoReportOutcome | string
+  headline?: string
+  patch?: boolean
+  commandsExecuted?: number
+}
+
+export interface RepoOrchestrationRunSummary {
+  runId: string
+  repo?: string
+  branch?: string
+  status?: string
+  requestedAt?: string
+  reportSummary?: RepoRunReportSummary | null
+}
+

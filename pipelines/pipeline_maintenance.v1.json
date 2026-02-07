@@ -1,0 +1,54 @@
+{
+  "schema_version": "1.0",
+  "name": "pipeline_maintenance.v1",
+  "stages": [
+    {
+      "id": "RepoContextBuilder",
+      "name": "Repo Context Discovery",
+      "description": "Generate deterministic repo context (discovery + optional baseline)",
+      "agent": "RepoContextBuilder"
+    },
+    {
+      "id": "Researcher",
+      "name": "Research Phase",
+      "description": "Gather and analyze relevant information",
+      "agent": "Researcher"
+    },
+    {
+      "id": "Engineer",
+      "name": "Implementation Phase",
+      "description": "Implement the maintenance changes",
+      "agent": "Engineer"
+    },
+    {
+      "id": "Critic",
+      "name": "Validation Phase",
+      "description": "Test and validate the maintenance changes",
+      "agent": "Critic"
+    },
+    {
+      "id": "Synthesizer",
+      "name": "Synthesis Phase",
+      "description": "Merge outputs into a cohesive maintenance plan",
+      "agent": "Synthesizer"
+    },
+    {
+      "id": "Commissioner",
+      "name": "Decision Phase",
+      "description": "Evaluate business value and approve next steps",
+      "agent": "Commissioner"
+    },
+    {
+      "id": "Supervisor",
+      "name": "Quality Phase",
+      "description": "Score the run and extract learnings",
+      "agent": "Supervisor"
+    },
+    {
+      "id": "Historian",
+      "name": "Memory Capsule",
+      "description": "Capture a durable run summary for reuse",
+      "agent": "Historian"
+    }
+  ]
+}

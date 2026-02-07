@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "contracts/maintenance_contract.v1.json",
+  "title": "Maintenance Contract v1",
+  "allOf": [
+    { "$ref": "common_run_contract.v1.json" },
+    {
+      "type": "object",
+      "required": ["repo", "ref"],
+      "properties": {
+        "repo": {
+          "type": "object",
+          "required": ["full_name"],
+          "properties": {
+            "full_name": { "type": "string" },
+            "url": { "type": "string" },
+            "local_path": { "type": "string" }
+          }
+        },
+        "ref": {
+          "type": "object",
+          "required": ["branch"],
+          "properties": {
+            "branch": { "type": "string" },
+            "commit": { "type": "string" }
+          }
+        },
+        "constraints": {
+          "type": "object",
+          "properties": {
+            "no_stack_change": { "type": "boolean" },
+            "max_files_touched": { "type": "integer" },
+            "max_loc_changed": { "type": "integer" },
+            "dependency_updates": { "type": "string" }
+          }
+        },
+        "repo_context": {
+          "type": "object",
+          "properties": {
+            "max_clone_size_mb": { "type": "integer" },
+            "max_files_scanned": { "type": "integer" },
+            "max_runtime_seconds": { "type": "integer" },
+            "baseline_verification_enabled": { "type": "boolean" },
+            "command_confidence_threshold": { "type": "number" },
+            "allow_convention_commands": { "type": "boolean" },
+            "required_env_vars": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

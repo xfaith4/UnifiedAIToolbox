@@ -23,9 +23,26 @@ BeforeAll {
     # Create temp test directory
     $script:TestOutputDir = Join-Path $TestDrive 'orchestration-ai-test'
     New-Item -ItemType Directory -Path $script:TestOutputDir -Force | Out-Null
-    
+
     # Source the script to load functions
     . $script:MilestoneScript
+
+    $script:JobType = "build_new_app"
+    $script:ContractPath = Join-Path $script:TestOutputDir 'build-contract.json'
+    $contract = @{
+        schema_version = "1.0"
+        job_type = $script:JobType
+        run_id = "test-run"
+        goal = "Research and implement a new feature"
+        agent_roster = @("Researcher", "Engineer", "Critic", "Synthesizer", "Commissioner", "Supervisor", "Historian")
+        budget = @{ max_time_minutes = 60 }
+        logging = @{ level = "info" }
+        artifact_policy = @{ mode = "standard"; required = @("orchestration-summary.json") }
+        gate_policy = @{ mode = "standard"; gates = @("quality", "safety") }
+        stages = @("Researcher", "Engineer", "Critic", "Synthesizer", "Commissioner", "Supervisor", "Historian")
+        app = @{ name = "TestApp" }
+    }
+    $contract | ConvertTo-Json -Depth 20 | Set-Content -Path $script:ContractPath -Encoding UTF8
 }
 
 Describe "AI-Backed Pipeline Functions - Structure" {
@@ -116,7 +133,7 @@ Describe "MilestoneController.ps1 - DryRun Mode with New Pipeline" {
             $env:OPENAI_API_KEY = $null
             $outputDir = Join-Path $script:TestOutputDir 'dryrun-no-api'
             
-            & $script:MilestoneScript -GoalFile $script:TestGoalFile -DryRun -OutputDir $outputDir
+            & $script:MilestoneScript -GoalFile $script:TestGoalFile -DryRun -OutputDir $outputDir -JobType $script:JobType -ContractPath $script:ContractPath
             
             $LASTEXITCODE | Should -Be 0
         }
@@ -125,19 +142,21 @@ Describe "MilestoneController.ps1 - DryRun Mode with New Pipeline" {
             $env:OPENAI_API_KEY = $null
             $outputDir = Join-Path $script:TestOutputDir 'dryrun-summary'
             
-            & $script:MilestoneScript -GoalFile $script:TestGoalFile -DryRun -OutputDir $outputDir
+            & $script:MilestoneScript -GoalFile $script:TestGoalFile -DryRun -OutputDir $outputDir -JobType $script:JobType -ContractPath $script:ContractPath
             
-            (Join-Path $outputDir 'orchestration-summary.json') | Should -Exist
+            $resolved = Join-Path $outputDir $script:JobType
+            (Join-Path $resolved 'orchestration-summary.json') | Should -Exist
         }
         
-        It "Should not create milestone markdown files in DryRun mode" {
+        It "Should write milestone outputs in DryRun mode" {
             $env:OPENAI_API_KEY = $null
             $outputDir = Join-Path $script:TestOutputDir 'dryrun-no-md'
             
-            & $script:MilestoneScript -GoalFile $script:TestGoalFile -DryRun -OutputDir $outputDir
+            & $script:MilestoneScript -GoalFile $script:TestGoalFile -DryRun -OutputDir $outputDir -JobType $script:JobType -ContractPath $script:ContractPath
             
-            $mdFiles = Get-ChildItem -Path $outputDir -Filter "milestone_*.md" -ErrorAction SilentlyContinue
-            $mdFiles | Should -BeNullOrEmpty
+            $resolved = Join-Path $outputDir $script:JobType
+            $mdFiles = Get-ChildItem -Path $resolved -Filter "milestone_*.md" -ErrorAction SilentlyContinue
+            $mdFiles | Should -Not -BeNullOrEmpty
         }
     }
 }

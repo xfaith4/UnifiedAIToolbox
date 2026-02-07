@@ -3243,105 +3243,130 @@ def _extract_section_lines(text: str, keywords: List[str]) -> List[str]:
     return [m for m in matches if m]
 
 
-def _build_report_from_html(
-    html_text: str,
-    repo: str,
-    branch: Optional[str],
-    run_id: str,
-    status: str,
-) -> Tuple[str, Dict[str, Any]]:
+def _build_report_from_html(html_text: str) -> Dict[str, Any]:
     parser = _HtmlTextExtractor()
     parser.feed(html_text)
     text = parser.text()
     summary_lines = text.splitlines()[:6]
     summary = " ".join(summary_lines).strip()
 
-    key_findings = _extract_section_lines(text, ["finding", "key finding"])
-    recommended_actions = _extract_section_lines(text, ["recommend", "action"])
-    risks = _extract_section_lines(text, ["risk"])
-    next_steps = _extract_section_lines(text, ["next step", "next steps"])
-
-    report_json = {
-        "title": "Repo Orchestration Report",
-        "repo": repo,
-        "branch": branch,
-        "runId": run_id,
-        "status": status,
+    return {
         "summary": summary,
-        "keyFindings": key_findings,
-        "recommendedActions": recommended_actions,
-        "risks": risks,
-        "nextSteps": next_steps,
-        "generatedAt": datetime.datetime.utcnow().isoformat() + "Z",
+        "key_findings": _extract_section_lines(text, ["finding", "key finding"]),
+        "recommended_actions": _extract_section_lines(text, ["recommend", "action"]),
+        "risks": _extract_section_lines(text, ["risk"]),
+        "next_steps": _extract_section_lines(text, ["next step", "next steps"]),
     }
-
-    report_lines = [
-        "# Repo Orchestration Report",
-        "",
-        f"- **Repo:** `{repo}`",
-        f"- **Branch:** `{branch or 'default'}`",
-        f"- **Run ID:** `{run_id}`",
-        f"- **Status:** `{status}`",
-        "",
-        "## Summary",
-        summary or "Summary not available.",
-        "",
-        "## Key Findings",
-        *(["- " + item for item in key_findings] if key_findings else ["- No key findings extracted."]),
-        "",
-        "## Recommended Actions",
-        *(["- " + item for item in recommended_actions] if recommended_actions else ["- No recommended actions extracted."]),
-        "",
-        "## Risks",
-        *(["- " + item for item in risks] if risks else ["- No risks extracted."]),
-        "",
-        "## Next Steps",
-        *(["- " + item for item in next_steps] if next_steps else ["- No next steps extracted."]),
-    ]
-
-    return "\n".join(report_lines), report_json
 
 
 def _report_md_from_json(report_json: Dict[str, Any]) -> str:
+    repo_value = report_json.get("repo")
+    repo = repo_value if isinstance(repo_value, dict) else {"url": repo_value} if repo_value else {}
+    summary_value = report_json.get("summary")
+    summary = summary_value if isinstance(summary_value, dict) else {}
+    verification = report_json.get("verification") or {}
+    changes = report_json.get("changes") or {}
+    findings = report_json.get("findings") or {}
+    blockers = report_json.get("blockers") or []
+
+    def _list(values: Any, fallback: str) -> List[str]:
+        if isinstance(values, list) and values:
+            return [str(v) for v in values if v]
+        return [fallback]
+
+    commands = verification.get("commands") if isinstance(verification, dict) else []
+    command_lines: List[str] = []
+    if isinstance(commands, list) and commands:
+        for cmd in commands:
+            if not isinstance(cmd, dict):
+                continue
+            name = cmd.get("name") or "command"
+            cmd_text = cmd.get("cmd") or ""
+            exit_code = cmd.get("exit_code")
+            log_artifact = cmd.get("log_artifact") or "n/a"
+            desc = f"- **{name}**"
+            if cmd_text:
+                desc += f": `{cmd_text}`"
+            if exit_code is not None:
+                desc += f" (exit {exit_code})"
+            desc += f" — log: `{log_artifact}`"
+            command_lines.append(desc)
+    else:
+        command_lines.append("- No verification commands were executed in this run.")
+
+    files_changed = changes.get("files_changed") if isinstance(changes, dict) else []
+    files_changed_lines = (
+        [f"- `{path}`" for path in files_changed]
+        if isinstance(files_changed, list) and files_changed
+        else ["- No files changed."]
+    )
+
+    high_risk_items = findings.get("high_risk_items") if isinstance(findings, dict) else []
+    risk_lines = []
+    if isinstance(high_risk_items, list) and high_risk_items:
+        for item in high_risk_items:
+            if not isinstance(item, dict):
+                continue
+            path = item.get("path") or "unknown"
+            line = item.get("line") or "?"
+            kind = item.get("kind") or "note"
+            note = item.get("note") or ""
+            detail = f"- `{path}:{line}` **{kind}**"
+            if note:
+                detail += f": {note}"
+            risk_lines.append(detail)
+    else:
+        risk_lines.append("- No high-risk items detected.")
+
+    blocker_lines = []
+    if isinstance(blockers, list) and blockers:
+        for blocker in blockers:
+            if not isinstance(blocker, dict):
+                continue
+            code = blocker.get("code") or "BLOCKER"
+            message = blocker.get("message") or ""
+            fix = blocker.get("suggested_fix") or ""
+            line = f"- **{code}**: {message}" if message else f"- **{code}**"
+            if fix:
+                line += f" (fix: {fix})"
+            blocker_lines.append(line)
+    else:
+        blocker_lines.append("- No blockers reported.")
+
     return "\n".join(
         [
             "# Repo Orchestration Report",
             "",
-            f"- **Repo:** `{report_json.get('repo')}`",
-            f"- **Branch:** `{report_json.get('branch') or 'default'}`",
-            f"- **Run ID:** `{report_json.get('runId')}`",
-            f"- **Status:** `{report_json.get('status')}`",
+            f"- **Run ID:** `{report_json.get('run_id')}`",
+            f"- **Repo:** `{repo.get('url') or 'unknown'}`",
+            f"- **Branch:** `{repo.get('branch') or 'default'}`",
+            f"- **Outcome:** `{report_json.get('outcome')}`",
             "",
             "## Summary",
-            report_json.get("summary") or "Summary not available.",
+            summary.get("headline") or "Summary not available.",
             "",
-            "## Key Findings",
-            *(
-                ["- " + item for item in report_json.get("keyFindings", [])]
-                if report_json.get("keyFindings")
-                else ["- No key findings extracted."]
-            ),
+            "### What happened",
+            *_list(summary.get("what_happened"), "No summary details available."),
             "",
-            "## Recommended Actions",
-            *(
-                ["- " + item for item in report_json.get("recommendedActions", [])]
-                if report_json.get("recommendedActions")
-                else ["- No recommended actions extracted."]
-            ),
+            "### Next actions",
+            *_list(summary.get("next_actions"), "No next actions recorded."),
             "",
-            "## Risks",
-            *(
-                ["- " + item for item in report_json.get("risks", [])]
-                if report_json.get("risks")
-                else ["- No risks extracted."]
-            ),
+            "## Verification",
+            *command_lines,
             "",
-            "## Next Steps",
-            *(
-                ["- " + item for item in report_json.get("nextSteps", [])]
-                if report_json.get("nextSteps")
-                else ["- No next steps extracted."]
-            ),
+            "## Changes",
+            f"- Patch: `{changes.get('patch_artifact') or 'none'}`",
+            f"- Files changed: {len(files_changed) if isinstance(files_changed, list) else 0}",
+            *files_changed_lines,
+            "",
+            "## Findings",
+            f"- TODO count: {findings.get('todo_count', 0)}",
+            f"- Placeholder count: {findings.get('placeholder_count', 0)}",
+            f"- Findings artifact: `{findings.get('findings_artifact') or 'none'}`",
+            *risk_lines,
+            "",
+            "## Blockers",
+            *blocker_lines,
         ]
     )
 
@@ -3429,6 +3454,240 @@ def _write_evidence_index(
     return evidence_index
 
 
+def _to_relpath(path: Optional[pathlib.Path], run_dir: pathlib.Path) -> Optional[str]:
+    if not path:
+        return None
+    try:
+        return path.relative_to(run_dir).as_posix()
+    except Exception:
+        return path.name
+
+
+def _files_changed_from_patch(patch_path: Optional[pathlib.Path]) -> List[str]:
+    if not patch_path or not patch_path.exists():
+        return []
+    try:
+        diff_text = patch_path.read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        return []
+    files: List[str] = []
+    seen: set[str] = set()
+    for line in diff_text.splitlines():
+        if not (line.startswith("+++ ") or line.startswith("--- ")):
+            continue
+        path = line[4:].strip()
+        if not path or path == "/dev/null":
+            continue
+        if path.startswith("a/") or path.startswith("b/"):
+            path = path[2:]
+        if path not in seen:
+            seen.add(path)
+            files.append(path)
+    return files
+
+
+def _git_rev_parse(repo_path: Optional[pathlib.Path], ref: Optional[str]) -> Optional[str]:
+    if not repo_path or not ref:
+        return None
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(repo_path), "rev-parse", ref],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except Exception:
+        return None
+    if proc.returncode != 0:
+        return None
+    return (proc.stdout or "").strip() or None
+
+
+def _scan_placeholders(repo_path: Optional[pathlib.Path], run_dir: pathlib.Path) -> Tuple[Dict[str, Any], pathlib.Path]:
+    scan_payload = {
+        "todo_count": 0,
+        "placeholder_count": 0,
+        "high_risk_items": [],
+        "scanned_files": 0,
+    }
+    scan_path = run_dir / "placeholder-scan.json"
+    if not repo_path or not repo_path.exists():
+        scan_path.write_text(json.dumps(scan_payload, indent=2), encoding="utf-8")
+        return scan_payload, scan_path
+
+    skip_dirs = {
+        ".git",
+        ".hg",
+        ".svn",
+        "node_modules",
+        "dist",
+        "build",
+        "out",
+        ".next",
+        ".cache",
+        ".pytest_cache",
+        ".mypy_cache",
+        ".venv",
+        "venv",
+        "__pycache__",
+        ".uaitoolbox",
+        "artifacts",
+        "runs",
+        "codex_runs",
+    }
+    todo_tokens = {"TODO", "FIXME", "HACK", "XXX"}
+    placeholder_tokens = {"PLACEHOLDER", "TBD"}
+    token_regex = re.compile(r"\\b(" + "|".join(sorted(todo_tokens | placeholder_tokens)) + r")\\b", re.IGNORECASE)
+
+    high_risk_items: List[Dict[str, Any]] = []
+    max_file_size = 1_000_000
+    max_risk_items = 50
+    max_files = 3000
+
+    for root, dirs, files in os.walk(repo_path):
+        dirs[:] = [d for d in dirs if d not in skip_dirs]
+        for filename in files:
+            if scan_payload["scanned_files"] >= max_files:
+                break
+            file_path = pathlib.Path(root) / filename
+            try:
+                if file_path.stat().st_size > max_file_size:
+                    continue
+            except Exception:
+                continue
+            try:
+                with open(file_path, "rb") as handle:
+                    sample = handle.read(2048)
+                    if b"\\x00" in sample:
+                        continue
+                text = file_path.read_text(encoding="utf-8", errors="ignore")
+            except Exception:
+                continue
+            if not text:
+                continue
+            scan_payload["scanned_files"] += 1
+            rel_path = str(file_path.relative_to(repo_path))
+            for idx, line in enumerate(text.splitlines(), start=1):
+                for match in token_regex.finditer(line):
+                    token = match.group(1).upper()
+                    if token in todo_tokens:
+                        scan_payload["todo_count"] += 1
+                    if token in placeholder_tokens:
+                        scan_payload["placeholder_count"] += 1
+                    if token in todo_tokens and len(high_risk_items) < max_risk_items:
+                        high_risk_items.append(
+                            {
+                                "path": rel_path,
+                                "line": idx,
+                                "kind": token,
+                                "note": line.strip()[:240],
+                            }
+                        )
+        if scan_payload["scanned_files"] >= max_files:
+            break
+
+    scan_payload["high_risk_items"] = high_risk_items
+    scan_path.write_text(json.dumps(scan_payload, indent=2), encoding="utf-8")
+    return scan_payload, scan_path
+
+
+def _build_verification_commands(results: Optional[Dict[str, Any]], run_dir: pathlib.Path) -> List[Dict[str, Any]]:
+    if not isinstance(results, dict):
+        return []
+
+    mapping = {
+        "lint_result": "lint",
+        "build_result": "build",
+        "unit_test_result": "unit_tests",
+        "smoke_test_result": "smoke_tests",
+        "normalization_result": "normalization",
+        "docker_compose_valid": "docker_compose",
+    }
+    commands: List[Dict[str, Any]] = []
+
+    for key, name in mapping.items():
+        value = results.get(key)
+        if value is None:
+            continue
+        if isinstance(value, dict):
+            cmd = value.get("command") or value.get("executed") or value.get("cmd")
+            exit_code = value.get("exit_code")
+            if exit_code is None:
+                exit_code = 0 if value.get("passed") else 1
+            log_path = value.get("log_path")
+            log_artifact = None
+            if log_path:
+                log_artifact = _to_relpath(pathlib.Path(log_path), run_dir)
+            commands.append(
+                {
+                    "name": name,
+                    "cmd": cmd,
+                    "exit_code": exit_code,
+                    "log_artifact": log_artifact,
+                }
+            )
+        elif isinstance(value, bool):
+            commands.append(
+                {
+                    "name": name,
+                    "cmd": None,
+                    "exit_code": 0 if value else 1,
+                    "log_artifact": None,
+                }
+            )
+
+    return commands
+
+
+def _write_verification_artifacts(run_dir: pathlib.Path, commands: List[Dict[str, Any]]) -> Tuple[pathlib.Path, pathlib.Path]:
+    verification_payload = {"commands": commands}
+    verification_json_path = run_dir / "verification.json"
+    verification_json_path.write_text(json.dumps(verification_payload, indent=2), encoding="utf-8")
+
+    lines = [
+        "# Verification",
+        "",
+        f"- Commands executed: {len(commands)}",
+    ]
+    if not commands:
+        lines.append("")
+        lines.append("No verification commands were executed in this run.")
+    else:
+        lines.append("")
+        lines.append("## Commands")
+        for cmd in commands:
+            name = cmd.get("name") or "command"
+            cmd_text = cmd.get("cmd") or ""
+            exit_code = cmd.get("exit_code")
+            log_artifact = cmd.get("log_artifact") or "n/a"
+            detail = f"- **{name}**"
+            if cmd_text:
+                detail += f": `{cmd_text}`"
+            if exit_code is not None:
+                detail += f" (exit {exit_code})"
+            detail += f" — log: `{log_artifact}`"
+            lines.append(detail)
+
+    verification_md_path = run_dir / "verification.md"
+    verification_md_path.write_text("\n".join(lines), encoding="utf-8")
+    return verification_json_path, verification_md_path
+
+
+def _map_outcome(status: str, error_message: Optional[str], merge_status: Optional[str]) -> str:
+    status_value = (status or "").lower()
+    merge_value = (merge_status or "").lower()
+    if merge_value == "no_changes" or status_value == "no_changes":
+        return "no_changes_by_design"
+    if merge_value in ("conflict", "validation_failed") or status_value in ("conflict", "validation_failed"):
+        return "blocked"
+    if status_value in ("merged", "complete", "completed", "success"):
+        return "changes_applied"
+    if status_value in ("cancelled", "canceled", "error", "failed"):
+        return "failed"
+    if error_message:
+        return "failed"
+    return "failed"
+
 def _build_artifacts_index(
     run_dir: pathlib.Path,
     repo: str,
@@ -3439,6 +3698,8 @@ def _build_artifacts_index(
     manifest_path: pathlib.Path,
     taskgraph_path: Optional[pathlib.Path],
     error_message: Optional[str] = None,
+    base_branch: Optional[str] = None,
+    integration_branch: Optional[str] = None,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     codex_runs: List[str] = []
     tasks = execution_result.get("tasks", []) if execution_result else []
@@ -3462,39 +3723,190 @@ def _build_artifacts_index(
             html_path = candidate
             html_text = candidate.read_text(encoding="utf-8", errors="replace")
 
-    if html_text:
-        report_md, report_json = _build_report_from_html(html_text, repo, branch, run_id, status)
-    elif existing_report_json:
-        report_json = existing_report_json
-        report_json.setdefault("repo", repo)
-        report_json.setdefault("branch", branch)
-        report_json.setdefault("runId", run_id)
-        report_json.setdefault("status", status)
-        report_json.setdefault("generatedAt", datetime.datetime.utcnow().isoformat() + "Z")
-        report_md = _report_md_from_json(report_json)
-    else:
-        report_json = {
-            "title": "Repo Orchestration Report",
-            "repo": repo,
-            "branch": branch,
-            "runId": run_id,
-            "status": status,
-            "summary": error_message or "No final synthesis available.",
-            "keyFindings": [],
-            "recommendedActions": [],
-            "risks": [],
-            "nextSteps": [],
-            "generatedAt": datetime.datetime.utcnow().isoformat() + "Z",
-        }
-        report_md = _report_md_from_json(report_json)
+    manifest_data = safe_json_load(manifest_path, default={}, context=f"repo_manifest:{run_id}") or {}
+    merge_info = manifest_data.get("merge") if isinstance(manifest_data.get("merge"), dict) else {}
+    merge_status = merge_info.get("status") if isinstance(merge_info, dict) else None
+    outcome = _map_outcome(status, error_message, merge_status)
+
+    options = manifest_data.get("options") if isinstance(manifest_data.get("options"), dict) else {}
+    branch_name = branch or options.get("branch") or merge_info.get("base_branch") or base_branch
+    repo_path_value = manifest_data.get("clone_path")
+    repo_path = pathlib.Path(repo_path_value) if repo_path_value else None
+    integration_ref = integration_branch or merge_info.get("integration_branch") or manifest_data.get("integration_branch")
+    if not integration_ref and run_id:
+        integration_ref = f"{run_id}-integration"
+
+    commit_before = _git_rev_parse(repo_path, base_branch or branch_name)
+    commit_after = _git_rev_parse(repo_path, integration_ref) or _git_rev_parse(repo_path, "HEAD")
+
+    html_sections = _build_report_from_html(html_text) if html_text else {}
+
+    legacy_summary = ""
+    legacy_findings: List[str] = []
+    legacy_actions: List[str] = []
+    legacy_next_steps: List[str] = []
+    legacy_headline = ""
+    if existing_report_json:
+        if existing_report_json.get("schema_version"):
+            summary = existing_report_json.get("summary") if isinstance(existing_report_json.get("summary"), dict) else {}
+            if isinstance(summary, dict):
+                legacy_headline = summary.get("headline") or ""
+                legacy_findings = summary.get("what_happened") or []
+                legacy_actions = summary.get("next_actions") or []
+        else:
+            legacy_summary = existing_report_json.get("summary") or ""
+            legacy_findings = existing_report_json.get("keyFindings") or []
+            legacy_actions = existing_report_json.get("recommendedActions") or []
+            legacy_next_steps = existing_report_json.get("nextSteps") or []
+
+    summary_text = html_sections.get("summary") or legacy_summary or error_message or ""
+    key_findings = html_sections.get("key_findings") or legacy_findings or []
+    recommended_actions = html_sections.get("recommended_actions") or legacy_actions or []
+    next_steps = html_sections.get("next_steps") or legacy_next_steps or []
+    if not isinstance(key_findings, list):
+        key_findings = []
+    if not isinstance(recommended_actions, list):
+        recommended_actions = []
+    if not isinstance(next_steps, list):
+        next_steps = []
+
+    gate_results: Optional[Dict[str, Any]] = None
+    gates_report = run_dir / "REPO_GATES_REPORT.json"
+    if gates_report.exists():
+        gate_results = safe_json_load(gates_report, default=None, context=f"repo_gates:{run_id}")
+    elif isinstance(manifest_data.get("repo_gates"), dict):
+        gate_results = manifest_data.get("repo_gates", {}).get("results")
+
+    verification_commands = _build_verification_commands(gate_results, run_dir)
+    verification_json_path, verification_md_path = _write_verification_artifacts(run_dir, verification_commands)
+
+    patch_path = _write_patch_diff(run_dir, execution_result)
+    files_changed = _files_changed_from_patch(patch_path)
+
+    findings_payload, findings_path = _scan_placeholders(repo_path, run_dir)
+
+    blockers: List[Dict[str, Any]] = []
+    error_detail = manifest_data.get("error_detail") if isinstance(manifest_data.get("error_detail"), dict) else None
+    if error_detail:
+        suggested_fix = None
+        if isinstance(error_detail.get("suggestedFixes"), list) and error_detail.get("suggestedFixes"):
+            suggested_fix = str(error_detail["suggestedFixes"][0])
+        blockers.append(
+            {
+                "code": error_detail.get("code") or error_detail.get("error_code") or "ERROR",
+                "message": error_detail.get("userMessage") or error_detail.get("message") or error_message or "Run failed",
+                "suggested_fix": suggested_fix,
+            }
+        )
+    if merge_status == "conflict":
+        blockers.append(
+            {
+                "code": "MERGE_CONFLICT",
+                "message": f"Merge conflict on task {merge_info.get('failed_task')}",
+                "suggested_fix": "Resolve the conflict and re-run the orchestration.",
+            }
+        )
+    if merge_status == "validation_failed":
+        blockers.append(
+            {
+                "code": "VALIDATION_FAILED",
+                "message": f"Validation failed on task {merge_info.get('failed_task')}",
+                "suggested_fix": "Inspect validation artifacts and address failures.",
+            }
+        )
+    if error_message and not blockers:
+        blockers.append({"code": "ERROR", "message": error_message, "suggested_fix": None})
+
+    def _dedupe(items: List[str]) -> List[str]:
+        seen: set[str] = set()
+        result: List[str] = []
+        for item in items:
+            if not item:
+                continue
+            if item not in seen:
+                seen.add(item)
+                result.append(item)
+        return result
+
+    what_happened: List[str] = []
+    if summary_text:
+        what_happened.append(summary_text)
+    if merge_info.get("message"):
+        what_happened.append(str(merge_info.get("message")))
+    if tasks and isinstance(tasks, list):
+        what_happened.append(f"Tasks executed: {len(tasks)}")
+    if verification_commands:
+        passed = len([c for c in verification_commands if c.get("exit_code") == 0])
+        failed = len([c for c in verification_commands if c.get("exit_code") not in (None, 0)])
+        what_happened.append(f"Verification: {len(verification_commands)} commands ({passed} passed, {failed} failed)")
+    if patch_path and files_changed:
+        what_happened.append(f"Patch generated with {len(files_changed)} files changed.")
+    if outcome == "no_changes_by_design":
+        what_happened.append("No changes were produced between base and integration branches.")
+    if error_message and error_message not in what_happened:
+        what_happened.append(error_message)
+    if key_findings:
+        what_happened.extend(key_findings)
+    what_happened = _dedupe(what_happened)
+
+    next_actions: List[str] = []
+    next_actions.extend(recommended_actions)
+    next_actions.extend(next_steps)
+    if patch_path:
+        next_actions.append("Review PATCH.diff for change details.")
+    if blockers:
+        next_actions.append("Resolve blockers and re-run the orchestration.")
+    if verification_commands and any(cmd.get("exit_code") not in (None, 0) for cmd in verification_commands):
+        next_actions.append("Review verification logs for failed commands.")
+    if outcome == "no_changes_by_design":
+        next_actions.append("Confirm scope or expand instructions if changes were expected.")
+    next_actions = _dedupe(next_actions)
+
+    headline = legacy_headline or summary_text or (
+        "No changes produced" if outcome == "no_changes_by_design" else "Repo orchestration completed"
+    )
+
+    report_json = {
+        "schema_version": "1.0",
+        "run_id": run_id,
+        "repo": {
+            "url": repo,
+            "branch": branch_name,
+            "commit_before": commit_before,
+            "commit_after": commit_after,
+        },
+        "outcome": outcome,
+        "summary": {
+            "headline": headline,
+            "what_happened": what_happened,
+            "next_actions": next_actions,
+        },
+        "verification": {"commands": verification_commands},
+        "changes": {
+            "files_changed": files_changed,
+            "patch_artifact": _to_relpath(patch_path, run_dir),
+        },
+        "findings": {
+            "todo_count": findings_payload.get("todo_count", 0),
+            "placeholder_count": findings_payload.get("placeholder_count", 0),
+            "high_risk_items": findings_payload.get("high_risk_items", []),
+            "findings_artifact": _to_relpath(findings_path, run_dir),
+        },
+        "blockers": blockers,
+        "artifacts": {
+            "report_md": "REPORT.md",
+            "verification_md": _to_relpath(verification_md_path, run_dir),
+            "verification_json": _to_relpath(verification_json_path, run_dir),
+        },
+    }
+
+    report_md = _report_md_from_json(report_json)
 
     report_md_path = run_dir / "REPORT.md"
     report_md_path.write_text(report_md, encoding="utf-8")
 
     report_json_path = run_dir / "REPORT.json"
     report_json_path.write_text(json.dumps(report_json, indent=2), encoding="utf-8")
-
-    patch_path = _write_patch_diff(run_dir, execution_result)
     evidence_index = _write_evidence_index(run_dir, execution_result, manifest_path, taskgraph_path)
 
     artifacts: List[Dict[str, Any]] = []
@@ -3511,12 +3923,31 @@ def _build_artifacts_index(
 
     _add_artifact(report_md_path, "report-md")
     _add_artifact(report_json_path, "report-json")
+    _add_artifact(verification_md_path, "verification-md")
+    _add_artifact(verification_json_path, "verification-json")
+    if findings_path.exists():
+        _add_artifact(findings_path, "placeholder-scan")
     if patch_path and patch_path.exists():
         _add_artifact(patch_path, "patch-diff")
     if evidence_index.exists():
         _add_artifact(evidence_index, "evidence-files")
     if html_path and html_path.exists():
         _add_artifact(html_path, "final-synthesis-html")
+    if blockers:
+        blockers_path = run_dir / "BLOCKERS.md"
+        blockers_lines = ["# Blockers", ""]
+        for blocker in blockers:
+            if not isinstance(blocker, dict):
+                continue
+            code = blocker.get("code") or "BLOCKER"
+            message = blocker.get("message") or ""
+            fix = blocker.get("suggested_fix") or ""
+            line = f"- **{code}**: {message}" if message else f"- **{code}**"
+            if fix:
+                line += f" (fix: {fix})"
+            blockers_lines.append(line)
+        blockers_path.write_text("\n".join(blockers_lines), encoding="utf-8")
+        _add_artifact(blockers_path, "blockers-md")
 
     gates_report = run_dir / "REPO_GATES_REPORT.json"
     if gates_report.exists():
@@ -3882,6 +4313,8 @@ async def start_repo_orchestration(req: RepoOrchestrationRequest, request: Reque
                 execution_result=execution_result,
                 manifest_path=manifest_path,
                 taskgraph_path=taskgraph_path,
+                base_branch=base_branch,
+                integration_branch=integration_branch,
             )
 
             result_payload = {
@@ -4047,6 +4480,46 @@ def get_repo_orchestration(run_id: str):
         if artifacts:
             data["result"]["artifacts_index"] = artifacts
     return data
+
+
+@app.get("/orchestrate/repo")
+def list_repo_orchestrations(limit: int = Query(50, ge=1, le=200)):
+    runs: List[Dict[str, Any]] = []
+    for run_dir in BRIDGE_RUN_DIR.iterdir():
+        if not run_dir.is_dir():
+            continue
+        manifest_path = run_dir / "repo-orchestration.json"
+        if not manifest_path.exists():
+            continue
+        manifest = safe_json_load(manifest_path, default={}, context=f"repo_manifest:{run_dir.name}") or {}
+        report_path = run_dir / "REPORT.json"
+        report_summary = None
+        if report_path.exists():
+            report = safe_json_load(report_path, default=None, context=f"report_json:{run_dir.name}")
+            if isinstance(report, dict) and report.get("schema_version") == "1.0":
+                summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
+                report_summary = {
+                    "outcome": report.get("outcome"),
+                    "headline": summary.get("headline") if isinstance(summary, dict) else None,
+                    "patch": bool((report.get("changes") or {}).get("patch_artifact")),
+                    "commands_executed": len((report.get("verification") or {}).get("commands") or []),
+                }
+
+        run_entry = {
+            "run_id": manifest.get("run_id") or run_dir.name,
+            "repo": manifest.get("repo"),
+            "branch": (manifest.get("options") or {}).get("branch") if isinstance(manifest.get("options"), dict) else None,
+            "status": manifest.get("status"),
+            "requested_at": manifest.get("requested_at"),
+            "report_summary": report_summary,
+        }
+        runs.append(run_entry)
+
+    def _sort_key(item: Dict[str, Any]) -> str:
+        return str(item.get("requested_at") or "")
+
+    runs.sort(key=_sort_key, reverse=True)
+    return {"runs": runs[:limit]}
 
 
 @app.get("/orchestrate/repo/{run_id}/synthesis/{codex_run_id}")

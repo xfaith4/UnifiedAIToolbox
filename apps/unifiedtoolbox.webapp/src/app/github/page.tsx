@@ -2,9 +2,9 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { getGithubStatus, listAccessibleRepos } from '@/lib/services/github'
-import { ORCHESTRATOR_API_BASE, startRepoOrchestration } from '@/lib/services/orchestratorApi'
+import { ORCHESTRATOR_API_BASE, startRepoOrchestration, fetchRepoOrchestrationRuns } from '@/lib/services/orchestratorApi'
 import type { GitHubRepo } from '@/lib/types/github'
-import type { RepoOrchestrationEvent, RepoOrchestrationResult } from '@/lib/types/orchestrator'
+import type { RepoOrchestrationEvent, RepoOrchestrationResult, RepoOrchestrationRunSummary } from '@/lib/types/orchestrator'
 import Link from 'next/link'
 
 type ArtifactItem = {
@@ -36,6 +36,9 @@ export default function GitHubPage() {
   const [cancelStream, setCancelStream] = useState<(() => void) | null>(null)
   const [errorDetails, setErrorDetails] = useState<Record<string, unknown> | null>(null)
   const [showTechDetails, setShowTechDetails] = useState(false)
+  const [repoRuns, setRepoRuns] = useState<RepoOrchestrationRunSummary[]>([])
+  const [repoRunsError, setRepoRunsError] = useState<string | null>(null)
+  const [repoRunsLoading, setRepoRunsLoading] = useState(false)
 
   const toFileUrl = (path: string) => `file:///${path.replace(/\\/g, '/')}`
   const joinPath = (base: string, segment: string) => {
@@ -48,6 +51,20 @@ export default function GitHubPage() {
       await navigator.clipboard.writeText(value)
     } catch {
       return
+    }
+  }
+
+  const loadRepoRuns = async () => {
+    if (!uiV2 || !ORCHESTRATOR_API_BASE) return
+    setRepoRunsLoading(true)
+    setRepoRunsError(null)
+    try {
+      const runs = await fetchRepoOrchestrationRuns()
+      setRepoRuns(runs)
+    } catch (err) {
+      setRepoRunsError(err instanceof Error ? err.message : 'Failed to load repo runs.')
+    } finally {
+      setRepoRunsLoading(false)
     }
   }
 
@@ -135,6 +152,17 @@ export default function GitHubPage() {
     [artifactsIndex]
   )
 
+  const formatOutcome = (outcome?: string) => {
+    const value = String(outcome || 'unknown')
+    const palette: Record<string, string> = {
+      changes_applied: 'border-emerald-500/40 bg-emerald-900/30 text-emerald-100',
+      no_changes_by_design: 'border-slate-600/50 bg-slate-800/60 text-slate-100',
+      blocked: 'border-amber-500/40 bg-amber-900/30 text-amber-100',
+      failed: 'border-rose-500/40 bg-rose-900/30 text-rose-100',
+    }
+    return { label: value.replace(/_/g, ' '), classes: palette[value] || 'border-slate-700 bg-slate-800 text-slate-200' }
+  }
+
   useEffect(() => {
     let mounted = true
     getGithubStatus()
@@ -150,6 +178,10 @@ export default function GitHubPage() {
       mounted = false
     }
   }, [])
+
+  useEffect(() => {
+    void loadRepoRuns()
+  }, [uiV2, ORCHESTRATOR_API_BASE])
 
   async function handleFetch() {
     const trimmedToken = token.trim()
@@ -244,6 +276,7 @@ export default function GitHubPage() {
           if (event.final || event.type === 'error') {
             setOrchRunning(false)
             setCancelStream(null)
+            void loadRepoRuns()
           }
         }
       )
@@ -426,6 +459,14 @@ export default function GitHubPage() {
                         href={`/runs/${encodeURIComponent(runId)}/artifacts/${encodeURIComponent(reportArtifactId)}`}
                       >
                         View Report
+                      </Link>
+                    )}
+                    {runId && (
+                      <Link
+                        className="rounded border border-emerald-500/40 px-2 py-1 text-emerald-100 hover:bg-emerald-800/40"
+                        href={`/runs/${encodeURIComponent(runId)}`}
+                      >
+                        View Run Summary
                       </Link>
                     )}
                     {reportJsonArtifactId && runId && (
@@ -679,6 +720,77 @@ export default function GitHubPage() {
           )}
         </ul>
       </div>
+
+      {uiV2 && (
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="font-semibold">Recent Repo Runs</div>
+            <button
+              className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-200 hover:bg-slate-800/60 disabled:opacity-50"
+              onClick={loadRepoRuns}
+              disabled={repoRunsLoading}
+            >
+              {repoRunsLoading ? 'Refreshing…' : 'Refresh'}
+            </button>
+          </div>
+          {repoRunsError && <div className="text-xs text-rose-300">{repoRunsError}</div>}
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-xs">
+              <thead className="text-slate-400">
+                <tr>
+                  <th className="text-left pb-2">Run</th>
+                  <th className="text-left pb-2">Outcome</th>
+                  <th className="text-left pb-2">Headline</th>
+                  <th className="text-left pb-2">Patch</th>
+                  <th className="text-left pb-2">Commands</th>
+                  <th className="text-right pb-2">Action</th>
+                </tr>
+              </thead>
+              <tbody className="text-slate-200">
+                {repoRuns.map((run) => {
+                  const summary = run.reportSummary
+                  const outcome = summary?.outcome || run.status
+                  const badge = formatOutcome(outcome)
+                  return (
+                    <tr key={run.runId} className="border-t border-slate-800">
+                      <td className="py-2">
+                        <div className="font-mono text-[11px]">{run.runId}</div>
+                        <div className="text-[11px] text-slate-400">{run.repo || '—'}</div>
+                      </td>
+                      <td className="py-2">
+                        <span className={`inline-flex rounded-full border px-2 py-0.5 ${badge.classes}`}>{badge.label}</span>
+                      </td>
+                      <td className="py-2 text-slate-300 max-w-xs">
+                        <div className="truncate" title={summary?.headline || ''}>
+                          {summary?.headline || '—'}
+                        </div>
+                      </td>
+                      <td className="py-2 text-slate-300">{summary ? (summary.patch ? 'Yes' : 'No') : '—'}</td>
+                      <td className="py-2 text-slate-300">
+                        {summary ? summary.commandsExecuted ?? 0 : '—'}
+                      </td>
+                      <td className="py-2 text-right">
+                        {run.runId && (
+                          <Link className="text-blue-300 underline" href={`/runs/${encodeURIComponent(run.runId)}`}>
+                            View
+                          </Link>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+                {repoRuns.length === 0 && !repoRunsLoading && (
+                  <tr>
+                    <td colSpan={6} className="py-4 text-center text-slate-500">
+                      No repo runs yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </main>
   )
 }

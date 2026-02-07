@@ -6,9 +6,12 @@ Purpose: Describe the artifact contract and the in-app artifact viewer for repo 
 Repo orchestration runs standardize outputs under the run directory:
 
 - `REPORT.md` — human-readable summary
-- `REPORT.json` — structured summary (`title`, `repo`, `branch`, `runId`, `status`, `keyFindings`, `recommendedActions`, `risks`, `nextSteps`)
+- `REPORT.json` — structured summary (`schema_version`, `run_id`, `repo`, `outcome`, `summary`, `verification`, `changes`, `findings`, `blockers`, `artifacts`)
 - `PATCH.diff` — optional aggregated diff (if changes exist)
 - `EVIDENCE/files.json` — optional evidence index (logs, findings, file lists)
+- `verification.md` + `verification.json` — optional verification summaries
+- `placeholder-scan.json` — optional placeholder/TODO scan results
+- `BLOCKERS.md` — optional blocker summary
 - `REPO_GATES_REPORT.json` — optional repo-gates results (if enabled)
 - `REPO_GATES_SUMMARY.md` — optional repo-gates summary (if enabled)
 - `Final_Synthesis.html` — legacy output when available
@@ -37,17 +40,29 @@ Each artifact is referenced in run metadata with:
 ### Report JSON Schema (fields)
 ```json
 {
-  "title": "Repo Orchestration Report",
-  "repo": "owner/repo",
-  "branch": "main",
-  "runId": "repo-<slug>-<id>",
-  "status": "merged",
-  "summary": "Short summary sentence",
-  "keyFindings": [],
-  "recommendedActions": [],
-  "risks": [],
-  "nextSteps": [],
-  "generatedAt": "2026-02-05T20:12:01Z"
+  "schema_version": "1.0",
+  "run_id": "repo-<slug>-<id>",
+  "repo": { "url": "owner/repo", "branch": "main", "commit_before": "...", "commit_after": "..." },
+  "outcome": "changes_applied | no_changes_by_design | blocked | failed",
+  "summary": {
+    "headline": "Short human headline",
+    "what_happened": ["bullet"],
+    "next_actions": ["bullet"]
+  },
+  "verification": { "commands": [] },
+  "changes": { "files_changed": [], "patch_artifact": "PATCH.diff" },
+  "findings": {
+    "todo_count": 0,
+    "placeholder_count": 0,
+    "high_risk_items": [],
+    "findings_artifact": "placeholder-scan.json"
+  },
+  "blockers": [],
+  "artifacts": {
+    "report_md": "REPORT.md",
+    "verification_md": "verification.md",
+    "verification_json": "verification.json"
+  }
 }
 ```
 
@@ -57,7 +72,7 @@ Example: `docs/examples/REPORT.sample.json`
 Route: `/runs/:runId/artifacts/:artifactId`
 
 Tabs:
-- **Rendered** — Markdown and JSON are rendered for readability; HTML is sanitized and previewed.
+- **Rendered** — Markdown and JSON are rendered for readability. HTML is treated as a legacy artifact (open externally or raw).
 - **Raw** — unmodified content view.
 - **Files** — list of all artifacts for the run.
 

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { ORCHESTRATOR_API_BASE } from '@/lib/services/orchestratorApi'
-import { nodeMatchesFilter, renderMarkdown, sanitizeHtml } from '@/lib/artifacts/viewerUtils'
+import { nodeMatchesFilter, renderMarkdown } from '@/lib/artifacts/viewerUtils'
 
 type ArtifactItem = {
   artifactId?: string
@@ -220,11 +220,6 @@ export default function ArtifactViewerPage({
     return renderMarkdown(content)
   }, [content, isMarkdown])
 
-  const renderedHtml = useMemo(() => {
-    if (!isHtml) return ''
-    return sanitizeHtml(content)
-  }, [content, isHtml])
-
   const filteredLines = useMemo(() => {
     const lines = content.split(/\r?\n/)
     if (!textFilter.trim()) return lines
@@ -362,10 +357,10 @@ export default function ArtifactViewerPage({
                 />
               )}
               {isHtml && (
-                <div
-                  className="prose prose-invert max-w-none rounded-xl border border-slate-800 bg-slate-950/40 p-4"
-                  dangerouslySetInnerHTML={{ __html: renderedHtml }}
-                />
+                <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-300 space-y-2">
+                  <div className="font-semibold">Legacy HTML artifact</div>
+                  <p>HTML previews are disabled. Use Open Externally or the Raw tab to inspect this file.</p>
+                </div>
               )}
               {isJson && (
                 <div className="space-y-3">

@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0",
+  "name": "pipeline_build_app.v1",
+  "stages": [
+    {
+      "id": "Researcher",
+      "name": "Research Phase",
+      "description": "Gather and analyze relevant information",
+      "agent": "Researcher"
+    },
+    {
+      "id": "Engineer",
+      "name": "Implementation Phase",
+      "description": "Build the solution based on research findings",
+      "agent": "Engineer"
+    },
+    {
+      "id": "Critic",
+      "name": "Validation Phase",
+      "description": "Test and validate the implementation",
+      "agent": "Critic"
+    },
+    {
+      "id": "Synthesizer",
+      "name": "Synthesis Phase",
+      "description": "Merge outputs into a cohesive plan",
+      "agent": "Synthesizer"
+    },
+    {
+      "id": "Commissioner",
+      "name": "Decision Phase",
+      "description": "Evaluate business value and approve next steps",
+      "agent": "Commissioner"
+    },
+    {
+      "id": "Supervisor",
+      "name": "Quality Phase",
+      "description": "Score the run and extract learnings",
+      "agent": "Supervisor"
+    },
+    {
+      "id": "Historian",
+      "name": "Memory Capsule",
+      "description": "Capture a durable run summary for reuse",
+      "agent": "Historian"
+    }
+  ]
+}

@@ -1205,5 +1205,93 @@
         ]
       }
     }
+  },
+  {
+    "id": "ag_20260207_repo_context_builder",
+    "name": "RepoContextBuilder",
+    "purpose": "Produce deterministic repo_context discovery and optional baseline verification artifacts.",
+    "mission": "Scan repo files for tooling, CI, and commands with confidence + evidence, then optionally run safe baseline commands.",
+    "status": "draft",
+    "tags": [
+      "repo-context",
+      "maintenance",
+      "discovery",
+      "baseline"
+    ],
+    "triggers": [
+      "Maintenance job type start"
+    ],
+    "inputs": [
+      {
+        "source_agent": "Contract",
+        "field": "repo.local_path",
+        "io_reference": "repo_path"
+      },
+      {
+        "source_agent": "Contract",
+        "field": "ref",
+        "io_reference": "ref"
+      }
+    ],
+    "outputs": [
+      {
+        "public": true,
+        "field": "repo_context.json"
+      }
+    ],
+    "tools": [
+      "filesystem",
+      "git"
+    ],
+    "playbook": [
+      "1. Run static discovery only (no builds).",
+      "2. Emit repo_context.discovery.json with confidence + evidence.",
+      "3. If baseline is enabled and safe commands exist, execute and capture transcripts.",
+      "4. Emit repo_context.baseline.json and merged repo_context.json.",
+      "5. Validate output against repo_context_schema.v1.json."
+    ],
+    "createdAt": "2026-02-07T00:00:00Z",
+    "updatedAt": "2026-02-07T00:00:00Z",
+    "role": "Deterministic repo scan and baseline verifier.",
+    "capabilities": [
+      "static-analysis",
+      "command-discovery",
+      "baseline-verification"
+    ],
+    "style": "concise, evidence-first, non-speculative",
+    "constraints": [
+      "No network beyond clone",
+      "Discovery must not execute builds",
+      "Baseline only uses whitelisted commands"
+    ],
+    "io_contract": {
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "repo_path": { "type": "string" },
+          "ref": { "type": "string" },
+          "constraints": { "type": "object" }
+        },
+        "required": [
+          "repo_path"
+        ]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "schema_version": { "type": "string" },
+          "repo": { "type": "object" },
+          "discovery": { "type": "object" },
+          "baseline": { "type": "object" }
+        },
+        "required": [
+          "schema_version",
+          "repo",
+          "discovery",
+          "baseline"
+        ]
+      }
+    },
+    "prompt": "You are the Repo Context Builder. Produce strict JSON matching repo_context_schema.v1.json with discovery and baseline sections. No markdown, no prose."
   }
 ]

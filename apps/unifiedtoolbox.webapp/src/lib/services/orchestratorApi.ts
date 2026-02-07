@@ -6,6 +6,8 @@ import type {
   RepoOrchestrationEvent,
   RepoOrchestrationRequest,
   RepoOrchestrationResult,
+  RepoOrchestrationRunSummary,
+  RepoRunReportSummary,
 } from '@/lib/types/orchestrator'
 
 // API base URL from environment, falling back to the onboard Prompt API for local dev
@@ -277,4 +279,37 @@ export async function cancelRepoOrchestration(runId: string): Promise<RepoOrches
     throw new Error(`Failed to cancel run (${res.status}): ${text}`)
   }
   return (await res.json()) as RepoOrchestrationResult
+}
+
+/**
+ * Fetch recent repository orchestration runs with summary metadata.
+ */
+export async function fetchRepoOrchestrationRuns(): Promise<RepoOrchestrationRunSummary[]> {
+  if (!API_BASE) throw new Error('API base not configured')
+  const res = await fetch(`${API_BASE}/orchestrate/repo`)
+  if (!res.ok) {
+    const text = await res.text().catch(() => 'unknown error')
+    throw new Error(`Failed to fetch repo runs (${res.status}): ${text}`)
+  }
+  const payload = (await res.json()) as { runs?: Array<Record<string, unknown>> }
+  const runs = Array.isArray(payload.runs) ? payload.runs : []
+  return runs.map((run) => {
+    const summary = run.report_summary as Record<string, unknown> | undefined
+    const reportSummary: RepoRunReportSummary | null = summary
+      ? {
+          outcome: summary.outcome as RepoRunReportSummary['outcome'],
+          headline: summary.headline ? String(summary.headline) : undefined,
+          patch: Boolean(summary.patch),
+          commandsExecuted: summary.commands_executed ? Number(summary.commands_executed) : 0,
+        }
+      : null
+    return {
+      runId: String(run.run_id || run.runId || ''),
+      repo: run.repo ? String(run.repo) : undefined,
+      branch: run.branch ? String(run.branch) : undefined,
+      status: run.status ? String(run.status) : undefined,
+      requestedAt: run.requested_at ? String(run.requested_at) : undefined,
+      reportSummary,
+    }
+  })
 }
