@@ -42,6 +42,8 @@ runs/
 
 # Artifacts directory (build outputs, reports, collected artifacts)
 artifacts/
+# But include test fixtures
+!**/__tests__/**/artifacts/
 !artifacts/README.md
 !apps/unifiedtoolbox.webapp/src/app/runs/**/artifacts/
 !apps/unifiedtoolbox.webapp/src/app/runs/**/artifacts/**
