@@ -160,8 +160,14 @@ WEB_PORT=3000               # Next.js web portal port
 NORMALIZE_ARTIFACTS=true     # Enable automatic artifact cleanup
 NORMALIZE_STRICT=false       # Fail on unresolved issues
 
-# Optional - GitHub Integration
+# Optional - GitHub Integration (for automated PR creation and repo operations)
 GITHUB_TOKEN=your-github-token
+
+# Optional - App Factory GitHub Integration (for setting repository topics)
+# When configured, the app-factory automatically tags generated repositories
+# with appropriate topics for orchestration tracking and discovery
+GITHUB_REPO_OWNER=your-github-username  # or APP_FACTORY_REPO_OWNER
+GITHUB_REPO_NAME=your-repo-name         # or APP_FACTORY_REPO_NAME
 ```
 
 ## 🎭 Orchestration Workflow
