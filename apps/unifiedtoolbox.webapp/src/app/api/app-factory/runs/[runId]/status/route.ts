@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { loadRunStatus } from '@/lib/app-factory/runs/runStatus'
+import { isValidRunId, loadRunStatus } from '@/lib/app-factory/runs/runStatus'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -11,6 +11,9 @@ export async function GET(
   const runId = params?.runId
   if (!runId) {
     return NextResponse.json({ error: { code: 'MISSING_RUN_ID', message: 'Missing runId' } }, { status: 400 })
+  }
+  if (!isValidRunId(runId)) {
+    return NextResponse.json({ error: { code: 'INVALID_RUN_ID', message: 'Invalid runId' } }, { status: 400 })
   }
 
   try {

@@ -7,9 +7,10 @@ type Props = {
   runId: string
   relPath: string
   title?: string
+  scope?: 'repo' | 'run'
 }
 
-const RunFileModal: React.FC<Props> = ({ isOpen, onClose, runId, relPath, title }) => {
+const RunFileModal: React.FC<Props> = ({ isOpen, onClose, runId, relPath, title, scope = 'repo' }) => {
   const [isLoading, setIsLoading] = useState(false)
   const [content, setContent] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
@@ -25,7 +26,7 @@ const RunFileModal: React.FC<Props> = ({ isOpen, onClose, runId, relPath, title 
         const res = await fetch('/api/app-factory/file', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ runId, relPath }),
+          body: JSON.stringify({ runId, relPath, scope }),
         })
         if (!res.ok) {
           const text = await res.text()
@@ -43,7 +44,7 @@ const RunFileModal: React.FC<Props> = ({ isOpen, onClose, runId, relPath, title 
     return () => {
       cancelled = true
     }
-  }, [isOpen, runId, relPath])
+  }, [isOpen, runId, relPath, scope])
 
   if (!isOpen) return null
 
@@ -79,4 +80,3 @@ const RunFileModal: React.FC<Props> = ({ isOpen, onClose, runId, relPath, title 
 }
 
 export default RunFileModal
-

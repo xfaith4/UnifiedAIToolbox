@@ -1,0 +1,2 @@
+{"ts":"2026-02-07T10:00:00Z","type":"stage_start","stage":"RepoContextBuilder","message":"Stage RepoContextBuilder: running"}
+{"ts":"2026-02-07T10:02:00Z","type":"info","stage":"RepoContextBuilder","message":"Scanning repo"}

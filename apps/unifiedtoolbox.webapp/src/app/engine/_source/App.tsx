@@ -71,7 +71,7 @@ const App: React.FC = () => {
   const [showFeedback, setShowFeedback] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [isApiKeyMissing, setIsApiKeyMissing] = useState(false);
-  const [viewFile, setViewFile] = useState<{ runId: string; relPath: string } | null>(null);
+  const [viewFile, setViewFile] = useState<{ runId: string; relPath: string; scope?: 'repo' | 'run' } | null>(null);
   const [autoValidatedSessionId, setAutoValidatedSessionId] = useState<string | null>(null);
 
   // Timer effect to update elapsed time when orchestrating
@@ -112,10 +112,10 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (!isMaintenance) return
-    const state = maintenanceStatus?.state
+    const state = maintenanceStatus?.status
     if (!state) return
     setMaintenanceRunning(state === 'queued' || state === 'running')
-  }, [isMaintenance, maintenanceStatus?.state])
+  }, [isMaintenance, maintenanceStatus?.status])
 
   const displayedSession = useMemo(() => {
     if (activeView === 'live') return liveSession;
@@ -325,6 +325,10 @@ const App: React.FC = () => {
             status={maintenanceStatus}
             loading={maintenanceStatusLoading}
             error={maintenanceError}
+            onOpenArtifact={(relPath) => {
+              if (!maintenanceRunId) return
+              setViewFile({ runId: maintenanceRunId, relPath, scope: 'run' })
+            }}
           />
         ) : (
           <>
@@ -334,7 +338,7 @@ const App: React.FC = () => {
               pipeline={pipeline}
               onViewFile={(relPath) => {
                 if (!pipeline?.runId) return
-                setViewFile({ runId: pipeline.runId, relPath })
+                setViewFile({ runId: pipeline.runId, relPath, scope: 'repo' })
               }}
             />
           </>
@@ -415,6 +419,7 @@ const App: React.FC = () => {
           onClose={() => setViewFile(null)}
           runId={viewFile.runId}
           relPath={viewFile.relPath}
+          scope={viewFile.scope}
         />
       )}
     </div>

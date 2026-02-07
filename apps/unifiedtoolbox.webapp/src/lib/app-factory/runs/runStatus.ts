@@ -10,7 +10,7 @@ type RunStatusOptions = {
 
 const DEFAULT_EVENT_LIMIT = 200
 const MAX_EVENT_BYTES = 512 * 1024
-const MAX_TEXT_SNIPPET = 4000
+const RUN_ID_PATTERN = /^[a-zA-Z0-9_-]+$/
 
 function ensureWithin(root: string, candidate: string): string {
   const full = path.resolve(root, candidate)
@@ -21,8 +21,16 @@ function ensureWithin(root: string, candidate: string): string {
   return full
 }
 
-export function getAppFactoryRoot(): string {
-  return path.resolve(process.cwd(), '..', '..', '.uaitoolbox', 'app-factory')
+export function isValidRunId(runId: string): boolean {
+  return RUN_ID_PATTERN.test(runId)
+}
+
+export function getRunsRoot(): string {
+  const override = process.env.UAITOOLBOX_RUNS_DIR
+  if (override && override.trim()) {
+    return path.resolve(override)
+  }
+  return path.resolve(process.cwd(), '..', '..', '.uaitoolbox', 'app-factory', 'runs')
 }
 
 async function fileExists(filePath: string): Promise<boolean> {
@@ -39,17 +47,6 @@ async function readJsonIfExists(filePath: string): Promise<any | null> {
   try {
     const raw = await fs.readFile(filePath, 'utf8')
     return JSON.parse(raw)
-  } catch {
-    return null
-  }
-}
-
-async function readTextIfExists(filePath: string, maxChars = MAX_TEXT_SNIPPET): Promise<string | null> {
-  if (!(await fileExists(filePath))) return null
-  try {
-    const raw = await fs.readFile(filePath, 'utf8')
-    if (raw.length <= maxChars) return raw
-    return raw.slice(0, maxChars) + '…'
   } catch {
     return null
   }
@@ -96,19 +93,45 @@ function parseLogLine(line: string): RunEvent {
   if (match?.groups) {
     return {
       ts: match.groups.ts || new Date().toISOString(),
-      level: (match.groups.level || 'info').toLowerCase(),
+      type: String(match.groups.level || 'info'),
       stage: match.groups.stage,
       message: match.groups.msg || line,
     }
   }
   return {
     ts: new Date().toISOString(),
-    level: 'info',
+    type: 'info',
     message: line,
   }
 }
 
 async function readEvents(runDir: string, limit: number): Promise<RunEvent[]> {
+  const ndjsonPath = path.join(runDir, 'events.ndjson')
+  if (await fileExists(ndjsonPath)) {
+    const lines = await readTailLines(ndjsonPath, limit)
+    const events: RunEvent[] = []
+    for (const line of lines) {
+      try {
+        const rec = JSON.parse(line)
+        const ts = rec.ts || rec.timestamp || rec.time || new Date().toISOString()
+        const type = rec.type || rec.level || rec.severity || 'info'
+        const stage = rec.stage || rec.agent || rec.name
+        const message = rec.message || rec.msg || rec.status || line
+        const data = rec.data ? rec.data : undefined
+        events.push({
+          ts: String(ts),
+          type: String(type),
+          stage: stage ? String(stage) : undefined,
+          message: String(message),
+          data: data && typeof data === 'object' ? (data as Record<string, unknown>) : undefined,
+        })
+      } catch {
+        events.push({ ts: new Date().toISOString(), type: 'info', message: line })
+      }
+    }
+    return events
+  }
+
   const jsonlPath = path.join(runDir, 'events.jsonl')
   if (await fileExists(jsonlPath)) {
     const lines = await readTailLines(jsonlPath, limit)
@@ -117,19 +140,19 @@ async function readEvents(runDir: string, limit: number): Promise<RunEvent[]> {
       try {
         const rec = JSON.parse(line)
         const ts = rec.ts || rec.timestamp || rec.time || new Date().toISOString()
-        const level = rec.level || rec.severity || rec.type || 'info'
+        const type = rec.type || rec.level || rec.severity || 'info'
         const stage = rec.stage || rec.agent || rec.name
         const message = rec.message || rec.msg || rec.status || line
         const data = rec.data ? rec.data : undefined
         events.push({
           ts: String(ts),
-          level: String(level).toLowerCase(),
+          type: String(type),
           stage: stage ? String(stage) : undefined,
           message: String(message),
           data: data && typeof data === 'object' ? (data as Record<string, unknown>) : undefined,
         })
       } catch {
-        events.push({ ts: new Date().toISOString(), level: 'info', message: line })
+        events.push({ ts: new Date().toISOString(), type: 'info', message: line })
       }
     }
     return events
@@ -187,8 +210,9 @@ async function listArtifacts(artifactDir: string): Promise<RunArtifact[]> {
         out.push({
           path: rel,
           type: guessMimeType(full),
-          sizeBytes: stat.size,
-          updatedAt: stat.mtime.toISOString(),
+          bytes: stat.size,
+          mtime: stat.mtime.toISOString(),
+          exists: true,
         })
       }
     }
@@ -205,16 +229,18 @@ function mapArtifactsIndex(index: any[]): RunArtifact[] {
     records.push({
       path: rel.replace(/\\/g, '/'),
       type: entry.mimeType ? String(entry.mimeType) : undefined,
-      sizeBytes: typeof entry.size === 'number' ? entry.size : undefined,
-      updatedAt: entry.createdAt ? String(entry.createdAt) : undefined,
+      bytes: typeof entry.size === 'number' ? entry.size : undefined,
+      mtime: entry.createdAt ? String(entry.createdAt) : undefined,
+      exists: true,
     })
   }
   return records
 }
 
 export async function loadRunStatus(runId: string, options: RunStatusOptions = {}): Promise<RunStatusResponse | null> {
-  const rootDir = options.rootDir ?? getAppFactoryRoot()
-  const runDir = ensureWithin(rootDir, path.join('runs', runId))
+  if (!isValidRunId(runId)) return null
+  const rootDir = options.rootDir ?? getRunsRoot()
+  const runDir = ensureWithin(rootDir, runId)
   try {
     const stat = await fs.stat(runDir)
     if (!stat.isDirectory()) return null
@@ -222,15 +248,18 @@ export async function loadRunStatus(runId: string, options: RunStatusOptions = {
     return null
   }
 
+  const statePath = path.join(runDir, 'run_state.json')
   const statusPath = path.join(runDir, 'status.json')
   const manifestPath = path.join(runDir, 'run_manifest.json')
   const summaryPath = path.join(runDir, 'orchestration-summary.json')
 
+  const runStateJson = await readJsonIfExists(statePath)
   const statusJson = await readJsonIfExists(statusPath)
   const manifestJson = await readJsonIfExists(manifestPath)
   const summaryJson = await readJsonIfExists(summaryPath)
 
   const jobType =
+    runStateJson?.job_type ||
     statusJson?.job_type ||
     manifestJson?.job_type ||
     summaryJson?.JobType ||
@@ -238,8 +267,14 @@ export async function loadRunStatus(runId: string, options: RunStatusOptions = {
     undefined
 
   const stages: RunStage[] = []
-  if (Array.isArray(statusJson?.stages)) {
-    for (const stage of statusJson.stages) {
+  const stageSource = Array.isArray(runStateJson?.stages)
+    ? runStateJson?.stages
+    : Array.isArray(statusJson?.stages)
+      ? statusJson.stages
+      : null
+
+  if (stageSource) {
+    for (const stage of stageSource) {
       if (!stage) continue
       stages.push({
         id: String(stage.id || stage.name || 'stage'),
@@ -255,15 +290,16 @@ export async function loadRunStatus(runId: string, options: RunStatusOptions = {
     }
   }
 
-  const state =
+  const status =
     normalizeState(
-      statusJson?.state ||
+      runStateJson?.status ||
+        statusJson?.state ||
         statusJson?.status ||
         summaryJson?.status ||
         summaryJson?.Status
     ) || 'running'
 
-  let currentStage = statusJson?.current_stage || statusJson?.currentStage || null
+  let currentStage = runStateJson?.current_stage || statusJson?.current_stage || statusJson?.currentStage || null
   if (!currentStage && stages.length) {
     const runningStage = stages.find((s) => s.status === 'running')
     currentStage = runningStage?.id || stages.find((s) => s.status === 'pending')?.id || null
@@ -273,7 +309,15 @@ export async function loadRunStatus(runId: string, options: RunStatusOptions = {
 
   const artifactsDir = path.join(runDir, 'artifacts')
   let artifacts: RunArtifact[] = []
-  if (await fileExists(artifactsDir)) {
+  if (Array.isArray(runStateJson?.artifacts)) {
+    artifacts = runStateJson.artifacts.map((entry: any) => ({
+      path: String(entry.path || ''),
+      exists: entry.exists !== false,
+      bytes: typeof entry.bytes === 'number' ? entry.bytes : undefined,
+      mtime: entry.mtime ? String(entry.mtime) : undefined,
+      type: entry.type ? String(entry.type) : undefined,
+    }))
+  } else if (await fileExists(artifactsDir)) {
     artifacts = await listArtifacts(artifactsDir)
   } else {
     const indexJson = await readJsonIfExists(path.join(runDir, 'artifacts_index.json'))
@@ -285,58 +329,49 @@ export async function loadRunStatus(runId: string, options: RunStatusOptions = {
   const prJson =
     (await readJsonIfExists(path.join(artifactsDir, 'pr.json'))) ||
     (await readJsonIfExists(path.join(runDir, 'pr.json')))
-  const changesetJson =
-    (await readJsonIfExists(path.join(artifactsDir, 'changeset.summary.json'))) ||
-    (await readJsonIfExists(path.join(runDir, 'changeset.summary.json')))
-  const prError =
-    (await readTextIfExists(path.join(artifactsDir, 'pr_error.md'))) ||
-    (await readTextIfExists(path.join(runDir, 'pr_error.md')))
 
-  const prSummary = prJson
-    ? {
-        status: prJson.status as string | undefined,
-        url: prJson.pr?.url as string | undefined,
-        number: prJson.pr?.number as number | undefined,
-        draft: prJson.pr?.draft as boolean | undefined,
-        base: prJson.pr?.base as string | undefined,
-        head: prJson.pr?.head as string | undefined,
-        title: prJson.pr?.title as string | undefined,
-      }
-    : undefined
+  const prUrlFromJson = prJson?.pr?.url || prJson?.pr_url
+  const links = {
+    pr_url: runStateJson?.links?.pr_url || (prUrlFromJson ? String(prUrlFromJson) : undefined),
+    repo_url: runStateJson?.links?.repo_url || runStateJson?.links?.repo,
+  }
 
-  const filesChanged = Array.isArray(changesetJson?.files_changed)
-    ? changesetJson.files_changed.map((item: unknown) => String(item))
-    : undefined
+  const stageCount =
+    typeof runStateJson?.stage_count === 'number'
+      ? runStateJson.stage_count
+      : stages.length
+        ? stages.length
+        : undefined
 
-  const changesetSummary = changesetJson
-    ? {
-        filesChanged: filesChanged?.length,
-        locAdded: typeof changesetJson.loc_added === 'number' ? changesetJson.loc_added : undefined,
-        locRemoved: typeof changesetJson.loc_removed === 'number' ? changesetJson.loc_removed : undefined,
-        files: filesChanged,
-      }
-    : undefined
+  const stageIndex =
+    typeof runStateJson?.stage_index === 'number'
+      ? runStateJson.stage_index
+      : stages.length && currentStage
+        ? Math.max(0, stages.findIndex((s) => s.id === currentStage))
+        : undefined
+
+  let progress = typeof runStateJson?.progress === 'number' ? runStateJson.progress : undefined
+  if (progress == null && typeof stageIndex === 'number' && typeof stageCount === 'number' && stageCount > 0) {
+    progress = Math.round(((stageIndex + 1) / stageCount) * 100)
+  }
 
   return {
     runId,
     jobType,
-    startedAt: statusJson?.started_at || statusJson?.startedAt || summaryJson?.StartTime || summaryJson?.started_at,
-    updatedAt: statusJson?.updated_at || statusJson?.updatedAt,
-    finishedAt: statusJson?.finished_at || statusJson?.finishedAt || summaryJson?.EndTime || summaryJson?.ended_at,
-    state,
+    status,
     currentStage,
+    stageIndex: typeof stageIndex === 'number' ? stageIndex : undefined,
+    stageCount,
+    progress,
+    startedAt: runStateJson?.started_at || statusJson?.started_at || statusJson?.startedAt || summaryJson?.StartTime || summaryJson?.started_at,
+    updatedAt: runStateJson?.updated_at || statusJson?.updated_at || statusJson?.updatedAt,
+    endedAt: runStateJson?.ended_at || statusJson?.finished_at || statusJson?.finishedAt || summaryJson?.EndTime || summaryJson?.ended_at,
     stages,
     events,
     artifacts,
-    error: statusJson?.error
-      ? {
-          code: statusJson.error.code,
-          message: statusJson.error.message || 'Run failed',
-          details: statusJson.error.details,
-        }
-      : undefined,
-    pr: prSummary,
-    changeset: changesetSummary,
-    prError: prError ?? undefined,
+    risk: runStateJson?.risk,
+    links,
+    errors: Array.isArray(runStateJson?.errors) ? runStateJson.errors : undefined,
+    warnings: Array.isArray(runStateJson?.warnings) ? runStateJson.warnings : undefined,
   }
 }

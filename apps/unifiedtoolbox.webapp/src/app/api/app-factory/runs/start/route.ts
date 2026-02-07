@@ -4,7 +4,7 @@ import { randomUUID } from 'crypto'
 import { spawn } from 'child_process'
 import fs from 'fs'
 import { promises as fsp } from 'fs'
-import { getAppFactoryRoot } from '@/lib/app-factory/runs/runStatus'
+import { getRunsRoot } from '@/lib/app-factory/runs/runStatus'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -61,28 +61,36 @@ export async function POST(req: Request) {
   request.run_id = runId
   request.job_type = jobType
 
-  const workRootDir = getAppFactoryRoot()
-  const runDir = ensureWithin(workRootDir, path.join('runs', runId))
+  const runsRoot = getRunsRoot()
+  const runDir = ensureWithin(runsRoot, runId)
   await fsp.mkdir(runDir, { recursive: true })
 
   const requestPath = path.join(runDir, 'request.json')
   await fsp.writeFile(requestPath, JSON.stringify(request, null, 2) + '\n', 'utf8')
 
-  const statusPath = path.join(runDir, 'status.json')
+  const statePath = path.join(runDir, 'run_state.json')
   const now = new Date().toISOString()
-  const status = {
-    schema_version: '1.0',
+  const runState = {
     run_id: runId,
     job_type: jobType,
-    state: 'queued',
+    status: 'queued',
+    current_stage: null,
+    stage_index: 0,
+    stage_count: 0,
+    progress: 0,
     started_at: now,
     updated_at: now,
-    stages: [],
+    ended_at: null,
+    risk: { level: 'low', reasons: [] },
+    artifacts: [],
+    links: {},
+    errors: [],
+    warnings: [],
   }
-  await fsp.writeFile(statusPath, JSON.stringify(status, null, 2) + '\n', 'utf8')
+  await fsp.writeFile(statePath, JSON.stringify(runState, null, 2) + '\n', 'utf8')
 
-  const eventsPath = path.join(runDir, 'events.jsonl')
-  await fsp.appendFile(eventsPath, JSON.stringify({ ts: now, level: 'info', message: 'queued' }) + '\n', 'utf8')
+  const eventsPath = path.join(runDir, 'events.ndjson')
+  await fsp.appendFile(eventsPath, JSON.stringify({ ts: now, type: 'info', message: 'queued' }) + '\n', 'utf8')
 
   const repoRoot = path.resolve(process.cwd(), '..', '..')
   const scriptPath = path.join(repoRoot, 'Orchestration', 'scripts', 'MilestoneController.ps1')

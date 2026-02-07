@@ -23,7 +23,7 @@ export function useRunStatus(runId: string | null, options: UseRunStatusOptions 
     let cancelled = false
     let timer: NodeJS.Timeout | null = null
 
-    const fetchStatus = async () => {
+    const fetchStatus = async (): Promise<RunStatusResponse['status'] | null> => {
       if (cancelled) return
       setLoading(true)
       try {
@@ -33,37 +33,45 @@ export function useRunStatus(runId: string | null, options: UseRunStatusOptions 
           const msg = json?.error?.message || `Failed to load run status (${res.status})`
           if (!cancelled) setError(msg)
           if (!cancelled) setStatus(null)
+          return null
         } else {
           if (!cancelled) setStatus(json as RunStatusResponse)
           if (!cancelled) setError(null)
+          return (json as RunStatusResponse).status
         }
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load run status')
         if (!cancelled) setStatus(null)
+        return null
       } finally {
         if (!cancelled) setLoading(false)
       }
     }
 
-    const schedule = () => {
+    const scheduleNext = (delayMs: number) => {
       if (cancelled) return
-      timer = setInterval(() => {
+      timer = setTimeout(async () => {
+        const state = await fetchStatus()
         if (cancelled) return
-        const state = status?.state
-        if (!state || state === 'queued' || state === 'running') {
-          void fetchStatus()
-        }
-      }, pollIntervalMs)
+        const nextDelay =
+          state === 'queued' || state === 'running' || !state
+            ? pollIntervalMs
+            : 5000
+        scheduleNext(nextDelay)
+      }, delayMs)
     }
 
-    void fetchStatus()
-    schedule()
+    void fetchStatus().then((state) => {
+      if (cancelled) return
+      const delay = state === 'queued' || state === 'running' || !state ? pollIntervalMs : 5000
+      scheduleNext(delay)
+    })
 
     return () => {
       cancelled = true
-      if (timer) clearInterval(timer)
+      if (timer) clearTimeout(timer)
     }
-  }, [enabled, runId, pollIntervalMs, status?.state])
+  }, [enabled, runId, pollIntervalMs])
 
   return { status, error, loading }
 }

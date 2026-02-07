@@ -257,8 +257,12 @@ function Invoke-PRPublisher {
     }
 
     $baseStrategy = Get-PropValue -Object $conflictPolicy -Name "base_branch_strategy" -Default "default_branch"
+    $explicitBase = Get-PropValue -Object $conflictPolicy -Name "base_branch" -Default ""
     if ($baseStrategy -eq "target_branch" -and $targetBranches.Count -gt 0) {
         $baseBranch = [string]$targetBranches[0]
+    }
+    elseif ($baseStrategy -eq "explicit" -and $explicitBase) {
+        $baseBranch = [string]$explicitBase
     }
 
     $openPrCount = $null
@@ -277,10 +281,15 @@ function Invoke-PRPublisher {
     }
     $highChurn = ($churnItems.Count -ge 5 -or $maxChurnScore -ge 5)
     $tooManyPrs = ($null -ne $openPrCount -and $openPrCount -gt $maxOpenPrs)
-    $conflictRisk = if ($tooManyPrs -or $highChurn) { "high" } else { "low" }
+    $riskReasons = @()
+    if ($tooManyPrs) { $riskReasons += "open_pr_count_exceeded" }
+    if ($highChurn) { $riskReasons += "high_churn_detected" }
+    $riskLevel = "low"
+    if ($riskReasons.Count -eq 1) { $riskLevel = "medium" }
+    elseif ($riskReasons.Count -gt 1) { $riskLevel = "high" }
 
     $draftOnHighRisk = [bool](Get-PropValue -Object $prPolicy -Name "draft_on_high_risk" -Default $true)
-    $isDraft = ($draftOnHighRisk -and $conflictRisk -eq "high")
+    $isDraft = ($draftOnHighRisk -and $riskLevel -ne "low")
 
     $options = @()
     if ($baseBranch) { $options += $baseBranch }
@@ -289,7 +298,35 @@ function Invoke-PRPublisher {
         strategy = $baseStrategy
         selected = $baseBranch
         options = @($options | Select-Object -Unique)
-        reason = $(if ($conflictRisk -eq "high") { "conflict_risk_high" } else { "default" })
+        reason = $(if ($riskLevel -ne "low") { "conflict_risk_high" } else { "default" })
+    }
+
+    if ($riskLevel -ne "low" -and ($baseStrategy -ne "explicit" -or -not $explicitBase)) {
+        $payload = [pscustomobject]@{
+            schema_version = "1.0"
+            run_id = $runId
+            status = "failed"
+            errors = @([pscustomobject]@{
+                code = "BASE_BRANCH_DECISION_REQUIRED"
+                message = "Conflict risk is elevated; explicit base branch decision is required."
+            })
+            risk = [pscustomobject]@{
+                level = $riskLevel
+                reasons = @($riskReasons)
+            }
+            conflict = [pscustomobject]@{
+                level = $riskLevel
+                open_pr_count = $openPrCount
+                max_open_prs = $maxOpenPrs
+                high_churn = $highChurn
+                reasons = @($riskReasons)
+            }
+            base_branch_decision = $baseDecision
+        }
+        $md = "# PR Publication`n`nFailed: explicit base branch decision required."
+        Write-PrArtifacts -OutputDir $OutputDir -Payload $payload -Markdown $md | Out-Null
+        Write-PrError -OutputDir $OutputDir -Message "Explicit base branch decision required under elevated conflict risk." -SuggestedFix "Set conflict_policy.base_branch_strategy=explicit and provide conflict_policy.base_branch in the contract request." | Out-Null
+        throw "PRPublisher failed: explicit base branch decision required."
     }
 
     $evidencePath = Join-Path $OutputDir "evidence.json"
@@ -332,7 +369,7 @@ function Invoke-PRPublisher {
 
     $riskLines = @()
     if ($riskLevel) { $riskLines += "- Risk level: $riskLevel" }
-    $riskLines += "- Conflict risk: $conflictRisk"
+    $riskLines += "- Conflict risk: $riskLevel"
     if ($tooManyPrs) { $riskLines += "- Open PR count ($openPrCount) exceeds max_open_prs ($maxOpenPrs)" }
     if ($highChurn) { $riskLines += "- High churn detected in recent commits" }
 
@@ -392,19 +429,20 @@ function Invoke-PRPublisher {
             base = $baseBranch
         }
         conflict = [pscustomobject]@{
-            level = $conflictRisk
+            level = $riskLevel
             open_pr_count = $openPrCount
             max_open_prs = $maxOpenPrs
             high_churn = $highChurn
-            reasons = @()
+            reasons = @($riskReasons)
+        }
+        risk = [pscustomobject]@{
+            level = $riskLevel
+            reasons = @($riskReasons)
         }
         base_branch_decision = $baseDecision
         pr = $null
         errors = @()
     }
-
-    if ($tooManyPrs) { $prPayload.conflict.reasons += "open_pr_count_exceeded" }
-    if ($highChurn) { $prPayload.conflict.reasons += "high_churn_detected" }
 
     # Git operations
     Write-StageLog "Preparing maintenance branch $branchName from $baseBranch"

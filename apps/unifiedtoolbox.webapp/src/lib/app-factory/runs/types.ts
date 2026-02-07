@@ -10,7 +10,7 @@ export type RunStage = {
 
 export type RunEvent = {
   ts: string
-  level?: string
+  type?: string
   stage?: string
   message: string
   data?: Record<string, unknown>
@@ -19,36 +19,27 @@ export type RunEvent = {
 export type RunArtifact = {
   path: string
   type?: string
-  sizeBytes?: number
-  updatedAt?: string
+  exists?: boolean
+  bytes?: number
+  mtime?: string
 }
 
 export type RunStatusResponse = {
   runId: string
   jobType?: string
+  status: 'queued' | 'running' | 'succeeded' | 'failed'
+  currentStage?: string | null
+  stageIndex?: number
+  stageCount?: number
+  progress?: number
   startedAt?: string
   updatedAt?: string
-  finishedAt?: string
-  state: 'queued' | 'running' | 'succeeded' | 'failed'
-  currentStage?: string | null
+  endedAt?: string
   stages: RunStage[]
   events: RunEvent[]
   artifacts: RunArtifact[]
-  error?: { code?: string; message: string; details?: unknown }
-  pr?: {
-    status?: string
-    url?: string
-    number?: number
-    draft?: boolean
-    base?: string
-    head?: string
-    title?: string
-  }
-  changeset?: {
-    filesChanged?: number
-    locAdded?: number
-    locRemoved?: number
-    files?: string[]
-  }
-  prError?: string
+  risk?: { level?: 'low' | 'medium' | 'high'; reasons?: string[] }
+  links?: { pr_url?: string; repo_url?: string }
+  errors?: string[]
+  warnings?: string[]
 }

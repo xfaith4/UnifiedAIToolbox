@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import path from 'path'
 import { promises as fs } from 'fs'
 import { zipDirectoryToBuffer } from '@/lib/app-factory/pipeline/zipRepo'
-import { getAppFactoryRoot } from '@/lib/app-factory/runs/runStatus'
+import { getRunsRoot, isValidRunId } from '@/lib/app-factory/runs/runStatus'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -46,37 +46,38 @@ export async function GET(req: Request, { params }: { params: { runId: string } 
   if (!runId) {
     return NextResponse.json({ error: { code: 'MISSING_RUN_ID', message: 'Missing runId' } }, { status: 400 })
   }
+  if (!isValidRunId(runId)) {
+    return NextResponse.json({ error: { code: 'INVALID_RUN_ID', message: 'Invalid runId' } }, { status: 400 })
+  }
 
-  const workRootDir = getAppFactoryRoot()
-  const runDir = ensureWithin(workRootDir, path.join('runs', runId))
+  const runsRoot = getRunsRoot()
+  const runDir = ensureWithin(runsRoot, runId)
 
   if (!(await dirExists(runDir))) {
     return NextResponse.json({ error: { code: 'RUN_NOT_FOUND', message: `Run not found: ${runId}` } }, { status: 404 })
   }
 
-  const url = new URL(req.url)
-  const mode = (url.searchParams.get('mode') || '').toLowerCase()
-  const useFull = mode === 'full'
-  const targetDir = useFull ? runDir : path.join(runDir, 'artifacts')
-
-  if (!useFull) {
-    const hasArtifacts = await dirHasFiles(targetDir)
-    if (!hasArtifacts) {
-      return NextResponse.json(
-        { error: { code: 'NO_ARTIFACTS', message: 'No artifacts found for this run.', details: { path: targetDir } } },
-        { status: 409 }
-      )
-    }
+  const hasFiles = await dirHasFiles(runDir)
+  if (!hasFiles) {
+    return NextResponse.json(
+      {
+        error: {
+          code: 'RUN_EMPTY',
+          message: 'Run folder exists but contains no files.',
+          details: { path: runDir, hint: 'Ensure the orchestrator wrote run_state.json or artifacts before exporting.' },
+        },
+      },
+      { status: 409 }
+    )
   }
 
   try {
-    const zip = await zipDirectoryToBuffer(targetDir)
-    const fileLabel = useFull ? 'full' : 'artifacts'
+    const zip = await zipDirectoryToBuffer(runDir)
     return new NextResponse(new Uint8Array(zip), {
       status: 200,
       headers: {
         'Content-Type': 'application/zip',
-        'Content-Disposition': `attachment; filename="run-${runId}-${fileLabel}.zip"`,
+        'Content-Disposition': `attachment; filename="run-${runId}.zip"`,
         'Cache-Control': 'no-store',
       },
     })

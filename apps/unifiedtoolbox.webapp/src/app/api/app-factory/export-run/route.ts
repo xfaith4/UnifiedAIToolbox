@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import path from 'path'
 import { promises as fs } from 'fs'
 import { zipDirectoryToBuffer } from '@/lib/app-factory/pipeline/zipRepo'
+import { getRunsRoot, isValidRunId } from '@/lib/app-factory/runs/runStatus'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -19,9 +20,10 @@ export async function POST(req: Request) {
   try {
     const payload = (await req.json()) as ExportRunRequest
     if (!payload?.runId) return NextResponse.json({ error: 'Missing runId' }, { status: 400 })
+    if (!isValidRunId(payload.runId)) return NextResponse.json({ error: 'Invalid runId' }, { status: 400 })
 
-    const workRootDir = path.resolve(process.cwd(), '..', '..', '.uaitoolbox', 'app-factory')
-    const repoDir = ensureWithin(workRootDir, path.join('runs', payload.runId, 'repo'))
+    const runsRoot = getRunsRoot()
+    const repoDir = ensureWithin(runsRoot, path.join(payload.runId, 'repo'))
 
     try {
       const stat = await fs.stat(repoDir)
@@ -42,4 +44,3 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Unhandled export-run error', detail: err instanceof Error ? err.message : String(err) }, { status: 500 })
   }
 }
-

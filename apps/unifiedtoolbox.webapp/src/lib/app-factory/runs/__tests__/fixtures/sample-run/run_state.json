@@ -1,0 +1,25 @@
+{
+  "run_id": "sample-run",
+  "job_type": "maintain_existing_app",
+  "status": "running",
+  "current_stage": "RepoContextBuilder",
+  "stage_index": 0,
+  "stage_count": 3,
+  "progress": 10,
+  "started_at": "2026-02-07T10:00:00Z",
+  "updated_at": "2026-02-07T10:05:00Z",
+  "ended_at": null,
+  "risk": { "level": "medium", "reasons": ["open_pr_count_exceeded"] },
+  "artifacts": [
+    { "path": "artifacts/pr.json", "exists": true, "bytes": 120, "mtime": "2026-02-07T10:04:00Z" },
+    { "path": "artifacts/pr.md", "exists": true, "bytes": 90, "mtime": "2026-02-07T10:04:00Z" }
+  ],
+  "links": { "pr_url": "https://example.com/pr/1", "repo_url": "https://example.com/repo" },
+  "errors": [],
+  "warnings": [],
+  "stages": [
+    { "id": "RepoContextBuilder", "name": "Repo Context", "status": "running", "started_at": "2026-02-07T10:00:00Z", "finished_at": null },
+    { "id": "Engineer", "name": "Engineer", "status": "pending", "started_at": null, "finished_at": null },
+    { "id": "PRPublisher", "name": "PR Publisher", "status": "pending", "started_at": null, "finished_at": null }
+  ]
+}

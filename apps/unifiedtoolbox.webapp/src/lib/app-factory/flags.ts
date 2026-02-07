@@ -16,7 +16,7 @@ function parseIntPositive(value: string | undefined, defaultValue: number): numb
 }
 
 export const featureFlags = {
-  hardeningPipeline: () => parseBool(process.env.HARDENING_PIPELINE, false),
+  hardeningPipeline: () => parseBool(process.env.HARDENING_PIPELINE, true),
   parallelTeams: () => parseBool(process.env.PARALLEL_TEAMS, false),
   maxParallelTeams: () => parseIntPositive(process.env.MAX_PARALLEL_TEAMS, 4),
   requirementWizard: () => parseBool(process.env.REQUIREMENT_WIZARD, false),

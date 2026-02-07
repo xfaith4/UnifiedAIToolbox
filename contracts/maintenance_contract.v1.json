@@ -168,7 +168,8 @@
             "base_branch_strategy": {
               "type": "string",
               "enum": ["default_branch", "target_branch", "explicit"]
-            }
+            },
+            "base_branch": { "type": "string" }
           }
         },
         "diff_gate": {

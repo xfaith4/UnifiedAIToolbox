@@ -1,21 +1,19 @@
-import { promises as fs } from 'fs'
-import os from 'os'
 import path from 'path'
+import { fileURLToPath } from 'url'
 import JSZip from 'jszip'
 import { describe, expect, it } from 'vitest'
 import { zipDirectoryToBuffer } from '../../pipeline/zipRepo'
 
 describe('run export', () => {
-  it('zips artifacts directory contents', async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'uaitoolbox-zip-'))
-    const artifactsDir = path.join(root, 'artifacts')
-    await fs.mkdir(artifactsDir, { recursive: true })
-    await fs.writeFile(path.join(artifactsDir, 'REPORT.md'), '# Report\n', 'utf8')
-
-    const buffer = await zipDirectoryToBuffer(artifactsDir)
+  it('zips run folder contents', async () => {
+    const fixturesRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures')
+    const runDir = path.join(fixturesRoot, 'sample-run')
+    const buffer = await zipDirectoryToBuffer(runDir)
     const zip = await JSZip.loadAsync(buffer)
     const files = Object.keys(zip.files)
 
-    expect(files).toContain('REPORT.md')
+    expect(files).toContain('run_state.json')
+    expect(files).toContain('events.ndjson')
+    expect(files).toContain('artifacts/pr.md')
   })
 })

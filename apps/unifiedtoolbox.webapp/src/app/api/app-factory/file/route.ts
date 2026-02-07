@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server'
 import path from 'path'
 import { promises as fs } from 'fs'
+import { getRunsRoot, isValidRunId } from '@/lib/app-factory/runs/runStatus'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-type FileRequest = { runId: string; relPath: string }
+type FileRequest = { runId: string; relPath: string; scope?: 'repo' | 'run' }
 
 const MAX_CHARS = 12000
 
@@ -31,18 +32,21 @@ export async function POST(req: Request) {
   try {
     const payload = (await req.json()) as FileRequest
     if (!payload?.runId) return NextResponse.json({ error: 'Missing runId' }, { status: 400 })
+    if (!isValidRunId(payload.runId)) return NextResponse.json({ error: 'Invalid runId' }, { status: 400 })
     if (!payload?.relPath) return NextResponse.json({ error: 'Missing relPath' }, { status: 400 })
 
-    const workRootDir = path.resolve(process.cwd(), '..', '..', '.uaitoolbox', 'app-factory')
-    const repoRoot = ensureWithin(workRootDir, path.join('runs', payload.runId, 'repo'))
+    const runsRoot = getRunsRoot()
+    const runRoot = ensureWithin(runsRoot, payload.runId)
+    const repoRoot = ensureWithin(runsRoot, path.join(payload.runId, 'repo'))
+    const scope = payload.scope === 'run' ? 'run' : 'repo'
+    const baseDir = scope === 'run' ? runRoot : repoRoot
     const rel = safeRel(payload.relPath)
-    const full = ensureWithin(repoRoot, rel)
+    const full = ensureWithin(baseDir, rel)
 
     const text = await fs.readFile(full, 'utf8')
     const body = text.length <= MAX_CHARS ? text : text.slice(0, MAX_CHARS) + '\n... (truncated)\n'
-    return NextResponse.json({ runId: payload.runId, relPath: rel, content: body })
+    return NextResponse.json({ runId: payload.runId, relPath: rel, content: body, scope })
   } catch (err) {
     return NextResponse.json({ error: 'Unhandled file read error', detail: err instanceof Error ? err.message : String(err) }, { status: 500 })
   }
 }
-

@@ -107,6 +107,8 @@ $script:StatusPath = $null
 $script:EventsPath = $null
 $script:EventsLogPath = $null
 $script:RunStatus = $null
+$script:StageOrder = @()
+$script:KnownArtifacts = @{}
 
 function Get-RepoRoot {
     return (Resolve-Path (Join-Path $PSScriptRoot "..\\..")).Path
@@ -798,7 +800,7 @@ function Write-Log {
     }
     if ($script:EventsPath) {
         try {
-            Append-RunEvent -Level $Level -Stage $null -Message $Message
+            Append-RunEvent -Type $Level.ToLowerInvariant() -Stage $null -Message $Message
         }
         catch { }
     }
@@ -807,12 +809,15 @@ function Write-Log {
 function Save-RunStatus {
     if (-not $script:RunStatus -or -not $script:StatusPath) { return }
     $script:RunStatus.updated_at = (Get-Date).ToUniversalTime().ToString("o")
-    $script:RunStatus | ConvertTo-Json -Depth 20 | Set-Content -Path $script:StatusPath -Encoding UTF8
+    $json = $script:RunStatus | ConvertTo-Json -Depth 20
+    $tmp = "$($script:StatusPath).tmp"
+    $json | Set-Content -Path $tmp -Encoding UTF8
+    Move-Item -Path $tmp -Destination $script:StatusPath -Force
 }
 
 function Append-RunEvent {
     param(
-        [string]$Level = "info",
+        [string]$Type = "info",
         [AllowNull()][string]$Stage,
         [string]$Message,
         $Data = $null
@@ -820,7 +825,7 @@ function Append-RunEvent {
     if (-not $script:EventsPath) { return }
     $record = [ordered]@{
         ts = (Get-Date).ToUniversalTime().ToString("o")
-        level = $Level.ToLowerInvariant()
+        type = $Type
         stage = $Stage
         message = $Message
         data = $Data
@@ -830,7 +835,7 @@ function Append-RunEvent {
     if ($script:EventsLogPath) {
         $stamp = (Get-Date).ToUniversalTime().ToString("o")
         $tag = if ($Stage) { $Stage } else { "run" }
-        Add-Content -Path $script:EventsLogPath -Value ("[{0}] [{1}] [{2}] {3}" -f $stamp, $Level.ToUpperInvariant(), $tag, $Message)
+        Add-Content -Path $script:EventsLogPath -Value ("[{0}] [{1}] [{2}] {3}" -f $stamp, $Type.ToUpperInvariant(), $tag, $Message)
     }
 }
 
@@ -839,12 +844,13 @@ function Initialize-RunStatus {
         [Parameter(Mandatory = $true)][string]$OutputDir,
         [Parameter(Mandatory = $true)][array]$Stages
     )
-    $script:StatusPath = Join-Path $OutputDir "status.json"
-    $script:EventsPath = Join-Path $OutputDir "events.jsonl"
+    $script:StatusPath = Join-Path $OutputDir "run_state.json"
+    $script:EventsPath = Join-Path $OutputDir "events.ndjson"
     $script:EventsLogPath = Join-Path $OutputDir "events.log"
 
     $now = (Get-Date).ToUniversalTime().ToString("o")
     $stageRecords = @()
+    $stageOrder = @()
     foreach ($stage in $Stages) {
         $id = $null
         $name = $null
@@ -855,6 +861,7 @@ function Initialize-RunStatus {
         if (-not $id -and $stage.PSObject.Properties.Name -contains "Agent") { $id = $stage.Agent }
         if (-not $name) { $name = $id }
         if (-not $id) { continue }
+        $stageOrder += $id
         $stageRecords += [pscustomobject]@{
             id = $id
             name = $name
@@ -863,6 +870,7 @@ function Initialize-RunStatus {
             finished_at = $null
         }
     }
+    $script:StageOrder = @($stageOrder)
 
     $pipelineId = $null
     if ($script:Contract -and $script:Contract.pipeline_id) {
@@ -872,30 +880,44 @@ function Initialize-RunStatus {
         $pipelineId = $script:Routing.PipelineId
     }
 
+    $repoUrl = $null
+    if ($script:Contract -and $script:Contract.repo -and $script:Contract.repo.url) {
+        $repoUrl = $script:Contract.repo.url
+    }
+
     $script:RunStatus = [ordered]@{
-        schema_version = "1.0"
         run_id = $script:RunId
         job_type = $script:JobType
-        contract_universe = $(if ($script:Contract) { $script:Contract.contract_universe } else { $null })
-        contract_version = $(if ($script:Contract) { $script:Contract.contract_version } else { $null })
-        pipeline_id = $pipelineId
-        state = "running"
+        status = "running"
+        current_stage = $(if ($stageRecords.Count -gt 0) { $stageRecords[0].id } else { $null })
+        stage_index = 0
+        stage_count = $stageRecords.Count
+        progress = $(if ($stageRecords.Count -gt 0) { 5 } else { 0 })
         started_at = $now
         updated_at = $now
-        finished_at = $null
-        current_stage = $(if ($stageRecords.Count -gt 0) { $stageRecords[0].id } else { $null })
+        ended_at = $null
+        risk = [pscustomobject]@{ level = "low"; reasons = @() }
+        artifacts = @()
+        links = [pscustomobject]@{ pr_url = $null; repo_url = $repoUrl }
+        errors = @()
+        warnings = @()
         stages = @($stageRecords)
-        error = $null
     }
 
     Save-RunStatus
-    Append-RunEvent -Level "info" -Stage $script:RunStatus.current_stage -Message "Run started"
+    Append-RunEvent -Type "info" -Stage $script:RunStatus.current_stage -Message "Run started"
 }
 
 function Get-StageRecord {
     param([string]$StageId)
     if (-not $script:RunStatus -or -not $script:RunStatus.stages) { return $null }
     return @($script:RunStatus.stages | Where-Object { $_.id -eq $StageId } | Select-Object -First 1)[0]
+}
+
+function Get-StageIndex {
+    param([string]$StageId)
+    if (-not $script:StageOrder -or $script:StageOrder.Count -eq 0) { return $null }
+    return [array]::IndexOf($script:StageOrder, $StageId)
 }
 
 function Set-StageStatus {
@@ -920,9 +942,185 @@ function Set-StageStatus {
     if ($Status -eq "running" -and -not $stage.started_at) { $stage.started_at = $now }
     if ($Status -in @("succeeded","failed","skipped")) { $stage.finished_at = $now }
     $stage.status = $Status
-    if ($Status -eq "running") { $script:RunStatus.current_stage = $StageId }
+
+    $stageIndex = Get-StageIndex -StageId $StageId
+    $stageCount = $script:RunStatus.stage_count
+    if (-not $stageCount -and $script:StageOrder) { $stageCount = $script:StageOrder.Count }
+    if ($Status -eq "running") {
+        $script:RunStatus.current_stage = $StageId
+        if ($null -ne $stageIndex) { $script:RunStatus.stage_index = [int]$stageIndex }
+        if ($stageCount) { $script:RunStatus.stage_count = [int]$stageCount }
+        if ($stageCount -and $null -ne $stageIndex) {
+            $script:RunStatus.progress = [math]::Round(($stageIndex / [double]$stageCount) * 100)
+        }
+    }
+    elseif ($Status -in @("succeeded","failed","skipped")) {
+        if ($null -ne $stageIndex) { $script:RunStatus.stage_index = [int]$stageIndex }
+        if ($stageCount) { $script:RunStatus.stage_count = [int]$stageCount }
+        if ($stageCount -and $null -ne $stageIndex) {
+            $script:RunStatus.progress = [math]::Round((($stageIndex + 1) / [double]$stageCount) * 100)
+        }
+    }
+
+    if ($Status -in @("succeeded","failed")) {
+        Update-RunStateArtifacts -OutputDir $OutputDir
+    }
+
     Save-RunStatus
-    Append-RunEvent -Level $(if ($Status -eq "failed") { "error" } else { "info" }) -Stage $StageId -Message ("Stage {0}: {1}" -f $StageId, $Status)
+    $eventType = if ($Status -eq "running") { "stage_start" } elseif ($Status -in @("succeeded","failed","skipped")) { "stage_end" } else { "info" }
+    Append-RunEvent -Type $eventType -Stage $StageId -Message ("Stage {0}: {1}" -f $StageId, $Status)
+}
+
+function Update-RunStateArtifacts {
+    param(
+        [Parameter(Mandatory = $true)][string]$OutputDir
+    )
+    if (-not $script:RunStatus) { return }
+
+    $artifactMap = @{}
+    $specs = @()
+    if ($script:Routing -and $script:Routing.ArtifactPolicy) {
+        $specs += Get-RequiredArtifactSpecs -ArtifactPolicy $script:Routing.ArtifactPolicy
+        $specs += Get-OptionalArtifactSpecs -ArtifactPolicy $script:Routing.ArtifactPolicy
+    }
+
+    foreach ($spec in @($specs)) {
+        $candidate = if ($spec.path) { $spec.path } else { $spec.name }
+        if (-not $candidate) { continue }
+        $full = if ([System.IO.Path]::IsPathRooted($candidate)) { $candidate } else { Join-Path $OutputDir $candidate }
+        $exists = Test-Path -LiteralPath $full -PathType Leaf
+        $rel = if ($exists) { Get-RelativePath -BaseDir $OutputDir -Path $full } else { ($candidate -replace "\\", "/") }
+        $bytes = $null
+        $mtime = $null
+        if ($exists) {
+            $item = Get-Item -LiteralPath $full -ErrorAction SilentlyContinue
+            if ($item) {
+                $bytes = $item.Length
+                $mtime = $item.LastWriteTimeUtc.ToString("o")
+            }
+        }
+        if (-not $artifactMap.ContainsKey($rel)) {
+            $artifactMap[$rel] = [pscustomobject]@{
+                path = $rel
+                exists = [bool]$exists
+                bytes = $bytes
+                mtime = $mtime
+            }
+        }
+    }
+
+    foreach ($name in @("run_error.md", "pr_error.md")) {
+        $path = Join-Path $OutputDir $name
+        if (Test-Path -LiteralPath $path -PathType Leaf) {
+            $rel = Get-RelativePath -BaseDir $OutputDir -Path $path
+            if (-not $artifactMap.ContainsKey($rel)) {
+                $item = Get-Item -LiteralPath $path -ErrorAction SilentlyContinue
+                $artifactMap[$rel] = [pscustomobject]@{
+                    path = $rel
+                    exists = $true
+                    bytes = $(if ($item) { $item.Length } else { $null })
+                    mtime = $(if ($item) { $item.LastWriteTimeUtc.ToString("o") } else { $null })
+                }
+            }
+        }
+    }
+
+    $artifactRoot = Join-Path $OutputDir "artifacts"
+    if (Test-Path -LiteralPath $artifactRoot -PathType Container) {
+        $files = Get-ChildItem -LiteralPath $artifactRoot -Recurse -File -ErrorAction SilentlyContinue
+        foreach ($file in $files) {
+            $rel = Get-RelativePath -BaseDir $OutputDir -Path $file.FullName
+            $basename = [System.IO.Path]::GetFileName($rel)
+            if ($artifactMap.ContainsKey($rel) -or $artifactMap.ContainsKey($basename)) { continue }
+            $artifactMap[$rel] = [pscustomobject]@{
+                path = $rel
+                exists = $true
+                bytes = $file.Length
+                mtime = $file.LastWriteTimeUtc.ToString("o")
+            }
+        }
+    }
+
+    $previous = @{}
+    if ($script:RunStatus.artifacts) {
+        foreach ($entry in @($script:RunStatus.artifacts)) {
+            if ($entry -and $entry.path -and $entry.exists -ne $false) {
+                $previous[$entry.path] = $true
+            }
+        }
+    }
+
+    $artifactList = @($artifactMap.Values | Sort-Object -Property path)
+    foreach ($entry in $artifactList) {
+        if ($entry.exists -and -not $previous.ContainsKey($entry.path)) {
+            Append-RunEvent -Type "artifact_written" -Stage $script:RunStatus.current_stage -Message ("Artifact written: {0}" -f $entry.path) -Data ([pscustomobject]@{ bytes = $entry.bytes; mtime = $entry.mtime })
+        }
+    }
+    $script:RunStatus.artifacts = $artifactList
+
+    $prJson = $null
+    foreach ($candidate in @(
+        (Join-Path $OutputDir "pr.json"),
+        (Join-Path $OutputDir "artifacts\\pr.json")
+    )) {
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+            try {
+                $prJson = Get-Content -Raw -LiteralPath $candidate | ConvertFrom-Json -Depth 20
+                break
+            }
+            catch { }
+        }
+    }
+
+    if ($prJson) {
+        $prUrl = $null
+        if ($prJson.pr -and $prJson.pr.url) { $prUrl = $prJson.pr.url }
+        elseif ($prJson.pr_url) { $prUrl = $prJson.pr_url }
+        if ($prUrl) {
+            if (-not $script:RunStatus.links) { $script:RunStatus.links = [pscustomobject]@{} }
+            $script:RunStatus.links.pr_url = $prUrl
+        }
+
+        $riskLevel = $null
+        if ($prJson.risk -and $prJson.risk.level) { $riskLevel = $prJson.risk.level }
+        elseif ($prJson.conflict -and $prJson.conflict.level) { $riskLevel = $prJson.conflict.level }
+        if ($riskLevel) {
+            if (-not $script:RunStatus.risk) { $script:RunStatus.risk = [pscustomobject]@{} }
+            $script:RunStatus.risk.level = $riskLevel
+        }
+
+        $riskReasons = $null
+        if ($prJson.risk -and $prJson.risk.reasons) { $riskReasons = @($prJson.risk.reasons) }
+        elseif ($prJson.conflict -and $prJson.conflict.reasons) { $riskReasons = @($prJson.conflict.reasons) }
+        if ($riskReasons) {
+            if (-not $script:RunStatus.risk) { $script:RunStatus.risk = [pscustomobject]@{} }
+            $script:RunStatus.risk.reasons = @($riskReasons)
+        }
+
+        if ($prJson.status -eq "failed" -and $prJson.errors) {
+            if (-not $script:RunStatus.errors) { $script:RunStatus.errors = @() }
+            foreach ($err in @($prJson.errors)) {
+                $msg = if ($err.message) { $err.message } else { [string]$err }
+                if ($msg -and -not ($script:RunStatus.errors -contains $msg)) {
+                    $script:RunStatus.errors += $msg
+                }
+            }
+        }
+    }
+
+    if (-not $script:RunStatus.links -or -not $script:RunStatus.links.repo_url) {
+        $repoContextPath = Join-Path $OutputDir "repo_context.json"
+        if (Test-Path -LiteralPath $repoContextPath -PathType Leaf) {
+            try {
+                $repoContext = Get-Content -Raw -LiteralPath $repoContextPath | ConvertFrom-Json -Depth 20
+                if ($repoContext.repo -and $repoContext.repo.url) {
+                    if (-not $script:RunStatus.links) { $script:RunStatus.links = [pscustomobject]@{} }
+                    $script:RunStatus.links.repo_url = $repoContext.repo.url
+                }
+            }
+            catch { }
+        }
+    }
 }
 
 function Set-RunState {
@@ -931,18 +1129,16 @@ function Set-RunState {
         [string]$ErrorMessage
     )
     if (-not $script:RunStatus) { return }
-    $script:RunStatus.state = $State
+    $script:RunStatus.status = $State
     if ($State -in @("succeeded","failed")) {
-        $script:RunStatus.finished_at = (Get-Date).ToUniversalTime().ToString("o")
+        $script:RunStatus.ended_at = (Get-Date).ToUniversalTime().ToString("o")
     }
     if ($ErrorMessage) {
-        $script:RunStatus.error = [pscustomobject]@{
-            code = "RUN_FAILED"
-            message = $ErrorMessage
-        }
+        if (-not $script:RunStatus.errors) { $script:RunStatus.errors = @() }
+        $script:RunStatus.errors += $ErrorMessage
     }
     Save-RunStatus
-    Append-RunEvent -Level $(if ($State -eq "failed") { "error" } else { "info" }) -Stage $script:RunStatus.current_stage -Message ("Run {0}" -f $State)
+    Append-RunEvent -Type $(if ($State -eq "failed") { "error" } else { "info" }) -Stage $script:RunStatus.current_stage -Message ("Run {0}" -f $State)
 }
 
 function Initialize-Orchestration {
@@ -1462,7 +1658,7 @@ function Execute-MilestonePipeline {
         }
         catch {
             if ($stageId) { Set-StageStatus -StageId $stageId -Status "failed" }
-            Append-RunEvent -Level "error" -Stage $stageId -Message ("Milestone failed: {0}" -f $_)
+            Append-RunEvent -Type "error" -Stage $stageId -Message ("Milestone failed: {0}" -f $_)
             throw
         }
     }
@@ -1782,6 +1978,8 @@ try {
     if ($artifactIndexPath) {
         Write-Log "Artifact index saved to: $artifactIndexPath"
     }
+    Update-RunStateArtifacts -OutputDir $OutputDir
+    Save-RunStatus
 
     Set-RunState -State "succeeded"
     
@@ -1803,6 +2001,8 @@ catch {
             if ($artifactIndexPath) {
                 Write-Log "Artifact index saved to: $artifactIndexPath"
             }
+            Update-RunStateArtifacts -OutputDir $OutputDir
+            Save-RunStatus
         }
     }
     catch {

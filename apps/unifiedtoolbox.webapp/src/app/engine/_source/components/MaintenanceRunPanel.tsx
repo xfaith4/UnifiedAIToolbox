@@ -6,6 +6,7 @@ type Props = {
   status: RunStatusResponse | null
   loading?: boolean
   error?: string | null
+  onOpenArtifact?: (path: string) => void
 }
 
 function badgeClass(state: string) {
@@ -45,7 +46,22 @@ function formatTime(value?: string) {
   return d.toLocaleTimeString()
 }
 
-const MaintenanceRunPanel: React.FC<Props> = ({ runId, status, loading, error }) => {
+function canOpenArtifact(path: string | undefined) {
+  if (!path) return false
+  const lowered = path.toLowerCase()
+  return (
+    lowered.endsWith('.md') ||
+    lowered.endsWith('.txt') ||
+    lowered.endsWith('.json') ||
+    lowered.endsWith('.log') ||
+    lowered.endsWith('.diff') ||
+    lowered.endsWith('.patch') ||
+    lowered.endsWith('.yaml') ||
+    lowered.endsWith('.yml')
+  )
+}
+
+const MaintenanceRunPanel: React.FC<Props> = ({ runId, status, loading, error, onOpenArtifact }) => {
   if (!runId) {
     return (
       <section className="p-4 border-b border-gray-700 bg-gray-900/20">
@@ -62,8 +78,8 @@ const MaintenanceRunPanel: React.FC<Props> = ({ runId, status, loading, error })
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <div className="text-sm font-semibold text-gray-200">Maintenance Run</div>
-            <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] ${badgeClass(status?.state || 'queued')}`}>
-              {status?.state || 'queued'}
+            <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] ${badgeClass(status?.status || 'queued')}`}>
+              {status?.status || 'queued'}
             </span>
             <span className="text-[11px] text-gray-500 font-mono">run: {runId}</span>
           </div>
@@ -76,49 +92,60 @@ const MaintenanceRunPanel: React.FC<Props> = ({ runId, status, loading, error })
           </div>
         )}
 
-        {status?.error?.message && (
-          <div className="rounded border border-rose-800 bg-rose-900/30 px-3 py-2 text-xs text-rose-100">
-            {status.error.message}
-          </div>
-        )}
-
-        {status?.prError && (
+        {status?.errors?.length ? (
           <div className="rounded border border-rose-800 bg-rose-900/40 px-3 py-2 text-xs text-rose-100 whitespace-pre-wrap">
-            {status.prError}
+            {status.errors.join('\n')}
           </div>
-        )}
+        ) : null}
 
-        {status?.pr?.url && (
+        {status?.warnings?.length ? (
+          <div className="rounded border border-amber-800 bg-amber-900/30 px-3 py-2 text-xs text-amber-100 whitespace-pre-wrap">
+            {status.warnings.join('\n')}
+          </div>
+        ) : null}
+
+        {status?.links?.pr_url ? (
           <div className="rounded border border-emerald-700 bg-emerald-900/20 px-3 py-2 text-xs text-emerald-100">
-            PR created:{' '}
-            <a className="underline" href={status.pr.url} target="_blank" rel="noreferrer">
-              {status.pr.url}
+            PR:{' '}
+            <a className="underline" href={status.links.pr_url} target="_blank" rel="noreferrer">
+              {status.links.pr_url}
             </a>
           </div>
-        )}
+        ) : null}
 
-        {status?.changeset && (
-          <div className="rounded border border-slate-700 bg-slate-900/40 px-3 py-2 text-xs text-slate-200">
-            <div>
-              Files changed: {status.changeset.filesChanged ?? 0} · LOC +{status.changeset.locAdded ?? 0} / -{status.changeset.locRemoved ?? 0}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-gray-300">
+          <div className="rounded border border-gray-700 bg-gray-900/40 px-3 py-2">
+            <div className="text-[11px] text-gray-500">Current Stage</div>
+            <div className="font-semibold text-gray-100">{status?.currentStage || 'pending'}</div>
+            <div className="text-[11px] text-gray-500">
+              {typeof status?.stageIndex === 'number' && typeof status?.stageCount === 'number'
+                ? `Stage ${status.stageIndex + 1} of ${status.stageCount}`
+                : 'Stage count unavailable'}
             </div>
-            {status.changeset.files?.length ? (
-              <div className="mt-2">
-                <div className="text-[11px] text-slate-400">Files touched</div>
-                <ul className="mt-1 space-y-1 text-[11px] text-slate-300">
-                  {status.changeset.files.slice(0, 8).map((file) => (
-                    <li key={file} className="truncate font-mono">
-                      {file}
-                    </li>
-                  ))}
-                </ul>
-                {status.changeset.files.length > 8 && (
-                  <div className="text-[10px] text-slate-400">+{status.changeset.files.length - 8} more</div>
-                )}
-              </div>
-            ) : null}
           </div>
-        )}
+          <div className="rounded border border-gray-700 bg-gray-900/40 px-3 py-2">
+            <div className="text-[11px] text-gray-500">Progress</div>
+            <div className="font-semibold text-gray-100">
+              {typeof status?.progress === 'number' ? `${status.progress}%` : '—'}
+            </div>
+            <div className="text-[11px] text-gray-500">Updated {formatTime(status?.updatedAt) || '—'}</div>
+          </div>
+          <div className="rounded border border-gray-700 bg-gray-900/40 px-3 py-2">
+            <div className="text-[11px] text-gray-500">Risk</div>
+            <div className="font-semibold text-gray-100">{status?.risk?.level || 'unknown'}</div>
+            {status?.risk?.reasons?.length ? (
+              <div className="text-[11px] text-gray-500">{status.risk.reasons.join('; ')}</div>
+            ) : (
+              <div className="text-[11px] text-gray-500">No risk reasons recorded</div>
+            )}
+          </div>
+        </div>
+
+        {status?.artifacts?.length ? (
+          <div className="rounded border border-slate-700 bg-slate-900/40 px-3 py-2 text-xs text-slate-200">
+            Artifacts detected: {status.artifacts.length}
+          </div>
+        ) : null}
 
         {status?.stages?.length ? (
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
@@ -146,7 +173,7 @@ const MaintenanceRunPanel: React.FC<Props> = ({ runId, status, loading, error })
                 {status.events.map((ev, idx) => (
                   <li key={`${ev.ts}-${idx}`} className="rounded border border-gray-800 bg-gray-950/40 px-2 py-1">
                     <div className="flex items-center justify-between text-[11px] text-gray-400">
-                      <span>{ev.stage || 'run'}</span>
+                      <span>{ev.stage || ev.type || 'run'}</span>
                       <span>{formatTime(ev.ts) || ev.ts}</span>
                     </div>
                     <div className="text-gray-200 whitespace-pre-wrap">{ev.message}</div>
@@ -165,7 +192,20 @@ const MaintenanceRunPanel: React.FC<Props> = ({ runId, status, loading, error })
                 {status.artifacts.map((artifact) => (
                   <li key={artifact.path} className="flex items-center justify-between gap-2">
                     <span className="font-mono text-[11px] truncate">{artifact.path}</span>
-                    <span className="text-[10px] text-gray-500">{artifact.type || 'file'}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-gray-500">
+                        {artifact.exists === false ? 'missing' : artifact.bytes != null ? `${artifact.bytes} bytes` : 'file'}
+                      </span>
+                      {artifact.exists !== false && onOpenArtifact && canOpenArtifact(artifact.path) ? (
+                        <button
+                          type="button"
+                          className="text-[10px] text-indigo-300 underline"
+                          onClick={() => onOpenArtifact(artifact.path)}
+                        >
+                          Open
+                        </button>
+                      ) : null}
+                    </div>
                   </li>
                 ))}
               </ul>
