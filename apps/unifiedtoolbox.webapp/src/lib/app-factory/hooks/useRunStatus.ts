@@ -88,7 +88,8 @@ export function useRunStatus(
   useEffect(() => {
     if (!runId) return
     void fetchStatus()
-  }, [runId, fetchStatus])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runId]) // Only fetch when runId changes
 
   // Polling logic
   useEffect(() => {

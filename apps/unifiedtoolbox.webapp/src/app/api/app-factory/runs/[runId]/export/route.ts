@@ -105,7 +105,7 @@ export async function GET(req: Request, { params }: { params: { runId: string } 
       {
         error: {
           code: 'INVALID_SCOPE',
-          message: `Invalid scope parameter: ${scopeParam}. Valid values are 'artifacts' or 'full'.`,
+          message: 'Invalid scope parameter. Valid values are "artifacts" or "full".',
         },
       },
       { status: 400 }
@@ -191,8 +191,7 @@ async function listFilesRecursive(baseDir: string): Promise<string[]> {
   const out: string[] = []
   const stack: string[] = [baseDir]
   while (stack.length) {
-    const current = stack.pop()
-    if (!current) continue
+    const current = stack.pop()!
     const entries = await fs.readdir(current, { withFileTypes: true })
     for (const entry of entries) {
       const full = path.join(current, entry.name)
