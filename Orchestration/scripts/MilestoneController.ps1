@@ -1128,7 +1128,40 @@ function Set-RunState {
         [Parameter(Mandatory = $true)][string]$State,
         [string]$ErrorMessage
     )
-    if (-not $script:RunStatus) { return }
+    if (-not $script:RunStatus) {
+        if ($OutputDir) {
+            $fallbackPath = Join-Path $OutputDir "run_state.json"
+            if (Test-Path -LiteralPath $fallbackPath) {
+                $state = $null
+                try {
+                    $state = Get-Content -Raw -LiteralPath $fallbackPath | ConvertFrom-Json -Depth 20
+                }
+                catch {
+                    $state = $null
+                }
+                if (-not $state) {
+                    $state = [pscustomobject]@{}
+                }
+
+                $now = (Get-Date).ToUniversalTime().ToString("o")
+                if (-not $state.run_id -and $script:RunId) { $state | Add-Member -NotePropertyName run_id -NotePropertyValue $script:RunId -Force }
+                if (-not $state.job_type -and $script:JobType) { $state | Add-Member -NotePropertyName job_type -NotePropertyValue $script:JobType -Force }
+
+                $state.status = $State
+                $state.updated_at = $now
+                if ($State -in @("succeeded","failed")) { $state.ended_at = $now }
+                if ($ErrorMessage) {
+                    $errors = @()
+                    if ($state.errors) { $errors = @($state.errors) }
+                    $errors += $ErrorMessage
+                    $state.errors = $errors
+                }
+
+                $state | ConvertTo-Json -Depth 20 | Set-Content -Path $fallbackPath -Encoding UTF8
+            }
+        }
+        return
+    }
     $script:RunStatus.status = $State
     if ($State -in @("succeeded","failed")) {
         $script:RunStatus.ended_at = (Get-Date).ToUniversalTime().ToString("o")
@@ -1776,6 +1809,16 @@ try {
 
     $script:JobTypesPath = Join-Path $repoRoot "job_types.json"
     $script:RepoContextSchemaPath = Join-Path $repoRoot "contracts\\repo_context_schema.v1.json"
+
+    if (-not $RequestPath -and $env:UAIT_REQUEST_PATH) {
+        $RequestPath = $env:UAIT_REQUEST_PATH
+    }
+    if (-not $RequestPath -and $OutputDir) {
+        $candidateRequest = Join-Path $OutputDir "request.json"
+        if (Test-Path -LiteralPath $candidateRequest) {
+            $RequestPath = $candidateRequest
+        }
+    }
 
     if ($ContractPath -and $RequestPath) {
         throw "Provide only one of -ContractPath or -RequestPath."

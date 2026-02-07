@@ -125,7 +125,7 @@ export async function POST(req: Request) {
     ]
     const child = spawn(psExe, psArgs, {
       cwd: repoRoot,
-      env: { ...process.env, UAIT_JOB_TYPE: jobType },
+      env: { ...process.env, UAIT_JOB_TYPE: jobType, UAIT_REQUEST_PATH: requestPath },
       detached: true,
       stdio: ['ignore', logFd, logFd],
     })

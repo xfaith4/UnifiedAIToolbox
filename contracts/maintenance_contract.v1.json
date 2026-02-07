@@ -8,7 +8,6 @@
       "type": "object",
       "required": [
         "repo",
-        "ref",
         "intent",
         "constraints",
         "change_surface",
