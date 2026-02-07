@@ -6,6 +6,9 @@
   "required": [
     "schema_version",
     "job_type",
+    "contract_universe",
+    "contract_version",
+    "pipeline_id",
     "run_id",
     "goal",
     "agent_roster",
@@ -20,6 +23,16 @@
       "enum": ["1.0"]
     },
     "job_type": {
+      "type": "string"
+    },
+    "contract_universe": {
+      "type": "string",
+      "enum": ["build_app", "maintenance"]
+    },
+    "contract_version": {
+      "type": "string"
+    },
+    "pipeline_id": {
       "type": "string"
     },
     "run_id": {

@@ -24,6 +24,7 @@ export default function GitHubPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [githubEnvReady, setGithubEnvReady] = useState(false)
+  const [appFactoryOnly, setAppFactoryOnly] = useState(false)
 
   const [selectedRepo, setSelectedRepo] = useState<GitHubRepo | null>(null)
   const [instruction, setInstruction] = useState('')
@@ -198,12 +199,13 @@ export default function GitHubPage() {
     setErrorDetails(null)
     setShowTechDetails(false)
     try {
-      const list = await listAccessibleRepos(trimmedToken || undefined)
+      const list = await listAccessibleRepos(trimmedToken || undefined, { appfactoryOnly: appFactoryOnly, includeAppfactory: true })
       const filterTerm = filter.trim().toLowerCase()
       const filtered = filterTerm
         ? list.filter((repo) => repo.full_name.toLowerCase().includes(filterTerm))
         : list
-      setRepos(filtered)
+      const sorted = [...filtered].sort((a, b) => Number(Boolean(b.appfactory?.known)) - Number(Boolean(a.appfactory?.known)))
+      setRepos(sorted)
       if (filtered.length === 0) {
         setError('No repositories found for this token and filter.')
       }
@@ -312,6 +314,15 @@ export default function GitHubPage() {
           onChange={(e) => setFilter(e.target.value)}
         />
       </div>
+      <label className="flex items-center gap-2 text-xs text-slate-300">
+        <input
+          type="checkbox"
+          className="h-4 w-4 rounded border-slate-600 bg-slate-800"
+          checked={appFactoryOnly}
+          onChange={(e) => setAppFactoryOnly(e.target.checked)}
+        />
+        Only repos created by App Factory
+      </label>
       <button
         className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
         onClick={handleFetch}
@@ -676,6 +687,16 @@ export default function GitHubPage() {
                   <span className="rounded-full bg-slate-800 px-2 py-0.5 text-xs text-slate-200">
                     {r.private ? 'Private' : 'Public'}
                   </span>
+                  {r.appfactory?.known && (
+                    <span className="rounded-full bg-emerald-900/60 px-2 py-0.5 text-xs text-emerald-200">
+                      AppFactory
+                    </span>
+                  )}
+                  {r.appfactory && !r.appfactory.known && r.appfactory.status === 'tampered_or_legacy' && (
+                    <span className="rounded-full bg-rose-900/60 px-2 py-0.5 text-xs text-rose-200">
+                      Legacy
+                    </span>
+                  )}
                   {r.archived && (
                     <span className="rounded-full bg-amber-900/60 px-2 py-0.5 text-xs text-amber-200">
                       Archived
@@ -693,6 +714,9 @@ export default function GitHubPage() {
                     <span className="text-slate-500">
                       Updated {new Date(r.updated_at).toLocaleDateString()}
                     </span>
+                  ) : null}
+                  {r.appfactory?.contract_version ? (
+                    <span className="text-slate-500"> · Contract {r.appfactory.contract_version}</span>
                   ) : null}
                 </div>
               </div>

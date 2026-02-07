@@ -8,6 +8,7 @@ import { evaluateRepoContract, type RepoContractEvaluation } from '../contracts/
 import { runGates, writeSkippedGateReport, type GateReport } from '../gates/runGates'
 import { repairLoop } from '../repair/repairLoop'
 import { removeGitDir } from '../repair/patchApplier'
+import { writeAppFactoryMetadata } from '../provenance/writeRepoProvenance'
 import { ingestArtifacts, type AppFactoryArtifact as IngestArtifact } from './ingestArtifacts'
 import { writeRunDiagnosticsBundle } from '../diagnostics/writeRunDiagnosticsBundle'
 import { featureFlags } from '../flags'
@@ -96,6 +97,7 @@ export async function hardenRepo(options: {
   {
     const startedAt = new Date().toISOString()
     await assembleRepo(repoDir, options.contract)
+    await writeAppFactoryMetadata({ repoDir, runId, contract: options.contract })
     const endedAt = new Date().toISOString()
     timings.assemble = { startedAt, endedAt }
   }

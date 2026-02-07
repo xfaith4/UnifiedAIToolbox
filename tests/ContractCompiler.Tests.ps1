@@ -45,6 +45,9 @@ Describe 'Contract compiler' {
         $result = Invoke-ContractCompiler -RequestPath $requestPath -JobTypesPath $script:JobTypesPath -RepoRoot $script:RepoRoot -OutputDir $outDir
         $result.ContractPath | Should -Exist
         $result.Contract.job_type | Should -Be 'build_new_app'
+        $result.Contract.contract_universe | Should -Be 'build_app'
+        $result.Contract.contract_version | Should -Be 'build_app_contract.v1'
+        $result.Contract.pipeline_id | Should -Be 'pipeline_build_app.v1'
         $result.PipelineTemplatePath | Should -Match 'pipeline_build_app'
     }
 
@@ -65,6 +68,9 @@ Describe 'Contract compiler' {
         $result = Invoke-ContractCompiler -RequestPath $requestPath -JobTypesPath $script:JobTypesPath -RepoRoot $script:RepoRoot -OutputDir $outDir
         $result.ContractPath | Should -Exist
         $result.Contract.job_type | Should -Be 'maintain_existing_app'
+        $result.Contract.contract_universe | Should -Be 'maintenance'
+        $result.Contract.contract_version | Should -Be 'maintenance_contract.v1'
+        $result.Contract.pipeline_id | Should -Be 'pipeline_maintenance.v1'
         $result.PipelineTemplatePath | Should -Match 'pipeline_maintenance'
     }
 

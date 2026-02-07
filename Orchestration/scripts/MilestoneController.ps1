@@ -158,6 +158,9 @@ function Write-RunManifest {
         run_id         = $script:RunId
         created_utc    = (Get-Date).ToUniversalTime().ToString("o")
         job_type       = $script:JobType
+        contract_universe = $(if ($script:Contract) { $script:Contract.contract_universe } else { $null })
+        contract_version  = $(if ($script:Contract) { $script:Contract.contract_version } else { $null })
+        pipeline_id       = $(if ($script:Contract) { $script:Contract.pipeline_id } else { $null })
         goal           = $GoalText
         output_dir     = $OutputDir
         contract_hash  = $ContractHash
@@ -171,9 +174,13 @@ function Write-RunManifest {
             path        = $ContractPath
             schema      = $Routing.SchemaPath
             hash_sha256 = $ContractHash
+            universe    = $(if ($script:Contract) { $script:Contract.contract_universe } else { $null })
+            version     = $(if ($script:Contract) { $script:Contract.contract_version } else { $null })
+            pipeline_id = $(if ($script:Contract) { $script:Contract.pipeline_id } else { $null })
         }
         routing = [pscustomobject]@{
             pipeline_template = $Routing.PipelineTemplatePath
+            pipeline_id       = $Routing.PipelineId
             stages            = $Routing.StageIds
             agent_roster       = $Routing.DefaultAgentRoster
             gate_policy        = $Routing.GatePolicy
@@ -194,6 +201,92 @@ function Write-RunManifest {
     $manifestPath = Join-Path $OutputDir "run_manifest.json"
     $manifest | ConvertTo-Json -Depth 20 | Set-Content -Path $manifestPath -Encoding UTF8
     return $manifestPath
+}
+
+function Get-ShortHash {
+    param([Parameter(Mandatory = $true)][string]$Text)
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($Text)
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $hashBytes = $sha.ComputeHash($bytes)
+    }
+    finally {
+        $sha.Dispose()
+    }
+    return ([BitConverter]::ToString($hashBytes) -replace "-", "").ToLowerInvariant()
+}
+
+function Get-MimeType {
+    param([Parameter(Mandatory = $true)][string]$Path)
+    $ext = [System.IO.Path]::GetExtension($Path).ToLowerInvariant()
+    switch ($ext) {
+        ".json" { return "application/json" }
+        ".md" { return "text/markdown" }
+        ".txt" { return "text/plain" }
+        ".log" { return "text/plain" }
+        ".diff" { return "text/x-diff" }
+        ".patch" { return "text/x-diff" }
+        ".html" { return "text/html" }
+        ".htm" { return "text/html" }
+        ".yaml" { return "text/yaml" }
+        ".yml" { return "text/yaml" }
+        ".csv" { return "text/csv" }
+        ".png" { return "image/png" }
+        ".jpg" { return "image/jpeg" }
+        ".jpeg" { return "image/jpeg" }
+        ".gif" { return "image/gif" }
+        ".svg" { return "image/svg+xml" }
+        default { return "application/octet-stream" }
+    }
+}
+
+function Get-RelativePath {
+    param(
+        [Parameter(Mandatory = $true)][string]$BaseDir,
+        [Parameter(Mandatory = $true)][string]$Path
+    )
+    $base = (Resolve-Path -Path $BaseDir).Path
+    $full = (Resolve-Path -Path $Path).Path
+    if ($full.StartsWith($base, [System.StringComparison]::OrdinalIgnoreCase)) {
+        $rel = $full.Substring($base.Length)
+        $rel = $rel.TrimStart('\', '/')
+        return ($rel -replace "\\", "/")
+    }
+    return ($full -replace "\\", "/")
+}
+
+function Write-ArtifactIndex {
+    param([Parameter(Mandatory = $true)][string]$OutputDir)
+
+    if (-not (Test-Path -LiteralPath $OutputDir)) { return $null }
+
+    $records = @()
+    $files = Get-ChildItem -Path $OutputDir -Recurse -File -ErrorAction SilentlyContinue
+    foreach ($file in $files) {
+        if ($file.Name -eq "artifacts_index.json") { continue }
+        $rel = Get-RelativePath -BaseDir $OutputDir -Path $file.FullName
+        $hash = Get-ShortHash -Text $rel
+        $record = [pscustomobject]@{
+            artifactId = "art-" + $hash.Substring(0, 12)
+            fileName = $file.Name
+            filePath = $file.FullName
+            relativePath = $rel
+            mimeType = (Get-MimeType -Path $file.FullName)
+            size = $file.Length
+            createdAt = $file.LastWriteTimeUtc.ToString("o")
+            run_id = $script:RunId
+            job_type = $script:JobType
+            contract_universe = $(if ($script:Contract) { $script:Contract.contract_universe } else { $null })
+            contract_version = $(if ($script:Contract) { $script:Contract.contract_version } else { $null })
+            pipeline_id = $(if ($script:Contract) { $script:Contract.pipeline_id } else { $null })
+            timestamp = (Get-Date).ToUniversalTime().ToString("o")
+        }
+        $records += $record
+    }
+
+    $indexPath = Join-Path $OutputDir "artifacts_index.json"
+    $records | ConvertTo-Json -Depth 10 | Set-Content -Path $indexPath -Encoding UTF8
+    return $indexPath
 }
 
 function Get-RequiredArtifactSpecs {
@@ -329,6 +422,9 @@ function Build-SupervisorContext {
 
     $context = [pscustomobject]@{
         job_type = $script:JobType
+        contract_universe = $(if ($script:Contract) { $script:Contract.contract_universe } else { $null })
+        contract_version = $(if ($script:Contract) { $script:Contract.contract_version } else { $null })
+        pipeline_id = $Routing.PipelineId
         pipeline_template = $Routing.PipelineTemplatePath
         gate_policy = $Routing.GatePolicy
         artifact_policy = $Routing.ArtifactPolicy
@@ -1331,6 +1427,21 @@ try {
 
     # Initialize orchestration
     $context = Initialize-Orchestration -GoalText $goalText
+
+    $runHeaderPipeline = $null
+    if ($script:Contract -and $script:Contract.pipeline_id) {
+        $runHeaderPipeline = $script:Contract.pipeline_id
+    }
+    elseif ($script:Routing -and $script:Routing.PipelineId) {
+        $runHeaderPipeline = $script:Routing.PipelineId
+    }
+    Write-Log ("Run header: run_id={0}; job_type={1}; contract_universe={2}; contract_version={3}; pipeline_id={4}" -f `
+        $script:RunId, `
+        $script:JobType, `
+        $(if ($script:Contract) { $script:Contract.contract_universe } else { "unknown" }), `
+        $(if ($script:Contract) { $script:Contract.contract_version } else { "unknown" }), `
+        $(if ($runHeaderPipeline) { $runHeaderPipeline } else { "unknown" }) `
+    )
     
     # If a real API key isn't available, automatically fall back to a simulated run so the pipeline stays auditable.
     if (-not $DryRun -and [string]::IsNullOrWhiteSpace($env:OPENAI_API_KEY)) {
@@ -1388,6 +1499,11 @@ try {
     # Complete orchestration
     $summary = Complete-Orchestration -Context $context
 
+    $artifactIndexPath = Write-ArtifactIndex -OutputDir $OutputDir
+    if ($artifactIndexPath) {
+        Write-Log "Artifact index saved to: $artifactIndexPath"
+    }
+
     # Enforce policy compliance after run
     Assert-CommandPolicyCompliance -Contract $script:Contract -OutputDir $OutputDir
     Assert-RequiredArtifacts -OutputDir $OutputDir -ArtifactPolicy $script:Routing.ArtifactPolicy
@@ -1401,6 +1517,17 @@ try {
 catch {
     Write-Log "Orchestration failed: $_" -Level "ERROR"
     Write-Host "Orchestration failed: $_" -ForegroundColor Red
+    try {
+        if ($OutputDir -and (Test-Path -LiteralPath $OutputDir)) {
+            $artifactIndexPath = Write-ArtifactIndex -OutputDir $OutputDir
+            if ($artifactIndexPath) {
+                Write-Log "Artifact index saved to: $artifactIndexPath"
+            }
+        }
+    }
+    catch {
+        # swallow artifact index errors on failure
+    }
     exit 1
 }
 }

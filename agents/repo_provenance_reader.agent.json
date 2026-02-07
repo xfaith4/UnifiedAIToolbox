@@ -1,0 +1,9 @@
+{
+  "id": "repo_provenance_reader",
+  "name": "Repo Provenance Reader",
+  "version": "1.0",
+  "description": "Reads .appfactory/metadata.json and emits normalized provenance for routing.",
+  "inputs": [".appfactory/metadata.json"],
+  "outputs": ["repo_provenance.json"],
+  "notes": "Validates factory.name == AppFactory and supported schema versions."
+}

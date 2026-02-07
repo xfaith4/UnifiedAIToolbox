@@ -150,6 +150,43 @@ function Resolve-JobRouting {
     $pipelinePath = Resolve-RepoPath -Path $jobConfig.pipeline_template -RepoRoot $RepoRoot
     $pipeline = Get-PipelineTemplate -TemplatePath $pipelinePath
 
+    $expectedUniverse = $jobConfig.contract_universe
+    $expectedContractVersion = $jobConfig.contract_version
+    $expectedPipelineId = $jobConfig.pipeline_id
+    if (-not $expectedPipelineId -and $pipeline -and $pipeline.name) {
+        $expectedPipelineId = $pipeline.name
+    }
+
+    if ($Contract) {
+        if ($expectedUniverse) {
+            if (-not $Contract.contract_universe) {
+                throw "Contract missing contract_universe for job_type '$JobType'"
+            }
+            if ($Contract.contract_universe -ne $expectedUniverse) {
+                throw "Contract universe mismatch: job_type '$JobType' expects '$expectedUniverse' but contract has '$($Contract.contract_universe)'"
+            }
+        }
+        if ($expectedContractVersion) {
+            if (-not $Contract.contract_version) {
+                throw "Contract missing contract_version for job_type '$JobType'"
+            }
+            if ($Contract.contract_version -ne $expectedContractVersion) {
+                throw "Contract version mismatch: job_type '$JobType' expects '$expectedContractVersion' but contract has '$($Contract.contract_version)'"
+            }
+        }
+        if ($expectedPipelineId) {
+            if (-not $Contract.pipeline_id) {
+                throw "Contract missing pipeline_id for job_type '$JobType'"
+            }
+            if ($Contract.pipeline_id -ne $expectedPipelineId) {
+                throw "Pipeline mismatch: job_type '$JobType' expects '$expectedPipelineId' but contract has '$($Contract.pipeline_id)'"
+            }
+        }
+        if ($pipeline -and $pipeline.name -and $Contract.pipeline_id -and $Contract.pipeline_id -ne $pipeline.name) {
+            throw "Pipeline mismatch: contract pipeline_id '$($Contract.pipeline_id)' does not match pipeline template '$($pipeline.name)'"
+        }
+    }
+
     if ($Contract -and $Contract.stages -and $jobConfig.stage_policy -and $jobConfig.stage_policy.forbidden) {
         foreach ($stageId in @($Contract.stages)) {
             if ($jobConfig.stage_policy.forbidden -contains $stageId) {
@@ -183,6 +220,9 @@ function Resolve-JobRouting {
         CommandPolicy = $jobConfig.command_policy
         SupervisorPolicy = $jobConfig.supervisor_policy
         ContractDefaults = $jobConfig.contract_defaults
+        ContractUniverse = $expectedUniverse
+        ContractVersion = $expectedContractVersion
+        PipelineId = $expectedPipelineId
         Defaults = $jobConfig.defaults
         StagePolicy = $jobConfig.stage_policy
     }

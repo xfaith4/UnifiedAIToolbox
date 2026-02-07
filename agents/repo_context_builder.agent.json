@@ -1,0 +1,9 @@
+{
+  "id": "repo_context_builder",
+  "name": "Repo Context Builder",
+  "version": "1.0",
+  "description": "Builds repo_context.json with discovery and optional baseline verification.",
+  "inputs": ["repo path", "contract", "constraints"],
+  "outputs": ["repo_context.json", "repo_context.discovery.json", "repo_context.baseline.json"],
+  "notes": "Maintenance-only. Discovery must be file-read only; baseline is optional."
+}

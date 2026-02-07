@@ -10,6 +10,9 @@
   "job_types": {
     "<job_type>": {
       "label": "Human-friendly name",
+      "contract_universe": "build_app | maintenance",
+      "contract_version": "build_app_contract.v1",
+      "pipeline_id": "pipeline_build_app.v1",
       "request_schema": "contracts/<request_schema>.json",
       "contract_schema": "contracts/<contract_schema>.json",
       "pipeline_template": "pipelines/<pipeline>.json",
@@ -35,6 +38,9 @@
 - `request_schema`: JSON schema for the minimal request payload (UI/submitter side).
 - `contract_schema`: JSON schema for the expanded contract after compilation.
 - `pipeline_template`: Pipeline stage definitions for the job type.
+- `contract_universe`: Contract universe identifier used for mismatch enforcement.
+- `contract_version`: Contract schema version string (e.g., `build_app_contract.v1`).
+- `pipeline_id`: Pipeline ID stored in contracts/manifests for mismatch enforcement.
 - `default_agents`: Default agent roster used when request omits `agent_roster`.
 - `defaults`: Common contract defaults (schema_version, budget, logging).
 - `contract_defaults`: Job-specific defaults merged into the expanded contract.

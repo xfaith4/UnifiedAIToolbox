@@ -3,6 +3,9 @@
   "job_types": {
     "build_new_app": {
       "label": "Create New App",
+      "contract_universe": "build_app",
+      "contract_version": "build_app_contract.v1",
+      "pipeline_id": "pipeline_build_app.v1",
       "request_schema": "contracts/build_app_request.v1.json",
       "contract_schema": "contracts/build_app_contract.v1.json",
       "pipeline_template": "pipelines/pipeline_build_app.v1.json",
@@ -80,6 +83,9 @@
     },
     "maintain_existing_app": {
       "label": "Maintain Existing App",
+      "contract_universe": "maintenance",
+      "contract_version": "maintenance_contract.v1",
+      "pipeline_id": "pipeline_maintenance.v1",
       "request_schema": "contracts/maintenance_request.v1.json",
       "contract_schema": "contracts/maintenance_contract.v1.json",
       "pipeline_template": "pipelines/pipeline_maintenance.v1.json",

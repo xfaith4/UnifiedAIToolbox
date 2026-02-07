@@ -130,6 +130,7 @@ class AccessibleRepository(BaseModel):
     visibility: Optional[str] = None
     updated_at: Optional[str] = None
     open_prs_count: int = 0
+    appfactory: Optional[Dict[str, Any]] = None
 
 
 class RepoIntakeRequest(BaseModel):
@@ -189,6 +190,7 @@ class AccessibleRepository(BaseModel):
     visibility: Optional[str] = None
     updated_at: Optional[str] = None
     open_prs_count: int = 0
+    appfactory: Optional[Dict[str, Any]] = None
 
 
 class RepoIntakeRequest(BaseModel):
@@ -248,6 +250,7 @@ class AccessibleRepository(BaseModel):
     visibility: Optional[str] = None
     updated_at: Optional[str] = None
     open_prs_count: int = 0
+    appfactory: Optional[Dict[str, Any]] = None
 
 
 class RepoIntakeRequest(BaseModel):
@@ -307,6 +310,7 @@ class AccessibleRepository(BaseModel):
     visibility: Optional[str] = None
     updated_at: Optional[str] = None
     open_prs_count: int = 0
+    appfactory: Optional[Dict[str, Any]] = None
 
 
 class RepoIntakeRequest(BaseModel):
@@ -471,7 +475,10 @@ def verify_github_auth(
 
 @router.get("/repos", response_model=List[AccessibleRepository])
 def list_accessible_repositories(
-    authorization: Optional[str] = Header(None)
+    authorization: Optional[str] = Header(None),
+    appfactory_only: bool = Query(False, description="Return only App Factory managed repositories"),
+    include_appfactory: bool = Query(False, description="Include App Factory provenance metadata"),
+    heal_topics: bool = Query(False, description="Attempt to heal missing App Factory topics when metadata exists"),
 ):
     """
     List repositories accessible to the provided GitHub token.
@@ -490,7 +497,11 @@ def list_accessible_repositories(
 
     try:
         service = GitHubCloneService(github_token=token)
-        return service.list_accessible_repos()
+        return service.list_accessible_repos(
+            appfactory_only=appfactory_only,
+            include_appfactory=include_appfactory,
+            heal_topics=heal_topics,
+        )
     except RepositoryCloneError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

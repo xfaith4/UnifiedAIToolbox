@@ -16,6 +16,11 @@ BeforeAll {
 Describe 'Runtime policy helpers' {
     It 'run_manifest includes job_type, pipeline template, policies, and contract hash' {
         $script:JobType = 'build_new_app'
+        $script:Contract = [pscustomobject]@{
+            contract_universe = 'build_app'
+            contract_version = 'build_app_contract.v1'
+            pipeline_id = 'pipeline_build_app.v1'
+        }
         $routing = [pscustomobject]@{
             SchemaPath = 'contracts/build_app_contract.v1.json'
             PipelineTemplatePath = 'pipelines/pipeline_build_app.v1.json'
@@ -26,6 +31,7 @@ Describe 'Runtime policy helpers' {
             CommandPolicy = @{ only_from_repo_context = $false }
             SupervisorPolicy = @{ rubric_id = 'build_new_app.v1' }
             StagePolicy = @{ required = @('Researcher', 'Engineer'); optional = @(); forbidden = @() }
+            PipelineId = 'pipeline_build_app.v1'
         }
 
         $outDir = Join-Path $TestDrive 'manifest'
@@ -35,6 +41,9 @@ Describe 'Runtime policy helpers' {
         $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json -Depth 20
 
         $manifest.job_type | Should -Be 'build_new_app'
+        $manifest.contract_universe | Should -Be 'build_app'
+        $manifest.contract_version | Should -Be 'build_app_contract.v1'
+        $manifest.pipeline_id | Should -Be 'pipeline_build_app.v1'
         $manifest.routing.pipeline_template | Should -Be 'pipelines/pipeline_build_app.v1.json'
         $manifest.contract.hash_sha256 | Should -Be 'abc123'
         $manifest.resolved_policies.artifact_policy.mode | Should -Be 'standard'
@@ -63,6 +72,7 @@ Describe 'Runtime policy helpers' {
             ArtifactPolicy = @{ mode = 'standard'; required_artifacts = @(@{ name = 'repo_context.json'; origin = 'engine' }) }
             CommandPolicy = @{ only_from_repo_context = $true }
             SupervisorPolicy = @{ rubric_id = 'maintenance.v1' }
+            PipelineId = 'pipeline_maintenance.v1'
         }
 
         $context = Build-SupervisorContext -Routing $routing -OutputDir $outDir

@@ -27,19 +27,28 @@ export async function getGithubStatus(): Promise<GitHubStatus | null> {
   }
 }
 
-export async function listAccessibleRepos(token?: string): Promise<GitHubRepo[]> {
+export async function listAccessibleRepos(
+  token?: string,
+  options?: { appfactoryOnly?: boolean; includeAppfactory?: boolean; healTopics?: boolean }
+): Promise<GitHubRepo[]> {
   const trimmedToken = token?.trim() ?? ''
 
   if (!ORCHESTRATOR_API_BASE) {
     throw new Error('Orchestrator API base URL is not configured.')
   }
 
+  const params = new URLSearchParams()
+  if (options?.appfactoryOnly) params.set('appfactory_only', 'true')
+  if (options?.includeAppfactory) params.set('include_appfactory', 'true')
+  if (options?.healTopics) params.set('heal_topics', 'true')
+  const query = params.toString()
+
   const headers: Record<string, string> = { Accept: 'application/json' }
   if (trimmedToken) {
     headers.Authorization = `Bearer ${trimmedToken}`
   }
 
-  const res = await fetch(`${ORCHESTRATOR_API_BASE}/github/repos`, {
+  const res = await fetch(`${ORCHESTRATOR_API_BASE}/github/repos${query ? `?${query}` : ''}`, {
     headers,
     cache: 'no-store',
   })

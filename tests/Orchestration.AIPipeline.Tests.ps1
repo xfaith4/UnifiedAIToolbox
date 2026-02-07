@@ -32,6 +32,9 @@ BeforeAll {
     $contract = @{
         schema_version = "1.0"
         job_type = $script:JobType
+        contract_universe = "build_app"
+        contract_version = "build_app_contract.v1"
+        pipeline_id = "pipeline_build_app.v1"
         run_id = "test-run"
         goal = "Research and implement a new feature"
         agent_roster = @("Researcher", "Engineer", "Critic", "Synthesizer", "Commissioner", "Supervisor", "Historian")

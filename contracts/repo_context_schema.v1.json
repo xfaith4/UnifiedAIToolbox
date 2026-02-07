@@ -235,6 +235,19 @@
                 "status": { "type": "string" },
                 "dependency_update_policy": { "type": "string" }
               }
+            },
+            "appfactory_provenance": {
+              "type": "object",
+              "required": ["status"],
+              "properties": {
+                "status": { "type": "string" },
+                "known": { "type": "boolean" },
+                "reason": { "type": "string" },
+                "metadata_path": { "type": "string" },
+                "contract_universe": { "type": "string" },
+                "contract_version": { "type": "string" },
+                "pipeline_id": { "type": "string" }
+              }
             }
           }
         }

@@ -18,6 +18,9 @@ BeforeAll {
     $buildContract = @{
         schema_version = '1.0'
         job_type = 'build_new_app'
+        contract_universe = 'build_app'
+        contract_version = 'build_app_contract.v1'
+        pipeline_id = 'pipeline_build_app.v1'
         run_id = 'test-run-build'
         goal = 'Build a test app'
         agent_roster = @('Researcher', 'Engineer', 'Critic', 'Synthesizer', 'Commissioner', 'Supervisor', 'Historian')
@@ -34,6 +37,9 @@ BeforeAll {
     $maintenanceContract = @{
         schema_version = '1.0'
         job_type = 'maintain_existing_app'
+        contract_universe = 'maintenance'
+        contract_version = 'maintenance_contract.v1'
+        pipeline_id = 'pipeline_maintenance.v1'
         run_id = 'test-run-maint'
         goal = 'Fix a bug'
         intent = 'bugfix'
@@ -82,6 +88,9 @@ BeforeAll {
     $forbiddenStage = @{
         schema_version = '1.0'
         job_type = 'maintain_existing_app'
+        contract_universe = 'maintenance'
+        contract_version = 'maintenance_contract.v1'
+        pipeline_id = 'pipeline_maintenance.v1'
         run_id = 'test-run-forbidden'
         goal = 'Forbidden stage test'
         intent = 'bugfix'
@@ -138,5 +147,11 @@ Describe 'Job routing' {
     It 'forbidden stage enforcement fails with clear message' {
         $contract = Get-Content -Raw -Path $script:ForbiddenStageContractPath | ConvertFrom-Json -Depth 20
         { Resolve-JobRouting -JobType 'maintain_existing_app' -JobTypesPath $script:JobTypesPath -RepoRoot $script:RepoRoot -Contract $contract } | Should -Throw '*Forbidden stage*'
+    }
+
+    It 'contract universe mismatch fails fast' {
+        $contract = Get-Content -Raw -Path $script:MaintenanceContractPath | ConvertFrom-Json -Depth 20
+        $contract.contract_universe = 'build_app'
+        { Resolve-JobRouting -JobType 'maintain_existing_app' -JobTypesPath $script:JobTypesPath -RepoRoot $script:RepoRoot -Contract $contract } | Should -Throw '*contract universe*'
     }
 }

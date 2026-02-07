@@ -9,6 +9,7 @@ import os
 import logging
 import re
 import subprocess
+import json
 from pathlib import Path
 from typing import Optional, Dict, Any, Callable, List
 from datetime import datetime, timezone
@@ -37,6 +38,71 @@ from shared.github_core import (
 from shared.security import redact_text, safe_message
 
 logger = logging.getLogger(__name__)
+
+APPFACTORY_METADATA_PATH = ".appfactory/metadata.json"
+APPFACTORY_REQUIRED_TOPIC = "appfactory-managed"
+APPFACTORY_SUPPORTED_SCHEMA_VERSIONS = {"1.0"}
+
+
+def evaluate_appfactory_status(topics: List[str], metadata: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Evaluate whether a repo is an App Factory managed repository."""
+    topic_present = APPFACTORY_REQUIRED_TOPIC in (topics or [])
+    metadata_present = isinstance(metadata, dict)
+    schema_version = metadata.get("schema_version") if metadata_present else None
+
+    factory_block = metadata.get("factory") if metadata_present else None
+    factory_name = None
+    if isinstance(factory_block, dict):
+        factory_name = factory_block.get("name")
+    if not factory_name and metadata_present:
+        factory_name = metadata.get("factory_name")
+
+    metadata_valid = bool(
+        schema_version in APPFACTORY_SUPPORTED_SCHEMA_VERSIONS and factory_name == "AppFactory"
+    )
+
+    classification = metadata.get("classification") if metadata_present else None
+    if not isinstance(classification, dict):
+        classification = {}
+
+    status: str
+    known = False
+    if topic_present and metadata_valid:
+        known = True
+        status = "known"
+    elif topic_present and not metadata_valid:
+        known = False
+        status = "tampered_or_legacy"
+    elif metadata_valid and not topic_present:
+        known = True
+        status = "topic_missing"
+    else:
+        known = False
+        status = "unknown"
+
+    result: Dict[str, Any] = {
+        "known": known,
+        "status": status,
+        "topic_present": topic_present,
+        "metadata_present": metadata_present,
+        "metadata_valid": metadata_valid,
+        "schema_version": schema_version,
+        "factory_name": factory_name,
+        "contract_universe": classification.get("contract_universe"),
+        "contract_version": classification.get("contract_version"),
+        "pipeline_id": classification.get("pipeline_id"),
+        "topic_tag": classification.get("topic_tag"),
+        "needs_topic_heal": bool(metadata_valid and not topic_present),
+    }
+
+    if status == "tampered_or_legacy":
+        result["reason"] = "Topic exists but metadata is missing or invalid."
+    elif status == "topic_missing":
+        result["reason"] = "Metadata exists but required App Factory topic is missing."
+    elif status == "unknown":
+        result["reason"] = "No App Factory provenance detected."
+
+    return result
 
 
 class CloneProgress(RemoteProgress):
@@ -406,13 +472,19 @@ class GitHubCloneService(GitHubClientMixin, FileTreeMixin, CloneUrlMixin):
 
     def list_accessible_repos(
         self,
-        limit: Optional[int] = None
+        limit: Optional[int] = None,
+        appfactory_only: bool = False,
+        include_appfactory: bool = False,
+        heal_topics: bool = False,
     ) -> list[Dict[str, Any]]:
         """
         List repositories the authenticated user can access.
 
         Args:
             limit: Optional limit on number of repositories to return
+            appfactory_only: Filter to App Factory managed repositories only
+            include_appfactory: Include App Factory provenance metadata
+            heal_topics: Attempt to restore App Factory topics when metadata exists
 
         Returns:
             List of accessible repository metadata dictionaries
@@ -451,6 +523,7 @@ class GitHubCloneService(GitHubClientMixin, FileTreeMixin, CloneUrlMixin):
                 description="List user repositories",
             )
 
+            include_appfactory = bool(include_appfactory or appfactory_only or heal_topics)
             repos: list[Dict[str, Any]] = []
             for repo in repos_iter:
                 # Get open PR count for the repository
@@ -460,7 +533,53 @@ class GitHubCloneService(GitHubClientMixin, FileTreeMixin, CloneUrlMixin):
                 except Exception:
                     # If fetching PR count fails, just use 0
                     pass
-                
+
+                appfactory_info = None
+                if include_appfactory:
+                    topics = []
+                    try:
+                        topics = repo.get_topics() or []
+                    except Exception:
+                        topics = []
+
+                    metadata = None
+                    try:
+                        contents = repo.get_contents(APPFACTORY_METADATA_PATH)
+                        if not isinstance(contents, list):
+                            raw = contents.decoded_content.decode("utf-8", errors="replace")
+                            metadata = json.loads(raw)
+                    except GithubException as exc:
+                        if getattr(exc, "status", None) != 404:
+                            logger.warning("Failed to fetch AppFactory metadata for %s: %s", repo.full_name, exc)
+                    except Exception:
+                        metadata = None
+
+                    appfactory_info = evaluate_appfactory_status(topics, metadata)
+
+                    # If metadata exists but topics are missing, treat as known and optionally heal topics.
+                    if heal_topics and appfactory_info.get("needs_topic_heal") and metadata:
+                        expected_topics = []
+                        classification = metadata.get("classification") if isinstance(metadata, dict) else None
+                        if isinstance(classification, dict) and isinstance(classification.get("topics"), list):
+                            expected_topics = classification.get("topics") or []
+                        if not expected_topics:
+                            topic_tag = classification.get("topic_tag") if isinstance(classification, dict) else None
+                            expected_topics = [
+                                "appfactory",
+                                APPFACTORY_REQUIRED_TOPIC,
+                                topic_tag,
+                            ]
+                        merged = sorted({t for t in (topics + expected_topics) if t})
+                        try:
+                            repo.replace_topics(merged)
+                            appfactory_info["topic_healed"] = True
+                        except Exception as exc:
+                            appfactory_info["topic_healed"] = False
+                            appfactory_info["heal_error"] = safe_message(str(exc))
+
+                if appfactory_only and (not appfactory_info or not appfactory_info.get("known")):
+                    continue
+
                 repos.append({
                     "id": getattr(repo, "id", None),
                     "full_name": repo.full_name,
@@ -475,6 +594,7 @@ class GitHubCloneService(GitHubClientMixin, FileTreeMixin, CloneUrlMixin):
                     "visibility": "private" if getattr(repo, "private", False) else "public",
                     "updated_at": repo.updated_at.isoformat() if getattr(repo, "updated_at", None) else None,
                     "open_prs_count": open_prs_count,
+                    "appfactory": appfactory_info,
                 })
 
                 if limit is not None and len(repos) >= limit:

@@ -91,7 +91,11 @@ class TestListAccessibleRepositories:
         data = response.json()
         assert len(data) == 1
         assert data[0]["full_name"] == "owner/repo"
-        mock_service.list_accessible_repos.assert_called_once()
+        mock_service.list_accessible_repos.assert_called_once_with(
+            appfactory_only=False,
+            include_appfactory=False,
+            heal_topics=False,
+        )
 
     @patch("github_api.GITHUB_AVAILABLE", True)
     @patch.dict(os.environ, {}, clear=True)
@@ -384,4 +388,3 @@ class TestOrchestrationIntegration:
             json={"repo_path": "/tmp/test", "repo_owner": "owner", "repo_name": "repo"},
         )
         assert response.status_code == 401
-

@@ -214,6 +214,13 @@ function New-ExpandedContract {
         throw "Request is missing job_type"
     }
 
+    $jobContractUniverse = Get-ObjectValue -Object $JobConfig -Key "contract_universe"
+    $jobContractVersion = Get-ObjectValue -Object $JobConfig -Key "contract_version"
+    $jobPipelineId = Get-ObjectValue -Object $JobConfig -Key "pipeline_id"
+    if (-not $jobPipelineId -and $Pipeline -and $Pipeline.name) {
+        $jobPipelineId = $Pipeline.name
+    }
+
     $defaults = $JobConfig.defaults
     $defaultsSchema = Get-ObjectValue -Object $defaults -Key "schema_version"
     $defaultsBudget = Get-ObjectValue -Object $defaults -Key "budget"
@@ -231,6 +238,9 @@ function New-ExpandedContract {
     $base = [ordered]@{
         schema_version = $(if ($reqSchemaVersion) { $reqSchemaVersion } elseif ($defaultsSchema) { $defaultsSchema } else { "1.0" })
         job_type = $jobType
+        contract_universe = $jobContractUniverse
+        contract_version = $jobContractVersion
+        pipeline_id = $jobPipelineId
         run_id = $(if ($reqRunId) { $reqRunId } else { "AUTO" })
         goal = $reqGoal
         agent_roster = $(if ($reqAgentRoster) { $reqAgentRoster } else { $JobConfig.default_agents })

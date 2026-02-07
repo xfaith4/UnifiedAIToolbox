@@ -5,6 +5,7 @@ import type { RepoContract } from '../contracts/RepoContract'
 import { assembleRepo } from '../assemble/assembleRepo'
 import { ingestArtifacts, type AppFactoryArtifact } from './ingestArtifacts'
 import { removeGitDir } from '../repair/patchApplier'
+import { writeAppFactoryMetadata } from '../provenance/writeRepoProvenance'
 import { writeLegacyDiagnosticsBundle } from '../diagnostics/writeLegacyDiagnosticsBundle'
 
 function safeRelativePath(input: string): string {
@@ -30,6 +31,7 @@ export async function exportRepoLegacy(options: {
 
   await ingestArtifacts(repoDir, options.artifacts)
   await assembleRepo(repoDir, options.contract)
+  await writeAppFactoryMetadata({ repoDir, runId, contract: options.contract })
   await removeGitDir(repoDir)
   await writeLegacyDiagnosticsBundle({ repoDir, runId, stackId: options.contract.stackId })
 

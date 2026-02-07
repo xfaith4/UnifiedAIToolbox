@@ -922,6 +922,50 @@ function Invoke-RepoContextBuilder {
         security = [pscustomobject]@{ status = "not_collected"; dependency_update_policy = "" }
     }
 
+    $appfactoryProvenance = [pscustomobject]@{
+        status = "not_found"
+        known = $false
+        reason = "No .appfactory/metadata.json found."
+        metadata_path = ""
+        contract_universe = ""
+        contract_version = ""
+        pipeline_id = ""
+    }
+    $metadataPath = Join-Path $RepoRoot ".appfactory\metadata.json"
+    if (Test-Path -LiteralPath $metadataPath) {
+        try {
+            $metadataRaw = Get-Content -Raw -LiteralPath $metadataPath
+            $metadata = $metadataRaw | ConvertFrom-Json -Depth 20
+            $factoryName = $null
+            if ($metadata.factory -and $metadata.factory.name) { $factoryName = $metadata.factory.name }
+            $schemaVersion = $metadata.schema_version
+            $isValid = ($schemaVersion -eq "1.0" -and $factoryName -eq "AppFactory")
+            $classification = if ($metadata.classification) { $metadata.classification } else { $null }
+
+            $appfactoryProvenance = [pscustomobject]@{
+                status = $(if ($isValid) { "valid" } else { "invalid" })
+                known = [bool]$isValid
+                reason = $(if ($isValid) { "Valid App Factory provenance." } else { "Metadata invalid or unsupported." })
+                metadata_path = (Get-RelativePath -Root $RepoRoot -Path $metadataPath)
+                contract_universe = $(if ($classification -and $classification.contract_universe) { $classification.contract_universe } else { "" })
+                contract_version = $(if ($classification -and $classification.contract_version) { $classification.contract_version } else { "" })
+                pipeline_id = $(if ($classification -and $classification.pipeline_id) { $classification.pipeline_id } else { "" })
+            }
+        }
+        catch {
+            $appfactoryProvenance = [pscustomobject]@{
+                status = "invalid"
+                known = $false
+                reason = "Failed to parse .appfactory/metadata.json."
+                metadata_path = (Get-RelativePath -Root $RepoRoot -Path $metadataPath)
+                contract_universe = ""
+                contract_version = ""
+                pipeline_id = ""
+            }
+        }
+    }
+    $policyHooks | Add-Member -NotePropertyName "appfactory_provenance" -NotePropertyValue $appfactoryProvenance -Force
+
     $sizeBytes = ($files | Measure-Object -Property Length -Sum).Sum
     if ($null -eq $sizeBytes) { $sizeBytes = 0 }
     $scanEstimate = [pscustomobject]@{
