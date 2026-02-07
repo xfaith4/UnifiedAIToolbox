@@ -236,6 +236,10 @@ jobs:
         working-directory: apps/unifiedtoolbox.webapp
         run: npm run lint
 
+      - name: Run app-factory tests
+        working-directory: apps/unifiedtoolbox.webapp
+        run: npm run test
+
       - name: Build web app
         working-directory: apps/unifiedtoolbox.webapp
         run: npm run build
