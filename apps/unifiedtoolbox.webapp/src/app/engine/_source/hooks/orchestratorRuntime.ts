@@ -852,7 +852,7 @@ class OrchestratorRuntime {
           ],
         })
 
-        if (!this.isCurrentRun(token) || !this.snapshot.isOrchestrating) throw new Error('Execution canceled by user.')
+        if (!this.isCurrentRun(token) || !this.snapshot.isOrchestrating) return
 
         const fullResponseText = response.choices[0].message.content || ''
         const lines = (fullResponseText || '').split('\n')
