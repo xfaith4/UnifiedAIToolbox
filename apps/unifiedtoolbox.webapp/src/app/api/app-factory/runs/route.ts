@@ -31,14 +31,23 @@ export async function GET() {
     if (!isValidRunId(entry.name)) continue
     const runDir = path.join(runsRoot, entry.name)
     const state = await readJsonIfExists(path.join(runDir, 'run_state.json'))
+    const statusData = await readJsonIfExists(path.join(runDir, 'status.json'))
+    
+    // Get PR URL from links
+    const links = state?.links || statusData?.links || {}
+    const prUrl = links.pr_url || links.pr
+    const repoUrl = links.repo_url || links.repo
+    
     runs.push({
       runId: entry.name,
-      jobType: state?.job_type,
-      status: state?.status,
-      updatedAt: state?.updated_at,
-      startedAt: state?.started_at,
-      endedAt: state?.ended_at,
-      risk: state?.risk,
+      jobType: state?.job_type || statusData?.job_type,
+      status: state?.status || statusData?.state,
+      updatedAt: state?.updated_at || statusData?.updated_at,
+      startedAt: state?.started_at || statusData?.started_at,
+      endedAt: state?.ended_at || statusData?.finished_at,
+      risk: state?.risk || statusData?.risk,
+      pr: prUrl,
+      repo: repoUrl,
     })
   }
 
