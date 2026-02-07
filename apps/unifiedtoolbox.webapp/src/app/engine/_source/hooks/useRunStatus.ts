@@ -24,7 +24,7 @@ export function useRunStatus(runId: string | null, options: UseRunStatusOptions 
     let timer: NodeJS.Timeout | null = null
 
     const fetchStatus = async (): Promise<RunStatusResponse['status'] | null> => {
-      if (cancelled) return
+      if (cancelled) return null
       setLoading(true)
       try {
         const res = await fetch(`/api/app-factory/runs/${encodeURIComponent(runId)}/status`, { cache: 'no-store' })
