@@ -4,11 +4,34 @@ import { isValidRunId, loadRunStatus } from '@/lib/app-factory/runs/runStatus'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
+const safeDecode = (value: string) => {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
+  }
+}
+
+const resolveRunId = (paramRunId: unknown, req: Request): string => {
+  const direct = safeDecode(String(paramRunId || '')).trim()
+  if (direct) return direct
+  try {
+    const parts = new URL(req.url).pathname.split('/').filter(Boolean)
+    const runsIndex = parts.indexOf('runs')
+    if (runsIndex >= 0 && parts.length > runsIndex + 1) {
+      return safeDecode(parts[runsIndex + 1] || '').trim()
+    }
+  } catch {
+    // ignore
+  }
+  return ''
+}
+
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: { runId: string } }
 ) {
-  const runId = params?.runId
+  const runId = resolveRunId(params?.runId, req)
   if (!runId) {
     return NextResponse.json({ error: { code: 'MISSING_RUN_ID', message: 'Missing runId' } }, { status: 400 })
   }

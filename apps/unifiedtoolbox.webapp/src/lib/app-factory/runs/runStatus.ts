@@ -10,7 +10,7 @@ type RunStatusOptions = {
 
 const DEFAULT_EVENT_LIMIT = 200
 const MAX_EVENT_BYTES = 512 * 1024
-const RUN_ID_PATTERN = /^[a-zA-Z0-9_-]+$/
+const RUN_ID_PATTERN = /^[a-zA-Z0-9._-]+$/
 
 function ensureWithin(root: string, candidate: string): string {
   const full = path.resolve(root, candidate)
@@ -22,7 +22,10 @@ function ensureWithin(root: string, candidate: string): string {
 }
 
 export function isValidRunId(runId: string): boolean {
-  return RUN_ID_PATTERN.test(runId)
+  const trimmed = runId.trim()
+  if (!RUN_ID_PATTERN.test(trimmed)) return false
+  if (trimmed.includes('..')) return false
+  return true
 }
 
 export function getRunsRoot(): string {
@@ -251,9 +254,10 @@ function getFirstString(...values: unknown[]): string | undefined {
 }
 
 export async function loadRunStatus(runId: string, options: RunStatusOptions = {}): Promise<RunStatusResponse | null> {
-  if (!isValidRunId(runId)) return null
+  const normalizedRunId = runId.trim()
+  if (!isValidRunId(normalizedRunId)) return null
   const rootDir = options.rootDir ?? getRunsRoot()
-  const runDir = ensureWithin(rootDir, runId)
+  const runDir = ensureWithin(rootDir, normalizedRunId)
   try {
     const stat = await fs.stat(runDir)
     if (!stat.isDirectory()) return null
@@ -357,6 +361,9 @@ export async function loadRunStatus(runId: string, options: RunStatusOptions = {
     pr_url: getFirstString(runStateLinks?.pr_url, prUrlFromJson),
     repo_url: getFirstString(runStateLinks?.repo_url, runStateLinks?.repo),
   }
+
+  // Use the normalized run id for the response payload.
+  runId = normalizedRunId
 
   const stageCount =
     typeof runStateJson?.stage_count === 'number'

@@ -7,6 +7,7 @@ type Props = {
   loading?: boolean
   error?: string | null
   onOpenArtifact?: (path: string) => void
+  onCancel?: () => void
 }
 
 function badgeClass(state: string) {
@@ -61,7 +62,7 @@ function canOpenArtifact(path: string | undefined) {
   )
 }
 
-const MaintenanceRunPanel: React.FC<Props> = ({ runId, status, loading, error, onOpenArtifact }) => {
+const MaintenanceRunPanel: React.FC<Props> = ({ runId, status, loading, error, onOpenArtifact, onCancel }) => {
   if (!runId) {
     return (
       <section className="p-4 border-b border-gray-700 bg-gray-900/20">
@@ -83,7 +84,18 @@ const MaintenanceRunPanel: React.FC<Props> = ({ runId, status, loading, error, o
             </span>
             <span className="text-[11px] text-gray-500 font-mono">run: {runId}</span>
           </div>
-          {loading && <div className="text-xs text-gray-400">Refreshing…</div>}
+          <div className="flex items-center gap-3">
+            {loading && <div className="text-xs text-gray-400">Refreshing…</div>}
+            {onCancel && (status?.status === 'queued' || status?.status === 'running') ? (
+              <button
+                type="button"
+                className="rounded border border-rose-700 bg-rose-900/40 px-2 py-1 text-[11px] text-rose-100 hover:bg-rose-900/60"
+                onClick={onCancel}
+              >
+                Cancel run
+              </button>
+            ) : null}
+          </div>
         </div>
 
         {error && (

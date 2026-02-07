@@ -105,17 +105,47 @@ export async function POST(req: Request) {
 
   const psExe = resolvePowerShell()
   const logPath = path.join(runDir, 'run.log')
-  const logStream = fs.createWriteStream(logPath, { flags: 'a' })
+  const logFd = fs.openSync(logPath, 'a')
 
   try {
-    const child = spawn(psExe, ['-NoLogo', '-File', scriptPath, '-RequestPath', requestPath, '-JobType', jobType, '-OutputDir', runDir], {
+    const psArgs = [
+      '-NoLogo',
+      '-NoProfile',
+      '-NonInteractive',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-File',
+      scriptPath,
+      '-RequestPath',
+      requestPath,
+      '-JobType',
+      jobType,
+      '-OutputDir',
+      runDir,
+    ]
+    const child = spawn(psExe, psArgs, {
       cwd: repoRoot,
       env: { ...process.env, UAIT_JOB_TYPE: jobType },
       detached: true,
-      stdio: ['ignore', logStream, logStream],
+      stdio: ['ignore', logFd, logFd],
     })
     child.unref()
+    const processInfo = {
+      pid: child.pid ?? null,
+      startedAt: new Date().toISOString(),
+      command: [psExe, ...psArgs],
+      runId,
+      jobType,
+      requestPath,
+    }
+    await fsp.writeFile(path.join(runDir, 'run_process.json'), JSON.stringify(processInfo, null, 2) + '\n', 'utf8')
+    fs.closeSync(logFd)
   } catch (err) {
+    try {
+      fs.closeSync(logFd)
+    } catch {
+      // ignore log fd close errors
+    }
     const errorPath = path.join(runDir, 'run_error.md')
     await fsp.writeFile(
       errorPath,

@@ -61,6 +61,7 @@ const App: React.FC = () => {
   const [maintenanceRunId, setMaintenanceRunId] = useState<string | null>(null)
   const [maintenanceStartError, setMaintenanceStartError] = useState<string | null>(null)
   const [maintenanceRunning, setMaintenanceRunning] = useState(false)
+  const [maintenanceCanceling, setMaintenanceCanceling] = useState(false)
   const { status: maintenanceStatus, error: maintenanceStatusError, loading: maintenanceStatusLoading } = useRunStatus(maintenanceRunId, { enabled: isMaintenance })
   const maintenanceError = maintenanceStartError || maintenanceStatusError
 
@@ -175,6 +176,28 @@ const App: React.FC = () => {
     } catch (err) {
       setMaintenanceStartError(err instanceof Error ? err.message : 'Failed to start maintenance run.')
       setMaintenanceRunning(false)
+    }
+  }
+
+  const cancelMaintenanceRun = async () => {
+    if (!maintenanceRunId || maintenanceCanceling) return
+    setMaintenanceCanceling(true)
+    setMaintenanceStartError(null)
+    try {
+      const res = await fetch(`/api/app-factory/runs/${encodeURIComponent(maintenanceRunId)}/cancel`, {
+        method: 'POST',
+      })
+      const json = await res.json().catch(() => null)
+      if (!res.ok) {
+        const msg = json?.error?.message || `Failed to cancel maintenance run (${res.status})`
+        setMaintenanceStartError(msg)
+        return
+      }
+      setMaintenanceRunning(false)
+    } catch (err) {
+      setMaintenanceStartError(err instanceof Error ? err.message : 'Failed to cancel maintenance run.')
+    } finally {
+      setMaintenanceCanceling(false)
     }
   }
 
@@ -312,7 +335,7 @@ const App: React.FC = () => {
         <GoalInput
           onGoalSubmit={handleGoalSubmit}
           isOrchestrating={isMaintenance ? maintenanceRunning : isOrchestrating}
-          onCancelOrchestration={cancelOrchestration}
+          onCancelOrchestration={isMaintenance ? cancelMaintenanceRun : cancelOrchestration}
           jobType={jobType}
           jobTypeConfig={jobTypeConfig}
           jobTypeOptions={jobTypeOptions}
@@ -329,6 +352,7 @@ const App: React.FC = () => {
               if (!maintenanceRunId) return
               setViewFile({ runId: maintenanceRunId, relPath, scope: 'run' })
             }}
+            onCancel={cancelMaintenanceRun}
           />
         ) : (
           <>
