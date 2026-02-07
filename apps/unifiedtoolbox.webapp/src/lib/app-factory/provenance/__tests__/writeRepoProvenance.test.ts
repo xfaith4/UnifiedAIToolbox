@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { promises as fs } from 'fs'
 import path from 'path'
 import { writeAppFactoryMetadata } from '../writeRepoProvenance'
@@ -10,6 +10,7 @@ describe('writeRepoProvenance', () => {
   beforeEach(async () => {
     tmpDir = path.join('/tmp', `test-provenance-${Date.now()}-${Math.random().toString(36).slice(2)}`)
     await fs.mkdir(tmpDir, { recursive: true })
+    vi.resetAllMocks()
   })
 
   afterEach(async () => {
@@ -143,5 +144,129 @@ describe('writeRepoProvenance', () => {
     expect(result.metadata.contracts.common).toBe('contracts/common_run_contract.v1.json')
     expect(result.metadata.contracts.job).toContain('build_app_contract.v1')
     expect(result.metadata.contracts.pipeline).toContain('pipeline_build_app.v1')
+  })
+
+  it('sets GitHub topics when valid config provided', async () => {
+    // Mock fetch to simulate successful GitHub API call
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ names: ['appfactory', 'nodejs'] }),
+    })
+
+    const contract: RepoContract = {
+      stackId: 'node-next-app-npm',
+      installCommand: 'npm install',
+      buildCommand: 'npm run build',
+    }
+
+    const result = await writeAppFactoryMetadata({
+      repoDir: tmpDir,
+      runId: 'test-run',
+      contract,
+      githubConfig: {
+        token: 'ghp_test123',
+        owner: 'testorg',
+        repo: 'testrepo',
+      },
+    })
+
+    expect(result.githubTopicsSet).toBe(true)
+    expect(global.fetch).toHaveBeenCalledWith(
+      'https://api.github.com/repos/testorg/testrepo/topics',
+      expect.objectContaining({
+        method: 'PUT',
+      })
+    )
+  })
+
+  it('gracefully handles GitHub API failure', async () => {
+    // Mock fetch to simulate GitHub API error
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 403,
+      text: async () => JSON.stringify({ message: 'Forbidden' }),
+    })
+
+    const contract: RepoContract = {
+      stackId: 'node-next-app-npm',
+      installCommand: 'npm install',
+      buildCommand: 'npm run build',
+    }
+
+    // Should not throw even if GitHub API fails
+    const result = await writeAppFactoryMetadata({
+      repoDir: tmpDir,
+      runId: 'test-run',
+      contract,
+      githubConfig: {
+        token: 'ghp_invalid',
+        owner: 'testorg',
+        repo: 'testrepo',
+      },
+    })
+
+    // Metadata should still be written even if GitHub API fails
+    expect(result.path).toContain('.appfactory/metadata.json')
+    expect(result.githubTopicsSet).toBe(false)
+    
+    const metadataExists = await fs.access(result.path).then(() => true).catch(() => false)
+    expect(metadataExists).toBe(true)
+  })
+
+  it('works without GitHub config (backward compatibility)', async () => {
+    const contract: RepoContract = {
+      stackId: 'node-next-app-npm',
+      installCommand: 'npm install',
+      buildCommand: 'npm run build',
+    }
+
+    // No githubConfig provided - should work as before
+    const result = await writeAppFactoryMetadata({
+      repoDir: tmpDir,
+      runId: 'test-run',
+      contract,
+    })
+
+    expect(result.path).toContain('.appfactory/metadata.json')
+    expect(result.githubTopicsSet).toBe(false)
+    
+    const metadataExists = await fs.access(result.path).then(() => true).catch(() => false)
+    expect(metadataExists).toBe(true)
+  })
+
+  it('auto-detects GitHub config from environment', async () => {
+    // Set up environment variables
+    process.env.GITHUB_TOKEN = 'ghp_fromenv'
+    process.env.GITHUB_REPO_OWNER = 'envowner'
+    process.env.GITHUB_REPO_NAME = 'envrepo'
+
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ names: ['appfactory'] }),
+    })
+
+    const contract: RepoContract = {
+      stackId: 'node-next-app-npm',
+      installCommand: 'npm install',
+      buildCommand: 'npm run build',
+    }
+
+    const result = await writeAppFactoryMetadata({
+      repoDir: tmpDir,
+      runId: 'test-run',
+      contract,
+      autoDetectGitHub: true,
+    })
+
+    expect(result.githubTopicsSet).toBe(true)
+    expect(global.fetch).toHaveBeenCalledWith(
+      'https://api.github.com/repos/envowner/envrepo/topics',
+      expect.anything()
+    )
+
+    // Clean up
+    delete process.env.GITHUB_TOKEN
+    delete process.env.GITHUB_REPO_OWNER
+    delete process.env.GITHUB_REPO_NAME
   })
 })

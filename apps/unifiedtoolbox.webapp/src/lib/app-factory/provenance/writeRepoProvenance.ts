@@ -1,6 +1,7 @@
 import { promises as fs } from 'fs'
 import path from 'path'
 import type { RepoContract } from '../contracts/RepoContract'
+import { getGitHubConfigFromEnv, setRepositoryTopics, type GitHubTopicConfig } from './githubTopicService'
 
 type AppFactoryMetadata = {
   schema_version: string
@@ -56,7 +57,11 @@ export async function writeAppFactoryMetadata(options: {
   contractUniverse?: string
   contractVersion?: string
   pipelineId?: string
-}): Promise<{ path: string; metadata: AppFactoryMetadata }> {
+  /** Optional GitHub configuration for setting repository topics via API */
+  githubConfig?: GitHubTopicConfig | null
+  /** If true, automatically detect GitHub config from environment variables */
+  autoDetectGitHub?: boolean
+}): Promise<{ path: string; metadata: AppFactoryMetadata; githubTopicsSet?: boolean }> {
   const now = new Date().toISOString()
   const stackSlug = slugify(options.contract.stackId || 'app') || 'app'
   const topicTag = `appfactory-topic-${stackSlug}`
@@ -74,8 +79,39 @@ export async function writeAppFactoryMetadata(options: {
     `appfactory-contract-${contractVersion}`,
     `appfactory-pipeline-${pipelineId}`,
   ]
-  // TODO: App Factory GitHub repo creation flow should call the GitHub API to set these topics.
-  // This pipeline only writes metadata because it does not create/publish the repo.
+  
+  // GitHub API Integration: Set repository topics via GitHub API when credentials available
+  // 
+  // This implements the TODO from the audit (lines 77-78 in original code).
+  // The integration is OPTIONAL and gracefully degrades when:
+  // - No GitHub configuration is provided
+  // - Environment variables are not set
+  // - GitHub API call fails
+  //
+  // Behavior:
+  // 1. If githubConfig is explicitly provided, use it
+  // 2. If autoDetectGitHub is true, try to load config from environment
+  // 3. If config available, attempt to set topics via GitHub API
+  // 4. Always write local metadata regardless of GitHub API success
+  //
+  // Environment variables (optional):
+  // - GITHUB_TOKEN or GITHUB_PAT: Personal access token with repo scope
+  // - GITHUB_REPO_OWNER or APP_FACTORY_REPO_OWNER: Repository owner
+  // - GITHUB_REPO_NAME or APP_FACTORY_REPO_NAME: Repository name
+  let githubTopicsSet = false
+  const githubConfig = options.githubConfig ?? (options.autoDetectGitHub ? getGitHubConfigFromEnv() : null)
+  
+  if (githubConfig) {
+    const result = await setRepositoryTopics(githubConfig, topics)
+    if (result.success) {
+      githubTopicsSet = true
+      // Note: Topics might be normalized by GitHub API
+      console.log(`[AppFactory] GitHub topics set for ${githubConfig.owner}/${githubConfig.repo}:`, result.topics)
+    } else if (!result.skipped) {
+      // Log warning but continue - local metadata writing is more important
+      console.warn(`[AppFactory] Failed to set GitHub topics: ${result.error}`)
+    }
+  }
 
   const repoFullName = getEnv('APP_FACTORY_REPO_FULL_NAME') || `local/${stackSlug}`
   const defaultBranch = getEnv('APP_FACTORY_DEFAULT_BRANCH') || 'main'
@@ -128,5 +164,5 @@ export async function writeAppFactoryMetadata(options: {
 
   await fs.mkdir(path.dirname(metadataPath), { recursive: true })
   await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2) + '\n', 'utf8')
-  return { path: metadataPath, metadata }
+  return { path: metadataPath, metadata, githubTopicsSet }
 }
