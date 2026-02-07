@@ -106,13 +106,15 @@ export function useRunStatus(
     setIsPollActive(true)
 
     const schedulePoll = () => {
-      pollTimeoutRef.current = setTimeout(() => {
-        void fetchStatus().then(() => {
-          // Schedule next poll if still needed
-          if (status && !TERMINAL_STATES.has(status.status)) {
-            schedulePoll()
-          }
-        })
+      pollTimeoutRef.current = setTimeout(async () => {
+        await fetchStatus()
+        // Check the updated status after fetch
+        const currentStatus = prevStatusRef.current
+        if (currentStatus && !TERMINAL_STATES.has(currentStatus.status)) {
+          schedulePoll()
+        } else {
+          setIsPollActive(false)
+        }
       }, pollInterval)
     }
 

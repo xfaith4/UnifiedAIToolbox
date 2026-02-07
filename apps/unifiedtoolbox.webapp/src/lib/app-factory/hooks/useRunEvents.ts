@@ -51,6 +51,7 @@ export function useRunEvents(
 
   const pollTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const lastCursorRef = useRef<string | null>(null)
+  const seenEventsRef = useRef<Set<string>>(new Set())
 
   const fetchEvents = useCallback(async () => {
     if (!runId) {
@@ -79,15 +80,22 @@ export function useRunEvents(
       const data = await response.json() as { events: RunEvent[]; cursor: string | null }
       
       if (accumulate) {
-        // Append new events
+        // Append new events using ref for efficient deduplication
         setEvents((prev) => {
-          // Deduplicate by timestamp + message
-          const existing = new Set(prev.map((e) => `${e.ts}:${e.message}`))
-          const newEvents = data.events.filter((e) => !existing.has(`${e.ts}:${e.message}`))
+          const newEvents = data.events.filter((e) => {
+            const key = `${e.ts}:${e.message}`
+            if (seenEventsRef.current.has(key)) return false
+            seenEventsRef.current.add(key)
+            return true
+          })
           return [...prev, ...newEvents]
         })
       } else {
-        // Replace all events
+        // Replace all events and reset seen set
+        seenEventsRef.current.clear()
+        data.events.forEach((e) => {
+          seenEventsRef.current.add(`${e.ts}:${e.message}`)
+        })
         setEvents(data.events)
       }
 
@@ -111,6 +119,7 @@ export function useRunEvents(
   const clear = useCallback(() => {
     setEvents([])
     lastCursorRef.current = null
+    seenEventsRef.current.clear()
   }, [])
 
   // Initial fetch

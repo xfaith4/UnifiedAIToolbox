@@ -157,7 +157,7 @@ const MaintenanceRunPanel: React.FC<Props> = ({ runId, status, loading, error, o
                 />
               </div>
             )}
-            <div className="text-[11px] text-gray-500 mt-1">Updated {formatTime(status?.updatedAt) || '—'}</div>
+            <div className="mt-1 text-[11px] text-gray-500">Updated {formatTime(status?.updatedAt) || '—'}</div>
           </div>
           <div className="rounded border border-gray-700 bg-gray-900/40 px-3 py-2">
             <div className="text-[11px] text-gray-500">Risk</div>
