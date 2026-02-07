@@ -19,11 +19,7 @@
     ".cjs",
     ".mts",
     ".cts",
-    ".json",
-    ".yml",
-    ".yaml",
-    ".md",
-    ".css"
+    ".json"
   ],
   "forbiddenPatternsByExtension": {
     ".ts": [

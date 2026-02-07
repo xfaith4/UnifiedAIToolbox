@@ -226,6 +226,9 @@ export async function evaluateRepoContract(repoDir: string, contract: RepoContra
 
   for (const fullPath of allFiles) {
     const ext = path.extname(fullPath).toLowerCase()
+    // Only check files that are defined as code files in the contract
+    if (!contract.codeFileExtensions.includes(ext)) continue
+
     const rules = mergeForbidden(DEFAULT_CODE_FILE_FORBIDDEN, contract.forbiddenPatternsByExtension[ext] || [])
     if (!rules?.length) continue
 
