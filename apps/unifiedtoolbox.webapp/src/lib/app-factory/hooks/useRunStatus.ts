@@ -127,7 +127,11 @@ export function useRunStatus(
         pollTimeoutRef.current = null
       }
     }
-  }, [runId, status, autoPoll, pollInterval, fetchStatus])
+    // fetchStatus is intentionally not in deps to avoid restarting polling
+    // when onStatusChange changes. The effect only restarts when polling
+    // configuration (runId, status, autoPoll, pollInterval) changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runId, status, autoPoll, pollInterval])
 
   return {
     status,

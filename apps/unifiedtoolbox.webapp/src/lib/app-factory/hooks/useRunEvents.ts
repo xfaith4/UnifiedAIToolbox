@@ -154,7 +154,11 @@ export function useRunEvents(
         pollTimeoutRef.current = null
       }
     }
-  }, [runId, autoPoll, pollInterval, fetchEvents])
+    // fetchEvents is intentionally not in deps to avoid restarting polling
+    // when limit or accumulate options change. The effect only restarts when
+    // polling configuration (runId, autoPoll, pollInterval) changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runId, autoPoll, pollInterval])
 
   return {
     events,

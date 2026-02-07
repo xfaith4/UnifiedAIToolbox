@@ -192,14 +192,20 @@ async function listFilesRecursive(baseDir: string): Promise<string[]> {
   const stack: string[] = [baseDir]
   while (stack.length) {
     const current = stack.pop()!
-    const entries = await fs.readdir(current, { withFileTypes: true })
-    for (const entry of entries) {
-      const full = path.join(current, entry.name)
-      if (entry.isDirectory()) {
-        stack.push(full)
-      } else if (entry.isFile()) {
-        out.push(full)
+    try {
+      const entries = await fs.readdir(current, { withFileTypes: true })
+      for (const entry of entries) {
+        const full = path.join(current, entry.name)
+        if (entry.isDirectory()) {
+          stack.push(full)
+        } else if (entry.isFile()) {
+          out.push(full)
+        }
       }
+    } catch (err) {
+      // Skip directories that can't be read (permissions, etc.)
+      // Log would be helpful in production, but continue processing
+      continue
     }
   }
   return out
