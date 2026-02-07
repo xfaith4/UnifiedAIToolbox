@@ -30,6 +30,42 @@ function statusPill(status: string): string {
   }
 }
 
+type AgentStatusInfo = {
+  statusClass: string
+  statusLabel: string
+  priority: number
+}
+
+function getAgentStatusInfo(agent: { running: number; failed: number; completed: number; pending: number }): AgentStatusInfo {
+  // Priority: running > failed > completed > pending
+  if (agent.running > 0) {
+    return {
+      statusClass: 'border-blue-500/40 bg-blue-500/10 text-blue-200',
+      statusLabel: `${agent.running} active`,
+      priority: 4,
+    }
+  }
+  if (agent.failed > 0) {
+    return {
+      statusClass: 'border-red-500/40 bg-red-500/10 text-red-200',
+      statusLabel: `${agent.failed} failed`,
+      priority: 3,
+    }
+  }
+  if (agent.completed > 0) {
+    return {
+      statusClass: 'border-green-500/40 bg-green-500/10 text-green-200',
+      statusLabel: `${agent.completed} done`,
+      priority: 2,
+    }
+  }
+  return {
+    statusClass: 'border-gray-700 bg-gray-900/40 text-gray-200',
+    statusLabel: `${agent.pending} queued`,
+    priority: 1,
+  }
+}
+
 const RunMonitorPanel: React.FC<Props> = ({ tasks, isOrchestrating, viewMode, onChangeViewMode }) => {
   const summary = useMemo(() => {
     const totalTasks = tasks.length
@@ -39,10 +75,6 @@ const RunMonitorPanel: React.FC<Props> = ({ tasks, isOrchestrating, viewMode, on
     const pending = tasks.filter((t) => t.status === TaskStatus.PENDING).length
 
     const agentSet = new Set<string>()
-    const activeAgentSet = new Set<string>()
-    const completedAgentSet = new Set<string>()
-    const failedAgentSet = new Set<string>()
-    const pendingAgentSet = new Set<string>()
     const byAgent: Record<string, { total: number; running: number; completed: number; failed: number; pending: number }> = {}
 
     for (const t of tasks) {
@@ -52,16 +84,30 @@ const RunMonitorPanel: React.FC<Props> = ({ tasks, isOrchestrating, viewMode, on
       byAgent[key].total += 1
       if (t.status === TaskStatus.RUNNING) {
         byAgent[key].running += 1
-        activeAgentSet.add(key)
       } else if (t.status === TaskStatus.COMPLETED) {
         byAgent[key].completed += 1
-        completedAgentSet.add(key)
       } else if (t.status === TaskStatus.FAILED) {
         byAgent[key].failed += 1
-        failedAgentSet.add(key)
       } else {
         byAgent[key].pending += 1
-        pendingAgentSet.add(key)
+      }
+    }
+
+    // Count agents by their highest priority status (running > failed > completed > pending)
+    const activeAgentSet = new Set<string>()
+    const failedAgentSet = new Set<string>()
+    const completedAgentSet = new Set<string>()
+    const pendingAgentSet = new Set<string>()
+    
+    for (const [agentName, stats] of Object.entries(byAgent)) {
+      if (stats.running > 0) {
+        activeAgentSet.add(agentName)
+      } else if (stats.failed > 0) {
+        failedAgentSet.add(agentName)
+      } else if (stats.completed > 0) {
+        completedAgentSet.add(agentName)
+      } else {
+        pendingAgentSet.add(agentName)
       }
     }
 
@@ -161,23 +207,18 @@ const RunMonitorPanel: React.FC<Props> = ({ tasks, isOrchestrating, viewMode, on
               All Agents ({summary.totalAgents})
             </div>
             <div className="flex flex-wrap gap-2">
-              {summary.allAgents.map((a) => (
-                <span
-                  key={a.agent}
-                  className={`rounded-full border px-2 py-0.5 text-[11px] ${
-                    a.running > 0 
-                      ? 'border-blue-500/40 bg-blue-500/10 text-blue-200' 
-                      : a.failed > 0
-                      ? 'border-red-500/40 bg-red-500/10 text-red-200'
-                      : a.completed > 0
-                      ? 'border-green-500/40 bg-green-500/10 text-green-200'
-                      : 'border-gray-700 bg-gray-900/40 text-gray-200'
-                  }`}
-                  title={`running:${a.running} pending:${a.pending} completed:${a.completed} failed:${a.failed}`}
-                >
-                  {a.agent}: {a.running > 0 ? `${a.running} active` : a.failed > 0 ? `${a.failed} failed` : a.completed > 0 ? `${a.completed} done` : `${a.pending} queued`}
-                </span>
-              ))}
+              {summary.allAgents.map((a) => {
+                const statusInfo = getAgentStatusInfo(a)
+                return (
+                  <span
+                    key={a.agent}
+                    className={`rounded-full border px-2 py-0.5 text-[11px] ${statusInfo.statusClass}`}
+                    title={`running:${a.running} pending:${a.pending} completed:${a.completed} failed:${a.failed}`}
+                  >
+                    {a.agent}: {statusInfo.statusLabel}
+                  </span>
+                )
+              })}
             </div>
           </div>
         )}
