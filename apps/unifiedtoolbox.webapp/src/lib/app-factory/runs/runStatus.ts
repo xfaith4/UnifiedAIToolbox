@@ -238,6 +238,18 @@ function mapArtifactsIndex(index: unknown[]): RunArtifact[] {
   return records
 }
 
+/**
+ * Helper to extract first valid string value from multiple JSON sources
+ */
+function getFirstString(...values: unknown[]): string | undefined {
+  for (const val of values) {
+    if (val != null && val !== '') {
+      return String(val)
+    }
+  }
+  return undefined
+}
+
 export async function loadRunStatus(runId: string, options: RunStatusOptions = {}): Promise<RunStatusResponse | null> {
   if (!isValidRunId(runId)) return null
   const rootDir = options.rootDir ?? getRunsRoot()
@@ -342,8 +354,8 @@ export async function loadRunStatus(runId: string, options: RunStatusOptions = {
   
   const runStateLinks = runStateJson?.links as Record<string, unknown> | undefined
   const links = {
-    pr_url: runStateLinks?.pr_url ? String(runStateLinks.pr_url) : (prUrlFromJson ? String(prUrlFromJson) : undefined),
-    repo_url: runStateLinks?.repo_url ? String(runStateLinks.repo_url) : (runStateLinks?.repo ? String(runStateLinks.repo) : undefined),
+    pr_url: getFirstString(runStateLinks?.pr_url, prUrlFromJson),
+    repo_url: getFirstString(runStateLinks?.repo_url, runStateLinks?.repo),
   }
 
   const stageCount =
@@ -373,9 +385,9 @@ export async function loadRunStatus(runId: string, options: RunStatusOptions = {
     stageIndex: typeof stageIndex === 'number' ? stageIndex : undefined,
     stageCount,
     progress,
-    startedAt: runStateJson?.started_at ? String(runStateJson.started_at) : (statusJson?.started_at ? String(statusJson.started_at) : (statusJson?.startedAt ? String(statusJson.startedAt) : (summaryJson?.StartTime ? String(summaryJson.StartTime) : (summaryJson?.started_at ? String(summaryJson.started_at) : undefined)))),
-    updatedAt: runStateJson?.updated_at ? String(runStateJson.updated_at) : (statusJson?.updated_at ? String(statusJson.updated_at) : (statusJson?.updatedAt ? String(statusJson.updatedAt) : undefined)),
-    endedAt: runStateJson?.ended_at ? String(runStateJson.ended_at) : (statusJson?.finished_at ? String(statusJson.finished_at) : (statusJson?.finishedAt ? String(statusJson.finishedAt) : (summaryJson?.EndTime ? String(summaryJson.EndTime) : (summaryJson?.ended_at ? String(summaryJson.ended_at) : undefined)))),
+    startedAt: getFirstString(runStateJson?.started_at, statusJson?.started_at, statusJson?.startedAt, summaryJson?.StartTime, summaryJson?.started_at),
+    updatedAt: getFirstString(runStateJson?.updated_at, statusJson?.updated_at, statusJson?.updatedAt),
+    endedAt: getFirstString(runStateJson?.ended_at, statusJson?.finished_at, statusJson?.finishedAt, summaryJson?.EndTime, summaryJson?.ended_at),
     stages,
     events,
     artifacts,
