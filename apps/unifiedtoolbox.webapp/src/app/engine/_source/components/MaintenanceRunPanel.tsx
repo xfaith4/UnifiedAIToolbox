@@ -86,6 +86,15 @@ const MaintenanceRunPanel: React.FC<Props> = ({ runId, status, loading, error, o
           </div>
           <div className="flex items-center gap-3">
             {loading && <div className="text-xs text-gray-400">Refreshing…</div>}
+            {status?.artifacts?.length ? (
+              <a
+                href={`/api/app-factory/runs/${encodeURIComponent(runId)}/export?scope=artifacts`}
+                download
+                className="rounded border border-blue-700 bg-blue-900/40 px-2 py-1 text-[11px] text-blue-100 hover:bg-blue-900/60"
+              >
+                Export Artifacts
+              </a>
+            ) : null}
             {onCancel && (status?.status === 'queued' || status?.status === 'running') ? (
               <button
                 type="button"
@@ -140,7 +149,15 @@ const MaintenanceRunPanel: React.FC<Props> = ({ runId, status, loading, error, o
             <div className="font-semibold text-gray-100">
               {typeof status?.progress === 'number' ? `${status.progress}%` : '—'}
             </div>
-            <div className="text-[11px] text-gray-500">Updated {formatTime(status?.updatedAt) || '—'}</div>
+            {typeof status?.progress === 'number' && (
+              <div className="mt-2 h-1.5 w-full rounded-full bg-gray-800">
+                <div
+                  className="h-full rounded-full bg-blue-500 transition-all"
+                  style={{ width: `${Math.min(100, Math.max(0, status.progress))}%` }}
+                />
+              </div>
+            )}
+            <div className="text-[11px] text-gray-500 mt-1">Updated {formatTime(status?.updatedAt) || '—'}</div>
           </div>
           <div className="rounded border border-gray-700 bg-gray-900/40 px-3 py-2">
             <div className="text-[11px] text-gray-500">Risk</div>
