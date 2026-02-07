@@ -88,8 +88,9 @@ export async function scanPromptLibrary(): Promise<PromptData[]> {
         let category = 'General'
         
         // Check telemetry tags first (most reliable)
-        if (data.telemetry?.tags) {
-          const tags = data.telemetry.tags
+        const telemetry = data.telemetry as Record<string, unknown> | undefined
+        if (telemetry?.tags && Array.isArray(telemetry.tags)) {
+          const tags = telemetry.tags as string[]
           if (tags.includes('supervisor')) category = 'Supervisor'
           else if (tags.includes('engineering') || tags.includes('powershell') || tags.includes('sql')) category = 'Engineer'
           else if (tags.includes('analytics') || tags.includes('research')) category = 'Researcher'
@@ -119,14 +120,14 @@ export async function scanPromptLibrary(): Promise<PromptData[]> {
         const hasDocs = files.some(f => f.startsWith(baseName) && f.includes('.meta.'))
 
         prompts.push({
-          id: data.id || file,
-          version: data.version,
+          id: String(data.id || file),
+          version: data.version as string | undefined,
           category,
-          tags: data.telemetry?.tags || [],
-          status: data.status || 'active',
-          risk_tier: data.risk_tier,
-          owners: data.owners,
-          telemetry: data.telemetry,
+          tags: (telemetry?.tags as string[]) || [],
+          status: String(data.status || 'active'),
+          risk_tier: data.risk_tier as string | undefined,
+          owners: data.owners as string[] | undefined,
+          telemetry: telemetry as { tags?: string[]; pii?: string } | undefined,
           hasTests,
           hasDocs,
           filePath: file,
@@ -165,12 +166,12 @@ export async function scanAgentLibrary(): Promise<AgentData[]> {
         const data = yaml.load(content) as Record<string, unknown>
 
         agents.push({
-          id: data.id || file,
-          name: data.name || file.replace('.yaml', ''),
-          role: data.role || 'Unknown',
-          capabilities: data.capabilities || [],
-          status: data.status || 'active',
-          routing_hints: data.routing_hints,
+          id: String(data.id || file),
+          name: String(data.name || file.replace('.yaml', '')),
+          role: String(data.role || 'Unknown'),
+          capabilities: (data.capabilities as string[]) || [],
+          status: String(data.status || 'active'),
+          routing_hints: data.routing_hints as { preferred_models?: string[] } | undefined,
           filePath: file,
         })
       } catch (error) {

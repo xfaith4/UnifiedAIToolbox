@@ -254,10 +254,10 @@ export async function loadRunStatus(runId: string, options: RunStatusOptions = {
   const manifestPath = path.join(runDir, 'run_manifest.json')
   const summaryPath = path.join(runDir, 'orchestration-summary.json')
 
-  const runStateJson = await readJsonIfExists(statePath)
-  const statusJson = await readJsonIfExists(statusPath)
-  const manifestJson = await readJsonIfExists(manifestPath)
-  const summaryJson = await readJsonIfExists(summaryPath)
+  const runStateJson = await readJsonIfExists(statePath) as Record<string, unknown> | null
+  const statusJson = await readJsonIfExists(statusPath) as Record<string, unknown> | null
+  const manifestJson = await readJsonIfExists(manifestPath) as Record<string, unknown> | null
+  const summaryJson = await readJsonIfExists(summaryPath) as Record<string, unknown> | null
 
   const jobType =
     runStateJson?.job_type ||
@@ -285,19 +285,22 @@ export async function loadRunStatus(runId: string, options: RunStatusOptions = {
         finishedAt: stage.finished_at || stage.finishedAt,
       })
     }
-  } else if (Array.isArray(manifestJson?.routing?.stages)) {
-    for (const stageId of manifestJson.routing.stages) {
-      stages.push({ id: String(stageId), status: 'pending' })
+  } else if (manifestJson && typeof manifestJson === 'object') {
+    const routing = (manifestJson as Record<string, unknown>).routing as Record<string, unknown> | undefined
+    if (routing && Array.isArray(routing.stages)) {
+      for (const stageId of routing.stages) {
+        stages.push({ id: String(stageId), status: 'pending' })
+      }
     }
   }
 
   const status =
     normalizeState(
-      runStateJson?.status ||
+      String(runStateJson?.status ||
         statusJson?.state ||
         statusJson?.status ||
         summaryJson?.status ||
-        summaryJson?.Status
+        summaryJson?.Status || '')
     ) || 'running'
 
   let currentStage = runStateJson?.current_stage || statusJson?.current_stage || statusJson?.currentStage || null
@@ -330,14 +333,17 @@ export async function loadRunStatus(runId: string, options: RunStatusOptions = {
     }
   }
 
-  const prJson =
-    (await readJsonIfExists(path.join(artifactsDir, 'pr.json'))) ||
-    (await readJsonIfExists(path.join(runDir, 'pr.json')))
+  const prJson = (await readJsonIfExists(path.join(artifactsDir, 'pr.json'))) ||
+    (await readJsonIfExists(path.join(runDir, 'pr.json'))) as Record<string, unknown> | null
 
-  const prUrlFromJson = prJson?.pr?.url || prJson?.pr_url
+  const prData = prJson && typeof prJson === 'object' ? prJson as Record<string, unknown> : null
+  const prNested = prData?.pr as Record<string, unknown> | undefined
+  const prUrlFromJson = prNested?.url || prData?.pr_url
+  
+  const runStateLinks = runStateJson?.links as Record<string, unknown> | undefined
   const links = {
-    pr_url: runStateJson?.links?.pr_url || (prUrlFromJson ? String(prUrlFromJson) : undefined),
-    repo_url: runStateJson?.links?.repo_url || runStateJson?.links?.repo,
+    pr_url: runStateLinks?.pr_url ? String(runStateLinks.pr_url) : (prUrlFromJson ? String(prUrlFromJson) : undefined),
+    repo_url: runStateLinks?.repo_url ? String(runStateLinks.repo_url) : (runStateLinks?.repo ? String(runStateLinks.repo) : undefined),
   }
 
   const stageCount =
@@ -361,19 +367,19 @@ export async function loadRunStatus(runId: string, options: RunStatusOptions = {
 
   return {
     runId,
-    jobType,
+    jobType: jobType ? String(jobType) : undefined,
     status,
-    currentStage,
+    currentStage: currentStage ? String(currentStage) : null,
     stageIndex: typeof stageIndex === 'number' ? stageIndex : undefined,
     stageCount,
     progress,
-    startedAt: runStateJson?.started_at || statusJson?.started_at || statusJson?.startedAt || summaryJson?.StartTime || summaryJson?.started_at,
-    updatedAt: runStateJson?.updated_at || statusJson?.updated_at || statusJson?.updatedAt,
-    endedAt: runStateJson?.ended_at || statusJson?.finished_at || statusJson?.finishedAt || summaryJson?.EndTime || summaryJson?.ended_at,
+    startedAt: runStateJson?.started_at ? String(runStateJson.started_at) : (statusJson?.started_at ? String(statusJson.started_at) : (statusJson?.startedAt ? String(statusJson.startedAt) : (summaryJson?.StartTime ? String(summaryJson.StartTime) : (summaryJson?.started_at ? String(summaryJson.started_at) : undefined)))),
+    updatedAt: runStateJson?.updated_at ? String(runStateJson.updated_at) : (statusJson?.updated_at ? String(statusJson.updated_at) : (statusJson?.updatedAt ? String(statusJson.updatedAt) : undefined)),
+    endedAt: runStateJson?.ended_at ? String(runStateJson.ended_at) : (statusJson?.finished_at ? String(statusJson.finished_at) : (statusJson?.finishedAt ? String(statusJson.finishedAt) : (summaryJson?.EndTime ? String(summaryJson.EndTime) : (summaryJson?.ended_at ? String(summaryJson.ended_at) : undefined)))),
     stages,
     events,
     artifacts,
-    risk: runStateJson?.risk,
+    risk: runStateJson?.risk as { level?: 'low' | 'medium' | 'high'; reasons?: string[] } | undefined,
     links,
     errors: Array.isArray(runStateJson?.errors) ? runStateJson.errors : undefined,
     warnings: Array.isArray(runStateJson?.warnings) ? runStateJson.warnings : undefined,
