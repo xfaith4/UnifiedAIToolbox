@@ -6,7 +6,16 @@
     { "$ref": "common_run_contract.v1.json" },
     {
       "type": "object",
-      "required": ["repo", "ref"],
+      "required": [
+        "repo",
+        "ref",
+        "intent",
+        "constraints",
+        "change_surface",
+        "baseline",
+        "command_policy",
+        "repo_context_ref"
+      ],
       "properties": {
         "repo": {
           "type": "object",
@@ -25,13 +34,139 @@
             "commit": { "type": "string" }
           }
         },
+        "intent": {
+          "type": "string",
+          "enum": ["bugfix", "feature", "refactor", "stabilize", "docs", "dependency_update"]
+        },
+        "risk_level": {
+          "type": "string",
+          "enum": ["low", "medium", "high"]
+        },
         "constraints": {
           "type": "object",
+          "required": ["hard", "soft"],
           "properties": {
-            "no_stack_change": { "type": "boolean" },
-            "max_files_touched": { "type": "integer" },
-            "max_loc_changed": { "type": "integer" },
-            "dependency_updates": { "type": "string" }
+            "hard": {
+              "type": "object",
+              "required": ["no_stack_change", "dependency_updates"],
+              "properties": {
+                "forbidden_paths": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "forbidden_file_patterns": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "no_stack_change": { "type": "boolean" },
+                "dependency_updates": {
+                  "type": "string",
+                  "enum": ["disallow", "patch_only", "allow"]
+                },
+                "max_loc_changed": { "type": "integer" },
+                "max_files_touched": { "type": "integer" }
+              }
+            },
+            "soft": {
+              "type": "object",
+              "properties": {
+                "max_loc_changed": { "type": "integer" },
+                "max_files_touched": { "type": "integer" },
+                "require_acknowledgment": { "type": "boolean" },
+                "acknowledged": { "type": "boolean" }
+              }
+            }
+          }
+        },
+        "change_surface": {
+          "type": "object",
+          "required": ["forbidden_paths", "forbidden_file_patterns", "touch_policy"],
+          "properties": {
+            "allowed_paths": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "forbidden_paths": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "forbidden_file_patterns": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "touch_policy": {
+              "type": "object",
+              "required": ["ci_workflows", "dependency_manifests", "infra"],
+              "properties": {
+                "ci_workflows": { "type": "string", "enum": ["deny", "allow", "allow_with_approval"] },
+                "dependency_manifests": { "type": "string", "enum": ["deny", "allow", "allow_with_approval"] },
+                "infra": { "type": "string", "enum": ["deny", "allow", "allow_with_approval"] }
+              }
+            }
+          }
+        },
+        "baseline": {
+          "type": "object",
+          "required": ["mode"],
+          "properties": {
+            "mode": { "type": "string", "enum": ["required_pass", "allow_fail_then_stabilize", "skip_with_reason"] },
+            "exception_reason": { "type": "string" },
+            "target": { "type": "string" }
+          }
+        },
+        "command_policy": {
+          "type": "object",
+          "required": ["only_from_repo_context", "thresholds"],
+          "properties": {
+            "only_from_repo_context": { "type": "boolean" },
+            "thresholds": {
+              "type": "object",
+              "properties": {
+                "min_confidence_auto_run": { "type": "number" },
+                "allow_convention": { "type": "boolean" }
+              }
+            },
+            "manual_commands": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "command": { "type": "string" },
+                  "approved_by": { "type": "string" },
+                  "reason": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "repo_context_ref": {
+          "type": "object",
+          "required": ["path"],
+          "properties": {
+            "path": { "type": "string" },
+            "hash_sha256": { "type": "string" }
+          }
+        },
+        "diff_gate": {
+          "type": "object",
+          "properties": {
+            "required_checks": {
+              "type": "object",
+              "properties": {
+                "forbidden_files_changed": { "type": "boolean" },
+                "binary_files_changed": { "type": "boolean" },
+                "lockfiles_changed": { "type": "boolean" },
+                "generated_files_changed": { "type": "boolean" },
+                "license_notice_changed": { "type": "boolean" }
+              }
+            },
+            "optional_checks": {
+              "type": "object",
+              "properties": {
+                "api_surface_changed": { "type": "boolean" },
+                "public_contract_changed": { "type": "boolean" }
+              }
+            }
           }
         },
         "repo_context": {

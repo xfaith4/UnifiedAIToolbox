@@ -20,12 +20,12 @@ BeforeAll {
         job_type = 'build_new_app'
         run_id = 'test-run-build'
         goal = 'Build a test app'
-        agent_roster = @('RepoContextBuilder', 'Researcher', 'Engineer', 'Critic', 'Synthesizer', 'Commissioner', 'Supervisor', 'Historian')
+        agent_roster = @('Researcher', 'Engineer', 'Critic', 'Synthesizer', 'Commissioner', 'Supervisor', 'Historian')
         budget = @{ max_time_minutes = 60 }
         logging = @{ level = 'info' }
         artifact_policy = @{ mode = 'standard'; required = @('orchestration-summary.json') }
         gate_policy = @{ mode = 'standard'; gates = @('quality', 'safety') }
-        stages = @('RepoContextBuilder', 'Researcher', 'Engineer', 'Critic', 'Synthesizer', 'Commissioner', 'Supervisor', 'Historian')
+        stages = @('Researcher', 'Engineer', 'Critic', 'Synthesizer', 'Commissioner', 'Supervisor', 'Historian')
         app = @{ name = 'TestApp' }
     }
     $buildContract | ConvertTo-Json -Depth 20 | Set-Content -Path $script:BuildContractPath -Encoding UTF8
@@ -36,15 +36,29 @@ BeforeAll {
         job_type = 'maintain_existing_app'
         run_id = 'test-run-maint'
         goal = 'Fix a bug'
-        agent_roster = @('RepoContextBuilder', 'Researcher', 'Engineer', 'Critic', 'Synthesizer', 'Commissioner', 'Supervisor', 'Historian')
+        intent = 'bugfix'
+        risk_level = 'low'
+        agent_roster = @('RepoContextBuilder', 'Researcher', 'Engineer', 'ReviewGate', 'Critic', 'Synthesizer', 'Commissioner', 'Supervisor', 'Historian')
         budget = @{ max_time_minutes = 45 }
         logging = @{ level = 'info' }
-        artifact_policy = @{ mode = 'standard'; required = @('PATCH.diff') }
+        artifact_policy = @{ mode = 'standard'; required = @('repo_context.json', 'evidence.json', 'changeset.summary.json', 'changeset.patch') }
         gate_policy = @{ mode = 'strict'; gates = @('baseline', 'change', 'diff') }
-        stages = @('Researcher', 'Engineer', 'Critic', 'Synthesizer', 'Commissioner', 'Supervisor', 'Historian')
+        stages = @('RepoContextBuilder', 'Researcher', 'Engineer', 'ReviewGate', 'Critic', 'Synthesizer', 'Commissioner', 'Supervisor', 'Historian')
         repo = @{ full_name = 'owner/repo' }
         ref = @{ branch = 'main' }
-        constraints = @{ no_stack_change = $true }
+        constraints = @{
+            hard = @{ no_stack_change = $true; dependency_updates = 'disallow'; forbidden_paths = @('secrets') }
+            soft = @{ max_loc_changed = 200; max_files_touched = 5; require_acknowledgment = $true; acknowledged = $true }
+        }
+        change_surface = @{
+            allowed_paths = @('src')
+            forbidden_paths = @('.git')
+            forbidden_file_patterns = @('*.pem')
+            touch_policy = @{ ci_workflows = 'deny'; dependency_manifests = 'deny'; infra = 'deny' }
+        }
+        baseline = @{ mode = 'required_pass' }
+        command_policy = @{ only_from_repo_context = $true; thresholds = @{ min_confidence_auto_run = 0.7; allow_convention = $false } }
+        repo_context_ref = @{ path = 'repo_context.json' }
     }
     $maintenanceContract | ConvertTo-Json -Depth 20 | Set-Content -Path $script:MaintenanceContractPath -Encoding UTF8
 
@@ -68,7 +82,8 @@ BeforeAll {
         job_type = 'maintain_existing_app'
         run_id = 'test-run-forbidden'
         goal = 'Forbidden stage test'
-        agent_roster = @('Researcher', 'Engineer', 'Critic', 'Synthesizer', 'Commissioner', 'Supervisor', 'Historian')
+        intent = 'bugfix'
+        agent_roster = @('RepoContextBuilder', 'Researcher', 'Engineer', 'ReviewGate', 'Critic', 'Synthesizer', 'Commissioner', 'Supervisor', 'Historian')
         budget = @{ max_time_minutes = 15 }
         logging = @{ level = 'info' }
         artifact_policy = @{ mode = 'standard' }
@@ -76,6 +91,19 @@ BeforeAll {
         stages = @('RepoContextBuilder', 'Researcher', 'Engineer', 'AppFactoryBootstrap')
         repo = @{ full_name = 'owner/repo' }
         ref = @{ branch = 'main' }
+        constraints = @{
+            hard = @{ no_stack_change = $true; dependency_updates = 'disallow'; forbidden_paths = @('secrets') }
+            soft = @{ max_loc_changed = 200; max_files_touched = 5; require_acknowledgment = $true; acknowledged = $true }
+        }
+        change_surface = @{
+            allowed_paths = @('src')
+            forbidden_paths = @('.git')
+            forbidden_file_patterns = @('*.pem')
+            touch_policy = @{ ci_workflows = 'deny'; dependency_manifests = 'deny'; infra = 'deny' }
+        }
+        baseline = @{ mode = 'required_pass' }
+        command_policy = @{ only_from_repo_context = $true; thresholds = @{ min_confidence_auto_run = 0.7; allow_convention = $false } }
+        repo_context_ref = @{ path = 'repo_context.json' }
     }
     $forbiddenStage | ConvertTo-Json -Depth 20 | Set-Content -Path $script:ForbiddenStageContractPath -Encoding UTF8
 }

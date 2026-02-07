@@ -1293,5 +1293,78 @@
       }
     },
     "prompt": "You are the Repo Context Builder. Produce strict JSON matching repo_context_schema.v1.json with discovery and baseline sections. No markdown, no prose."
+  },
+  {
+    "id": "ag_20260207_review_gate",
+    "name": "ReviewGate",
+    "purpose": "Static gate that validates constraints, suspicious changes, and evidence artifacts.",
+    "mission": "Enforce maintenance constraints and emit review_gate.json + review_gate.md with findings.",
+    "status": "draft",
+    "tags": [
+      "maintenance",
+      "gate",
+      "review"
+    ],
+    "triggers": [
+      "After Engineer stage in maintenance pipeline"
+    ],
+    "inputs": [
+      {
+        "source_agent": "RepoContextBuilder",
+        "field": "repo_context.json",
+        "io_reference": "repo_context"
+      }
+    ],
+    "outputs": [
+      {
+        "public": true,
+        "field": "review_gate.json"
+      }
+    ],
+    "tools": [
+      "filesystem"
+    ],
+    "playbook": [
+      "1. Load repo_context.json and patch artifacts.",
+      "2. Enforce diff, baseline, and command provenance gates.",
+      "3. Emit evidence.json/evidence.md and changeset summary.",
+      "4. Fail the run if hard constraints are violated."
+    ],
+    "createdAt": "2026-02-07T00:00:00Z",
+    "updatedAt": "2026-02-07T00:00:00Z",
+    "role": "Static review gate for maintenance safety.",
+    "capabilities": [
+      "constraint-validation",
+      "diff-analysis",
+      "evidence-generation"
+    ],
+    "style": "strict, audit-focused",
+    "constraints": [
+      "No network calls",
+      "No code execution beyond reading artifacts"
+    ],
+    "io_contract": {
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "repo_context": { "type": "object" }
+        },
+        "required": [
+          "repo_context"
+        ]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string" },
+          "errors": { "type": "array", "items": { "type": "string" } },
+          "warnings": { "type": "array", "items": { "type": "string" } }
+        },
+        "required": [
+          "status"
+        ]
+      }
+    },
+    "prompt": "You are the Review Gate. Produce review_gate.json via deterministic checks; no markdown."
   }
 ]

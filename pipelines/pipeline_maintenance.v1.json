@@ -21,6 +21,12 @@
       "agent": "Engineer"
     },
     {
+      "id": "ReviewGate",
+      "name": "Review Gate",
+      "description": "Static review and gate enforcement",
+      "agent": "ReviewGate"
+    },
+    {
       "id": "Critic",
       "name": "Validation Phase",
       "description": "Test and validate the maintenance changes",

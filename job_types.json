@@ -42,6 +42,7 @@
         "RepoContextBuilder",
         "Researcher",
         "Engineer",
+        "ReviewGate",
         "Critic",
         "Synthesizer",
         "Commissioner",
@@ -54,13 +55,14 @@
       },
       "artifact_policy": {
         "mode": "standard",
-        "required": ["repo_context.json", "PATCH.diff"]
+        "required": ["repo_context.json", "evidence.json", "changeset.summary.json", "changeset.patch"]
       },
       "stage_policy": {
         "required": [
           "RepoContextBuilder",
           "Researcher",
           "Engineer",
+          "ReviewGate",
           "Critic",
           "Synthesizer",
           "Commissioner",

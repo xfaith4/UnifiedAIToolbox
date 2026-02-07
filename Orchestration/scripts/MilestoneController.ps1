@@ -777,6 +777,18 @@ $contractBlock
         $outputPath = $repoContextResult.RepoContextPath
         $skipWrite = $true
     }
+    elseif ($agentName -eq "ReviewGate") {
+        $gateFn = Get-Command -Name Invoke-ReviewGate -ErrorAction SilentlyContinue
+        if (-not $gateFn) {
+            throw "Review gate functions not loaded. Ensure maintenance_gates.ps1 is available."
+        }
+        $review = Invoke-ReviewGate -Contract $script:Contract -OutputDir $OutputDir -RepoContextPath (Join-Path $OutputDir "repo_context.json") -PatchPath (Join-Path $OutputDir "PATCH.diff")
+        $reviewPath = Join-Path $OutputDir "review_gate.json"
+        $content = Get-Content -Raw -LiteralPath $reviewPath
+        $llmResult = @{ RawResponse = @{ review_gate = $true } }
+        $outputPath = $reviewPath
+        $skipWrite = $true
+    }
     elseif ($DryRun -and $EnforceContracts -and $agentDef -and $agentDef.io_contract -and $agentDef.io_contract.output_schema) {
         $stub = New-StubFromSchema -Schema $agentDef.io_contract.output_schema
         $content = $stub | ConvertTo-Json -Depth 20
@@ -877,6 +889,18 @@ function Execute-MilestonePipeline {
 
         # Make current output available to downstream milestones.
         $upstream[$milestone.Agent] = $agentResult
+
+        if ($script:JobType -eq "maintain_existing_app" -and $milestone.Agent -eq "RepoContextBuilder") {
+            $gateFn = Get-Command -Name Test-BaselineGate -ErrorAction SilentlyContinue
+            if ($gateFn) {
+                $repoContextPath = Join-Path $OutputDir "repo_context.json"
+                $baselineGate = Test-BaselineGate -RepoContextPath $repoContextPath -Contract $script:Contract
+                if (-not $baselineGate.Ok) {
+                    $msg = "Baseline gate failed: " + ($baselineGate.Errors -join "; ")
+                    throw $msg
+                }
+            }
+        }
 
         if ($milestone.Agent -eq "Supervisor" -and $agentResult.ContractOk) {
             Update-LearningFromSupervisor `
@@ -995,6 +1019,10 @@ try {
 
     . $validatorPath
     . $routerPath
+    $maintenanceGatesPath = Join-Path $repoRoot "supervisor\\maintenance_gates.ps1"
+    if (Test-Path -LiteralPath $maintenanceGatesPath) {
+        . $maintenanceGatesPath
+    }
 
     $script:JobTypesPath = Join-Path $repoRoot "job_types.json"
     $script:RepoContextSchemaPath = Join-Path $repoRoot "contracts\\repo_context_schema.v1.json"
