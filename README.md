@@ -96,7 +96,7 @@ The orchestration tool includes an automatic artifact normalizer that ensures ge
 
 1. **Intake**: Unzips and indexes the generated artifact
 2. **Cleanup**: 
-   - Strips accidental markdown code fences from code files
+   - Strips accidental markdown code fences (```html, ```css, ```javascript, etc.) from code files during ingestion
    - Splits bundled multi-file blobs into discrete files
    - Relocates orphaned/weirdly-named files to appropriate locations
 3. **Scaffolding**: Creates missing configuration files:
