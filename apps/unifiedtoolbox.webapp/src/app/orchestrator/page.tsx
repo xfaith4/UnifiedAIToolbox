@@ -1327,8 +1327,8 @@ export default function OrchestratorPage() {
               <div className={`${CARD_SHELL} ${CARD_PADDING}`}>
                 <div className="text-sm font-semibold text-slate-200">Supervisor agent playbook</div>
                 <ul className="mt-3 space-y-2 text-sm text-slate-300">
-                  {SWARM_SUPERVISOR_USES.map((item, index) => (
-                    <li key={`supervisor-${index}`} className="flex gap-2">
+                  {SWARM_SUPERVISOR_USES.map((item) => (
+                    <li key={item} className="flex gap-2">
                       <span className="mt-1 h-1.5 w-1.5 rounded-full bg-blue-400" />
                       <span>{item}</span>
                     </li>
@@ -1338,8 +1338,8 @@ export default function OrchestratorPage() {
               <div className={`${CARD_SHELL} ${CARD_PADDING}`}>
                 <div className="text-sm font-semibold text-slate-200">Best-fit use cases</div>
                 <ul className="mt-3 space-y-2 text-sm text-slate-300">
-                  {SWARM_USE_CASES.map((item, index) => (
-                    <li key={`usecase-${index}`} className="flex gap-2">
+                  {SWARM_USE_CASES.map((item) => (
+                    <li key={item} className="flex gap-2">
                       <span className="mt-1 h-1.5 w-1.5 rounded-full bg-emerald-400" />
                       <span>{item}</span>
                     </li>
