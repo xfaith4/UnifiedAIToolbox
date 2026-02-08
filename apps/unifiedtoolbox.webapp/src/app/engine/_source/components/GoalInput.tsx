@@ -53,8 +53,10 @@ const GoalInput: React.FC<GoalInputProps> = ({ onGoalSubmit, isOrchestrating, on
     const cleaned = goalText.trim().toLowerCase()
       .replace(/\s+/g, '-') // Replace spaces with hyphens first
       .replace(/[^a-z0-9-]+/g, '') // Remove special chars except hyphens
-      .substring(0, MAX_APP_NAME_LENGTH) // Limit length
+      .replace(/-+/g, '-') // Collapse consecutive hyphens to single hyphen
       .replace(/^-+|-+$/g, '') // Remove leading and trailing hyphens
+      .substring(0, MAX_APP_NAME_LENGTH) // Limit length
+      .replace(/-+$/g, '') // Remove trailing hyphens again after truncation
     return cleaned || 'my-app'
   }
 
