@@ -1,0 +1,22 @@
+diff --git a/package.json b/package.json
+new file mode 100644
+index 0000000..e69de29
++++ b/package.json
+@@ -0,0 +1,6 @@
++{
++  "name": "node-next-app-npm",
++  "private": true,
++  "scripts": {
++    "dev": "next dev",
++    "build": "next build",
++    "start": "next start"
++  }
++}
+diff --git a/next.config.js b/next.config.js
+new file mode 100644
+index 0000000..e69de29
++++ b/next.config.js
+@@ -0,0 +1,1 @@
++module.exports = {
++  reactStrictMode: true,
++}

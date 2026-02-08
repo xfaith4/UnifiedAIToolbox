@@ -1,0 +1,688 @@
+```css
+/* src/renderer/styles.css
+   Golden Ratio (φ) Explorer — global theme + responsive layout
+   -----------------------------------------------------------
+   This stylesheet is designed to work with simple classNames.
+   It also includes reasonable element-level defaults so it
+   still improves the UI even when components use inline styles.
+*/
+
+/* ========== CSS Reset / Base ========== */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+html:focus-within {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial,
+    "Apple Color Emoji", "Segoe UI Emoji";
+  line-height: 1.35;
+  color: var(--fg);
+  background: var(--bg);
+}
+
+img,
+svg,
+canvas {
+  display: block;
+  max-width: 100%;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+code,
+pre,
+kbd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+    monospace;
+}
+
+/* ========== Theme Tokens (CSS Variables) ========== */
+/* Default theme: light */
+:root {
+  /* Core */
+  --bg: #f6f7fb;
+  --panel: #ffffff;
+  --panel-2: #fafafa;
+  --fg: #0f172a; /* slate-900 */
+  --muted: #475569; /* slate-600 */
+
+  /* Borders / shadows */
+  --border: #d6d9e2;
+  --border-strong: #b8bfd1;
+  --shadow: 0 10px 30px rgba(2, 6, 23, 0.08);
+  --shadow-soft: 0 6px 18px rgba(2, 6, 23, 0.08);
+
+  /* Accent */
+  --accent: #2563eb; /* blue-600 */
+  --accent-2: #7c3aed; /* violet-600 */
+  --accent-fg: #ffffff;
+
+  /* Focus ring */
+  --focus: rgba(37, 99, 235, 0.35);
+  --focus-strong: rgba(37, 99, 235, 0.55);
+
+  /* Status */
+  --danger: #dc2626;
+  --warning: #d97706;
+  --ok: #16a34a;
+
+  /* Sizing */
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+
+  --gap-1: 6px;
+  --gap-2: 10px;
+  --gap-3: 14px;
+  --gap-4: 18px;
+  --gap-5: 24px;
+
+  /* Layout */
+  --app-max: 1240px;
+  --sidebar-w: 360px;
+
+  /* Typography */
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-md: 14px;
+  --text-lg: 16px;
+
+  /* Inputs */
+  --input-bg: #ffffff;
+  --input-border: #cfd5e3;
+  --input-border-hover: #aeb8cf;
+  --input-placeholder: #94a3b8;
+
+  /* Canvases / diagrams */
+  --canvas-bg: radial-gradient(circle at 35% 20%, rgba(124, 58, 237, 0.08), transparent 42%),
+    radial-gradient(circle at 70% 70%, rgba(37, 99, 235, 0.08), transparent 42%), #ffffff;
+
+  /* Scrollbar */
+  --scrollbar: rgba(15, 23, 42, 0.25);
+  --scrollbar-bg: transparent;
+}
+
+/* Dark theme (opt-in via attribute/class) */
+[data-theme="dark"],
+.theme-dark {
+  --bg: #0b1020;
+  --panel: #0f172a;
+  --panel-2: #0b1326;
+  --fg: #e5e7eb;
+  --muted: #94a3b8;
+
+  --border: rgba(148, 163, 184, 0.22);
+  --border-strong: rgba(148, 163, 184, 0.35);
+  --shadow: 0 14px 40px rgba(0, 0, 0, 0.45);
+  --shadow-soft: 0 10px 26px rgba(0, 0, 0, 0.35);
+
+  --accent: #60a5fa;
+  --accent-2: #c084fc;
+  --accent-fg: #0b1020;
+
+  --focus: rgba(96, 165, 250, 0.35);
+  --focus-strong: rgba(96, 165, 250, 0.55);
+
+  --danger: #f87171;
+  --warning: #fbbf24;
+  --ok: #34d399;
+
+  --input-bg: rgba(2, 6, 23, 0.35);
+  --input-border: rgba(148, 163, 184, 0.28);
+  --input-border-hover: rgba(148, 163, 184, 0.5);
+  --input-placeholder: rgba(148, 163, 184, 0.7);
+
+  --canvas-bg: radial-gradient(circle at 35% 20%, rgba(192, 132, 252, 0.12), transparent 44%),
+    radial-gradient(circle at 70% 70%, rgba(96, 165, 250, 0.12), transparent 44%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.9), rgba(15, 23, 42, 0.9));
+  --scrollbar: rgba(226, 232, 240, 0.25);
+}
+
+/* High contrast theme */
+[data-theme="highContrast"],
+.theme-high-contrast {
+  --bg: #000000;
+  --panel: #000000;
+  --panel-2: #000000;
+  --fg: #ffffff;
+  --muted: #e5e7eb;
+
+  --border: #ffffff;
+  --border-strong: #ffffff;
+  --shadow: none;
+  --shadow-soft: none;
+
+  --accent: #00e5ff;
+  --accent-2: #ffe600;
+  --accent-fg: #000000;
+
+  --focus: rgba(0, 229, 255, 0.55);
+  --focus-strong: rgba(255, 230, 0, 0.75);
+
+  --danger: #ff4d4d;
+  --warning: #ffe600;
+  --ok: #00ff66;
+
+  --input-bg: #000000;
+  --input-border: #ffffff;
+  --input-border-hover: #ffffff;
+  --input-placeholder: #ffffff;
+
+  --canvas-bg: #000000;
+  --scrollbar: #ffffff;
+}
+
+/* Respect OS preference when no explicit theme is set */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]):not(.theme-dark):not(.theme-high-contrast) {
+    --bg: #0b1020;
+    --panel: #0f172a;
+    --panel-2: #0b1326;
+    --fg: #e5e7eb;
+    --muted: #94a3b8;
+
+    --border: rgba(148, 163, 184, 0.22);
+    --border-strong: rgba(148, 163, 184, 0.35);
+
+    --accent: #60a5fa;
+    --accent-2: #c084fc;
+    --accent-fg: #0b1020;
+
+    --focus: rgba(96, 165, 250, 0.35);
+    --focus-strong: rgba(96, 165, 250, 0.55);
+
+    --input-bg: rgba(2, 6, 23, 0.35);
+    --input-border: rgba(148, 163, 184, 0.28);
+    --input-border-hover: rgba(148, 163, 184, 0.5);
+    --input-placeholder: rgba(148, 163, 184, 0.7);
+
+    --canvas-bg: radial-gradient(circle at 35% 20%, rgba(192, 132, 252, 0.12), transparent 44%),
+      radial-gradient(circle at 70% 70%, rgba(96, 165, 250, 0.12), transparent 44%),
+      linear-gradient(180deg, rgba(15, 23, 42, 0.9), rgba(15, 23, 42, 0.9));
+  }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  html:focus-within {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ========== App Shell / Responsive Layout ========== */
+/* Intended structure:
+   <div class="app">
+     <header class="app__header">...</header>
+     <div class="app__body">
+       <aside class="sidebar">...</aside>
+       <main class="main">...</main>
+     </div>
+   </div>
+*/
+
+#root {
+  min-height: 100%;
+}
+
+.app {
+  min-height: 100%;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  padding: var(--gap-5);
+  background: var(--bg);
+}
+
+.app__frame {
+  max-width: var(--app-max);
+  width: 100%;
+  margin: 0 auto;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: var(--gap-4);
+}
+
+.app__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap-4);
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(
+      180deg,
+      rgba(124, 58, 237, 0.08),
+      rgba(37, 99, 235, 0.06) 55%,
+      transparent
+    ),
+    var(--panel);
+  box-shadow: var(--shadow-soft);
+}
+
+.app__title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 220px;
+}
+
+.app__title h1 {
+  margin: 0;
+  font-size: 18px;
+  letter-spacing: 0.2px;
+}
+
+.app__title p {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.app__body {
+  display: grid;
+  grid-template-columns: minmax(260px, var(--sidebar-w)) 1fr;
+  gap: var(--gap-4);
+  align-items: start;
+}
+
+.sidebar,
+.main {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  box-shadow: var(--shadow-soft);
+}
+
+.sidebar {
+  padding: 16px;
+  position: sticky;
+  top: var(--gap-5);
+  max-height: calc(100vh - (var(--gap-5) * 2));
+  overflow: auto;
+}
+
+.main {
+  padding: 16px;
+  min-height: 520px;
+  overflow: hidden;
+}
+
+/* Collapse to 1-column on narrow windows */
+@media (max-width: 920px) {
+  .app {
+    padding: var(--gap-4);
+  }
+  .app__body {
+    grid-template-columns: 1fr;
+  }
+  .sidebar {
+    position: relative;
+    top: auto;
+    max-height: none;
+  }
+}
+
+/* ========== Navigation / Tabs ========== */
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tab {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--fg);
+  padding: 8px 10px;
+  border-radius: 999px;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+
+.tab:hover {
+  border-color: var(--border-strong);
+}
+
+.tab:active {
+  transform: translateY(1px);
+}
+
+.tab[aria-selected="true"],
+.tab--active {
+  border-color: color-mix(in oklab, var(--accent) 65%, var(--border));
+  background: color-mix(in oklab, var(--accent) 12%, var(--panel));
+}
+
+.tab:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--focus);
+}
+
+/* ========== Panels / Cards ========== */
+.card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  padding: 14px;
+}
+
+.card--soft {
+  background: var(--panel-2);
+}
+
+.card__title {
+  margin: 0 0 10px;
+  font-size: var(--text-md);
+}
+
+.hr {
+  height: 1px;
+  background: var(--border);
+  border: 0;
+  margin: 12px 0;
+}
+
+/* ========== Forms / Controls ========== */
+.field {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.field__label {
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+.input,
+.select,
+.textarea {
+  width: 100%;
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: 12px;
+  padding: 8px 10px;
+  font-size: var(--text-sm);
+  transition: border-color 120ms ease, box-shadow 120ms ease, background 120ms ease;
+}
+
+.input::placeholder,
+.textarea::placeholder {
+  color: var(--input-placeholder);
+}
+
+.input:hover,
+.select:hover,
+.textarea:hover {
+  border-color: var(--input-border-hover);
+}
+
+.input:focus,
+.select:focus,
+.textarea:focus {
+  outline: none;
+  border-color: color-mix(in oklab, var(--accent) 55%, var(--input-border));
+  box-shadow: 0 0 0 3px var(--focus);
+}
+
+.row {
+  display: flex;
+  gap: var(--gap-2);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.row--between {
+  justify-content: space-between;
+}
+
+.help {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+/* Checkboxes / toggles (basic) */
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-sm);
+  color: var(--fg);
+  user-select: none;
+}
+
+.check input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
+/* Buttons */
+.btn {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--fg);
+  padding: 9px 12px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: var(--text-sm);
+  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease, box-shadow 120ms ease;
+}
+
+.btn:hover {
+  border-color: var(--border-strong);
+  box-shadow: 0 6px 14px rgba(2, 6, 23, 0.08);
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--focus);
+}
+
+.btn--primary {
+  background: linear-gradient(180deg, color-mix(in oklab, var(--accent) 88%, white), var(--accent));
+  color: var(--accent-fg);
+  border-color: color-mix(in oklab, var(--accent) 75%, black);
+}
+
+.btn--primary:hover {
+  border-color: color-mix(in oklab, var(--accent) 85%, black);
+}
+
+.btn--ghost {
+  background: transparent;
+}
+
+.btn--danger {
+  border-color: color-mix(in oklab, var(--danger) 45%, var(--border));
+  background: color-mix(in oklab, var(--danger) 10%, var(--panel));
+}
+
+.btn[disabled] {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* ========== Main Content / Visualization Areas ========== */
+.canvasWrap {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--canvas-bg);
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(2, 6, 23, 0.04);
+}
+
+.canvasWrap--padded {
+  padding: 12px;
+}
+
+.canvasHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--gap-3);
+  margin-bottom: 10px;
+}
+
+.canvasTitle {
+  margin: 0;
+  font-size: var(--text-lg);
+}
+
+.canvasMeta {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+/* SVG defaults (works nicely for diagrams) */
+svg.diagram {
+  width: 100%;
+  height: auto;
+}
+
+/* ========== Typography Utilities ========== */
+h2,
+h3 {
+  margin: 0 0 10px;
+}
+
+p {
+  margin: 0 0 10px;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.small {
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+    monospace;
+}
+
+/* ========== Tables / Reference Blocks ========== */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.table th,
+.table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--text-sm);
+  vertical-align: top;
+}
+
+.table th {
+  text-align: left;
+  background: var(--panel-2);
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.table tr:last-child td {
+  border-bottom: none;
+}
+
+pre {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  overflow: auto;
+}
+
+kbd {
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  background: var(--panel-2);
+  padding: 2px 6px;
+  border-radius: 8px;
+  font-size: 0.9em;
+}
+
+/* ========== Scrollbars (WebKit) ========== */
+*::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--scrollbar);
+  border-radius: 999px;
+  border: 3px solid var(--scrollbar-bg);
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--scrollbar-bg);
+}
+
+/* ========== Print ========== */
+@media print {
+  body {
+    background: #ffffff;
+    color: #000000;
+  }
+  .app {
+    padding: 0;
+  }
+  .sidebar {
+    position: relative;
+    max-height: none;
+  }
+  .sidebar,
+  .main,
+  .app__header {
+    box-shadow: none;
+  }
+}
+```

@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-02-07T22:02:41.127Z",
+  "passed": false,
+  "stackId": "node-next-app-npm",
+  "runId": "ui-auto-validate-2026-02-07T22-02-35-612Z-60cfed",
+  "normalization": {
+    "changedFiles": [],
+    "violations": []
+  },
+  "repoContract": {
+    "passed": false,
+    "failures": [
+      {
+        "kind": "invalid_root_package_json",
+        "missing": [
+          "name",
+          "private",
+          "scripts"
+        ],
+        "message": "Invalid root package.json (missing/invalid: name, private, scripts)"
+      },
+      {
+        "kind": "missing_required_file",
+        "pattern": "next.config.*",
+        "message": "Missing required file matching 'next.config.*'"
+      }
+    ]
+  },
+  "gates": {
+    "passed": false,
+    "steps": [
+      {
+        "name": "install",
+        "status": "skipped"
+      },
+      {
+        "name": "typecheck",
+        "status": "skipped"
+      },
+      {
+        "name": "lint",
+        "status": "skipped"
+      },
+      {
+        "name": "build",
+        "status": "skipped"
+      },
+      {
+        "name": "test",
+        "status": "skipped"
+      },
+      {
+        "name": "boot",
+        "status": "skipped"
+      }
+    ],
+    "healthChecks": []
+  },
+  "repair": {
+    "attemptedCycles": 1,
+    "patchLogPath": "G:\\Development\\20_Staging\\UnifiedAIToolbox\\.uaitoolbox\\app-factory\\runs\\ui-auto-validate-2026-02-07T22-02-35-612Z-60cfed\\repo\\PATCHLOG.md"
+  }
+}

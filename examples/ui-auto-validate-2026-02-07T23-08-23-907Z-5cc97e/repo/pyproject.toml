@@ -1,0 +1,396 @@
+```text
+golden-ratio-explorer/
+├─ pyproject.toml
+├─ README.md
+├─ .gitignore
+├─ docs/
+│  └─ REQUIREMENTS.md
+└─ src/
+   └─ phi_explorer/
+      ├─ __init__.py
+      ├─ __main__.py
+      ├─ app.py
+      ├─ core/
+      │  ├─ __init__.py
+      │  ├─ phi_math.py
+      │  ├─ fibonacci.py
+      │  └─ geometry.py
+      └─ ui/
+         ├─ __init__.py
+         ├─ main_window.py
+         └─ tabs/
+            ├─ __init__.py
+            ├─ calculator_tab.py
+            ├─ golden_rectangle_tab.py
+            ├─ fibonacci_spiral_tab.py
+            └─ reference_tab.py
+```
+
+---
+
+## pyproject.toml
+
+```toml
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "golden-ratio-explorer"
+version = "0.1.0"
+description = "Offline Golden Ratio (φ) Explorer desktop app (Tkinter + Matplotlib)."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Golden Ratio Explorer Contributors" }]
+keywords = ["golden-ratio", "phi", "tkinter", "matplotlib", "desktop", "offline"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Environment :: X11 Applications",
+  "Environment :: Win32 (MS Windows)",
+  "Environment :: MacOS X",
+  "Topic :: Scientific/Engineering :: Mathematics",
+]
+
+dependencies = [
+  "matplotlib>=3.7",
+]
+
+[project.scripts]
+phi-explorer = "phi_explorer.app:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+```
+
+---
+
+## src/phi_explorer/__init__.py
+
+```python
+__all__ = ["__version__"]
+__version__ = "0.1.0"
+```
+
+---
+
+## src/phi_explorer/__main__.py
+
+```python
+from .app import main
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+```
+
+---
+
+## src/phi_explorer/app.py
+
+```python
+from __future__ import annotations
+
+from phi_explorer.ui.main_window import run_app
+
+
+def main() -> int:
+    # Single console entrypoint. No network calls; fully offline.
+    run_app()
+    return 0
+```
+
+---
+
+## src/phi_explorer/core/__init__.py
+
+```python
+# Core math/geometry utilities live here.
+```
+
+---
+
+## src/phi_explorer/core/phi_math.py
+
+```python
+from __future__ import annotations
+
+import math
+
+
+def phi() -> float:
+    """Golden ratio constant φ = (1 + √5) / 2."""
+    return (1.0 + math.sqrt(5.0)) / 2.0
+
+
+def compute_phi_relations(a: float) -> tuple[float, float]:
+    """Given A, return (A*φ, A/φ)."""
+    p = phi()
+    return a * p, (a / p if p != 0 else float("nan"))
+```
+
+---
+
+## src/phi_explorer/core/fibonacci.py
+
+```python
+from __future__ import annotations
+
+
+def fibonacci_numbers(n: int) -> list[int]:
+    """
+    Return first n Fibonacci numbers with F1=1, F2=1.
+    Example: n=5 -> [1,1,2,3,5]
+    """
+    if n <= 0:
+        return []
+    if n == 1:
+        return [1]
+    seq = [1, 1]
+    while len(seq) < n:
+        seq.append(seq[-1] + seq[-2])
+    return seq
+```
+
+---
+
+## src/phi_explorer/core/geometry.py
+
+```python
+from __future__ import annotations
+
+# Placeholder for geometry helpers (golden rectangle subdivision coordinates, spiral layout, etc.)
+```
+
+---
+
+## src/phi_explorer/ui/__init__.py
+
+```python
+# Tkinter UI components.
+```
+
+---
+
+## src/phi_explorer/ui/main_window.py
+
+```python
+from __future__ import annotations
+
+import tkinter as tk
+from tkinter import ttk
+
+from phi_explorer.ui.tabs.calculator_tab import CalculatorTab
+from phi_explorer.ui.tabs.golden_rectangle_tab import GoldenRectangleTab
+from phi_explorer.ui.tabs.fibonacci_spiral_tab import FibonacciSpiralTab
+from phi_explorer.ui.tabs.reference_tab import ReferenceTab
+
+
+def run_app() -> None:
+    root = tk.Tk()
+    root.title("Golden Ratio (φ) Explorer")
+
+    # Basic, single-window notebook layout (MVP).
+    notebook = ttk.Notebook(root)
+    notebook.pack(fill="both", expand=True)
+
+    notebook.add(CalculatorTab(notebook), text="Calculator")
+    notebook.add(GoldenRectangleTab(notebook), text="Golden Rectangle")
+    notebook.add(FibonacciSpiralTab(notebook), text="Fibonacci Spiral")
+    notebook.add(ReferenceTab(notebook), text="Quick Reference")
+
+    root.minsize(900, 650)
+    root.mainloop()
+```
+
+---
+
+## src/phi_explorer/ui/tabs/__init__.py
+
+```python
+# Notebook tabs live here.
+```
+
+---
+
+## src/phi_explorer/ui/tabs/calculator_tab.py
+
+```python
+from __future__ import annotations
+
+import tkinter as tk
+from tkinter import ttk
+
+from phi_explorer.core.phi_math import phi, compute_phi_relations
+
+
+class CalculatorTab(ttk.Frame):
+    def __init__(self, master: tk.Misc):
+        super().__init__(master)
+        self.columnconfigure(1, weight=1)
+
+        ttk.Label(self, text="Base length A:").grid(row=0, column=0, sticky="w", padx=8, pady=8)
+        self.a_var = tk.StringVar(value="1.0")
+        ttk.Entry(self, textvariable=self.a_var).grid(row=0, column=1, sticky="ew", padx=8, pady=8)
+
+        ttk.Button(self, text="Compute", command=self._compute).grid(
+            row=0, column=2, sticky="e", padx=8, pady=8
+        )
+
+        self.msg_var = tk.StringVar(value="")
+        ttk.Label(self, textvariable=self.msg_var, foreground="#aa0000").grid(
+            row=1, column=0, columnspan=3, sticky="w", padx=8
+        )
+
+        self.phi_var = tk.StringVar(value=f"{phi():.12f}")
+        self.mul_var = tk.StringVar(value="")
+        self.div_var = tk.StringVar(value="")
+
+        ttk.Label(self, text="φ:").grid(row=2, column=0, sticky="w", padx=8, pady=4)
+        ttk.Label(self, textvariable=self.phi_var).grid(row=2, column=1, sticky="w", padx=8, pady=4)
+
+        ttk.Label(self, text="A·φ:").grid(row=3, column=0, sticky="w", padx=8, pady=4)
+        ttk.Label(self, textvariable=self.mul_var).grid(row=3, column=1, sticky="w", padx=8, pady=4)
+
+        ttk.Label(self, text="A/φ:").grid(row=4, column=0, sticky="w", padx=8, pady=4)
+        ttk.Label(self, textvariable=self.div_var).grid(row=4, column=1, sticky="w", padx=8, pady=4)
+
+        self._compute()
+
+    def _compute(self) -> None:
+        try:
+            a = float(self.a_var.get().strip())
+        except ValueError:
+            self.msg_var.set("Please enter a valid number for A.")
+            return
+
+        self.msg_var.set("")
+        m, d = compute_phi_relations(a)
+        self.mul_var.set(f"{m:.12f}")
+        self.div_var.set(f"{d:.12f}")
+```
+
+---
+
+## src/phi_explorer/ui/tabs/golden_rectangle_tab.py
+
+```python
+from __future__ import annotations
+
+import tkinter as tk
+from tkinter import ttk
+
+
+class GoldenRectangleTab(ttk.Frame):
+    def __init__(self, master: tk.Misc):
+        super().__init__(master)
+        ttk.Label(self, text="Golden rectangle split visualization (scaffold).").pack(
+            anchor="w", padx=10, pady=10
+        )
+```
+
+---
+
+## src/phi_explorer/ui/tabs/fibonacci_spiral_tab.py
+
+```python
+from __future__ import annotations
+
+import tkinter as tk
+from tkinter import ttk
+
+
+class FibonacciSpiralTab(ttk.Frame):
+    def __init__(self, master: tk.Misc):
+        super().__init__(master)
+        ttk.Label(self, text="Fibonacci spiral visualization (scaffold).").pack(
+            anchor="w", padx=10, pady=10
+        )
+```
+
+---
+
+## src/phi_explorer/ui/tabs/reference_tab.py
+
+```python
+from __future__ import annotations
+
+import tkinter as tk
+from tkinter import ttk
+
+from phi_explorer.core.phi_math import phi
+
+
+class ReferenceTab(ttk.Frame):
+    def __init__(self, master: tk.Misc):
+        super().__init__(master)
+
+        text = tk.Text(self, wrap="word", height=30)
+        text.pack(fill="both", expand=True, padx=10, pady=10)
+
+        p = phi()
+        content = (
+            "Golden Ratio (φ) Quick Reference\n\n"
+            f"φ = (1 + √5) / 2 ≈ {p:.15f}\n\n"
+            "Continued fraction:\n"
+            "  φ = [1; 1, 1, 1, …]\n\n"
+            "Identities:\n"
+            "  φ² = φ + 1\n"
+            "  1/φ = φ − 1\n\n"
+            "Fibonacci relationship:\n"
+            "  limₙ→∞ Fₙ₊₁ / Fₙ = φ\n"
+        )
+        text.insert("1.0", content)
+        text.configure(state="disabled")
+```
+
+---
+
+## README.md
+
+```markdown
+# Golden Ratio (φ) Explorer
+
+Offline desktop application (Python + Tkinter + Matplotlib) for exploring the Golden Ratio φ.
+
+## Run (dev)
+```bash
+python -m venv .venv
+# activate venv...
+pip install -e .
+phi-explorer
+```
+
+## Notes
+- Fully offline: no network requests or external assets.
+- Matplotlib is the only non-stdlib dependency.
+```
+
+---
+
+## .gitignore
+
+```gitignore
+__pycache__/
+*.py[cod]
+*.pyd
+*.so
+.venv/
+venv/
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+.DS_Store
+```

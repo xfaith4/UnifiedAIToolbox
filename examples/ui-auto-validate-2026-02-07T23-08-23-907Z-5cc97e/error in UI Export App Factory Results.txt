@@ -1,0 +1,105 @@
+Validation failed (hardening enabled). Fix the repo outputs and retry.
+
+{
+  "passed": false,
+  "hardeningEnabled": true,
+  "runId": "ui-validate-2026-02-07T23-08-16-361Z-60534d",
+  "repoDir": "G:\\Development\\20_Staging\\UnifiedAIToolbox\\.uaitoolbox\\app-factory\\runs\\ui-validate-2026-02-07T23-08-16-361Z-60534d\\repo",
+  "pipeline": {
+    "hardeningEnabled": true,
+    "parallelTeamsEnabled": false,
+    "maxParallelTeams": 4,
+    "contractHash": null,
+    "runId": "ui-validate-2026-02-07T23-08-16-361Z-60534d",
+    "repoDir": "G:\\Development\\20_Staging\\UnifiedAIToolbox\\.uaitoolbox\\app-factory\\runs\\ui-validate-2026-02-07T23-08-16-361Z-60534d\\repo",
+    "stages": [
+      {
+        "id": "agents",
+        "label": "Agents",
+        "status": "passed"
+      },
+      {
+        "id": "decision-lock",
+        "label": "Decision Lock",
+        "status": "skipped",
+        "reportPath": "DECISION_LOCK_REPORT.md"
+      },
+      {
+        "id": "teams",
+        "label": "Teams",
+        "status": "skipped"
+      },
+      {
+        "id": "assemble",
+        "label": "Assemble",
+        "status": "passed",
+        "startedAt": "2026-02-07T23:08:16.422Z",
+        "endedAt": "2026-02-07T23:08:16.468Z",
+        "reportPath": "ASSEMBLY_REPORT.md"
+      },
+      {
+        "id": "normalize",
+        "label": "Normalize",
+        "status": "passed",
+        "startedAt": "2026-02-07T23:08:16.468Z",
+        "endedAt": "2026-02-07T23:08:16.488Z",
+        "reportPath": "NORMALIZATION_REPORT.md"
+      },
+      {
+        "id": "contract",
+        "label": "Contract",
+        "status": "failed",
+        "startedAt": "2026-02-07T23:08:16.488Z",
+        "endedAt": "2026-02-07T23:08:16.506Z",
+        "reportPath": "REPO_CONTRACT.json"
+      },
+      {
+        "id": "gates",
+        "label": "Gates",
+        "status": "skipped",
+        "startedAt": "2026-02-07T…
+Generated Artifacts
+Python + Tkinter + Matplotlib
+REPORT
+pyproject.toml
+REPORT
+README.md
+REPORT
+LICENSE
+REPORT
+src/phi_explorer/phi_math.py
+CODE
+base length A
+REPORT
+src/phi_explorer/ui.py
+CODE
+Matplotlib canvas embed
+REPORT
+src/phi_explorer/viz_spiral.py
+CODE
+src/phi_explorer/references.py
+CODE
+src/phi_explorer/__main__.py
+CODE
+src/phi_explorer/__init__.py
+CODE
+src/phi_explorer/app.py
+CODE
+ruff
+REPORT
+tests/test_phi_math.py
+CODE
+import + generate figure without GUI
+REPORT
+docs/QA_REVIEW.md
+REPORT
+A<=0
+REPORT
+labels
+REPORT
+tiling correctness
+REPORT
+CHANGELOG.md
+REPORT
+docs/FINAL_AUDIT.md
+REPORT

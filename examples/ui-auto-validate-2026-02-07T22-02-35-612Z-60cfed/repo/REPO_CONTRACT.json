@@ -1,0 +1,60 @@
+{
+  "stackId": "node-next-app-npm",
+  "passed": false,
+  "requiredFilesAll": [
+    {
+      "pattern": "package.json",
+      "matched": [
+        "package.json"
+      ]
+    },
+    {
+      "pattern": "tsconfig.json",
+      "matched": [
+        "tsconfig.json"
+      ]
+    },
+    {
+      "pattern": "next.config.*",
+      "matched": []
+    }
+  ],
+  "requiredFilesAny": [
+    {
+      "patterns": [
+        "src/app/page.tsx",
+        "app/page.tsx"
+      ],
+      "matched": [
+        "src/app/page.tsx"
+      ]
+    },
+    {
+      "patterns": [
+        "src/app/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "matched": [
+        "src/app/layout.tsx"
+      ]
+    }
+  ],
+  "env": [],
+  "failures": [
+    {
+      "kind": "invalid_root_package_json",
+      "missing": [
+        "name",
+        "private",
+        "scripts"
+      ],
+      "message": "Invalid root package.json (missing/invalid: name, private, scripts)"
+    },
+    {
+      "kind": "missing_required_file",
+      "pattern": "next.config.*",
+      "message": "Missing required file matching 'next.config.*'"
+    }
+  ],
+  "reportPath": "G:\\Development\\20_Staging\\UnifiedAIToolbox\\.uaitoolbox\\app-factory\\runs\\ui-auto-validate-2026-02-07T22-02-35-612Z-60cfed\\repo\\REPO_CONTRACT.json"
+}

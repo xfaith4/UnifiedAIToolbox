@@ -1,0 +1,81 @@
+```html
+<!-- index.html -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="
+        default-src 'self' data: blob:;
+        img-src 'self' data: blob:;
+        style-src 'self' 'unsafe-inline';
+        script-src 'self';
+        font-src 'self' data:;
+        connect-src 'self' ws: http: https:;
+        worker-src 'self' blob:;
+        frame-src 'self';
+      "
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <title>Golden Ratio (φ) Explorer</title>
+    <meta
+      name="description"
+      content="An offline Golden Ratio (φ) Explorer with a calculator, golden rectangle split visualization, Fibonacci spiral, and quick references."
+    />
+    <meta name="theme-color" content="#2563eb" />
+
+    <!-- Optional: favicon (add file if you want) -->
+    <!-- <link rel="icon" href="./favicon.ico" /> -->
+
+    <style>
+      /* Minimal shell styling to look acceptable before React mounts */
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        margin: 0;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+        background: #f6f7fb;
+        color: #111827;
+      }
+      #root {
+        height: 100%;
+      }
+      .boot {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 24px 16px;
+      }
+      .boot h1 {
+        font-size: 16px;
+        margin: 0 0 8px;
+      }
+      .boot p {
+        margin: 0;
+        color: #4b5563;
+        font-size: 13px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="root">
+      <div class="boot">
+        <h1>Golden Ratio (φ) Explorer</h1>
+        <p>Loading…</p>
+        <noscript>
+          <p style="margin-top: 10px; color: #b91c1c">
+            This application requires JavaScript to run.
+          </p>
+        </noscript>
+      </div>
+    </div>
+
+    <!-- Vite entry (dev) / bundled output (build) -->
+    <script type="module" src="/src/renderer/main.tsx"></script>
+  </body>
+</html>
+```

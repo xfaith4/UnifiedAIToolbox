@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-02-07T23:08:28.810Z",
+  "passed": false,
+  "stackId": "node-next-app-npm",
+  "runId": "ui-auto-validate-2026-02-07T23-08-23-907Z-5cc97e",
+  "normalization": {
+    "changedFiles": [],
+    "violations": [
+      {
+        "filePath": "next.config.js",
+        "message": "Normalization produced an empty/whitespace-only code file"
+      }
+    ]
+  },
+  "repoContract": {
+    "passed": false,
+    "failures": [
+      {
+        "kind": "missing_required_file",
+        "pattern": "next.config.*",
+        "message": "Missing required file matching 'next.config.*'"
+      }
+    ]
+  },
+  "gates": {
+    "passed": false,
+    "steps": [
+      {
+        "name": "install",
+        "status": "skipped"
+      },
+      {
+        "name": "typecheck",
+        "status": "skipped"
+      },
+      {
+        "name": "lint",
+        "status": "skipped"
+      },
+      {
+        "name": "build",
+        "status": "skipped"
+      },
+      {
+        "name": "test",
+        "status": "skipped"
+      },
+      {
+        "name": "boot",
+        "status": "skipped"
+      }
+    ],
+    "healthChecks": []
+  },
+  "repair": {
+    "attemptedCycles": 2,
+    "patchLogPath": "G:\\Development\\20_Staging\\UnifiedAIToolbox\\.uaitoolbox\\app-factory\\runs\\ui-auto-validate-2026-02-07T23-08-23-907Z-5cc97e\\repo\\PATCHLOG.md"
+  }
+}
