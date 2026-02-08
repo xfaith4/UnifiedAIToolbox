@@ -75,9 +75,9 @@ export default function AgentActivityTally({ run, title = 'Agent Tally', classNa
         <div className="text-[11px] uppercase tracking-wide text-slate-500">Currently in use</div>
         {snapshot.activeAgents.length ? (
           <div className="mt-1 flex flex-wrap gap-2">
-            {snapshot.activeAgents.map((agent) => (
+            {snapshot.activeAgents.map((agent, index) => (
               <span
-                key={agent}
+                key={`${agent}-${index}`}
                 className="rounded bg-sky-900/30 px-2 py-1 text-xs text-sky-100 border border-sky-800/40"
               >
                 {agent}
