@@ -213,11 +213,23 @@ const ExportModal: React.FC<ExportModalProps> = ({
         return
       }
       if (pipeline.hardeningEnabled) {
-        if (!isRunnable(pipeline) || !pipeline.runId) {
-          alert('Export blocked: repo failed normalization/contract/gates. Run acceptance checks and fix failures first.')
-          return
+        // Allow export even if validation failed, but warn the user
+        if (!isRunnable(pipeline)) {
+          const proceed = confirm(
+            'Warning: Validation checks failed. The exported artifacts may not be runnable.\n\n' +
+            'Do you want to export the artifacts anyway?'
+          )
+          if (!proceed) {
+            return
+          }
         }
-        await downloadFromRun(pipeline.runId)
+        
+        // Try to download from run if available, otherwise fall back to legacy
+        if (pipeline.runId) {
+          await downloadFromRun(pipeline.runId)
+        } else {
+          await downloadLegacy()
+        }
         return
       }
 
@@ -249,9 +261,13 @@ const ExportModal: React.FC<ExportModalProps> = ({
 
         <div className="p-6 max-h-[70vh] overflow-y-auto">
           {lastValidationError && (
-            <div className="mb-4 p-3 rounded border border-red-700 bg-red-900/20 text-red-200 text-xs whitespace-pre-wrap">
-              Validation failed (hardening enabled). Fix the repo outputs and retry.
+            <div className="mb-4 p-3 rounded border border-amber-700 bg-amber-900/20 text-amber-200 text-xs whitespace-pre-wrap">
+              <strong>⚠️ Validation Failed</strong>
               {'\n\n'}
+              The acceptance checks detected issues with the generated artifacts. You can still export the artifacts, but they may not be runnable without fixing the issues below.
+              {'\n\n'}
+              <strong>Issues:</strong>
+              {'\n'}
               {lastValidationError.length > 1800 ? lastValidationError.slice(0, 1800) + '…' : lastValidationError}
             </div>
           )}
@@ -296,11 +312,12 @@ const ExportModal: React.FC<ExportModalProps> = ({
               </button>
               <button
                 onClick={handleDownloadZip}
-                disabled={isZipping || displayArtifacts.length === 0 || (!useRunArtifactsExport && (!isRunnable(pipeline) || !pipeline.runId))}
+                disabled={isZipping || displayArtifacts.length === 0}
                 className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg flex items-center transition-colors disabled:bg-indigo-400 disabled:cursor-not-allowed"
+                title={!isRunnable(pipeline) ? 'Validation failed - exported artifacts may not be runnable' : 'Download exported artifacts'}
               >
                 <DownloadIcon className="w-5 h-5 mr-2" />
-                Download .zip
+                Download .zip {!isRunnable(pipeline) && '⚠️'}
               </button>
             </>
           ) : (
