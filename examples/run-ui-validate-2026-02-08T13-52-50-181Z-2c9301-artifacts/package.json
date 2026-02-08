@@ -1,0 +1,16 @@
+{
+  "name": "star-wars-symbol-static-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Simple static web app that displays the text “STAR WARS” (licensing-safe; no official logo assets).",
+  "license": "MIT",
+  "scripts": {
+    "dev": "live-server --port=5173 --open=./index.html --watch=./",
+    "start": "npm run dev",
+    "build": "mkdir -p dist && cp -R index.html styles.css script.js dist/ 2>/dev/null || true",
+    "preview": "live-server --port=4173 --open=./dist/index.html --watch=./dist"
+  },
+  "devDependencies": {
+    "live-server": "^1.2.0"
+  }
+}

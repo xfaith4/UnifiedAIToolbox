@@ -1,0 +1,85 @@
+```css
+/* styles.css
+   Centered display and accessible presentation for the “STAR WARS” text symbol.
+   (Text-only; no official logo assets.)
+*/
+
+:root {
+  color-scheme: dark;
+  --bg-0: #000000;
+  --bg-1: #030712;
+  --bg-2: #111827;
+
+  --text: #e5e7eb;
+  --muted: #9ca3af;
+
+  --focus: #93c5fd;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  display: grid;
+  place-items: center;
+  padding: 2rem;
+
+  background: radial-gradient(1200px 800px at 50% 30%, var(--bg-2), var(--bg-1) 60%, var(--bg-0) 100%);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  line-height: 1.4;
+}
+
+#app {
+  text-align: center;
+  max-width: 60rem;
+}
+
+/* Text “symbol” styling */
+.symbol {
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.25em;
+
+  /* Responsive sizing for small and large screens */
+  font-size: clamp(2.25rem, 6vw, 4.25rem);
+
+  /* Slight text glow for legibility on dark background */
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.55);
+}
+
+/* Supporting hint text */
+.hint {
+  margin-top: 0.75rem;
+  font-size: 0.95rem;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+/* Accessible focus indicator (in case symbol becomes interactive later) */
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 4px;
+  border-radius: 6px;
+}
+
+/* Honor reduced motion preferences (no animations included, but keep future-safe) */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition: none !important;
+    animation: none !important;
+  }
+}
+```
