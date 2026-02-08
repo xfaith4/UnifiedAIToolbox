@@ -1260,8 +1260,8 @@ export default function OrchestratorPage() {
                     <div className="text-sm text-slate-100">{swarmRunDisplay.goal}</div>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {swarmRunDisplay.agents.map((agent) => (
-                      <span key={agent} className="rounded bg-slate-800 px-2 py-1 text-xs text-slate-200">
+                    {swarmRunDisplay.agents.map((agent, index) => (
+                      <span key={`${agent}-${index}`} className="rounded bg-slate-800 px-2 py-1 text-xs text-slate-200">
                         {agent}
                       </span>
                     ))}
@@ -1408,8 +1408,8 @@ export default function OrchestratorPage() {
                       <td className="px-4 py-3 text-slate-300">
                         {run.agents && run.agents.length > 0 ? (
                           <div className="flex flex-wrap gap-1">
-                            {run.agents.slice(0, 3).map((agent) => (
-                              <span key={agent} className="rounded bg-blue-900/40 px-1.5 py-0.5 text-xs text-blue-200">
+                            {run.agents.slice(0, 3).map((agent, index) => (
+                              <span key={`${agent}-${index}`} className="rounded bg-blue-900/40 px-1.5 py-0.5 text-xs text-blue-200">
                                 {agent}
                               </span>
                             ))}
