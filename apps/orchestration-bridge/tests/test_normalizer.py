@@ -69,6 +69,53 @@ def test():
         content = test_file.read_text()
         assert "```" not in content
         assert "def test():" in content
+    
+    def test_process_html_file(self, tmp_path):
+        """Test processing a fenced HTML file."""
+        test_file = tmp_path / "index.html"
+        test_file.write_text("""```html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test</title>
+</head>
+<body>
+    <h1>Hello World</h1>
+</body>
+</html>
+```""")
+        
+        was_modified, error = code_fence_stripper.process_file(test_file)
+        assert was_modified
+        assert error is None
+        
+        content = test_file.read_text()
+        assert "```" not in content
+        assert "<!DOCTYPE html>" in content
+        assert "<h1>Hello World</h1>" in content
+    
+    def test_process_css_file(self, tmp_path):
+        """Test processing a fenced CSS file."""
+        test_file = tmp_path / "styles.css"
+        test_file.write_text("""```css
+body {
+    margin: 0;
+    padding: 0;
+}
+
+h1 {
+    color: blue;
+}
+```""")
+        
+        was_modified, error = code_fence_stripper.process_file(test_file)
+        assert was_modified
+        assert error is None
+        
+        content = test_file.read_text()
+        assert "```" not in content
+        assert "body {" in content
+        assert "color: blue;" in content
 
 
 class TestBlobSplitter:

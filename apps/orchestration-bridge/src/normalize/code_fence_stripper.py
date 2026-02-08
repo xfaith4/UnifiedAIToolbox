@@ -11,7 +11,8 @@ from typing import Optional, Tuple
 CODE_EXTENSIONS = {
     ".py", ".ts", ".tsx", ".js", ".jsx", ".json", ".yml", ".yaml",
     ".sql", ".ps1", ".sh", ".dockerfile", ".go", ".rs", ".java",
-    ".c", ".cpp", ".h", ".hpp", ".cs", ".rb", ".php", ".swift"
+    ".c", ".cpp", ".h", ".hpp", ".cs", ".rb", ".php", ".swift",
+    ".html", ".htm", ".css", ".scss", ".sass", ".less", ".xml", ".svg"
 }
 
 
