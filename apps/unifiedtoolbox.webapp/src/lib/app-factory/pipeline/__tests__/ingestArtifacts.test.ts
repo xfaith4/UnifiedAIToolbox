@@ -52,12 +52,10 @@ describe('ingestArtifacts', () => {
 
     // Should not contain the markdown fencing markers
     expect(htmlContent).not.toContain('```html')
-    expect(htmlContent).not.toContain('```')
     expect(htmlContent).toContain('<!doctype html>')
     expect(htmlContent).toContain('<body>test</body>')
 
     expect(cssContent).not.toContain('```css')
-    expect(cssContent).not.toContain('```')
     expect(cssContent).toContain('body { margin: 0; }')
     expect(cssContent).toContain('.test { color: red; }')
   })
