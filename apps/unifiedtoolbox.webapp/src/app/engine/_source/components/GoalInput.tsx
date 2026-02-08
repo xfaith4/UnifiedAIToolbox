@@ -26,6 +26,8 @@ const GoalInput: React.FC<GoalInputProps> = ({ onGoalSubmit, isOrchestrating, on
   const [requestValues, setRequestValues] = useState<Record<string, string>>({})
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const useWizard = wizardEnabled && jobType === 'build_new_app'
+
   const requiredFields = useMemo<JobTypeField[]>(() => {
     if (!jobTypeConfig?.request_fields) return []
     return jobTypeConfig.request_fields.filter((field) => field.path !== 'goal' && field.path !== 'job_type')
@@ -33,17 +35,34 @@ const GoalInput: React.FC<GoalInputProps> = ({ onGoalSubmit, isOrchestrating, on
 
   const requiredFilled = useMemo(() => {
     if (requiredFields.length === 0) return true
-    return requiredFields.every((field) => Boolean(requestValues[field.path]))
-  }, [requiredFields, requestValues])
+    return requiredFields.every((field) => {
+      // When using wizard, auto-populate app.name so it's considered filled
+      if (field.path === 'app.name' && useWizard) return true
+      return Boolean(requestValues[field.path])
+    })
+  }, [requiredFields, requestValues, useWizard])
 
   const setRequestValue = (path: string, value: string) => {
     setRequestValues((prev) => ({ ...prev, [path]: value }))
   }
 
+  const deriveAppName = (goalText: string): string => {
+    // Extract a reasonable app name from the goal text
+    const cleaned = goalText.trim().toLowerCase()
+      .replace(/[^a-z0-9\s]+/g, '') // Remove special chars
+      .replace(/\s+/g, '-') // Replace spaces with hyphens
+      .substring(0, 50) // Limit length
+    return cleaned || 'my-app'
+  }
+
   const buildRequestPayload = (goalText: string) => {
     const payload: Record<string, any> = { job_type: jobType, goal: goalText }
     for (const field of requiredFields) {
-      const value = requestValues[field.path]
+      let value = requestValues[field.path]
+      // Auto-populate app.name when using wizard if not already set
+      if (!value && field.path === 'app.name' && useWizard) {
+        value = deriveAppName(goalText)
+      }
       if (!value) continue
       const parts = field.path.split('.')
       let cursor: any = payload
@@ -114,8 +133,6 @@ const GoalInput: React.FC<GoalInputProps> = ({ onGoalSubmit, isOrchestrating, on
         fileInputRef.current.value = "";
     }
   };
-
-  const useWizard = wizardEnabled && jobType === 'build_new_app'
 
   if (useWizard) {
     return (
