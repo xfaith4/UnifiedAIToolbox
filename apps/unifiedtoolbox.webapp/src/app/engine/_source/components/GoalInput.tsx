@@ -49,9 +49,10 @@ const GoalInput: React.FC<GoalInputProps> = ({ onGoalSubmit, isOrchestrating, on
   const deriveAppName = (goalText: string): string => {
     // Extract a reasonable app name from the goal text
     const cleaned = goalText.trim().toLowerCase()
-      .replace(/[^a-z0-9\s]+/g, '') // Remove special chars
-      .replace(/\s+/g, '-') // Replace spaces with hyphens
+      .replace(/\s+/g, '-') // Replace spaces with hyphens first
+      .replace(/[^a-z0-9-]+/g, '') // Remove special chars except hyphens
       .substring(0, 50) // Limit length
+      .replace(/-+$/, '') // Remove trailing hyphens
     return cleaned || 'my-app'
   }
 
