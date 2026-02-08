@@ -1592,7 +1592,7 @@ export default function OrchestratorPage() {
                     <h4 className="text-sm font-semibold text-slate-100 mb-2">Events</h4>
                     <div className="space-y-2">
                       {logRun.events.map((ev, idx) => (
-                        <div key={idx} className="rounded border border-slate-800 bg-slate-950 p-2">
+                        <div key={ev.timestamp ? `${ev.timestamp}-${idx}` : `event-${idx}`} className="rounded border border-slate-800 bg-slate-950 p-2">
                           <div className="flex justify-between text-[11px] text-slate-400">
                             <span>{ev.type}</span>
                             <span>{ev.timestamp}</span>
