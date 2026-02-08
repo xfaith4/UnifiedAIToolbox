@@ -24,16 +24,16 @@ Before copying files, answer these questions:
 
 1. **What languages/frameworks does your project use?**
    - PowerShell? Python? Node.js? .NET? Go? Java?
-   
+
 2. **What are your build commands?**
    - `npm run build`? `dotnet build`? `make`?
-   
+
 3. **What are your test commands?**
    - `npm test`? `pytest`? `dotnet test`?
-   
+
 4. **What platforms do you need to support?**
    - Linux only? Windows only? Both?
-   
+
 5. **What artifacts should be saved?**
    - Build outputs? Test reports? Coverage data?
 
@@ -64,9 +64,9 @@ grep -r "{{PROJECT_NAME}}" .github/workflows/ scripts/
 find .github/workflows scripts -type f -exec sed -i 's/{{PROJECT_NAME}}/YourProjectName/g' {} +
 
 # Replace (Windows PowerShell)
-Get-ChildItem -Path .github/workflows, scripts -Recurse -File | 
+Get-ChildItem -Path .github/workflows, scripts -Recurse -File |
   ForEach-Object {
-    (Get-Content $_.FullName) -replace '{{PROJECT_NAME}}', 'YourProjectName' | 
+    (Get-Content $_.FullName) -replace '{{PROJECT_NAME}}', 'YourProjectName' |
     Set-Content $_.FullName
   }
 ```
@@ -90,10 +90,10 @@ Remove everything except the basics:
 jobs:
   build:
     # Your primary build job
-  
+
   test:
     # Your primary test job
-  
+
   ci-summary:
     # Summary job
 ```
@@ -241,6 +241,7 @@ And adjust working directories:
 **Goal:** Basic CI for a Node.js app
 
 **Steps:**
+
 1. Keep only `nodejs-build` job from `ci-comprehensive.yml`
 2. Remove PowerShell, Python, and .NET jobs
 3. Adjust Node.js version if needed
@@ -253,6 +254,7 @@ And adjust working directories:
 **Goal:** CI for both backend (Python) and frontend (React)
 
 **Steps:**
+
 1. Keep `python-tests` and `nodejs-build` jobs
 2. Add parallel execution (jobs run simultaneously)
 3. Create separate artifact uploads for backend and frontend
@@ -265,6 +267,7 @@ And adjust working directories:
 **Goal:** Selective CI based on changed files
 
 **Steps:**
+
 1. Add path filters to workflow triggers
 2. Use job conditionals based on changed paths
 3. Create separate workflows for each app
@@ -277,6 +280,7 @@ And adjust working directories:
 **Goal:** Generate and upload code coverage
 
 **Steps:**
+
 1. Install coverage tool (pytest-cov, jest, etc.)
 2. Generate coverage in XML/HTML format
 3. Upload as artifact
@@ -300,6 +304,7 @@ And adjust working directories:
 **Problem:** Workflow doesn't run when expected
 
 **Solutions:**
+
 - Check branch names in `on.push.branches`
 - Verify path filters aren't too restrictive
 - Ensure workflow file is in `.github/workflows/`
@@ -310,6 +315,7 @@ And adjust working directories:
 **Problem:** Jobs fail with errors
 
 **Solutions:**
+
 - Check job logs in GitHub Actions UI
 - Verify commands work locally first
 - Check file paths and working directories
@@ -321,6 +327,7 @@ And adjust working directories:
 **Problem:** Artifact upload fails or files not found
 
 **Solutions:**
+
 - Verify artifact paths exist after build
 - Use `if-no-files-found: warn` to debug
 - Check working directory vs artifact path
@@ -331,6 +338,7 @@ And adjust working directories:
 **Problem:** Workflows take too long
 
 **Solutions:**
+
 - Enable caching (npm, pip, etc.)
 - Use matrix parallelization
 - Reduce test scope for quick feedback
@@ -342,6 +350,7 @@ And adjust working directories:
 **Problem:** Workflows still contain `{{PLACEHOLDER}}`
 
 **Solutions:**
+
 - Re-run find-and-replace
 - Check case sensitivity
 - Manually search for remaining placeholders

@@ -1,7 +1,7 @@
 # Implementation Summary: Orchestration Export & Agent Visibility Fixes
 
-**Date:** 2026-02-07  
-**Branch:** copilot/investigate-orchestration-issues  
+**Date:** 2026-02-07
+**Branch:** copilot/investigate-orchestration-issues
 **Issue:** Need to investigate why orchestrations are not runnable and prevent user from exporting artifacts
 
 ---
@@ -23,11 +23,13 @@ The original issue described two critical problems:
 **Location:** `apps/unifiedtoolbox.webapp/src/app/engine/_source/components/ExportModal.tsx`
 
 **Root Cause:**
+
 - Line 216-219: Export button was completely disabled when `!isRunnable(pipeline)` returned false
 - Alert message: "Export blocked: repo failed normalization/contract/gates..."
 - No option to proceed with export even with user awareness of validation failures
 
 **Impact:**
+
 - Users unable to access generated artifacts for debugging
 - Prevented iterative development when validation fails
 - No way to inspect partial outputs
@@ -37,12 +39,14 @@ The original issue described two critical problems:
 **Location:** `apps/unifiedtoolbox.webapp/src/app/engine/_source/components/RunMonitorPanel.tsx`
 
 **Root Cause:**
+
 - Line 70: Only top 10 agents displayed (`.slice(0, 10)`)
 - Single line showing "agents active: X/Y" without breakdown
 - No card view showing agent status groupings
 - Limited ability to see which agents are running, pending, completed, or failed
 
 **Impact:**
+
 - Poor visibility into orchestration progress
 - Unable to see full agent roster
 - No clear indication of which agents are having issues
@@ -82,6 +86,7 @@ The original issue described two critical problems:
    - Ensures users can always access artifacts that were generated
 
 **Before:**
+
 ```typescript
 if (!isRunnable(pipeline) || !pipeline.runId) {
   alert('Export blocked: repo failed normalization/contract/gates. Run acceptance checks and fix failures first.')
@@ -90,6 +95,7 @@ if (!isRunnable(pipeline) || !pipeline.runId) {
 ```
 
 **After:**
+
 ```typescript
 if (!isRunnable(pipeline)) {
   const proceed = confirm(
@@ -149,6 +155,7 @@ if (pipeline.runId) {
    - Ensures accurate totals in status cards
 
 **Before:**
+
 ```typescript
 // Only showed active/total count
 <span>agents active: {summary.activeAgents}/{summary.totalAgents}</span>
@@ -161,6 +168,7 @@ const topAgents = Object.entries(byAgent)
 ```
 
 **After:**
+
 ```typescript
 // Status cards showing breakdown
 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -214,12 +222,14 @@ const allAgents = Object.entries(byAgent)
 ### Before These Changes
 
 **Export:**
+
 - ❌ Completely blocked when validation fails
 - ❌ No way to access generated artifacts
 - ❌ Harsh error message with no options
 - ❌ Cannot iterate on partially working code
 
 **Agent Visibility:**
+
 - ❌ Only see top 10 agents
 - ❌ Single aggregate count line
 - ❌ No status breakdown
@@ -229,6 +239,7 @@ const allAgents = Object.entries(byAgent)
 ### After These Changes
 
 **Export:**
+
 - ✅ Can export with informed consent
 - ✅ Clear warning message in amber (not red)
 - ✅ Warning icon on download button
@@ -236,6 +247,7 @@ const allAgents = Object.entries(byAgent)
 - ✅ Enables iterative debugging
 
 **Agent Visibility:**
+
 - ✅ See ALL agents (no limit)
 - ✅ Four status cards showing clear breakdown
 - ✅ Color-coded agent pills by status
@@ -247,11 +259,13 @@ const allAgents = Object.entries(byAgent)
 ## Testing Performed
 
 ### Static Analysis
+
 - TypeScript type checking: ✅ Pass
 - ESLint linting: ✅ Pass
 - CodeQL security scan: ✅ 0 alerts
 
 ### Manual Testing
+
 - Verified changes follow existing UI patterns
 - Confirmed responsive grid layout works on different screen sizes
 - Tested export flow with validation failures
@@ -280,17 +294,20 @@ const allAgents = Object.entries(byAgent)
 ## Future Recommendations
 
 ### Export Enhancements
+
 1. Consider adding a "Show Details" button in validation error message
 2. Add export options (full vs artifacts-only) directly in the modal
 3. Log export attempts for analytics
 
 ### Agent Visibility Enhancements
+
 1. Add filtering/search for agent list when there are many agents
 2. Consider collapsible sections for agent groups
 3. Add real-time updates during orchestration
 4. Show agent execution timeline
 
 ### General
+
 1. Document the orchestration validation process
 2. Add user guide for interpreting validation failures
 3. Consider adding a "Retry Validation" button
@@ -307,6 +324,7 @@ Both issues have been successfully resolved:
 2. **Agent Visibility**: The Run Monitor Panel now provides comprehensive agent status visibility with card views and unlimited agent display.
 
 The implementation follows best practices:
+
 - Minimal, surgical changes
 - Consistent with existing patterns
 - Well-factored code

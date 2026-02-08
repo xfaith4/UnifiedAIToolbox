@@ -9,6 +9,7 @@ Secrets are stored in GitHub repository settings and never exposed in logs.
 ### Adding Secrets
 
 **Via GitHub UI:**
+
 1. Go to your repository on GitHub
 2. Click **Settings** → **Secrets and variables** → **Actions**
 3. Click **New repository secret**
@@ -16,6 +17,7 @@ Secrets are stored in GitHub repository settings and never exposed in logs.
 5. Click **Add secret**
 
 **Via GitHub CLI:**
+
 ```bash
 gh secret set SECRET_NAME
 # Paste value when prompted
@@ -28,24 +30,28 @@ gh secret set SECRET_NAME
 **When needed:** Only if using AI-powered summary generation
 
 **How to get:**
+
 1. Sign up at [OpenAI](https://platform.openai.com/)
 2. Go to [API Keys](https://platform.openai.com/api-keys)
 3. Create a new API key
 4. Copy the key (you won't see it again!)
 
 **Add to GitHub:**
+
 ```bash
 gh secret set OPENAI_API_KEY
 # Paste your key: sk-...
 ```
 
 **Usage in workflows:**
+
 ```yaml
 env:
   OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 ```
 
 **Cost considerations:**
+
 - The template uses `gpt-4o-mini` by default (cheapest model)
 - Typical analysis summary: ~$0.01-0.05 per run
 - Monitor usage in OpenAI dashboard
@@ -61,6 +67,7 @@ env:
 **No action required** - GitHub provides this automatically as `${{ secrets.GITHUB_TOKEN }}`
 
 **Permissions:**
+
 ```yaml
 permissions:
   contents: read
@@ -73,11 +80,13 @@ permissions:
 **When needed:** If integrating with Codecov for code coverage
 
 **How to get:**
+
 1. Sign up at [Codecov](https://codecov.io/)
 2. Link your repository
 3. Copy the upload token
 
 **Add to GitHub:**
+
 ```bash
 gh secret set CODECOV_TOKEN
 ```
@@ -87,10 +96,12 @@ gh secret set CODECOV_TOKEN
 **When needed:** If publishing to npm or using private npm packages
 
 **How to get:**
+
 1. Login to npm: `npm login`
 2. Create token: `npm token create`
 
 **Add to GitHub:**
+
 ```bash
 gh secret set NPM_TOKEN
 ```
@@ -100,11 +111,13 @@ gh secret set NPM_TOKEN
 **When needed:** If publishing .NET packages to NuGet
 
 **How to get:**
+
 1. Sign in to [NuGet.org](https://www.nuget.org/)
 2. Go to API Keys section
 3. Create a new key
 
 **Add to GitHub:**
+
 ```bash
 gh secret set NUGET_API_KEY
 ```
@@ -116,6 +129,7 @@ Environment variables configure workflow behavior without being secrets.
 ### Setting Environment Variables
 
 **Workflow level:**
+
 ```yaml
 env:
   NODE_VERSION: '20'
@@ -123,6 +137,7 @@ env:
 ```
 
 **Job level:**
+
 ```yaml
 jobs:
   build:
@@ -131,6 +146,7 @@ jobs:
 ```
 
 **Step level:**
+
 ```yaml
 - name: Build
   env:
@@ -147,11 +163,13 @@ jobs:
 **Default:** `gpt-4o-mini`
 
 **Options:**
+
 - `gpt-4o-mini` - Cheapest, fast (recommended)
 - `gpt-4o` - More capable, more expensive
 - `gpt-3.5-turbo` - Legacy, being phased out
 
 **Set in workflow:**
+
 ```yaml
 env:
   OPENAI_MODEL: 'gpt-4o-mini'
@@ -164,6 +182,7 @@ env:
 **Default:** `https://api.openai.com/v1`
 
 **Azure OpenAI example:**
+
 ```yaml
 env:
   OPENAI_API_ENDPOINT: 'https://your-resource.openai.azure.com'
@@ -177,6 +196,7 @@ env:
 **Default:** 30-90 days (varies by workflow)
 
 **Set in workflow:**
+
 ```yaml
 - name: Upload artifacts
   uses: actions/upload-artifact@v4
@@ -248,6 +268,7 @@ You cannot view secret values, but you can check if they exist:
 **Cause:** Secret doesn't exist or is misspelled
 
 **Solution:**
+
 1. Check secret name matches exactly (case-sensitive)
 2. Verify secret exists in repository settings
 3. Check you're in the right repository
@@ -259,6 +280,7 @@ You cannot view secret values, but you can check if they exist:
 
 **Solution:**
 Add permissions to workflow:
+
 ```yaml
 permissions:
   contents: read
@@ -270,6 +292,7 @@ permissions:
 **Cause:** Invalid or expired API key
 
 **Solution:**
+
 1. Verify key is correct and not truncated
 2. Check key hasn't been revoked
 3. Ensure key has necessary permissions
@@ -280,6 +303,7 @@ permissions:
 **Cause:** GitHub security restriction
 
 **Solution:** This is intentional for security. Options:
+
 1. Don't use secrets in PR workflows
 2. Use `pull_request_target` (with extreme caution!)
 3. Require PR from branches, not forks

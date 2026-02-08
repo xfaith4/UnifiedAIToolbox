@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.0] - 2024-12-05
 
 ### Added
+
 - Initial release of CI/CD Blueprint Template
 - Multi-platform CI workflow (`ci-comprehensive.yml`)
 - Scheduled repository analysis workflow (`repo-analysis-scheduled.yml`)
@@ -22,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support for PowerShell, Python, Node.js, and .NET projects
 
 ### Features
+
 - **Workflows**: Battle-tested GitHub Actions workflows for CI/CD
 - **Scripts**: Reusable PowerShell scripts for analysis and orchestration
 - **Documentation**: Step-by-step guides for customization
@@ -30,12 +32,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **AI Integration**: Optional AI-powered summaries
 
 ### Documentation
+
 - README.md with quick start guide
 - CUSTOMIZATION_GUIDE.md with detailed instructions
 - SECRETS_AND_ENV.md for configuration
 - Inline comments in all workflow and script files
 
 ### Architecture
+
 - Pluggable workflow design
 - Modular script structure
 - Standardized artifact layout
@@ -46,11 +50,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Version History
 
 ### Version Numbering
+
 - **Major version** (X.0.0): Breaking changes, major architectural updates
 - **Minor version** (0.X.0): New features, non-breaking enhancements
 - **Patch version** (0.0.X): Bug fixes, documentation updates
 
 ### Upgrade Guidelines
+
 When upgrading between versions:
 
 1. **Review CHANGELOG**: Check for breaking changes
@@ -60,7 +66,9 @@ When upgrading between versions:
 5. **Update Documentation**: Keep your customizations documented
 
 ### Migration Support
+
 For help migrating between versions:
+
 - Check the version-specific migration guides (if available)
 - Review the CUSTOMIZATION_GUIDE.md for new features
 - Consult GitHub Discussions for community support

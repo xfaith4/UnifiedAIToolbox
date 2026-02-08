@@ -53,22 +53,25 @@ Search and replace these placeholders throughout the copied files:
 ### 3. Customize for Your Tech Stack
 
 The templates include examples for:
+
 - PowerShell
 - Python
 - Node.js/TypeScript
 - .NET/C#
 
-**Remove** jobs and steps that don't apply to your project.  
+**Remove** jobs and steps that don't apply to your project.
 **Modify** commands to match your build/test tools.
 
 ### 4. Configure Secrets
 
 Add these secrets to your GitHub repository:
 
-#### Required (if using AI insights):
+#### Required (if using AI insights)
+
 - `OPENAI_API_KEY` - OpenAI API key for AI-powered summaries
 
-#### Optional:
+#### Optional
+
 - `GITHUB_TOKEN` - Automatically provided by GitHub Actions
 
 See [SECRETS_AND_ENV.md](docs/SECRETS_AND_ENV.md) for detailed configuration.
@@ -224,10 +227,12 @@ When updating your CI/CD setup:
 ## 📞 Support
 
 For issues specific to this template:
+
 - Review the [CUSTOMIZATION_GUIDE.md](docs/CUSTOMIZATION_GUIDE.md)
 - Check the [Unified AI Toolbox discussions](https://github.com/xfaith4/UnifiedAIToolbox/discussions)
 
 For issues with your adapted workflows:
+
 - Check GitHub Actions logs
 - Validate your customizations against the template
 - Test in isolation (single job, single step)

@@ -35,6 +35,7 @@ The following components have been **removed** in v2.0:
 ### Current Architecture
 
 **Core Components** (kept):
+
 1. **FastAPI Backend**: `apps/UnifiedPromptApp/services/prompt-api/`
 2. **Next.js Web Portal**: `apps/unifiedtoolbox.webapp/`
 3. **Orchestration Bridge**: `apps/orchestration-bridge/`
@@ -56,38 +57,39 @@ cp .env.example .env
 ### For Existing Users
 
 1. **Pull Latest Changes**:
+
    ```bash
    git pull
    ```
 
 2. **Update .env File**:
-   
+
    Old `.env` had many optional variables. New `.env.example` is simpler:
-   
+
    ```env
    # Required
    OPENAI_API_KEY=your-key-here
    OPENAI_MODEL=gpt-4o-mini
-   
+
    # Optional (defaults shown)
    API_PORT=8000
    WEB_PORT=3000
-   
+
    # Optional - GitHub Integration
    # GITHUB_TOKEN=your-token
    ```
 
 3. **Reinstall Dependencies**:
-   
+
    ```bash
    # Remove old virtual environment
    rm -rf .venv
-   
+
    # Create fresh environment
    python3 -m venv .venv
    source .venv/bin/activate  # Windows: .venv\Scripts\activate
    pip install -r requirements.txt
-   
+
    # Reinstall web app dependencies
    cd apps/unifiedtoolbox.webapp
    rm -rf node_modules package-lock.json
@@ -96,11 +98,11 @@ cp .env.example .env
    ```
 
 4. **Use New Launcher**:
-   
+
    ```bash
    # Linux/Mac/WSL
    ./launch.sh
-   
+
    # Windows PowerShell
    .\Start-Toolbox.ps1
    ```
@@ -119,7 +121,7 @@ class Settings(BaseSettings):
     @validator('field')
     def validate_field(cls, v):
         return v
-    
+
     class Config:
         env_prefix = "PREFIX_"
 
@@ -132,7 +134,7 @@ class Settings(BaseSettings):
     @classmethod
     def validate_field(cls, v):
         return v
-    
+
     model_config = {"env_prefix": "PREFIX_"}
 
 # .dict() → .model_dump()
@@ -142,6 +144,7 @@ data = model.model_dump()  # was: model.dict()
 #### Launch Scripts
 
 **Before**:
+
 ```powershell
 # Old: Multiple scripts
 .\Launch.ps1
@@ -153,6 +156,7 @@ data = model.model_dump()  # was: model.dict()
 ```
 
 **After**:
+
 ```powershell
 # New: Single simple launcher
 .\Start-Toolbox.ps1  # Launches everything
@@ -161,26 +165,28 @@ data = model.model_dump()  # was: model.dict()
 #### Environment Variables
 
 **Removed** (no longer needed):
+
 - `FRONTEND_PORT` (legacy dashboard removed)
 - `WORKBENCH_PORT` (Streamlit removed)
 - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` (moved to optional)
 - All `BRIDGE_*` prefixed vars (defaults work fine)
 
 **Simplified**:
+
 - `GITHUB_TOKEN` is now truly optional (GitHub CLI fallback removed)
 
 ## Feature Parity
 
 All core features are preserved:
 
-✅ **Prompt Management**: YAML library, full-text search, templates  
-✅ **AI Integration**: OpenAI GPT-4, GPT-4o, cost tracking  
-✅ **Multi-Agent Orchestration**: All agents preserved  
-✅ **Web Portal**: Enhanced Next.js UI (better than legacy desktop apps)  
-✅ **REST API**: FastAPI with OpenAPI docs  
-✅ **GitHub Integration**: Clone, analyze, PR creation  
-✅ **Run Tracking**: Cost analytics, quality metrics  
-✅ **PromptOps**: Closed-loop improvement system  
+✅ **Prompt Management**: YAML library, full-text search, templates
+✅ **AI Integration**: OpenAI GPT-4, GPT-4o, cost tracking
+✅ **Multi-Agent Orchestration**: All agents preserved
+✅ **Web Portal**: Enhanced Next.js UI (better than legacy desktop apps)
+✅ **REST API**: FastAPI with OpenAPI docs
+✅ **GitHub Integration**: Clone, analyze, PR creation
+✅ **Run Tracking**: Cost analytics, quality metrics
+✅ **PromptOps**: Closed-loop improvement system
 
 ## Troubleshooting
 
@@ -189,6 +195,7 @@ All core features are preserved:
 This is a **warning**, not an error. The app works without GitHub features.
 
 **To enable GitHub features**:
+
 ```bash
 # Add to .env
 GITHUB_TOKEN=ghp_your_token_here
@@ -216,6 +223,7 @@ Build mode will be fixed in a future update.
 ### Port conflicts
 
 Change ports in `.env`:
+
 ```env
 API_PORT=8001
 WEB_PORT=3001

@@ -1,7 +1,7 @@
 # MCP Library - Remaining Tasks
 
-**Date**: 2026-02-04  
-**Status**: Phases 1-3 Complete (95% Done)  
+**Date**: 2026-02-04
+**Status**: Phases 1-3 Complete (95% Done)
 **Owner**: Platform Team
 
 ---
@@ -9,6 +9,7 @@
 ## Executive Summary
 
 The MCP Library implementation has made significant progress:
+
 - **Phase 1 (Backend Core)**: ✅ 100% Complete
 - **Phase 2 (Web UI)**: ✅ 100% Complete
 - **Phase 3 (Registry Integration)**: ✅ 100% Complete
@@ -21,6 +22,7 @@ All essential features are now functional. The remaining work is optional enhanc
 ## ✅ Recently Completed (2026-02-04)
 
 ### Phase 2: Web UI Components
+
 1. **Collections Tab** - Full CRUD interface
    - List collections with metadata (name, description, server count, tags)
    - Create collection dialog with multi-select server picker
@@ -41,6 +43,7 @@ All essential features are now functional. The remaining work is optional enhanc
    - Automatic UI refresh after install
 
 ### Phase 3: Registry Integration
+
 1. **Registry Sync Service** (`registry_sync.py`)
    - Integration with orchestration-bridge registry adapters
    - `sync_from_official_registry()` - Fetch from MCP official registry
@@ -67,10 +70,11 @@ All essential features are now functional. The remaining work is optional enhanc
 **Estimated Effort**: 5-7 days
 
 #### 4.1 Runtime Enforcement Middleware
-**Status**: Not started  
+**Status**: Not started
 **Files to Create**: `apps/UnifiedPromptApp/services/prompt-api/orchestration_mcp_middleware.py`
 
 **Tasks**:
+
 1. Create middleware to intercept MCP calls during orchestration runs
    - Hook into agent tool execution pipeline
    - Extract server_id and tool_name from invocations
@@ -87,15 +91,17 @@ All essential features are now functional. The remaining work is optional enhanc
    - Fail-secure on policy engine errors
 
 **Integration Points**:
+
 - `agent_library_router.py` - Add enforcement to agent routing
 - `orchestrator.py` - Wire up middleware
 - `.env` - Add `MCP_ENFORCEMENT_ENABLED=true`
 
 #### 4.2 Allowlist Auto-Creation
-**Status**: Not started  
+**Status**: Not started
 **Files to Modify**: Orchestrator run creation workflow
 
 **Tasks**:
+
 1. Add MCP allowlist field to run creation
    - UI component in orchestration designer
    - Multi-select for servers/collections
@@ -110,10 +116,11 @@ All essential features are now functional. The remaining work is optional enhanc
    - Show real-time enforcement status
 
 #### 4.3 Audit Log Viewer UI (Optional)
-**Status**: Not started  
+**Status**: Not started
 **New Component**: `apps/unifiedtoolbox.webapp/src/app/mcp-library/audit.tsx`
 
 **Tasks**:
+
 1. Create audit log viewer page
    - Timeline view with event cards
    - Date range picker
@@ -133,15 +140,17 @@ All essential features are now functional. The remaining work is optional enhanc
    - Highlight policy violations
 
 **API Integration**:
+
 - POST `/api/mcp/audit/query` - Already implemented
 - GET `/api/mcp/audit/summary` - Already implemented
 - GET `/api/mcp/audit/events/{id}` - Already implemented
 
 #### 4.4 Policy Violation Dashboard
-**Status**: Not started  
+**Status**: Not started
 **New Endpoint**: `/api/mcp/violations`
 
 **Tasks**:
+
 1. Create violations summary endpoint
    - Query audit logs for denied calls
    - Group by server, tool, user, run
@@ -159,10 +168,11 @@ All essential features are now functional. The remaining work is optional enhanc
 
 ## 🔐 Security Enhancements (Future)
 
-**Priority**: Medium  
+**Priority**: Medium
 **Estimated Effort**: 3-5 days
 
 ### Tasks
+
 - [ ] **Rate Limiting** - Add rate limits to API endpoints (10 req/sec per user)
 - [ ] **RBAC** - Implement role-based access control for admin operations
 - [ ] **Log Signing** - Cryptographically sign audit logs for integrity
@@ -176,10 +186,11 @@ All essential features are now functional. The remaining work is optional enhanc
 
 ## 📈 Performance Optimizations (Future)
 
-**Priority**: Low  
+**Priority**: Low
 **Estimated Effort**: 4-6 days
 
 ### Current Performance
+
 - Policy evaluation: ~5ms per call
 - Audit log write: ~2ms per event (JSONL append)
 - Server search: O(n) linear scan (~50ms for 1000 servers)
@@ -189,18 +200,21 @@ All essential features are now functional. The remaining work is optional enhanc
 
 #### 1. Audit Log Storage Migration
 **Task**: Migrate from JSONL to SQLite
+
 - **Benefits**: 10x faster queries, better filtering, indexing
 - **Implementation**: Create `audit.db` schema, migration script
 - **Indexes**: run_id, server_id, timestamp, event_type
 
 #### 2. Server Search Optimization
 **Task**: Add in-memory indexes
+
 - **Benefits**: Sub-millisecond search for common queries
 - **Implementation**: Build prefix tree for name search, tag hash maps
 - **Cache**: Store in Redis or in-memory LRU cache
 
 #### 3. Policy Evaluation Caching
 **Task**: Cache allowlist lookups per run
+
 - **Benefits**: Avoid repeated storage reads
 - **Implementation**: LRU cache with run_id as key, TTL 1 hour
 - **Precompute**: Expand collections into server lists on allowlist creation
@@ -210,12 +224,13 @@ All essential features are now functional. The remaining work is optional enhanc
 ## 🧪 Testing Requirements
 
 ### Integration Tests (To Add)
-**Priority**: Medium  
+**Priority**: Medium
 **Estimated Effort**: 2-3 days
 
 **File**: `tests/integration/test_mcp_governance_api.py`
 
 **Test Cases**:
+
 1. End-to-end server installation flow
    - Search server → Install → Enable → Verify in installs list
 2. Collection creation and allowlist binding
@@ -230,12 +245,13 @@ All essential features are now functional. The remaining work is optional enhanc
    - Login → Create collection → Verify created_by field
 
 ### UI Tests (To Add)
-**Priority**: Low  
+**Priority**: Low
 **Estimated Effort**: 2 days
 
 **File**: `apps/unifiedtoolbox.webapp/tests/mcp-library.test.tsx`
 
 **Test Cases**:
+
 1. Server search and filtering
 2. Collection CRUD operations
 3. Install/uninstall workflows
@@ -249,6 +265,7 @@ All essential features are now functional. The remaining work is optional enhanc
 ### Production Deployment
 
 #### Backend Configuration
+
 - [ ] Set `AUTH_AVAILABLE = True` in production
 - [ ] Configure registry sources in `data/mcp/registry_sources.json`
 - [ ] Set audit log retention policy (e.g., 90 days)
@@ -262,6 +279,7 @@ All essential features are now functional. The remaining work is optional enhanc
   ```
 
 #### Data Migration
+
 - [ ] Initialize `data/mcp/` directory structure
 - [ ] Seed initial server registry (run POST /api/mcp/registry/sync)
 - [ ] Create default collections (if any)
@@ -269,12 +287,14 @@ All essential features are now functional. The remaining work is optional enhanc
 - [ ] Configure log rotation (logrotate or systemd)
 
 #### Frontend Deployment
+
 - [ ] Build production bundle (`npm run build`)
 - [ ] Configure API endpoint URL in environment
 - [ ] Deploy to hosting (Vercel, Netlify, etc.)
 - [ ] Verify all tabs functional in production
 
 #### Monitoring & Alerts
+
 - [ ] Add metrics for policy decisions (allow/deny ratio)
 - [ ] Track audit log growth rate
 - [ ] Monitor API endpoint latency (<100ms p95)
@@ -286,18 +306,21 @@ All essential features are now functional. The remaining work is optional enhanc
 ## 📊 Current Metrics
 
 ### Code Changes (Total)
+
 - **Files Modified**: 5 Python files, 2 TypeScript files
 - **Lines Added**: 1,200+ lines
 - **New Modules**: 1 (`registry_sync.py`)
 - **TODOs Resolved**: 15+
 
 ### API Coverage
+
 - **Total Endpoints**: 26
 - **Fully Functional**: 26 (100%)
 - **Tested**: 23 (88%)
 - **Documented**: 26 (100%)
 
 ### Feature Completion
+
 - **Backend APIs**: ✅ 100% Complete
 - **Storage Layer**: ✅ 100% Complete
 - **Policy Engine**: ✅ 100% Complete
@@ -310,6 +333,7 @@ All essential features are now functional. The remaining work is optional enhanc
 ## 🎯 Recommended Next Steps
 
 ### If Deploying to Production Now
+
 1. ✅ Code is ready - no blocking issues
 2. Run integration tests (manual or automated)
 3. Deploy backend with default registry sources
@@ -319,6 +343,7 @@ All essential features are now functional. The remaining work is optional enhanc
 7. Consider optional enhancements based on usage
 
 ### If Building Advanced Features
+
 1. Start with Audit Log Viewer UI (high value, low complexity)
 2. Implement Orchestration Integration (higher complexity)
 3. Add Performance Optimizations (if needed)
@@ -345,19 +370,20 @@ To contribute to remaining tasks:
 
 ## 📞 Support & Questions
 
-**Technical Lead**: Platform Team  
-**Repository**: https://github.com/xfaith4/UnifiedAIToolbox  
-**Issues**: https://github.com/xfaith4/UnifiedAIToolbox/issues  
+**Technical Lead**: Platform Team
+**Repository**: https://github.com/xfaith4/UnifiedAIToolbox
+**Issues**: https://github.com/xfaith4/UnifiedAIToolbox/issues
 **Discussions**: https://github.com/xfaith4/UnifiedAIToolbox/discussions
 
 For questions about MCP Library:
+
 1. Check documentation in `/docs/MCP_*.md`
 2. Search existing issues and discussions
 3. Open a new discussion with `[MCP Library]` prefix
 
 ---
 
-**Bottom Line**:  
-✅ **Ready for Production** - All core features implemented  
-⚠️ **Optional Enhancements** - Phase 4 can be added incrementally  
+**Bottom Line**:
+✅ **Ready for Production** - All core features implemented
+⚠️ **Optional Enhancements** - Phase 4 can be added incrementally
 📋 **Well Documented** - Clear roadmap for future work
