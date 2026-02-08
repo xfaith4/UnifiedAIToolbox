@@ -1,6 +1,7 @@
 import { promises as fs } from 'fs'
 import path from 'path'
 import crypto from 'crypto'
+import { cleanupArtifactContent } from './cleanupArtifactContent'
 
 export type AppFactoryArtifact = {
   name: string
@@ -285,7 +286,9 @@ export async function ingestArtifacts(
         const buf = Buffer.from(art.content || '', 'base64')
         await fs.writeFile(full, buf)
       } else {
-        const body = (art.content || '').replace(/\r\n/g, '\n')
+        // Apply cleanup to remove markdown code fencing and normalize line endings
+        const cleaned = cleanupArtifactContent(art.content || '', originalName)
+        const body = cleaned.replace(/\r\n/g, '\n')
         await fs.writeFile(full, body, 'utf8')
       }
 
