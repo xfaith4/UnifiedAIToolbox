@@ -20,6 +20,22 @@ function Get-RelativePath {
     return $Path
 }
 
+function Get-OptionalPropertyValue {
+    param(
+        [AllowNull()]$Object,
+        [Parameter(Mandatory = $true)][string]$Name,
+        $Default = $null
+    )
+    if ($null -eq $Object) { return $Default }
+    if ($Object -is [System.Collections.IDictionary]) {
+        if ($Object.Contains($Name)) { return $Object[$Name] }
+        return $Default
+    }
+    $prop = $Object.PSObject.Properties[$Name]
+    if ($prop) { return $prop.Value }
+    return $Default
+}
+
 function Get-ExcludePatterns {
     return @(
         "node_modules",
@@ -355,6 +371,9 @@ function Get-ProjectLayout {
 
     foreach ($file in $Files) {
         $ext = $file.Extension.ToLowerInvariant()
+        if ([string]::IsNullOrWhiteSpace($ext)) {
+            $ext = "[no_ext]"
+        }
         if (-not $extensionCounts.ContainsKey($ext)) { $extensionCounts[$ext] = 0 }
         $extensionCounts[$ext]++
     }
@@ -744,8 +763,11 @@ function Invoke-RepoContextBuilder {
     }
 
     if (-not $RepoRoot) {
-        if ($contract -and $contract.repo -and $contract.repo.local_path) {
-            $RepoRoot = $contract.repo.local_path
+        if ($contract -and $contract.repo) {
+            $repoProps = @($contract.repo.PSObject.Properties.Name)
+            if ($repoProps -contains "local_path" -and $contract.repo.local_path) {
+                $RepoRoot = $contract.repo.local_path
+            }
         }
     }
     if (-not $RepoRoot) {
@@ -763,7 +785,9 @@ function Invoke-RepoContextBuilder {
     }
 
     $repoContextSettings = $null
-    if ($contract -and $contract.repo_context) { $repoContextSettings = $contract.repo_context }
+    if ($contract) {
+        $repoContextSettings = Get-OptionalPropertyValue -Object $contract -Name "repo_context"
+    }
 
     $maxFiles = 5000
     $maxRuntimeSeconds = 300
@@ -917,7 +941,7 @@ function Invoke-RepoContextBuilder {
     }
 
     $policyHooks = [pscustomobject]@{
-        pr_status = [pscustomobject]@{ status = "not_collected"; target_branches = @(); open_pr_count = $null }
+        pr_status = [pscustomobject]@{ status = "not_collected"; target_branches = @(); open_pr_count = 0 }
         release = [pscustomobject]@{ status = "not_collected"; tags_present = $false; versioning_scheme = "" }
         security = [pscustomobject]@{ status = "not_collected"; dependency_update_policy = "" }
     }
@@ -1021,15 +1045,17 @@ function Invoke-RepoContextBuilder {
     }
     $refBranch = ""
     $refCommit = ""
-    if ($contract -and $contract.ref) {
-        $refProps = @($contract.ref.PSObject.Properties.Name)
-        if ($refProps -contains "branch" -and $contract.ref.branch) { $refBranch = $contract.ref.branch }
-        if ($refProps -contains "commit" -and $contract.ref.commit) { $refCommit = $contract.ref.commit }
+    $contractRef = Get-OptionalPropertyValue -Object $contract -Name "ref"
+    if ($contractRef) {
+        $refProps = @($contractRef.PSObject.Properties.Name)
+        if ($refProps -contains "branch" -and $contractRef.branch) { $refBranch = $contractRef.branch }
+        if ($refProps -contains "commit" -and $contractRef.commit) { $refCommit = $contractRef.commit }
     }
+    $contractRunId = Get-OptionalPropertyValue -Object $contract -Name "run_id" -Default ""
 
     $repoContext = [pscustomobject]@{
         schema_version = "1.0"
-        run_id = $(if ($contract -and $contract.run_id) { $contract.run_id } else { "" })
+        run_id = $contractRunId
         generated_at_utc = (Get-Date).ToUniversalTime().ToString("o")
         repo = [pscustomobject]@{
             root_path = (Resolve-Path -LiteralPath $RepoRoot).Path

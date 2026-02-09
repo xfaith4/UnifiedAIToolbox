@@ -231,6 +231,25 @@ function Get-ShortHash {
     return ([BitConverter]::ToString($hashBytes) -replace "-", "").ToLowerInvariant()
 }
 
+function Get-OptionalPropertyValue {
+    param(
+        [AllowNull()]$Object,
+        [Parameter(Mandatory = $true)][string]$Name,
+        $Default = $null
+    )
+
+    if ($null -eq $Object) { return $Default }
+
+    if ($Object -is [System.Collections.IDictionary]) {
+        if ($Object.Contains($Name)) { return $Object[$Name] }
+        return $Default
+    }
+
+    $prop = $Object.PSObject.Properties[$Name]
+    if ($prop) { return $prop.Value }
+    return $Default
+}
+
 function Get-MimeType {
     param([Parameter(Mandatory = $true)][string]$Path)
     $ext = [System.IO.Path]::GetExtension($Path).ToLowerInvariant()
@@ -318,8 +337,9 @@ function Get-RequiredArtifactSpecs {
                 $specs += [pscustomobject]@{ name = $entry; path = $entry }
             }
             else {
-                $name = $entry.name
-                $path = if ($entry.path) { $entry.path } else { $entry.name }
+                $name = Get-OptionalPropertyValue -Object $entry -Name "name"
+                $entryPath = Get-OptionalPropertyValue -Object $entry -Name "path"
+                $path = if ($entryPath) { $entryPath } else { $name }
                 if ($name) {
                     $specs += [pscustomobject]@{ name = $name; path = $path }
                 }
@@ -349,8 +369,9 @@ function Get-OptionalArtifactSpecs {
                 $specs += [pscustomobject]@{ name = $entry; path = $entry }
             }
             else {
-                $name = $entry.name
-                $path = if ($entry.path) { $entry.path } else { $entry.name }
+                $name = Get-OptionalPropertyValue -Object $entry -Name "name"
+                $entryPath = Get-OptionalPropertyValue -Object $entry -Name "path"
+                $path = if ($entryPath) { $entryPath } else { $name }
                 if ($name) {
                     $specs += [pscustomobject]@{ name = $name; path = $path }
                 }
@@ -461,9 +482,8 @@ function Assert-CommandPolicyCompliance {
     if (-not $policy.only_from_repo_context) { return }
 
     $repoContextPath = $null
-    if ($Contract.repo_context_ref -and $Contract.repo_context_ref.path) {
-        $repoContextPath = $Contract.repo_context_ref.path
-    }
+    $repoContextRef = Get-OptionalPropertyValue -Object $Contract -Name "repo_context_ref"
+    $repoContextPath = Get-OptionalPropertyValue -Object $repoContextRef -Name "path"
     if (-not $repoContextPath) { $repoContextPath = "repo_context.json" }
 
     $repoContextFull = if ([System.IO.Path]::IsPathRooted($repoContextPath)) { $repoContextPath } else { Join-Path $OutputDir $repoContextPath }
@@ -881,8 +901,11 @@ function Initialize-RunStatus {
     }
 
     $repoUrl = $null
-    if ($script:Contract -and $script:Contract.repo -and $script:Contract.repo.url) {
-        $repoUrl = $script:Contract.repo.url
+    if ($script:Contract -and $script:Contract.repo) {
+        $repoProps = @($script:Contract.repo.PSObject.Properties.Name)
+        if ($repoProps -contains "url" -and $script:Contract.repo.url) {
+            $repoUrl = $script:Contract.repo.url
+        }
     }
 
     $script:RunStatus = [ordered]@{
@@ -1073,9 +1096,9 @@ function Update-RunStateArtifacts {
     }
 
     if ($prJson) {
-        $prUrl = $null
-        if ($prJson.pr -and $prJson.pr.url) { $prUrl = $prJson.pr.url }
-        elseif ($prJson.pr_url) { $prUrl = $prJson.pr_url }
+        $prObject = Get-OptionalPropertyValue -Object $prJson -Name "pr"
+        $prUrl = Get-OptionalPropertyValue -Object $prObject -Name "url"
+        if (-not $prUrl) { $prUrl = Get-OptionalPropertyValue -Object $prJson -Name "pr_url" }
         if ($prUrl) {
             if (-not $script:RunStatus.links) { $script:RunStatus.links = [pscustomobject]@{} }
             $script:RunStatus.links.pr_url = $prUrl
@@ -1518,8 +1541,11 @@ $supervisorContext
         }
 
         $repoPathOverride = $null
-        if ($script:Contract -and $script:Contract.repo -and $script:Contract.repo.local_path) {
-            $repoPathOverride = $script:Contract.repo.local_path
+        if ($script:Contract -and $script:Contract.repo) {
+            $repoProps = @($script:Contract.repo.PSObject.Properties.Name)
+            if ($repoProps -contains "local_path" -and $script:Contract.repo.local_path) {
+                $repoPathOverride = $script:Contract.repo.local_path
+            }
         }
 
         $repoContextResult = Invoke-RepoContextBuilder `
@@ -1669,11 +1695,17 @@ function Execute-MilestonePipeline {
             if ($script:JobType -eq "maintain_existing_app" -and $milestone.Agent -eq "RepoContextBuilder") {
                 $gateFn = Get-Command -Name Test-BaselineGate -ErrorAction SilentlyContinue
                 if ($gateFn) {
-                    $repoContextPath = Join-Path $OutputDir "repo_context.json"
-                    $baselineGate = Test-BaselineGate -RepoContextPath $repoContextPath -Contract $script:Contract
-                    if (-not $baselineGate.Ok) {
-                        $msg = "Baseline gate failed: " + ($baselineGate.Errors -join "; ")
-                        throw $msg
+                    if ($DryRun) {
+                        Write-Log "Baseline gate skipped in DryRun mode." -Level "WARN"
+                        Append-RunEvent -Type "warning" -Stage $stageId -Message "Baseline gate skipped in DryRun mode."
+                    }
+                    else {
+                        $repoContextPath = Join-Path $OutputDir "repo_context.json"
+                        $baselineGate = Test-BaselineGate -RepoContextPath $repoContextPath -Contract $script:Contract
+                        if (-not $baselineGate.Ok) {
+                            $msg = "Baseline gate failed: " + ($baselineGate.Errors -join "; ")
+                            throw $msg
+                        }
                     }
                 }
             }
@@ -1951,6 +1983,12 @@ try {
     if (-not $DryRun -and [string]::IsNullOrWhiteSpace($env:OPENAI_API_KEY)) {
         Write-Log "OPENAI_API_KEY not set; running in simulation mode (-DryRun implied)." -Level "WARN"
         $DryRun = $true
+    }
+    if ($DryRun) {
+        $env:UAIT_DRY_RUN = "1"
+    }
+    else {
+        Remove-Item Env:UAIT_DRY_RUN -ErrorAction SilentlyContinue
     }
 
     Write-Log "Contract: $script:ContractPath"

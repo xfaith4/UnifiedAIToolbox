@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Phi-inspired favicon">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b1020"/>
+      <stop offset="1" stop-color="#121a33"/>
+    </linearGradient>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="1.2" result="b"/>
+      <feOffset in="b" dx="0" dy="0" result="o"/>
+      <feMerge>
+        <feMergeNode in="o"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect x="0" y="0" width="64" height="64" rx="12" fill="url(#g)"/>
+
+  <!-- Golden rectangle frame (width/height ≈ φ) -->
+  <!-- 52 / 32 = 1.625 (close to φ) -->
+  <rect x="6" y="16" width="52" height="32" rx="6"
+        fill="none" stroke="#d7b65a" stroke-width="2.2" opacity="0.95"/>
+
+  <!-- Spiral hint using quarter-circle arcs inside a nested rectangle sequence -->
+  <g fill="none" stroke="#f2e7c9" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" filter="url(#soft)">
+    <!-- Large arc -->
+    <path d="M 58 48 A 32 32 0 0 1 26 16"/>
+    <!-- Medium arc -->
+    <path d="M 26 16 A 20 20 0 0 1 6 36"/>
+    <!-- Small arc -->
+    <path d="M 6 36 A 12 12 0 0 1 18 48"/>
+    <!-- Tiny arc -->
+    <path d="M 18 48 A 7 7 0 0 1 25 41"/>
+  </g>
+
+  <!-- Focal point -->
+  <circle cx="25" cy="41" r="2.3" fill="#d7b65a"/>
+</svg>

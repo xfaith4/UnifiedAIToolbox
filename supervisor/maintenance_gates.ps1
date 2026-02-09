@@ -291,6 +291,8 @@ function Test-BaselineGate {
     $baselineMode = Get-PropValue -Object (Get-PropValue -Object $Contract -Name "baseline" -Default $null) -Name "mode" -Default "required_pass"
     $exceptionReason = Get-PropValue -Object (Get-PropValue -Object $Contract -Name "baseline" -Default $null) -Name "exception_reason" -Default ""
     $target = Get-PropValue -Object (Get-PropValue -Object $Contract -Name "baseline" -Default $null) -Name "target" -Default ""
+    $isDryRun = $false
+    if ($env:UAIT_DRY_RUN -and $env:UAIT_DRY_RUN -ne "0") { $isDryRun = $true }
 
     $attempted = $false
     $failed = $false
@@ -303,7 +305,10 @@ function Test-BaselineGate {
     }
 
     if ($baselineMode -eq "required_pass") {
-        if (-not $attempted) { $errors += "Baseline required but not attempted." }
+        if (-not $attempted) {
+            if ($isDryRun) { $warnings += "Baseline required but skipped in DryRun mode." }
+            else { $errors += "Baseline required but not attempted." }
+        }
         if ($failed) { $errors += "Baseline required_pass but baseline results failed." }
     }
     elseif ($baselineMode -eq "allow_fail_then_stabilize") {
@@ -732,10 +737,10 @@ function Invoke-ReviewGate {
         "Risk: $riskLevel",
         "",
         "## Errors",
-        $(if ($errors.Count -eq 0) { "- None" } else { $errors | ForEach-Object { \"- $_\" } }),
+        $(if ($errors.Count -eq 0) { "- None" } else { $errors | ForEach-Object { "- $_" } }),
         "",
         "## Warnings",
-        $(if ($warnings.Count -eq 0) { "- None" } else { $warnings | ForEach-Object { \"- $_\" } })
+        $(if ($warnings.Count -eq 0) { "- None" } else { $warnings | ForEach-Object { "- $_" } })
     )
     $md | Set-Content -Path (Join-Path $OutputDir "review_gate.md") -Encoding UTF8
 

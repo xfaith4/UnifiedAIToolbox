@@ -1,0 +1,11 @@
+diff --git a/next.config.js b/next.config.js
+new file mode 100644
+index 0000000..e69de29
++++ b/next.config.js
+@@ -0,0 +1,5 @@
++/** @type {import('next').NextConfig} */
++const nextConfig = {
++  reactStrictMode: true,
++}
++
++module.exports = nextConfig;

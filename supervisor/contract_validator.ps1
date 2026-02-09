@@ -135,7 +135,7 @@ function Resolve-Schema {
 
 function Test-ContractValue {
     param(
-        [Parameter(Mandatory = $true)]$Value,
+        [Parameter(Mandatory = $true)][AllowNull()]$Value,
         [Parameter(Mandatory = $true)]$Schema,
         [Parameter(Mandatory = $true)][string]$Path
     )
@@ -269,7 +269,7 @@ function Test-ContractValue {
 }
 
 function ConvertTo-CanonicalObject {
-    param([Parameter(Mandatory = $true)]$Value)
+    param([Parameter(Mandatory = $true)][AllowNull()]$Value)
 
     if ($null -eq $Value) { return $null }
 
@@ -297,7 +297,7 @@ function ConvertTo-CanonicalObject {
 }
 
 function ConvertTo-CanonicalJson {
-    param([Parameter(Mandatory = $true)]$Value)
+    param([Parameter(Mandatory = $true)][AllowNull()]$Value)
     $normalized = ConvertTo-CanonicalObject -Value $Value
     return ($normalized | ConvertTo-Json -Depth 50 -Compress)
 }

@@ -240,8 +240,9 @@ function Invoke-PRPublisher {
     $branchName = "{0}/{1}/{2}" -f $branchPrefix, $runIdSlug, $slug
 
     $baseBranch = ""
-    if ($Contract.ref -and $Contract.ref.branch) {
-        $baseBranch = [string]$Contract.ref.branch
+    $contractRef = Get-PropValue -Object $Contract -Name "ref" -Default $null
+    if ($contractRef -and (Get-PropValue -Object $contractRef -Name "branch" -Default "")) {
+        $baseBranch = [string](Get-PropValue -Object $contractRef -Name "branch" -Default "")
     }
     elseif ($repoContext -and $repoContext.repo -and $repoContext.repo.branch) {
         $baseBranch = [string]$repoContext.repo.branch
@@ -573,7 +574,7 @@ function Invoke-PRPublisher {
         if ($errorText -match "already exists") {
             $status = "existing"
             try {
-                $headRef = "$owner:$branchName"
+                $headRef = "$($owner):$branchName"
                 $existing = Invoke-RestMethod -Method Get -Uri "$apiBase/repos/$repoFullName/pulls?state=open&head=$headRef" -Headers $headers
                 if ($existing -and $existing.Count -gt 0) {
                     $prResponse = $existing[0]

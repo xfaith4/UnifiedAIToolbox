@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-02-09T06:59:30.707Z",
+  "stackId": "node-next-app-npm",
+  "runId": "ui-validate-2026-02-09T06-59-24-879Z-193507",
+  "hardening": {
+    "maxRepairCycles": 3,
+    "gateTimeoutSeconds": 600,
+    "bootTimeoutSeconds": 120,
+    "healthPollIntervalMs": 1000,
+    "fixerModel": "gpt-4o-mini",
+    "apiKeyConfigured": true
+  },
+  "contract": {
+    "stackId": "node-next-app-npm",
+    "requiredFilesAll": [
+      "package.json",
+      "tsconfig.json",
+      "next.config.*"
+    ],
+    "requiredFilesAny": [
+      [
+        "src/app/page.tsx",
+        "app/page.tsx"
+      ],
+      [
+        "src/app/layout.tsx",
+        "app/layout.tsx"
+      ]
+    ],
+    "installCommand": "npm install",
+    "typecheckCommand": "npm run typecheck",
+    "lintCommand": "npm run lint",
+    "buildCommand": "npm run build",
+    "bootCommands": [
+      {
+        "name": "web-dev",
+        "command": "npm run dev",
+        "env": {
+          "HOSTNAME": "127.0.0.1"
+        }
+      }
+    ],
+    "healthChecks": [
+      {
+        "name": "web-root",
+        "url": "http://127.0.0.1:3000",
+        "expectedStatus": 200,
+        "timeoutSeconds": 120
+      },
+      {
+        "name": "api-health",
+        "url": "http://127.0.0.1:3000/api/health",
+        "expectedStatus": 200,
+        "timeoutSeconds": 120
+      }
+    ]
+  }
+}

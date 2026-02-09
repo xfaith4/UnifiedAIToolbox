@@ -32,6 +32,24 @@ describe('evaluateRepoContract', () => {
     })
   })
 
+  it('treats wildcard required file patterns as globs', async () => {
+    await withTempDir(async (dir) => {
+      await fs.writeFile(path.join(dir, 'next.config.mjs'), 'export default {}', 'utf8')
+      const contract: RepoContract = {
+        stackId: 'test',
+        requiredFilesAll: ['next.config.*'],
+        requiredFilesAny: [],
+        codeFileExtensions: ['.ts'],
+        forbiddenPatternsByExtension: {},
+        installCommand: 'true',
+        buildCommand: 'true',
+      }
+      const res = await evaluateRepoContract(dir, contract)
+      expect(res.passed).toBe(true)
+      expect(res.requiredFilesAll[0]?.matched).toContain('next.config.mjs')
+    })
+  })
+
   it('forbidden pattern detection by extension works', async () => {
     await withTempDir(async (dir) => {
       await fs.writeFile(path.join(dir, 'a.ts'), '```ts\nconsole.log(1)\n', 'utf8')
