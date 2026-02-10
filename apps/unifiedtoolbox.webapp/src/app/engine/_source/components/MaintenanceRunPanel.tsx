@@ -155,6 +155,13 @@ function formatBytes(bytes?: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+function minutesSince(referenceTs: string | null | undefined, nowMs: number): number | null {
+  if (!referenceTs) return null
+  const referenceMs = Date.parse(referenceTs)
+  if (!Number.isFinite(referenceMs)) return null
+  return Math.floor(Math.max(0, nowMs - referenceMs) / 60000)
+}
+
 function canOpenArtifact(path: string | undefined) {
   if (!path) return false
   const lowered = path.toLowerCase()
@@ -273,7 +280,7 @@ const MaintenanceRunPanel: React.FC<Props> = ({ runId, status, loading, error, o
   }, [selectedPhaseId, selectedAgentId])
 
   useEffect(() => {
-    if (!status || status.status !== 'running') return
+    if (!status || (status.status !== 'queued' && status.status !== 'running')) return
     const interval = window.setInterval(() => setWarningNowMs(Date.now()), 30000)
     return () => window.clearInterval(interval)
   }, [status])
@@ -386,6 +393,44 @@ const MaintenanceRunPanel: React.FC<Props> = ({ runId, status, loading, error, o
     return Array.from(deduped)
   }, [status?.warnings, telemetry.warnings])
 
+  const liveTelemetryHint = useMemo(() => {
+    const runState = status?.status
+    if (runState !== 'queued' && runState !== 'running') return null
+
+    const anchorTs = telemetry.updatedAt || telemetry.startedAt || status?.updatedAt || status?.startedAt
+    const ageMinutes = minutesSince(anchorTs, warningNowMs)
+    const hasEvents = telemetry.events.length > 0
+
+    if (!hasEvents) {
+      if (ageMinutes == null) {
+        return { tone: 'info' as const, message: 'Waiting for first telemetry event...' }
+      }
+      if (ageMinutes >= RUN_VIEW_WARNING_THRESHOLD_MINUTES) {
+        return {
+          tone: 'warn' as const,
+          message: `Waiting for first telemetry event (${ageMinutes}m). Run may be stalled.`,
+        }
+      }
+      return { tone: 'info' as const, message: `Waiting for first telemetry event (${ageMinutes}m)` }
+    }
+
+    if (ageMinutes == null) {
+      return { tone: 'info' as const, message: 'Live telemetry connected.' }
+    }
+    if (ageMinutes >= RUN_VIEW_WARNING_THRESHOLD_MINUTES) {
+      return { tone: 'warn' as const, message: `Telemetry appears idle (${ageMinutes}m since last update)` }
+    }
+    return { tone: 'info' as const, message: `Telemetry active. Last update ${ageMinutes}m ago.` }
+  }, [
+    status?.status,
+    status?.updatedAt,
+    status?.startedAt,
+    telemetry.updatedAt,
+    telemetry.startedAt,
+    telemetry.events.length,
+    warningNowMs,
+  ])
+
   const onRepairIndicatorClick = useCallback(
     (agentId: string) => {
       const target = viewState.repairTargets[agentId]
@@ -485,7 +530,7 @@ const MaintenanceRunPanel: React.FC<Props> = ({ runId, status, loading, error, o
   }
 
   return (
-    <section className="p-4 border-b border-gray-700 bg-gray-900/30">
+    <section className="shrink-0 p-4 pb-6 border-b border-gray-700 bg-gray-900/30">
       <div className="max-w-6xl mx-auto space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
@@ -543,6 +588,18 @@ const MaintenanceRunPanel: React.FC<Props> = ({ runId, status, loading, error, o
           <span className="font-semibold text-indigo-200">Narrative:</span>{' '}
           <span>{telemetry.narrative || 'No telemetry yet'}</span>
         </div>
+
+        {liveTelemetryHint ? (
+          <div
+            className={`rounded px-3 py-2 text-xs ${
+              liveTelemetryHint.tone === 'warn'
+                ? 'border border-amber-700/70 bg-amber-950/30 text-amber-100'
+                : 'border border-sky-700/60 bg-sky-950/20 text-sky-100'
+            }`}
+          >
+            {liveTelemetryHint.message}
+          </div>
+        ) : null}
 
         {viewState.operatorWarnings.length ? (
           <div className="rounded border border-amber-700/70 bg-amber-950/30 px-3 py-2 text-xs text-amber-100">
@@ -607,7 +664,7 @@ const MaintenanceRunPanel: React.FC<Props> = ({ runId, status, loading, error, o
           </div>
         </div>
 
-        <div className="rounded border border-gray-800 bg-gray-950/40 px-3 py-2 text-[11px] text-gray-300">
+        <div className="rounded border border-gray-800 bg-gray-950/40 px-3 py-2.5 text-[11px] text-gray-300">
           <div className="font-semibold text-gray-200">Legend</div>
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <span className={`inline-flex rounded-full border px-2 py-0.5 ${phaseStatusClass('running')}`}>running</span>

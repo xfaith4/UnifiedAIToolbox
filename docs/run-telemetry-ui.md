@@ -161,9 +161,11 @@ RunTelemetryState {
 - Warning logic is centralized in `telemetryModel.ts`:
   - `selectRunOperatorWarnings(state, { nowMs?, thresholdMs? })`
   - `RUN_VIEW_WARNING_THRESHOLD_MINUTES` / `RUN_VIEW_WARNING_THRESHOLD_MS` defaults to 5 minutes.
-- Rules implemented only for running runs:
+- Running-state rules:
   - no telemetry: `now - updatedAt > threshold`
   - phase stalled: active phase has not transitioned for `threshold`
+- Queued-state stall signal is also surfaced:
+  - queued stalled: `run status is queued` and no fresh telemetry beyond threshold.
 - Tests added/updated in `telemetryModel.test.ts` for finished runs, missing/future timestamps, unknown active phase, and stale run warnings.
 
 ### URL filter persistence and operator workflow
@@ -180,6 +182,10 @@ RunTelemetryState {
 ### Explainability and safe fallbacks
 
 - In-place legend added for phase and severity chips.
+- Live telemetry hint banner added to reduce "silent queued/running" ambiguity:
+  - waiting for first event
+  - telemetry active
+  - telemetry idle/stalled warning tone
 - Repair indicator in agent cards is clickable when a target exists:
   - opens artifact when supported
   - otherwise jumps to linked timeline event

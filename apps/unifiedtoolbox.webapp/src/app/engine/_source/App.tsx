@@ -331,7 +331,7 @@ const App: React.FC = () => {
         elapsedTime={isOrchestrating ? elapsedTime : null}
         jobTypeLabel={jobTypeConfig?.label || jobType}
       />
-      <main className="flex-1 flex flex-col overflow-hidden">
+      <main className={`flex-1 flex flex-col ${isMaintenance ? 'overflow-y-auto' : 'overflow-hidden'}`}>
         <GoalInput
           onGoalSubmit={handleGoalSubmit}
           isOrchestrating={isMaintenance ? maintenanceRunning : isOrchestrating}

@@ -243,4 +243,21 @@ describe('telemetryModel', () => {
     expect(warnings.some((warning) => warning.id === 'no_telemetry')).toBe(true)
     expect(warnings.some((warning) => warning.id === 'phase_stalled')).toBe(true)
   })
+
+  it('emits queued-stalled warning for stale queued runs', () => {
+    const state = buildRunTelemetryState({
+      ...sampleStatus(),
+      status: 'queued',
+      updatedAt: undefined,
+      events: [],
+      stages: [],
+      currentStage: null,
+    })
+    const warnings = selectRunOperatorWarnings(state, {
+      nowMs: Date.parse('2026-02-10T10:20:00.000Z'),
+      thresholdMs: 3 * 60 * 1000,
+    })
+    expect(warnings.some((warning) => warning.id === 'queued_stalled')).toBe(true)
+    expect(warnings.some((warning) => warning.id === 'phase_stalled')).toBe(false)
+  })
 })

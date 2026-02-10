@@ -206,7 +206,7 @@ export type RepairTarget = {
 }
 
 export type RunOperatorWarning = {
-  id: 'no_telemetry' | 'phase_stalled'
+  id: 'no_telemetry' | 'phase_stalled' | 'queued_stalled'
   message: string
   minutes: number
 }
@@ -1177,18 +1177,27 @@ export function selectRunOperatorWarnings(
     thresholdMs?: number
   } = {},
 ): RunOperatorWarning[] {
-  if (state.runStatus !== 'running') return []
+  if (state.runStatus !== 'running' && state.runStatus !== 'queued') return []
 
   const warnings: RunOperatorWarning[] = []
   const nowMs = options.nowMs ?? Date.now()
   const thresholdMs = options.thresholdMs ?? RUN_VIEW_WARNING_THRESHOLD_MS
 
-  if (state.updatedAt) {
-    const updatedMs = epoch(state.updatedAt)
-    if (updatedMs != null) {
-      const ageMs = Math.max(0, nowMs - updatedMs)
-      if (ageMs > thresholdMs) {
-        const ageMinutes = Math.floor(ageMs / 60000)
+  const telemetryAnchor =
+    state.runStatus === 'queued'
+      ? (epoch(state.updatedAt) ?? epoch(state.startedAt))
+      : epoch(state.updatedAt)
+  if (telemetryAnchor != null) {
+    const ageMs = Math.max(0, nowMs - telemetryAnchor)
+    if (ageMs > thresholdMs) {
+      const ageMinutes = Math.floor(ageMs / 60000)
+      if (state.runStatus === 'queued') {
+        warnings.push({
+          id: 'queued_stalled',
+          message: `Run still queued after ${ageMinutes} minutes. Worker may be unavailable.`,
+          minutes: ageMinutes,
+        })
+      } else {
         warnings.push({
           id: 'no_telemetry',
           message: `No telemetry for ${ageMinutes} minutes`,
@@ -1198,6 +1207,7 @@ export function selectRunOperatorWarnings(
     }
   }
 
+  if (state.runStatus !== 'running') return warnings
   if (!state.activePhaseId) return warnings
   const lastTransitionMs = resolveActivePhaseLastTransitionMs(state, state.activePhaseId)
   if (lastTransitionMs == null) return warnings
