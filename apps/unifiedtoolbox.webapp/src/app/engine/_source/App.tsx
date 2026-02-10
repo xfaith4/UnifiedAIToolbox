@@ -317,7 +317,7 @@ const App: React.FC = () => {
   }, [isOrchestrating]);
 
   return (
-    <div className="bg-gray-900 text-gray-200 font-sans h-screen flex flex-col">
+    <div className="bg-gray-900 text-gray-200 font-sans flex min-h-0 flex-col h-[calc(100dvh-2rem)] md:h-[calc(100dvh-3rem)]">
       {isApiKeyMissing && <ApiKeyModal />}
       <Header
         onShowHistory={() => setShowHistory(true)}
@@ -331,7 +331,7 @@ const App: React.FC = () => {
         elapsedTime={isOrchestrating ? elapsedTime : null}
         jobTypeLabel={jobTypeConfig?.label || jobType}
       />
-      <main className={`flex-1 flex flex-col ${isMaintenance ? 'overflow-y-auto' : 'overflow-hidden'}`}>
+      <main className={`flex-1 min-h-0 flex flex-col ${isMaintenance ? 'overflow-y-auto' : 'overflow-hidden'}`}>
         <GoalInput
           onGoalSubmit={handleGoalSubmit}
           isOrchestrating={isMaintenance ? maintenanceRunning : isOrchestrating}
@@ -367,8 +367,8 @@ const App: React.FC = () => {
             />
           </>
         )}
-        <div className="flex-1 flex overflow-hidden">
-          <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex-1 min-h-0 flex overflow-hidden">
+          <div className="flex-1 min-h-0 flex flex-col min-w-0">
             <RunMonitorPanel
               tasks={tasks}
               isOrchestrating={isMaintenance ? maintenanceRunning : isOrchestrating}
