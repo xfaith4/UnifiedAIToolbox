@@ -36,6 +36,49 @@ function resolvePowerShell(): string {
   )
 }
 
+async function markRunLaunchFailure(
+  runDir: string,
+  runId: string,
+  message: string,
+  details: Record<string, unknown> = {}
+): Promise<void> {
+  const statePath = path.join(runDir, 'run_state.json')
+  const eventsPath = path.join(runDir, 'events.ndjson')
+  const now = new Date().toISOString()
+
+  try {
+    const raw = await fsp.readFile(statePath, 'utf8')
+    const state = JSON.parse(raw) as Record<string, unknown>
+    const existingErrors = Array.isArray(state.errors) ? state.errors.map(String) : []
+    const existingWarnings = Array.isArray(state.warnings) ? state.warnings.map(String) : []
+    const next = {
+      ...state,
+      run_id: runId,
+      status: 'failed',
+      ended_at: now,
+      updated_at: now,
+      errors: Array.from(new Set([...existingErrors, message])),
+      warnings: existingWarnings,
+    }
+    await fsp.writeFile(statePath, JSON.stringify(next, null, 2) + '\n', 'utf8')
+  } catch {
+    // If state writing fails, still attempt to append an event for diagnostics.
+  }
+
+  const eventRecord = {
+    ts: now,
+    type: 'error',
+    stage: 'run',
+    message,
+    data: details,
+  }
+  try {
+    await fsp.appendFile(eventsPath, JSON.stringify(eventRecord) + '\n', 'utf8')
+  } catch {
+    // no-op
+  }
+}
+
 export async function POST(req: Request) {
   let payload: StartRunRequest = {}
   try {
@@ -129,6 +172,29 @@ export async function POST(req: Request) {
       detached: true,
       stdio: ['ignore', logFd, logFd],
     })
+
+    child.on('error', (err) => {
+      void markRunLaunchFailure(
+        runDir,
+        runId,
+        `Run worker failed to start: ${err instanceof Error ? err.message : String(err)}`,
+        { kind: 'spawn_error' }
+      )
+    })
+
+    child.on('exit', (code, signal) => {
+      if (code === 0) return
+      const reason =
+        typeof code === 'number'
+          ? `Run worker exited early with code ${code}.`
+          : `Run worker exited early due to signal ${String(signal)}.`
+      void markRunLaunchFailure(runDir, runId, reason, {
+        kind: 'early_exit',
+        code,
+        signal,
+      })
+    })
+
     child.unref()
     const processInfo = {
       pid: child.pid ?? null,
