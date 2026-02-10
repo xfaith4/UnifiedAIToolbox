@@ -35,7 +35,7 @@ const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="flex items-center justify-between p-3 bg-gray-800/50 border-b border-gray-700 backdrop-blur-sm">
+    <header className="flex items-center justify-between px-3 py-2.5 bg-gray-800/50 border-b border-gray-700 backdrop-blur-sm">
       <div className="flex items-center">
         <LogoIcon className="w-8 h-8 mr-3 text-indigo-400" />
         <div className="flex flex-col">

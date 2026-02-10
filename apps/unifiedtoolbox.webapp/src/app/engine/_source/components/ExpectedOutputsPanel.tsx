@@ -64,7 +64,7 @@ const ExpectedOutputsPanel: React.FC<ExpectedOutputsPanelProps> = ({ onLearnMore
   return (
     <section
       aria-label="Expected Outputs"
-      className="p-4 border-b border-gray-700 bg-gray-900/30"
+      className="px-4 py-3 border-b border-gray-700 bg-gray-900/30"
     >
       <div className="max-w-6xl mx-auto">
         <div className="flex items-center justify-between gap-3">
@@ -81,22 +81,22 @@ const ExpectedOutputsPanel: React.FC<ExpectedOutputsPanelProps> = ({ onLearnMore
           )}
         </div>
 
-        <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
-          <div className="rounded-lg border border-gray-700 bg-gray-800/40 p-3">
+        <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+          <div className="rounded-lg border border-gray-700 bg-gray-800/40 p-2.5">
             <div className="text-xs font-semibold text-indigo-300 uppercase tracking-wide">Repo ZIP</div>
             <p className="mt-1 text-gray-300 text-sm">
               Exportable repository bundle (ZIP) containing generated source code.
             </p>
           </div>
 
-          <div className="rounded-lg border border-gray-700 bg-gray-800/40 p-3">
+          <div className="rounded-lg border border-gray-700 bg-gray-800/40 p-2.5">
             <div className="text-xs font-semibold text-indigo-300 uppercase tracking-wide">Build Instructions</div>
             <p className="mt-1 text-gray-300 text-sm">
               README or BUILD.md describing setup, run, build, and test steps.
             </p>
           </div>
 
-          <div className="rounded-lg border border-gray-700 bg-gray-800/40 p-3">
+          <div className="rounded-lg border border-gray-700 bg-gray-800/40 p-2.5">
             <div className="text-xs font-semibold text-indigo-300 uppercase tracking-wide">Acceptance Checks</div>
             <ul className="mt-2 space-y-1 text-gray-300 text-sm">
               {acceptanceItems.map((item) => {

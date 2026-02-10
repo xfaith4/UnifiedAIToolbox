@@ -141,8 +141,8 @@ const GoalInput: React.FC<GoalInputProps> = ({ onGoalSubmit, isOrchestrating, on
 
   if (useWizard) {
     return (
-      <div className="p-4 border-b border-gray-700 bg-gray-900/50">
-        <div className="max-w-6xl mx-auto space-y-4">
+      <div className="px-4 py-3 border-b border-gray-700 bg-gray-900/50">
+        <div className="max-w-6xl mx-auto space-y-3">
           <div className="flex items-center justify-between gap-3 text-xs">
             <div className="text-gray-400">Job type:</div>
             <div className="flex items-center gap-2">
@@ -220,8 +220,8 @@ const GoalInput: React.FC<GoalInputProps> = ({ onGoalSubmit, isOrchestrating, on
   }
 
   return (
-    <div className="p-4 border-b border-gray-700 bg-gray-900/50">
-      <form onSubmit={handleSubmit} className="space-y-3">
+    <div className="px-4 py-3 border-b border-gray-700 bg-gray-900/50">
+      <form onSubmit={handleSubmit} className="space-y-2.5">
         <div className="flex items-center justify-between gap-3 text-xs">
           <div className="text-gray-400">Job type:</div>
           <div className="flex items-center gap-2">
