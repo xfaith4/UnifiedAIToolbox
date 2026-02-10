@@ -735,12 +735,20 @@ function Assert-AgentOutputContract {
     )
 
     if (-not $EnforceContracts) {
-        return @{ ok = $true; parsed = $null; error = $null }
+        return @{ ok = $true; parsed = $null; error = $null; errors = @(); schema = $null }
     }
 
     $agentDef = Get-AgentDefinition -AgentName $AgentName
     if (-not $agentDef) {
-        return @{ ok = $true; parsed = $null; error = $null }
+        return @{ ok = $true; parsed = $null; error = $null; errors = @(); schema = $null }
+    }
+
+    $schema = $null
+    try {
+        $schema = $agentDef.io_contract.output_schema
+    }
+    catch {
+        $schema = $null
     }
 
     $parsed = $null
@@ -748,7 +756,19 @@ function Assert-AgentOutputContract {
         $parsed = $RawOutput | ConvertFrom-Json -ErrorAction Stop
     }
     catch {
-        return @{ ok = $false; parsed = $null; error = "Output is not valid JSON: $($_.Exception.Message)" }
+        $msg = "Output is not valid JSON: $($_.Exception.Message)"
+        return @{ ok = $false; parsed = $null; error = $msg; errors = @($msg); schema = $schema }
+    }
+
+    if ($schema) {
+        try {
+            $schemaJson = $schema | ConvertTo-Json -Depth 60
+            $null = Test-Json -Json $RawOutput -Schema $schemaJson -ErrorAction Stop
+        }
+        catch {
+            $msg = "Output does not match output_schema: $($_.Exception.Message)"
+            return @{ ok = $false; parsed = $parsed; error = $msg; errors = @($msg); schema = $schema }
+        }
     }
 
     $required = @()
@@ -761,11 +781,102 @@ function Assert-AgentOutputContract {
 
     foreach ($field in $required) {
         if (-not ($parsed.PSObject.Properties.Name -contains $field)) {
-            return @{ ok = $false; parsed = $parsed; error = "Missing required output field: $field" }
+            $msg = "Missing required output field: $field"
+            return @{ ok = $false; parsed = $parsed; error = $msg; errors = @($msg); schema = $schema }
         }
     }
 
-    return @{ ok = $true; parsed = $parsed; error = $null }
+    return @{ ok = $true; parsed = $parsed; error = $null; errors = @(); schema = $schema }
+}
+
+function Write-ContractFailureArtifact {
+    param(
+        [Parameter(Mandatory = $true)][string]$OutputDir,
+        [Parameter(Mandatory = $true)][string]$AgentName,
+        [Parameter(Mandatory = $true)][string]$MilestoneName,
+        [AllowNull()][object]$Schema,
+        [AllowNull()][string[]]$InitialErrors = @(),
+        [AllowNull()][string]$RawOutput = $null,
+        [AllowNull()][string]$RepairedOutput = $null,
+        [AllowNull()][string[]]$RepairErrors = @()
+    )
+
+    $failureDir = Join-Path $OutputDir "artifacts\contract_failures"
+    if (-not (Test-Path -LiteralPath $failureDir)) {
+        New-Item -ItemType Directory -Path $failureDir -Force | Out-Null
+    }
+
+    $safeAgent = [Regex]::Replace($AgentName, "[^\w\-]+", "_")
+    $stamp = Get-Date -Format "yyyyMMdd-HHmmssfff"
+    $path = Join-Path $failureDir ("{0}.{1}.json" -f $safeAgent, $stamp)
+
+    $payload = [ordered]@{
+        schema_version = "1.0"
+        run_id = $script:RunId
+        agent = $AgentName
+        milestone = $MilestoneName
+        timestamp_utc = (Get-Date).ToUniversalTime().ToString("o")
+        initial_validation_errors = @($InitialErrors)
+        repair_validation_errors = @($RepairErrors)
+        schema = $Schema
+        raw_output = $RawOutput
+        repaired_output = $RepairedOutput
+    }
+
+    $payload | ConvertTo-Json -Depth 80 | Set-Content -LiteralPath $path -Encoding UTF8
+    return $path
+}
+
+function Invoke-ContractRepairRetry {
+    param(
+        [Parameter(Mandatory = $true)][string]$AgentName,
+        [Parameter(Mandatory = $true)][string]$Model,
+        [Parameter(Mandatory = $true)][string]$SystemPrompt,
+        [Parameter(Mandatory = $true)][string]$OriginalUserPrompt,
+        [Parameter(Mandatory = $true)][string]$InvalidOutput,
+        [Parameter(Mandatory = $true)][object]$Schema,
+        [AllowNull()][string[]]$ValidationErrors = @()
+    )
+
+    $schemaJson = $Schema | ConvertTo-Json -Depth 60
+    $errorsText = if ($ValidationErrors -and $ValidationErrors.Count -gt 0) {
+        ($ValidationErrors | ForEach-Object { "- $_" }) -join "`n"
+    }
+    else {
+        "- Unknown schema validation error"
+    }
+
+    $repairPrompt = @"
+Your previous response for agent '$AgentName' failed contract validation.
+
+Return ONLY valid JSON with no markdown and no code fences.
+It MUST satisfy this JSON Schema:
+$schemaJson
+
+Validation errors to fix:
+$errorsText
+
+Original task prompt:
+$OriginalUserPrompt
+
+Previous invalid output:
+$InvalidOutput
+"@
+
+    $repairLlm = Invoke-OrchestrationLlm `
+        -Model $Model `
+        -SystemPrompt $SystemPrompt `
+        -UserPrompt $repairPrompt
+
+    $fixedOutput = $repairLlm.Output
+    $recheck = Assert-AgentOutputContract -AgentName $AgentName -RawOutput $fixedOutput
+
+    return @{
+        ok = $recheck.ok
+        output = $fixedOutput
+        raw = $repairLlm.RawResponse
+        check = $recheck
+    }
 }
 
 function New-StubFromSchema {
@@ -1600,8 +1711,68 @@ $supervisorContext
     }
 
     $contractCheck = Assert-AgentOutputContract -AgentName $agentName -RawOutput $content
+    $repairAttempted = $false
+    $repairSucceeded = $false
+    $contractFailureArtifact = $null
+
     if (-not $contractCheck.ok) {
         Write-Log "Contract violation for agent ${agentName}: $($contractCheck.error)" -Level "WARN"
+
+        if (-not $DryRun -and $agentDef -and $agentDef.io_contract -and $contractCheck.schema) {
+            $repairAttempted = $true
+            Write-Log "Attempting one contract repair retry for agent ${agentName}" -Level "WARN"
+
+            $repairResult = Invoke-ContractRepairRetry `
+                -AgentName $agentName `
+                -Model $Model `
+                -SystemPrompt $systemPrompt `
+                -OriginalUserPrompt $userPrompt `
+                -InvalidOutput $content `
+                -Schema $contractCheck.schema `
+                -ValidationErrors @($contractCheck.errors)
+
+            if ($repairResult.ok) {
+                $repairSucceeded = $true
+                $content = $repairResult.output
+                $contractCheck = $repairResult.check
+                $llmResult = @{
+                    Output = $repairResult.output
+                    RawResponse = [ordered]@{
+                        original = $llmResult.RawResponse
+                        repair = $repairResult.raw
+                        repair_attempted = $true
+                        repair_succeeded = $true
+                    }
+                }
+                Write-Log "Contract repair succeeded for agent ${agentName}" -Level "INFO"
+            }
+            else {
+                $contractFailureArtifact = Write-ContractFailureArtifact `
+                    -OutputDir $OutputDir `
+                    -AgentName $agentName `
+                    -MilestoneName $Milestone.Name `
+                    -Schema $contractCheck.schema `
+                    -InitialErrors @($contractCheck.errors) `
+                    -RawOutput $content `
+                    -RepairedOutput $repairResult.output `
+                    -RepairErrors @($repairResult.check.errors)
+
+                Write-Log "Contract validation failed after retry for ${agentName}. Artifact: $contractFailureArtifact" -Level "ERROR"
+                throw "Contract validation failed for agent ${agentName} after one repair retry. See artifact: $contractFailureArtifact"
+            }
+        }
+        else {
+            $contractFailureArtifact = Write-ContractFailureArtifact `
+                -OutputDir $OutputDir `
+                -AgentName $agentName `
+                -MilestoneName $Milestone.Name `
+                -Schema $contractCheck.schema `
+                -InitialErrors @($contractCheck.errors) `
+                -RawOutput $content
+
+            Write-Log "Contract validation failed for ${agentName}. Artifact: $contractFailureArtifact" -Level "ERROR"
+            throw "Contract validation failed for agent ${agentName}. See artifact: $contractFailureArtifact"
+        }
     }
 
     # Persist the milestone output to disk for inspection
@@ -1620,6 +1791,9 @@ $supervisorContext
         UserPrompt   = $userPrompt
         ContractOk   = $contractCheck.ok
         ContractError = $contractCheck.error
+        ContractFailureArtifact = $contractFailureArtifact
+        RepairAttempted = $repairAttempted
+        RepairSucceeded = $repairSucceeded
     }
 }
 

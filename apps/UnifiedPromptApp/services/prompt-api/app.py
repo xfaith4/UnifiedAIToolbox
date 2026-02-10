@@ -4182,7 +4182,12 @@ async def start_repo_orchestration(req: RepoOrchestrationRequest, request: Reque
                             state["codex_runs"] = runs
                             _repo_orchestration_state[run_id] = state
                     asyncio.run_coroutine_threadsafe(_record_codex(), loop)
-                _enqueue_sync({"type": "task_progress", **event})
+                event_type = (
+                    str(event.get("event"))
+                    if event.get("event") in {"codex_run_started", "codex_summary", "task_failed"}
+                    else "task_progress"
+                )
+                _enqueue_sync({"type": event_type, **event})
 
             execution_result = await asyncio.to_thread(
                 executor.execute_taskgraph,

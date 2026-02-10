@@ -103,10 +103,18 @@ export default function GitHubPage() {
 
   const timelineEvents = useMemo(() => {
     const filtered = orchEvents.filter(
-      (ev) => !['clone_progress', 'task_progress'].includes(String(ev.type || ''))
+      (ev) => {
+        const eventType = String(ev.type || '')
+        if (eventType === 'clone_progress') return false
+        if (eventType !== 'task_progress') return true
+        const taskEvent = String((ev as Record<string, unknown>).event || '')
+        return ['codex_run_started', 'codex_summary', 'task_failed'].includes(taskEvent)
+      }
     )
     return filtered.map((ev, idx) => {
-      const type = String(ev.type || 'event')
+      const eventType = String(ev.type || 'event')
+      const taskEvent = String((ev as Record<string, unknown>).event || '')
+      const type = eventType === 'task_progress' && taskEvent ? taskEvent : eventType
       const labelMap: Record<string, string> = {
         accepted: 'Accepted',
         cloned: 'Clone complete',
@@ -117,15 +125,105 @@ export default function GitHubPage() {
         merged: 'Merge',
         complete: 'Complete',
         error: 'Error',
+        codex_run_started: 'Codex Run Started',
+        codex_summary: 'Codex Summary',
+        task_failed: 'Task Failed',
+      }
+      let message = String(ev.message || '')
+      if (!message && type === 'codex_run_started') {
+        message = `Started Codex run for task ${String((ev as Record<string, unknown>).task_id || 'unknown')}.`
+      }
+      if (!message && type === 'task_failed') {
+        message = `Task ${String((ev as Record<string, unknown>).task_id || 'unknown')} failed.`
+      }
+      if (type === 'codex_summary') {
+        const agentCount = Number((ev as Record<string, unknown>).agent_count || 0)
+        const agents = (ev as Record<string, unknown>).agents_used
+        const refinementDetected = Boolean((ev as Record<string, unknown>).refinement_detected)
+        const validationIncluded = Boolean((ev as Record<string, unknown>).validation_auditor_included)
+        const agentsLabel = Array.isArray(agents) && agents.length > 0 ? agents.join(', ') : 'n/a'
+        message =
+          `Agents: ${agentCount || 'n/a'} (${agentsLabel})\n` +
+          `Refinement detected: ${refinementDetected ? 'yes' : 'no'}\n` +
+          `Validation auditor included: ${validationIncluded ? 'yes' : 'no'}`
       }
       return {
         id: idx,
         type,
         label: labelMap[type] || type.replace(/_/g, ' '),
-        message: String(ev.message || ''),
+        message,
         payload: ev,
       }
     })
+  }, [orchEvents])
+
+  const orchestrationSignals = useMemo(() => {
+    let codexRuns = 0
+    let latestAgentCount: number | null = null
+    let latestAgents: string[] = []
+    let refinementSignals = 0
+    let validationAuditorIncluded = false
+    let latestStatusLine = ''
+
+    for (const ev of orchEvents) {
+      const eventType = String(ev.type || '')
+      const taskEvent = eventType === 'task_progress'
+        ? String((ev as Record<string, unknown>).event || '')
+        : eventType
+      if (!['task_progress', 'codex_run_started', 'codex_summary', 'task_failed'].includes(eventType)) continue
+
+      if (taskEvent === 'codex_run_started') codexRuns += 1
+
+      if (taskEvent === 'codex_summary') {
+        const parsedCount = Number((ev as Record<string, unknown>).agent_count || 0)
+        if (Number.isFinite(parsedCount) && parsedCount > 0) latestAgentCount = parsedCount
+        const parsedAgents = (ev as Record<string, unknown>).agents_used
+        if (Array.isArray(parsedAgents) && parsedAgents.length > 0) {
+          latestAgents = parsedAgents.map((name) => String(name))
+        }
+        if (Boolean((ev as Record<string, unknown>).refinement_detected)) {
+          refinementSignals += 1
+        }
+        if (Boolean((ev as Record<string, unknown>).validation_auditor_included)) {
+          validationAuditorIncluded = true
+        }
+      }
+
+      const logLine = String((ev as Record<string, unknown>).log_line || '')
+      if (!logLine) continue
+      latestStatusLine = logLine
+
+      const selectedMatch = logLine.match(/Selected\s+(\d+)\s+agents?:\s*(.+)$/i)
+      if (selectedMatch) {
+        latestAgentCount = Number(selectedMatch[1])
+        latestAgents = selectedMatch[2]
+          .split(',')
+          .map((value) => value.trim())
+          .filter(Boolean)
+      }
+
+      const totalMatch = logLine.match(/Total agents executed:\s*(\d+)/i)
+      if (totalMatch) {
+        latestAgentCount = Number(totalMatch[1])
+      }
+
+      if (/validationauditor/i.test(logLine)) {
+        validationAuditorIncluded = true
+      }
+
+      if (/\brefin(?:e|ement|ing)\b|\bre-?run\b|\biterat(?:e|ion|ive)\b/i.test(logLine)) {
+        refinementSignals += 1
+      }
+    }
+
+    return {
+      codexRuns,
+      latestAgentCount,
+      latestAgents,
+      refinementSignals,
+      validationAuditorIncluded,
+      latestStatusLine,
+    }
   }, [orchEvents])
 
   const lastErrorEvent = useMemo(() => {
@@ -409,6 +507,40 @@ export default function GitHubPage() {
             <div className="text-sm font-semibold text-slate-200">Supervisor Activity</div>
             {uiV2 ? (
               <div className="space-y-3">
+                {(orchRunning || orchestrationSignals.codexRuns > 0 || orchestrationSignals.latestAgentCount !== null) && (
+                  <div className="grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-4">
+                    <div className="rounded border border-slate-800 bg-slate-900/70 px-3 py-2">
+                      <div className="text-[11px] uppercase tracking-wide text-slate-400">Codex Runs</div>
+                      <div className="text-sm font-semibold text-slate-100">{orchestrationSignals.codexRuns}</div>
+                    </div>
+                    <div className="rounded border border-slate-800 bg-slate-900/70 px-3 py-2">
+                      <div className="text-[11px] uppercase tracking-wide text-slate-400">Agents Used</div>
+                      <div className="text-sm font-semibold text-slate-100">
+                        {orchestrationSignals.latestAgentCount ?? 'pending'}
+                      </div>
+                      {orchestrationSignals.latestAgents.length > 0 && (
+                        <div className="pt-1 text-[11px] text-slate-400">
+                          {orchestrationSignals.latestAgents.join(', ')}
+                        </div>
+                      )}
+                    </div>
+                    <div className="rounded border border-slate-800 bg-slate-900/70 px-3 py-2">
+                      <div className="text-[11px] uppercase tracking-wide text-slate-400">Refinement Signals</div>
+                      <div className="text-sm font-semibold text-slate-100">{orchestrationSignals.refinementSignals}</div>
+                    </div>
+                    <div className="rounded border border-slate-800 bg-slate-900/70 px-3 py-2">
+                      <div className="text-[11px] uppercase tracking-wide text-slate-400">Validation Auditor</div>
+                      <div className="text-sm font-semibold text-slate-100">
+                        {orchestrationSignals.validationAuditorIncluded ? 'included' : 'pending'}
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {orchestrationSignals.latestStatusLine && (
+                  <div className="rounded border border-slate-800 bg-slate-900/60 px-3 py-2 text-xs text-slate-300">
+                    Latest engine signal: <span className="text-slate-100">{orchestrationSignals.latestStatusLine}</span>
+                  </div>
+                )}
                 {timelineEvents.length === 0 && !orchRunning && (
                   <p className="text-sm text-slate-500">No activity yet. Start an orchestration to see progress.</p>
                 )}

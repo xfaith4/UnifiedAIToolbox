@@ -30,6 +30,11 @@ jobs:
           Write-Host "✅ Environment initialized." -ForegroundColor Green
           Write-Host "------------------------------------------------------------"
 
+      - name: 🧪 Check Agent Export Drift
+        shell: pwsh
+        run: |
+          .\Orchestration\scripts\Check-AgentExports.ps1
+
       - name: ⚙️ Run POF Orchestrator
         shell: pwsh
         env:

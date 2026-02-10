@@ -3,9 +3,13 @@ messages:
     content: |
       ### BEGIN FILE: prompts/orchestration_pipeline.prompt.yml
       name: orchestration_pipeline
+      mode: eval_only
+      runtime_usage: >
+        EVAL HARNESS ONLY. This file is not loaded by orchestration runtime paths
+        (runtime uses contracts/job_types/pipelines plus agent-library.json).
       description: >
         A multi-agent orchestration test that evaluates how Researcher, Engineer, Critic, Synthesizer,
-        and Commissioner collaborate to generate, evaluate, and refine a complete implementation plan
+        ValidationAuditor, and Commissioner collaborate to generate, evaluate, and refine a complete implementation plan
         for optimizing orchestration performance with advanced analytics and enhanced user experience.
 
       prompts:
@@ -35,6 +39,13 @@ messages:
             You are the Synthesizer agent. Integrate the Researcher's insights, Engineer's plan, and Critic's feedback
             into a unified roadmap. Summarize the final phases, deliverables, and success criteria that align with
             the goal of orchestration performance optimization and enhanced user experience.
+
+        - name: ValidationAuditor
+          model: openai/gpt-4.1-mini
+          system: |
+            You are the ValidationAuditor agent. Audit the synthesized implementation for stub-outs, placeholders,
+            TODO/TBD/FIXME markers, and unfinished tasks. Produce concise findings that can be consumed by
+            Commissioner and Supervisor as final review evidence.
 
         - name: Commissioner
           model: openai/gpt-4.1
@@ -95,7 +106,13 @@ messages:
             Phase 3: Visualization tools + load testing.
             Success Criteria: Scalable, resilient, high usability.
 
-            Step 5 - Commissioner:
+            Step 5 - ValidationAuditor:
+            The ValidationAuditor flags unfinished work and release risks:
+            - Stub-outs: none
+            - Placeholders: remove TODO in rollout section
+            - Unfinished tasks: define production rollback drill
+
+            Step 6 - Commissioner:
             The Commissioner provides a Value Score and feedback:
             Value Score: 8/10
             Agent Feedback:
@@ -103,6 +120,7 @@ messages:
               Engineer - Include DR plan for analytics deployment.
               Critic - Elaborate on high-load risk mitigation.
               Synthesizer - Tie UX feedback to KPIs.
+              ValidationAuditor - Add file-level references for each finding.
             Expected Output: A cohesive orchestration output demonstrating collaboration quality,
             technical feasibility, and actionable improvements.
       ### END FILE

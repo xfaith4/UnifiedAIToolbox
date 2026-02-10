@@ -4,7 +4,8 @@ Agents SDK multi-agent pipeline for enriching an agent-library JSON file.
 
 Key changes vs the earlier MCP/Codex-based version:
 - No MCP/Codex dependency (avoids "codex/event" notification validation issues).
-- Deterministic *sequential* multi-agent run: Analyst -> Researcher -> Engineer -> Critic -> Synthesizer -> Commissioner -> Supervisor
+- Deterministic *sequential* multi-agent run:
+  Analyst -> Researcher -> Engineer -> Critic -> Synthesizer -> ValidationAuditor -> Commissioner -> Supervisor
   (so you never end up with “only File Analyst ran” again).
 - Strict, typed JSON outputs per agent (Pydantic models) for robustness.
 - Safe file IO tools + backup + JSON validation + checksum coercion.
@@ -74,6 +75,14 @@ class SynthesizerOutput(BaseModel):
     run_report_md: str
     diff_summary: str
     artifacts_written: List[str]
+
+
+class ValidationAuditOutput(BaseModel):
+    overall_status: str  # "pass" | "needs_refinement"
+    stubouts: List[str]
+    placeholders: List[str]
+    unfinished_tasks: List[str]
+    audit_summary: str
 
 
 class CommissionerOutput(BaseModel):
@@ -283,6 +292,16 @@ def _mk_agents(sdk: AgentsSdk, model: Optional[str]) -> Dict[str, Any]:
         **model_arg,
     )
 
+    validation_auditor = sdk.Agent(
+        name="ValidationAuditor",
+        instructions=_base_system_rules()
+        + "\nTask: Audit the proposed implementation for stub-outs, placeholders, and unfinished tasks. "
+          "Look for TODO/TBD/FIXME markers, not-implemented notes, mock-only paths, and deferred critical work. "
+          "Produce concise evidence lists that Commissioner and Supervisor can use for final review.",
+        output_type=ValidationAuditOutput,
+        **model_arg,
+    )
+
     commissioner = sdk.Agent(
         name="Commissioner",
         instructions=_base_system_rules()
@@ -307,6 +326,7 @@ def _mk_agents(sdk: AgentsSdk, model: Optional[str]) -> Dict[str, Any]:
         "engineer": engineer,
         "critic": critic,
         "synthesizer": synthesizer,
+        "validation_auditor": validation_auditor,
         "commissioner": commissioner,
         "supervisor": supervisor,
     }
@@ -525,9 +545,11 @@ async def main() -> None:
             "dry_run": args.dry_run,
         },
     ):
+        print("[1/8] Running Analyst...", flush=True)
         analyst_out, _ = await _run_one_with_sdk(sdk, agents["analyst"], analyst_prompt, output_dir / f"{run_id}_01_analyst.json")
         artifacts_written.append(f"{run_id}_01_analyst.json")
 
+        print("[2/8] Running Researcher...", flush=True)
         researcher_out, _ = await _run_one_with_sdk(sdk, agents["researcher"], researcher_prompt, output_dir / f"{run_id}_02_researcher.json")
         artifacts_written.append(f"{run_id}_02_researcher.json")
 
@@ -539,6 +561,7 @@ async def main() -> None:
             f"Researcher output (JSON):\n{json.dumps(researcher_out, ensure_ascii=False, indent=2)}\n"
         )
 
+        print("[3/8] Running Engineer...", flush=True)
         engineer_out, _ = await _run_one_with_sdk(sdk, agents["engineer"], engineer_prompt, output_dir / f"{run_id}_03_engineer.json")
         artifacts_written.append(f"{run_id}_03_engineer.json")
 
@@ -574,6 +597,7 @@ async def main() -> None:
             f"Original file (for context):\n{original_text}\n\n"
             f"Updated file:\n{updated_text}\n"
         )
+        print("[4/8] Running Critic...", flush=True)
         critic_out, _ = await _run_one_with_sdk(sdk, agents["critic"], critic_prompt, output_dir / f"{run_id}_04_critic.json")
         artifacts_written.append(f"{run_id}_04_critic.json")
 
@@ -622,16 +646,35 @@ async def main() -> None:
             f"Critic:\n{json.dumps(critic_out, ensure_ascii=False, indent=2)}\n\n"
             f"Artifacts written so far:\n{json.dumps(artifacts_written, ensure_ascii=False, indent=2)}\n"
         )
+        print("[5/8] Running Synthesizer...", flush=True)
         synth_out, _ = await _run_one_with_sdk(sdk, agents["synthesizer"], synthesizer_prompt, output_dir / f"{run_id}_07_synthesizer.json")
         artifacts_written.append(f"{run_id}_07_synthesizer.json")
+
+        validation_prompt = (
+            f"User goal:\n{args.prompt}\n\n"
+            f"Updated file candidate:\n{updated_text}\n\n"
+            f"Engineer change log:\n{json.dumps(engineer_out.get('change_log', []), ensure_ascii=False, indent=2)}\n\n"
+            f"Critic findings:\n{json.dumps(critic_out, ensure_ascii=False, indent=2)}\n\n"
+            f"Synthesizer summary:\n{json.dumps({'diff_summary': synth_out.get('diff_summary', '')}, ensure_ascii=False, indent=2)}\n"
+        )
+        print("[6/8] Running ValidationAuditor...", flush=True)
+        validation_out, _ = await _run_one_with_sdk(
+            sdk,
+            agents["validation_auditor"],
+            validation_prompt,
+            output_dir / f"{run_id}_08_validation_auditor.json",
+        )
+        artifacts_written.append(f"{run_id}_08_validation_auditor.json")
 
         commissioner_prompt = (
             f"User goal:\n{args.prompt}\n\n"
             f"Diff summary:\n{synth_out.get('diff_summary','')}\n\n"
-            f"Critic status:\n{json.dumps(critic_out, ensure_ascii=False, indent=2)}\n"
+            f"Critic status:\n{json.dumps(critic_out, ensure_ascii=False, indent=2)}\n\n"
+            f"Validation audit:\n{json.dumps(validation_out, ensure_ascii=False, indent=2)}\n"
         )
-        comm_out, _ = await _run_one_with_sdk(sdk, agents["commissioner"], commissioner_prompt, output_dir / f"{run_id}_08_commissioner.json")
-        artifacts_written.append(f"{run_id}_08_commissioner.json")
+        print("[7/8] Running Commissioner...", flush=True)
+        comm_out, _ = await _run_one_with_sdk(sdk, agents["commissioner"], commissioner_prompt, output_dir / f"{run_id}_09_commissioner.json")
+        artifacts_written.append(f"{run_id}_09_commissioner.json")
 
         supervisor_prompt = (
             f"User goal:\n{args.prompt}\n\n"
@@ -641,11 +684,13 @@ async def main() -> None:
             f"- Engineer: change_log={json.dumps(engineer_out.get('change_log', []), ensure_ascii=False)}\n"
             f"- Critic: {json.dumps(critic_out, ensure_ascii=False)}\n"
             f"- Synthesizer: {json.dumps({'diff_summary': synth_out.get('diff_summary','')}, ensure_ascii=False)}\n"
+            f"- ValidationAuditor: {json.dumps(validation_out, ensure_ascii=False)}\n"
             f"- Commissioner: {json.dumps(comm_out, ensure_ascii=False)}\n\n"
             f"Artifacts written:\n{json.dumps(artifacts_written, ensure_ascii=False, indent=2)}\n"
         )
-        sup_out, _ = await _run_one_with_sdk(sdk, agents["supervisor"], supervisor_prompt, output_dir / f"{run_id}_09_supervisor.json")
-        artifacts_written.append(f"{run_id}_09_supervisor.json")
+        print("[8/8] Running Supervisor...", flush=True)
+        sup_out, _ = await _run_one_with_sdk(sdk, agents["supervisor"], supervisor_prompt, output_dir / f"{run_id}_10_supervisor.json")
+        artifacts_written.append(f"{run_id}_10_supervisor.json")
 
     # Write a human-facing markdown report (from Synthesizer), plus an index JSON.
     run_report_md = str(synth_out.get("run_report_md", "")).strip()
@@ -666,6 +711,12 @@ async def main() -> None:
         "dry_run": args.dry_run,
         "artifacts_written": artifacts_written,
         "critic_passed": bool(critic_out.get("passed", False)),
+        "validation_status": str(validation_out.get("overall_status", "")).strip(),
+        "validation_issue_count": int(
+            len(validation_out.get("stubouts", []))
+            + len(validation_out.get("placeholders", []))
+            + len(validation_out.get("unfinished_tasks", []))
+        ),
     }
     _write_text(report_index, _json_dumps_pretty(index_payload))
 

@@ -152,6 +152,7 @@ class TaskExecutor:
         log_lines: List[str] = []
         findings: List[Dict[str, Any]] = []
         codex_run_id: Optional[str] = None
+        orchestration_summary: Optional[Dict[str, Any]] = None
         status = "completed"
         violation_file: Optional[Path] = None
 
@@ -209,6 +210,30 @@ class TaskExecutor:
             if status_info.get("status") in (CodexRunStatus.FAILED, CodexRunStatus.CANCELLED):
                 message = status_info.get("error") or status_info.get("message") or "Codex run failed"
                 raise TaskExecutionError(message)
+
+            orchestration_summary = self._load_orchestration_summary(status_info)
+            if progress_callback and orchestration_summary:
+                agents_used = orchestration_summary.get("AgentsUsed") if isinstance(orchestration_summary, dict) else []
+                refinement = orchestration_summary.get("Refinement") if isinstance(orchestration_summary, dict) else {}
+                progress_callback(
+                    {
+                        "task_id": task_id,
+                        "event": "codex_summary",
+                        "codex_run_id": codex_run_id,
+                        "agent_count": orchestration_summary.get("AgentCount")
+                        if isinstance(orchestration_summary, dict)
+                        else None,
+                        "agents_used": agents_used if isinstance(agents_used, list) else [],
+                        "validation_auditor_included": bool(
+                            isinstance(orchestration_summary, dict)
+                            and orchestration_summary.get("ValidationAuditorIncluded")
+                        ),
+                        "refinement_detected": bool(
+                            isinstance(refinement, dict) and refinement.get("detected")
+                        ),
+                        "summary": orchestration_summary,
+                    }
+                )
 
             findings = self.codex_service.get_findings(codex_run_id) or []
         except (GithubException, Exception) as exc:
@@ -271,6 +296,7 @@ class TaskExecutor:
             "branch": branch,
             "status": status,
             "codex_run_id": codex_run_id,
+            "orchestration_summary": orchestration_summary,
             "artifacts": {
                 "log": str(artifacts.log_file),
                 "findings": str(artifacts.findings_file),
@@ -278,6 +304,21 @@ class TaskExecutor:
                 "violation": str(artifacts.violation_file) if artifacts.violation_file else None,
             },
         }
+
+    def _load_orchestration_summary(self, status_info: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Load orchestration-summary.json for the run when available."""
+        if not isinstance(status_info, dict):
+            return None
+        swarm_dir_value = status_info.get("swarm_output_dir")
+        if not swarm_dir_value:
+            return None
+        try:
+            summary_path = Path(str(swarm_dir_value)) / "orchestration-summary.json"
+            if not summary_path.exists():
+                return None
+            return json.loads(summary_path.read_text(encoding="utf-8"))
+        except Exception:
+            return None
 
     def _normalize_branch_name(self, branch: str) -> str:
         branch = (branch or "task").strip().lower()

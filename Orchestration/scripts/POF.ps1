@@ -14,7 +14,9 @@ param(
     [string]$Model = "gpt-5",
     [string]$Instruction = "",
     [int]$MaxIterations = 3,
-    [string]$AgentConfigPath = "$PSScriptRoot\..\prompts\Agents.json",
+    [string]$AgentConfigPath = "",
+    [string]$CanonicalAgentLibraryPath = "$PSScriptRoot\..\agents\agent-library.json",
+    [switch]$UseLegacyAgentConfig,
     [switch]$VerboseMode,
     # Paths for Milestone Dashboard integration (optional)
     [string]$LogPath = "$PSScriptRoot\..\MilestoneDashboard\public\data\Milestone_Log.json",
@@ -25,6 +27,7 @@ param(
 )
 
 Import-Module "$PSScriptRoot\MilestoneController.psm1" -Force
+Import-Module "$PSScriptRoot\AgentRoster.psm1" -Force
 
 
 # --- CONFIGURATION ----------------------------------------------------------
@@ -40,25 +43,45 @@ $Config = @{
 }
 if (-not $Config.ApiKey) { throw "OPENAI_API_KEY not set." }
 
-### BEGIN: Fix AgentConfigPath
-# Attempt multiple known locations in case folder structure changed
-$PossibleAgentPaths = @(
-    (Join-Path $PSScriptRoot "prompts\agents.json"),
-    (Join-Path $PSScriptRoot "scripts\prompts\agents.json"),
-    (Join-Path (Split-Path $PSScriptRoot -Parent) "prompts\agents.json")
+$legacyConfigRequested = $UseLegacyAgentConfig -or (
+    $PSBoundParameters.ContainsKey("AgentConfigPath") -and -not [string]::IsNullOrWhiteSpace($AgentConfigPath)
 )
 
-$AgentConfigPath = $PossibleAgentPaths | Where-Object { Test-Path $_ } | Select-Object -First 1
+if ($legacyConfigRequested) {
+    if ([string]::IsNullOrWhiteSpace($AgentConfigPath)) {
+        $AgentConfigPath = Join-Path $PSScriptRoot "..\prompts\Agents.json"
+    }
+    if (-not (Test-Path -LiteralPath $AgentConfigPath)) {
+        throw "Legacy agent config not found: $AgentConfigPath"
+    }
 
-if (-not $AgentConfigPath) {
-    throw "❌ Unable to locate Agents.json in expected paths: $($PossibleAgentPaths -join ', ')"
+    $rawConfig = Get-Content -Raw -LiteralPath $AgentConfigPath | ConvertFrom-Json -Depth 100
+    if ($rawConfig -is [System.Collections.IEnumerable] -and -not ($rawConfig.PSObject.Properties.Name -contains "Agents")) {
+        $Agents = @($rawConfig)
+    }
+    else {
+        $Agents = @($rawConfig.Agents)
+    }
+
+    Write-Host "✅ Loaded legacy agent config from $AgentConfigPath" -ForegroundColor Yellow
 }
 else {
-    Write-Host "✅ Loaded agent configuration from $AgentConfigPath" -ForegroundColor Green
+    $Agents = @(Get-AgentRoster -Mode thin -CanonicalPath $CanonicalAgentLibraryPath)
+    Write-Host "✅ Loaded agent roster from canonical registry: $CanonicalAgentLibraryPath" -ForegroundColor Green
 }
-### END: Fix AgentConfigPath
 
-$Agents = (Get-Content -Raw $AgentConfigPath | ConvertFrom-Json).Agents
+if (-not $Agents -or $Agents.Count -eq 0) {
+    throw "No agents were loaded for orchestration."
+}
+
+$Script:FullAgentRegistry = @{}
+if (Test-Path -LiteralPath $CanonicalAgentLibraryPath) {
+    foreach ($agentDef in @(Get-AgentRoster -Mode full -CanonicalPath $CanonicalAgentLibraryPath)) {
+        if ($agentDef.name) {
+            $Script:FullAgentRegistry[[string]$agentDef.name] = $agentDef
+        }
+    }
+}
 $OutDir = if (-not [string]::IsNullOrWhiteSpace($OutputRoot)) {
     Join-Path $OutputRoot $RunId
 } else {
@@ -113,6 +136,165 @@ function Write-AgentStatus {
         $errorMsg = "Failed to write agent status for '$Agent' (status: $Status): $_"
         Add-Content -Path $errorLogPath -Value "$(Get-Date -Format 'o'): $errorMsg"
         Write-Host "⚠️ $errorMsg" -ForegroundColor Yellow
+    }
+}
+
+function Get-AgentContractDefinition {
+    param([Parameter(Mandatory = $true)][string]$AgentName)
+
+    if (-not $Script:FullAgentRegistry) { return $null }
+    if (-not $Script:FullAgentRegistry.ContainsKey($AgentName)) { return $null }
+
+    $agentDef = $Script:FullAgentRegistry[$AgentName]
+    if (-not $agentDef) { return $null }
+    if (-not $agentDef.io_contract) { return $null }
+    if (-not $agentDef.io_contract.output_schema) { return $null }
+    return $agentDef
+}
+
+function Assert-AgentContractOutput {
+    param(
+        [Parameter(Mandatory = $true)][string]$AgentName,
+        [Parameter(Mandatory = $true)][string]$RawOutput
+    )
+
+    $agentDef = Get-AgentContractDefinition -AgentName $AgentName
+    if (-not $agentDef) {
+        return @{ ok = $true; error = $null; errors = @(); schema = $null }
+    }
+
+    $schema = $agentDef.io_contract.output_schema
+    try {
+        $null = $RawOutput | ConvertFrom-Json -ErrorAction Stop
+    }
+    catch {
+        $msg = "Output is not valid JSON: $($_.Exception.Message)"
+        return @{ ok = $false; error = $msg; errors = @($msg); schema = $schema }
+    }
+
+    try {
+        $schemaJson = $schema | ConvertTo-Json -Depth 60
+        $null = Test-Json -Json $RawOutput -Schema $schemaJson -ErrorAction Stop
+    }
+    catch {
+        $msg = "Output does not match output_schema: $($_.Exception.Message)"
+        return @{ ok = $false; error = $msg; errors = @($msg); schema = $schema }
+    }
+
+    return @{ ok = $true; error = $null; errors = @(); schema = $schema }
+}
+
+function Write-ContractFailureArtifact {
+    param(
+        [Parameter(Mandatory = $true)][string]$AgentName,
+        [Parameter(Mandatory = $true)][object]$Schema,
+        [Parameter(Mandatory = $true)][string[]]$InitialErrors,
+        [Parameter(Mandatory = $true)][string]$RawOutput,
+        [AllowNull()][string]$RepairedOutput = $null,
+        [AllowNull()][string[]]$RepairErrors = @()
+    )
+
+    $failureDir = Join-Path $OutDir "artifacts\contract_failures"
+    if (-not (Test-Path -LiteralPath $failureDir)) {
+        New-Item -ItemType Directory -Path $failureDir -Force | Out-Null
+    }
+
+    $safeAgent = [Regex]::Replace($AgentName, "[^\w\-]+", "_")
+    $stamp = Get-Date -Format "yyyyMMdd-HHmmssfff"
+    $path = Join-Path $failureDir ("{0}.{1}.json" -f $safeAgent, $stamp)
+
+    $payload = [ordered]@{
+        schema_version = "1.0"
+        run_id = $RunId
+        agent = $AgentName
+        timestamp_utc = (Get-Date).ToUniversalTime().ToString("o")
+        initial_validation_errors = @($InitialErrors)
+        repair_validation_errors = @($RepairErrors)
+        schema = $Schema
+        raw_output = $RawOutput
+        repaired_output = $RepairedOutput
+    }
+
+    $payload | ConvertTo-Json -Depth 80 | Set-Content -LiteralPath $path -Encoding UTF8
+    return $path
+}
+
+function Resolve-AgentOutputWithContract {
+    param(
+        [Parameter(Mandatory = $true)][string]$AgentName,
+        [Parameter(Mandatory = $true)][string]$Output,
+        [Parameter(Mandatory = $true)][string]$SystemPrompt,
+        [Parameter(Mandatory = $true)][string]$UserPrompt
+    )
+
+    $check = Assert-AgentContractOutput -AgentName $AgentName -RawOutput $Output
+    if ($check.ok) {
+        return @{
+            Output = $Output
+            ContractOk = $true
+            ContractError = $null
+            RepairAttempted = $false
+            RepairSucceeded = $false
+            FailureArtifact = $null
+        }
+    }
+
+    Write-Host "⚠️ Contract validation failed for ${AgentName}: $($check.error)" -ForegroundColor Yellow
+    $schemaJson = $check.schema | ConvertTo-Json -Depth 60
+    $errorsText = ($check.errors | ForEach-Object { "- $_" }) -join "`n"
+    $repairPrompt = @"
+Your previous response failed contract validation.
+Return ONLY valid JSON (no markdown, no code fences).
+
+JSON Schema:
+$schemaJson
+
+Validation errors:
+$errorsText
+
+Original task:
+$UserPrompt
+
+Invalid output:
+$Output
+"@
+
+    $repairMessages = @(
+        @{ role = "system"; content = $SystemPrompt },
+        @{ role = "user"; content = $repairPrompt }
+    )
+    $repaired = Invoke-OpenAIRequest -Messages $repairMessages -AgentName $AgentName
+    if (-not $repaired) {
+        $artifact = Write-ContractFailureArtifact `
+            -AgentName $AgentName `
+            -Schema $check.schema `
+            -InitialErrors @($check.errors) `
+            -RawOutput $Output
+        Write-AgentStatus -Agent $AgentName -Status "error" -ExtraData @{ contract_error = $check.error; contract_failure_artifact = $artifact }
+        throw "Contract repair failed for $AgentName. Artifact: $artifact"
+    }
+
+    $recheck = Assert-AgentContractOutput -AgentName $AgentName -RawOutput $repaired
+    if (-not $recheck.ok) {
+        $artifact = Write-ContractFailureArtifact `
+            -AgentName $AgentName `
+            -Schema $check.schema `
+            -InitialErrors @($check.errors) `
+            -RawOutput $Output `
+            -RepairedOutput $repaired `
+            -RepairErrors @($recheck.errors)
+        Write-AgentStatus -Agent $AgentName -Status "error" -ExtraData @{ contract_error = $recheck.error; contract_failure_artifact = $artifact }
+        throw "Contract validation failed for $AgentName after one repair retry. Artifact: $artifact"
+    }
+
+    Write-Host "✅ Contract repair succeeded for $AgentName" -ForegroundColor Green
+    return @{
+        Output = $repaired
+        ContractOk = $true
+        ContractError = $null
+        RepairAttempted = $true
+        RepairSucceeded = $true
+        FailureArtifact = $null
     }
 }
 
@@ -266,14 +448,16 @@ try {
         # --- Agent Pipeline -------------------------------------------------
         # Phase 1 (parallel): contributor agents
         # Phase 2 (sequential): Synthesizer
-        # Phase 3 (sequential): Commissioner
-        # Phase 4 (sequential): Supervisor
-        # Phase 5 (sequential): Historian
+        # Phase 3 (sequential): ValidationAuditor
+        # Phase 4 (sequential): Commissioner
+        # Phase 5 (sequential): Supervisor
+        # Phase 6 (sequential): Historian
         $Commissioner = $Agents | Where-Object { $_.name -eq "Commissioner" }
         $Synthesizer = $Agents | Where-Object { $_.name -eq "Synthesizer" }
+        $ValidationAuditor = $Agents | Where-Object { $_.name -eq "ValidationAuditor" }
         $Supervisor = $Agents | Where-Object { $_.name -eq "Supervisor" }
         $Historian = $Agents | Where-Object { $_.name -eq "Historian" }
-        $Phase1Agents = $Agents | Where-Object { $_.name -notin @("Commissioner", "Synthesizer", "Supervisor", "Historian") }
+        $Phase1Agents = $Agents | Where-Object { $_.name -notin @("Commissioner", "Synthesizer", "ValidationAuditor", "Supervisor", "Historian") }
 
         # Track per-iteration outputs by agent name for downstream Supervisor/Historian inputs.
         $AgentOutputs = @{}
@@ -363,6 +547,8 @@ try {
                     Output = $Response.choices[0].message.content
                     Tokens = $Response.usage.total_tokens
                     Ok     = $true
+                    SystemPrompt = $systemPrompt
+                    UserPrompt = $Context
                 }
             }
             catch {
@@ -405,6 +591,8 @@ Stack Trace: $($_.ScriptStackTrace)
                     Tokens = 0
                     Ok     = $false
                     Error  = $errorMsg
+                    SystemPrompt = $systemPrompt
+                    UserPrompt = $Context
                 }
             }
 
@@ -416,9 +604,16 @@ Stack Trace: $($_.ScriptStackTrace)
                 Write-Host "⚠️ No response from $($r.Agent)" -ForegroundColor Red
                 continue
             }
-            Write-Log -Agent $r.Agent -Content $r.Output
-            $Context += "`n`n[$($r.Agent) Output]:`n$($r.Output)"
-            $AgentOutputs[$r.Agent] = $r.Output
+            $validated = Resolve-AgentOutputWithContract `
+                -AgentName $r.Agent `
+                -Output $r.Output `
+                -SystemPrompt $r.SystemPrompt `
+                -UserPrompt $r.UserPrompt
+
+            $finalOutput = [string]$validated.Output
+            Write-Log -Agent $r.Agent -Content $finalOutput
+            $Context += "`n`n[$($r.Agent) Output]:`n$finalOutput"
+            $AgentOutputs[$r.Agent] = $finalOutput
         }
 
         # --- Run Synthesizer sequentially ----------------------------------
@@ -443,10 +638,60 @@ Stack Trace: $($_.ScriptStackTrace)
                     continue
                 }
 
+                $validated = Resolve-AgentOutputWithContract `
+                    -AgentName $S.name `
+                    -Output $Output `
+                    -SystemPrompt $systemPrompt `
+                    -UserPrompt $Context
+                $Output = [string]$validated.Output
+
                 Write-AgentStatus -Agent $S.name -Status "complete"
                 Write-Log -Agent $S.name -Content $Output
                 $Context += "`n`n[$($S.name) Output]:`n$Output"
                 $AgentOutputs[$S.name] = $Output
+            }
+        }
+
+        # --- Run ValidationAuditor sequentially -----------------------------
+        if ($ValidationAuditor) {
+            foreach ($V in $ValidationAuditor) {
+                Write-AgentStatus -Agent $V.name -Status "working"
+
+                $systemPrompt = if ([string]::IsNullOrWhiteSpace($Instruction)) {
+                    $V.prompt
+                } else {
+                    "$Instruction`n`n$($V.prompt)"
+                }
+
+                $auditInput = @{
+                    run_id = $RunId
+                    goal = $Goal
+                    agent_outputs = $AgentOutputs
+                    audit_focus = "Identify stub-outs, placeholders, TODO/TBD/FIXME markers, and unfinished tasks."
+                } | ConvertTo-Json -Depth 20
+
+                $Messages = @(
+                    @{ role = "system"; content = $systemPrompt },
+                    @{ role = "user"; content = $auditInput }
+                )
+
+                $Output = Invoke-OpenAIRequest -Messages $Messages -AgentName $V.name
+                if (-not $Output) {
+                    Write-AgentStatus -Agent $V.name -Status "error"
+                    continue
+                }
+
+                $validated = Resolve-AgentOutputWithContract `
+                    -AgentName $V.name `
+                    -Output $Output `
+                    -SystemPrompt $systemPrompt `
+                    -UserPrompt $auditInput
+                $Output = [string]$validated.Output
+
+                Write-AgentStatus -Agent $V.name -Status "complete"
+                Write-Log -Agent $V.name -Content $Output
+                $Context += "`n`n[$($V.name) Output]:`n$Output"
+                $AgentOutputs[$V.name] = $Output
             }
         }
 
@@ -534,6 +779,13 @@ Stack Trace: $($_.ScriptStackTrace)
                     }
                 }
 
+                $validated = Resolve-AgentOutputWithContract `
+                    -AgentName $C.name `
+                    -Output $Output `
+                    -SystemPrompt $systemPrompt `
+                    -UserPrompt $Context
+                $Output = [string]$validated.Output
+
                 # --- Process Agent Improvement Suggestions --------------------
                 if ($Output -match '\[AGENT_IMPROVEMENT:\s*([^\]]+)\]') {
                     $improvements = [regex]::Matches($Output, '\[AGENT_IMPROVEMENT:\s*([^\]]+)\]\s*([^\[]+)\[/AGENT_IMPROVEMENT\]')
@@ -594,7 +846,14 @@ Stack Trace: $($_.ScriptStackTrace)
                     Write-Host "🔁 Commissioner conditional (value_score=$Score) — triggering refinement..." -ForegroundColor Yellow
                     $RefineGoal = "Refine the previous design to improve value_score from $Score to ≥7. Address Commissioner feedback specifically."
                     $Context += "`n[Refinement Triggered]: $RefineGoal"
-                    & $PSCommandPath -Goal $RefineGoal -Model $Model -Instruction $Instruction -MaxIterations $MaxIterations -AgentConfigPath $AgentConfigPath
+                    & $PSCommandPath `
+                        -Goal $RefineGoal `
+                        -Model $Model `
+                        -Instruction $Instruction `
+                        -MaxIterations $MaxIterations `
+                        -AgentConfigPath $AgentConfigPath `
+                        -CanonicalAgentLibraryPath $CanonicalAgentLibraryPath `
+                        -UseLegacyAgentConfig:$legacyConfigRequested
                     $Script:ShouldExit = $true
                     return
                 }
@@ -628,6 +887,13 @@ Stack Trace: $($_.ScriptStackTrace)
                     Write-AgentStatus -Agent $Sup.name -Status "error"
                     continue
                 }
+
+                $validated = Resolve-AgentOutputWithContract `
+                    -AgentName $Sup.name `
+                    -Output $Output `
+                    -SystemPrompt $systemPrompt `
+                    -UserPrompt $input
+                $Output = [string]$validated.Output
 
                 Write-AgentStatus -Agent $Sup.name -Status "complete"
                 Write-Log -Agent $Sup.name -Content $Output
@@ -663,6 +929,13 @@ Stack Trace: $($_.ScriptStackTrace)
                     Write-AgentStatus -Agent $H.name -Status "error"
                     continue
                 }
+
+                $validated = Resolve-AgentOutputWithContract `
+                    -AgentName $H.name `
+                    -Output $Output `
+                    -SystemPrompt $systemPrompt `
+                    -UserPrompt $input
+                $Output = [string]$validated.Output
 
                 Write-AgentStatus -Agent $H.name -Status "complete"
                 Write-Log -Agent $H.name -Content $Output

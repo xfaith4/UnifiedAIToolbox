@@ -27,6 +27,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from agent_roster import default_canonical_path, get_agent_roster
+
 
 def _toolbox_root() -> Path:
     # scripts/swarms/toolbox_runner.py -> repo root is two parents up
@@ -34,7 +36,7 @@ def _toolbox_root() -> Path:
 
 
 def _default_agent_config_path() -> Path:
-    return _toolbox_root() / "Orchestration" / "prompts" / "Agents.json"
+    return default_canonical_path()
 
 
 def _normalize_openai_api_base_env() -> None:
@@ -107,14 +109,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-loops", type=int, default=1, help="Max loops for SwarmRouter/workflow.")
     parser.add_argument("--repo-root", default=None, help="Optional repo root path (enables safe file tools).")
     parser.add_argument("--output-dir", default=None, help="Optional output dir for artifacts/workspace.")
-    parser.add_argument("--agent-config", default=None, help="Path to Orchestration Agents.json (system prompts).")
+    parser.add_argument(
+        "--agent-config",
+        default=None,
+        help="Path to canonical agent registry (agent-library.json). Legacy generated exports are still accepted.",
+    )
     parser.add_argument("--rules", default=None, help="Optional rules injected into swarm router.")
     return parser.parse_args()
 
 
 def _load_agent_prompts(config_path: Path) -> Dict[str, Dict[str, str]]:
-    raw = json.loads(config_path.read_text(encoding="utf-8"))
-    agents = raw.get("Agents", [])
+    agents = get_agent_roster(mode="thin", canonical_path=config_path)
     out: Dict[str, Dict[str, str]] = {}
     for item in agents:
         name = str(item.get("name", "")).strip()
@@ -210,6 +215,7 @@ DEFAULT_AGENT_ROSTER = [
     "Engineer",
     "Critic",
     "Synthesizer",
+    "ValidationAuditor",
     "Commissioner",
     "Supervisor",
     "Historian",
@@ -226,6 +232,27 @@ def _ensure_default_agents(selected: List[str]) -> List[str]:
     """
     cleaned = [a.strip() for a in selected if a and a.strip()]
     return cleaned or list(DEFAULT_AGENT_ROSTER)
+
+
+def _ensure_validation_auditor(selected: List[str]) -> List[str]:
+    """
+    Ensure the ValidationAuditor stage is present before final governance review.
+    """
+    roster = [a.strip() for a in selected if a and a.strip()]
+    if "ValidationAuditor" in roster:
+        return roster
+
+    # Insert before Commissioner/Supervisor when present, otherwise append.
+    insert_idx = None
+    for name in ("Commissioner", "Supervisor"):
+        if name in roster:
+            idx = roster.index(name)
+            insert_idx = idx if insert_idx is None else min(insert_idx, idx)
+    if insert_idx is None:
+        roster.append("ValidationAuditor")
+    else:
+        roster.insert(insert_idx, "ValidationAuditor")
+    return roster
 
 
 def main() -> int:
@@ -269,7 +296,7 @@ def main() -> int:
         from swarms.structs.agent import Agent  # type: ignore
         from swarms.structs.swarm_router import SwarmRouter  # type: ignore
 
-        selected_agents = _ensure_default_agents(selected_agents)
+        selected_agents = _ensure_validation_auditor(_ensure_default_agents(selected_agents))
         payload["agents"] = selected_agents
 
         workspace = (

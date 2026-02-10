@@ -98,6 +98,10 @@ $AgentTypes = @{
         Role        = "Integration"
         Description = "Combines outputs into coherent results"
     }
+    ValidationAuditor = @{
+        Role        = "Completion validation"
+        Description = "Audits output for stub-outs, placeholders, and unfinished tasks"
+    }
     Commissioner = @{
         Role        = "Decision making"
         Description = "Evaluates results and makes final calls"
@@ -308,37 +312,118 @@ function Select-Agents {
     
     Write-Log "Selecting agents based on repository characteristics"
     
-    $selectedAgents = @()
+    $selectedAgents = New-Object System.Collections.Generic.List[object]
 
-    # Keep the roster compact and bounded by MaxAgents (total agents).
-    # Ensure we always have a synthesis step when there is at least 1 slot.
-    $ordered = @("Researcher", "Engineer", "Critic", "Synthesizer", "Commissioner", "Supervisor", "Historian")
-
-    # If MaxAgents is very small, prioritize Researcher + Synthesizer.
+    # Core contributors are still bounded by MaxAgents.
+    $coreOrdered = @("Researcher", "Engineer", "Critic", "Synthesizer")
     if ($MaxAgents -le 1) {
-        $ordered = @("Synthesizer")
+        $coreOrdered = @("Synthesizer")
     } elseif ($MaxAgents -eq 2) {
-        $ordered = @("Researcher", "Synthesizer")
+        $coreOrdered = @("Researcher", "Synthesizer")
     } elseif ($MaxAgents -eq 3) {
-        $ordered = @("Researcher", "Engineer", "Synthesizer")
+        $coreOrdered = @("Researcher", "Engineer", "Synthesizer")
     }
 
+    # Governance tail always runs so final review is explicit.
+    $governanceTail = @("ValidationAuditor", "Commissioner", "Supervisor", "Historian")
+
     $priority = 1
-    foreach ($agentType in $ordered) {
-        if ($selectedAgents.Count -ge $MaxAgents) { break }
+    $coreLimit = [Math]::Max(1, $MaxAgents)
+    foreach ($agentType in $coreOrdered) {
+        if ($selectedAgents.Count -ge $coreLimit) { break }
         if (-not $AgentTypes.ContainsKey($agentType)) { continue }
-        $selectedAgents += @{
+        $selectedAgents.Add([PSCustomObject]@{
             Type        = $agentType
             Role        = $AgentTypes[$agentType].Role
             Description = $AgentTypes[$agentType].Description
+            Stage       = "core"
+            Mandatory   = $false
             Priority    = $priority
-        }
+        })
         $priority++
     }
-    
-    Write-Log "Selected $($selectedAgents.Count) agents: $($selectedAgents.Type -join ', ')" -Level Success
-    
-    return $selectedAgents
+
+    foreach ($agentType in $governanceTail) {
+        if (-not $AgentTypes.ContainsKey($agentType)) { continue }
+        if (@($selectedAgents | Where-Object { $_.Type -eq $agentType }).Count -gt 0) { continue }
+        $selectedAgents.Add([PSCustomObject]@{
+            Type        = $agentType
+            Role        = $AgentTypes[$agentType].Role
+            Description = $AgentTypes[$agentType].Description
+            Stage       = "governance"
+            Mandatory   = $true
+            Priority    = $priority
+        })
+        $priority++
+    }
+
+    $selected = @($selectedAgents.ToArray())
+    $coreNames = @($selected | Where-Object { $_.Stage -eq "core" } | ForEach-Object { $_.Type })
+    $governanceNames = @($selected | Where-Object { $_.Stage -eq "governance" } | ForEach-Object { $_.Type })
+    Write-Log "Selected $($selected.Count) agents: $($selected.Type -join ', ')" -Level Success
+    Write-Log "Core agents: $($coreNames -join ', ')" -Level Info
+    Write-Log "Governance agents: $($governanceNames -join ', ')" -Level Info
+
+    return $selected
+}
+
+function Get-RefinementTelemetry {
+    param(
+        [Parameter(Mandatory = $true)][object]$SwarmPayload,
+        [Parameter(Mandatory = $true)][string]$FinalText
+    )
+
+    $signals = New-Object System.Collections.Generic.List[string]
+    $textPool = New-Object System.Collections.Generic.List[string]
+
+    if (-not [string]::IsNullOrWhiteSpace($FinalText)) {
+        $textPool.Add($FinalText)
+    }
+
+    try {
+        $payloadText = $SwarmPayload | ConvertTo-Json -Depth 50
+        if (-not [string]::IsNullOrWhiteSpace($payloadText)) {
+            $textPool.Add($payloadText)
+        }
+    }
+    catch {
+        # Best-effort only.
+    }
+
+    $patterns = @(
+        @{ Name = "refinement"; Regex = "(?i)\brefin(?:e|ement|ing)\b" },
+        @{ Name = "rerun"; Regex = "(?i)\bre-?run\b" },
+        @{ Name = "iteration"; Regex = "(?i)\biterat(?:e|ion|ive)\b" },
+        @{ Name = "follow_up"; Regex = "(?i)\bfollow[- ]?up\b" }
+    )
+
+    foreach ($pattern in $patterns) {
+        foreach ($candidate in $textPool) {
+            if ($candidate -match $pattern.Regex) {
+                if (-not $signals.Contains($pattern.Name)) {
+                    $signals.Add($pattern.Name)
+                }
+                break
+            }
+        }
+    }
+
+    $maxLoops = 0
+    try {
+        if ($null -ne $SwarmPayload.maxLoops) {
+            $maxLoops = [int]$SwarmPayload.maxLoops
+        }
+    }
+    catch {
+        $maxLoops = 0
+    }
+
+    return [PSCustomObject]@{
+        detected    = ($signals.Count -gt 0) -or ($maxLoops -gt 1)
+        signal_count = $signals.Count
+        signals     = @($signals.ToArray())
+        max_loops   = $maxLoops
+    }
 }
 
 function Invoke-AgentExecution {
@@ -533,23 +618,57 @@ try {
     
     # Step 2: Select agents
     Write-Log "Step 2: Selecting agents"
-    $selectedAgents = Select-Agents -RepoStructure $repoStructure -MaxAgents $MaxAgents
+    $selectedAgents = @(Select-Agents -RepoStructure $repoStructure -MaxAgents $MaxAgents)
+    $selectedAgentNames = @($selectedAgents | ForEach-Object { $_.Type })
+    $selectedAgentCount = $selectedAgentNames.Count
+    $coreAgentNames = @($selectedAgents | Where-Object { $_.Stage -eq "core" } | ForEach-Object { $_.Type })
+    $governanceAgentNames = @($selectedAgents | Where-Object { $_.Stage -eq "governance" } | ForEach-Object { $_.Type })
+
+    Write-AgentStatusLine -OutputDir $resolvedOutputDir -Agent "Orchestrator" -Status "planning_complete" -Extra @{
+        agent_count = $selectedAgentCount
+        core_agents = $coreAgentNames
+        governance_agents = $governanceAgentNames
+    }
+    foreach ($agent in $selectedAgents) {
+        Write-AgentStatusLine -OutputDir $resolvedOutputDir -Agent $agent.Type -Status "planned" -Extra @{
+            stage = $agent.Stage
+            mandatory = [bool]$agent.Mandatory
+            priority = [int]$agent.Priority
+        }
+    }
 
     # Step 3: Execute Swarms engine (Python)
     Write-Log "Step 3: Executing Swarms engine" -Level Info
-    Write-AgentStatusLine -OutputDir $resolvedOutputDir -Agent "SwarmsEngine" -Status "working" -Extra @{ model = $Model }
+    Write-AgentStatusLine -OutputDir $resolvedOutputDir -Agent "SwarmsEngine" -Status "working" -Extra @{
+        model = $Model
+        agent_count = $selectedAgentCount
+    }
 
     Push-Location -LiteralPath $resolvedWorkDir
     try {
         if ($DryRun) {
-            $swarmPayload = [pscustomobject]@{
+            $swarmPayload = [ordered]@{
                 ok = $true
                 status = "completed"
+                runId = "dryrun-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+                goal = $Goal
+                model = $Model
+                agents = $selectedAgentNames
                 swarmType = "dryrun"
-                result = @{ message = "DryRun: Swarms engine not executed." }
+                maxLoops = 1
+                result = [ordered]@{
+                    message = "DryRun: Swarms engine not executed."
+                    execution_summary = [ordered]@{
+                        agent_count = $selectedAgentCount
+                        core_agents = $coreAgentNames
+                        governance_agents = $governanceAgentNames
+                        validation_auditor_included = [bool]($selectedAgentNames -contains "ValidationAuditor")
+                        refinement_signals = @()
+                    }
+                }
             }
         } else {
-            $agentNames = @($selectedAgents | ForEach-Object { $_.Type })
+            $agentNames = $selectedAgentNames
             $swarmPayload = Invoke-SwarmsRun -ToolboxRoot (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\\..\\..')).Path `
                 -RepoRoot $RepoRoot `
                 -Goal $Goal `
@@ -562,7 +681,10 @@ try {
         Pop-Location
     }
 
-    Write-AgentStatusLine -OutputDir $resolvedOutputDir -Agent "SwarmsEngine" -Status "complete"
+    Write-AgentStatusLine -OutputDir $resolvedOutputDir -Agent "SwarmsEngine" -Status "complete" -Extra @{
+        model = $Model
+        agent_count = $selectedAgentCount
+    }
 
     # Step 4: Export summary + synthesis compatible with bridge consumers
     Write-Log "Step 4: Writing outputs" -Level Info
@@ -575,6 +697,11 @@ try {
         $finalText = ($swarmPayload.result | ConvertTo-Json -Depth 50)
     }
     $finalText | Out-File -LiteralPath $finalPath -Encoding UTF8
+
+    $refinementTelemetry = Get-RefinementTelemetry -SwarmPayload $swarmPayload -FinalText $finalText
+    $validationIncluded = [bool]($selectedAgentNames -contains "ValidationAuditor")
+    Write-Log "Refinement signals detected: $($refinementTelemetry.signal_count) (max_loops=$($refinementTelemetry.max_loops))"
+    Write-Log "Validation auditor included: $validationIncluded"
 
     # Generate a standardized HTML page for the final synthesis (best-effort)
     try {
@@ -599,7 +726,17 @@ try {
         Model = $Model
         RepoRoot = $RepoRoot
         Goal = $Goal
-        AgentsUsed = @($selectedAgents | ForEach-Object { $_.Type })
+        AgentsUsed = $selectedAgentNames
+        AgentCount = $selectedAgentCount
+        CoreAgentsUsed = $coreAgentNames
+        GovernanceAgentsUsed = $governanceAgentNames
+        ValidationAuditorIncluded = $validationIncluded
+        Refinement = @{
+            detected = [bool]$refinementTelemetry.detected
+            signal_count = [int]$refinementTelemetry.signal_count
+            signals = @($refinementTelemetry.signals)
+            max_loops = [int]$refinementTelemetry.max_loops
+        }
         Engine = "swarms"
         Swarm = $swarmPayload.swarmType
         Status = $swarmPayload.status
@@ -607,7 +744,7 @@ try {
     ($summary | ConvertTo-Json -Depth 10) | Set-Content -LiteralPath (Join-Path $resolvedOutputDir "orchestration-summary.json") -Encoding UTF8
 
     Write-Log "=== Orchestration Completed Successfully ===" -Level Success
-    Write-Log "Total agents executed: $($selectedAgents.Count)"
+    Write-Log "Total agents executed: $selectedAgentCount"
     Write-Log "Output location: $resolvedOutputDir"
     
     exit 0
