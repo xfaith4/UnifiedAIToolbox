@@ -49,6 +49,7 @@ class SupervisorPlanner:
         allowed_paths = self._normalize_paths(constraints.get("allowed_paths") or [])
         max_parallel = constraints.get("max_parallel") or 1
         risk_posture = (constraints.get("risk_posture") or "standard").lower()
+        model = (constraints.get("model") or "").strip() or None
 
         build_signals = intake.get("build_signals") or []
         validation_commands = self._build_validation_commands(build_signals)
@@ -59,6 +60,8 @@ class SupervisorPlanner:
             user_goal=user_goal,
             validation_commands=validation_commands,
             risk_posture=risk_posture,
+            max_parallel=max_parallel,
+            model=model,
         )
 
         taskgraph = {
@@ -68,6 +71,7 @@ class SupervisorPlanner:
                 "allowed_paths": allowed_paths,
                 "max_parallel": max_parallel,
                 "risk_posture": risk_posture,
+                "model": model,
             },
             "tasks": tasks,
         }
@@ -129,76 +133,37 @@ class SupervisorPlanner:
         user_goal: str,
         validation_commands: List[str],
         risk_posture: str,
+        max_parallel: int,
+        model: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        """Create a small set of chunky tasks with validation steps."""
+        """Create a focused execution task that delegates parallelism to Codex swarms."""
         path_scope = allowed_paths or ["."]
-        # Keep defaults cross-platform: avoid shell-specific "|| true" patterns.
         validation_steps = validation_commands or ["git status --short", "python -m pytest"]
-
         run_suffix = self._run_suffix(run_id)
 
-        tasks: List[Dict[str, Any]] = []
+        try:
+            parallel_value = int(max_parallel)
+        except Exception:
+            parallel_value = 1
+        parallel_value = max(1, parallel_value)
 
-        tasks.append(
-            {
-                "id": "t1_context",
-                "branch": self._task_branch(run_suffix, "t1_context"),
-                "title": "Review repository context",
-                "rationale": "Understand repository structure and constraints before planning implementation.",
-                "file_scope": [],
-                "conflict_group": "analysis",
-                "dependencies": [],
-                "validation": ["git status --porcelain"],
-                "rollback": "No changes performed; no rollback required.",
-            }
-        )
+        task: Dict[str, Any] = {
+            "id": "t1_execute",
+            "branch": self._task_branch(run_suffix, "t1_execute"),
+            "title": "Implement and validate repository changes",
+            "rationale": f"Deliver the requested outcome with focused edits: {user_goal}",
+            "file_scope": path_scope,
+            "conflict_group": "implementation",
+            "dependencies": [],
+            "validation": validation_steps,
+            "rollback": "Revert commits or changes within the scoped paths if validation fails.",
+            "max_parallel": parallel_value,
+            "risk_posture": risk_posture,
+        }
+        if model:
+            task["model"] = model
 
-        tasks.append(
-            {
-                "id": "t2_plan",
-                "branch": self._task_branch(run_suffix, "t2_plan"),
-                "title": "Design approach for goal",
-                "rationale": f"Design a minimal set of changes to accomplish: {user_goal}",
-                "file_scope": path_scope,
-                "conflict_group": "planning",
-                "dependencies": ["t1_context"],
-                "validation": ["echo \"Plan documented\""],
-                "rollback": "Revise the plan document if constraints change.",
-            }
-        )
-
-        tasks.append(
-            {
-                "id": "t3_execute",
-                "branch": self._task_branch(run_suffix, "t3_execute"),
-                "title": "Implement and validate changes",
-                "rationale": "Apply the planned modifications and run project validations.",
-                "file_scope": path_scope,
-                "conflict_group": "implementation",
-                "dependencies": ["t2_plan"],
-                "validation": validation_steps,
-                "rollback": "Revert commits or changes within the scoped paths if validation fails.",
-            }
-        )
-
-        # If risk posture is cautious, keep tasks serialized via conflict groups/dependencies already
-        if risk_posture == "aggressive" and len(validation_steps) > 1:
-            # Allow parallel validations by splitting
-            tasks.append(
-                {
-                    "id": "t4_parallel_validation",
-                    "branch": self._task_branch(run_suffix, "t4_parallel_validation"),
-                    "title": "Parallel validation passes",
-                    "rationale": "Run additional validations concurrently for faster feedback.",
-                    "file_scope": path_scope,
-                    "conflict_group": "validation",
-                    "dependencies": ["t3_execute"],
-                    "validation": validation_steps,
-                    "rollback": "If any check fails, rerun sequentially and fix issues before proceeding.",
-                }
-            )
-
-        return tasks
+        return [task]
 
     def _run_suffix(self, run_id: str) -> str:
         """Create a short, stable suffix for branch names."""

@@ -1,112 +1,146 @@
 <#
 .SYNOPSIS
-  Orchestrates goal refinement, milestone evaluation, and Codex swarm synthesis.
+  Canonical orchestration entrypoint for Unified AI Toolbox.
 .DESCRIPTION
-  1. Optionally resolves goal context imports.
-  2. Runs MilestoneController (which invokes POF + dashboard updates).
-  3. Invokes the Codex multi-agent swarm for repository fixes.
-  Consolidates previous entry points into a single end-to-end command.
+  Runs the primary POF orchestration pipeline and can optionally invoke
+  Codex swarm execution. This script is intentionally API-friendly and accepts
+  `-Goal`, `-Instruction`, and `-OutputDir` parameters used by prompt-api.
 #>
 
 [CmdletBinding()]
 param(
     [string]$RepoRoot = (Get-Location).Path,
+    [string]$Goal = "",
     [string]$GoalFile = "$PSScriptRoot\..\Goals\CurrentGoal.txt",
     [string]$Model = "gpt-5",
+    [string]$Instruction = "",
     [string]$ModelInstruction = "",
     [int]$MaxIterations = 3,
     [int]$PassThreshold = 7,
     [switch]$SkipContextResolution,
+    [switch]$RunCodex,
     [switch]$SkipCodex,
-    [string]$CodexModel = 'gpt-5-codex',
+    [string]$CodexModel = "gpt-5-codex",
     [string]$CodexInstruction = "",
     [switch]$UseWslForCodex,
     [int]$MaxParallel = 3,
-    [string]$WorkDir = '.codex_out'
+    [string]$WorkDir = ".codex_out",
+    [string]$OutputDir = "",
+    [switch]$VerboseMode
 )
 
-$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = "Stop"
+Set-StrictMode -Version Latest
 
 $CommonModule = Join-Path $PSScriptRoot "..\modules\Orchestration.Common.psm1"
-if (-not (Test-Path $CommonModule)) {
+if (-not (Test-Path -LiteralPath $CommonModule)) {
     throw "Shared orchestration module not found at $CommonModule"
 }
-$CommonModule = (Resolve-Path $CommonModule).Path
-Import-Module $CommonModule -Force
+Import-Module (Resolve-Path -LiteralPath $CommonModule).Path -Force
 
-$RepoRoot = (Resolve-Path $RepoRoot).Path
-$BaseDir  = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$RepoRoot = (Resolve-Path -LiteralPath $RepoRoot).Path
+$BaseDir = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $ScriptsDir = Join-Path $BaseDir "scripts"
-$DataDir    = Join-Path $RepoRoot "data"
-$LogPath    = Join-Path $DataDir "Milestone_Log.json"
-$TrendPath  = Join-Path $DataDir "Metrics_Trend.json"
 
 Ensure-OrchDirectory $ScriptsDir
 Ensure-OrchDirectory (Join-Path $BaseDir "Goals")
-Ensure-OrchDirectory $DataDir
-Ensure-OrchJsonFile $LogPath
-Ensure-OrchJsonFile $TrendPath
-
-if (-not (Test-Path $GoalFile)) {
-    throw "Goal file not found: $GoalFile"
-}
 
 $contextResolver = Join-Path $ScriptsDir "ContextResolver.ps1"
 $resolvedGoal = Join-Path $BaseDir "Goals\_ResolvedGoal.txt"
-
-if (-not $SkipContextResolution -and (Test-Path $contextResolver)) {
-    Write-Host "`n🌐 Resolving orchestration context..." -ForegroundColor Cyan
-    & $contextResolver -GoalFile $GoalFile -OutputFile $resolvedGoal
-    if (Test-Path $resolvedGoal) {
-        $GoalFile = $resolvedGoal
-    }
-}
-
 $pofScript = Join-Path $ScriptsDir "POF.ps1"
-if (-not (Test-Path $pofScript)) {
+$codexScript = Join-Path $BaseDir "engine\codex-multiagent-swarm\Orchestrate-Codex.ps1"
+
+if (-not (Test-Path -LiteralPath $pofScript)) {
     throw "POF orchestration script not found at $pofScript"
 }
-
-# Read goal from file for POF
-$goalText = ""
-if (Test-Path $GoalFile) {
-    $goalText = Get-Content -Path $GoalFile -Raw
-    if ([string]::IsNullOrWhiteSpace($goalText)) {
-        $goalText = "Execute default orchestration workflow"
-    }
-} else {
-    $goalText = "Execute default orchestration workflow"
-}
-
-Write-Host "`n🚀 Running POF orchestration..." -ForegroundColor Green
-$pofParams = @{
-    Goal = $goalText.Trim()
-    Model = $Model
-    MaxIterations = $MaxIterations
-    VerboseMode = $true
-}
-if (-not [string]::IsNullOrWhiteSpace($ModelInstruction)) {
-    $pofParams["Instruction"] = $ModelInstruction
-}
-& $pofScript @pofParams
-
-if ($SkipCodex) {
-    Write-Host "`n⏭️ Codex swarm skipped by request." -ForegroundColor Yellow
-    return
-}
-
-$codexScript = Join-Path $BaseDir "engine\codex-multiagent-swarm\Orchestrate-Codex.ps1"
-if (-not (Test-Path $codexScript)) {
+if ((-not $SkipCodex) -and $RunCodex -and (-not (Test-Path -LiteralPath $codexScript))) {
     throw "Codex orchestrator script not found at $codexScript"
 }
 
-$codexAvailable = Test-OrchCli 'codex'
-if ($UseWslForCodex) {
-    if (-not (Test-OrchCli 'wsl')) {
-        Write-Warning "WSL was not detected. Install WSL or disable the WSL Codex option."
-        return
+# Resolve goal text from explicit -Goal first, then goal file.
+$goalText = ""
+if (-not [string]::IsNullOrWhiteSpace($Goal)) {
+    $goalText = $Goal.Trim()
+}
+else {
+    if (-not (Test-Path -LiteralPath $GoalFile)) {
+        throw "Goal file not found: $GoalFile"
     }
 
+    if (-not $SkipContextResolution -and (Test-Path -LiteralPath $contextResolver)) {
+        Write-Host "`nResolving orchestration context..." -ForegroundColor Cyan
+        & $contextResolver -GoalFile $GoalFile -OutputFile $resolvedGoal
+        if (Test-Path -LiteralPath $resolvedGoal) {
+            $GoalFile = $resolvedGoal
+        }
+    }
+
+    $goalText = (Get-Content -LiteralPath $GoalFile -Raw).Trim()
+}
+
+if ([string]::IsNullOrWhiteSpace($goalText)) {
+    $goalText = "Execute default orchestration workflow"
+}
+
+# Normalize output routing so POF writes directly into OutputDir when supplied.
+$targetRunId = Get-Date -Format "yyyyMMdd-HHmmss"
+$targetOutputRoot = Join-Path $BaseDir "runs"
+if (-not [string]::IsNullOrWhiteSpace($OutputDir)) {
+    $rawOutputDir = if ([System.IO.Path]::IsPathRooted($OutputDir)) {
+        $OutputDir
+    } else {
+        Join-Path $RepoRoot $OutputDir
+    }
+    $resolvedOutputDir = [System.IO.Path]::GetFullPath($rawOutputDir)
+    Ensure-OrchDirectory $resolvedOutputDir
+    $targetRunId = Split-Path -Leaf $resolvedOutputDir
+    $targetOutputRoot = Split-Path -Parent $resolvedOutputDir
+    if ([string]::IsNullOrWhiteSpace($targetOutputRoot)) {
+        $targetOutputRoot = (Get-Location).Path
+    }
+}
+else {
+    Ensure-OrchDirectory $targetOutputRoot
+}
+$resolvedRunOutput = Join-Path $targetOutputRoot $targetRunId
+Ensure-OrchDirectory $resolvedRunOutput
+
+$effectiveInstruction = $Instruction
+if ([string]::IsNullOrWhiteSpace($effectiveInstruction) -and -not [string]::IsNullOrWhiteSpace($ModelInstruction)) {
+    $effectiveInstruction = $ModelInstruction
+}
+
+Write-Host "`nRunning POF orchestration..." -ForegroundColor Green
+$pofParams = @{
+    Goal = $goalText
+    Model = $Model
+    MaxIterations = $MaxIterations
+    RunId = $targetRunId
+    OutputRoot = $targetOutputRoot
+}
+if (-not [string]::IsNullOrWhiteSpace($effectiveInstruction)) {
+    $pofParams["Instruction"] = $effectiveInstruction
+}
+if ($VerboseMode) {
+    $pofParams["VerboseMode"] = $true
+}
+
+& $pofScript @pofParams
+if ($LASTEXITCODE -ne 0) {
+    throw "POF orchestration failed with exit code $LASTEXITCODE"
+}
+
+$shouldRunCodex = $RunCodex -and (-not $SkipCodex)
+if (-not $shouldRunCodex) {
+    Write-Host "`nUnified orchestration complete (POF only)." -ForegroundColor Green
+    return
+}
+
+$codexAvailable = Test-OrchCli "codex"
+if ($UseWslForCodex) {
+    if (-not (Test-OrchCli "wsl")) {
+        throw "WSL was not detected. Install WSL or disable -UseWslForCodex."
+    }
     if (-not $codexAvailable) {
         try {
             $null = wsl.exe -e which codex 2>$null
@@ -117,17 +151,36 @@ if ($UseWslForCodex) {
         }
     }
 }
-
 if (-not $codexAvailable) {
-    Write-Warning "Codex CLI not detected on the current path. Configure the CLI or enable the WSL option and ensure codex is installed inside WSL."
-    return
+    throw "Codex CLI not detected. Configure codex on PATH or install it in WSL."
 }
 
-if (-not [System.IO.Path]::IsPathRooted($WorkDir)) {
-    $WorkDir = Join-Path $RepoRoot $WorkDir
+$resolvedWorkDir = if ([System.IO.Path]::IsPathRooted($WorkDir)) {
+    $WorkDir
+} else {
+    Join-Path $resolvedRunOutput $WorkDir
+}
+Ensure-OrchDirectory $resolvedWorkDir
+
+$codexGoal = $goalText
+if (-not [string]::IsNullOrWhiteSpace($CodexInstruction)) {
+    $codexGoal = "$goalText`n`nAdditional Codex instruction:`n$CodexInstruction"
+}
+$codexOutputDir = Join-Path $resolvedRunOutput "swarm-output"
+Ensure-OrchDirectory $codexOutputDir
+
+Write-Host "`nLaunching Codex swarm..." -ForegroundColor Cyan
+& $codexScript `
+    -RepoRoot $RepoRoot `
+    -Goal $codexGoal `
+    -Model $CodexModel `
+    -MaxParallel $MaxParallel `
+    -OutputDir $codexOutputDir `
+    -WorkDir $resolvedWorkDir `
+    -UseWsl:$UseWslForCodex
+
+if ($LASTEXITCODE -ne 0) {
+    throw "Codex swarm execution failed with exit code $LASTEXITCODE"
 }
 
-Write-Host "`n🤖 Launching Codex swarm for repository fixes..." -ForegroundColor Cyan
-& $codexScript -RepoRoot $RepoRoot -Model $CodexModel -MaxParallel $MaxParallel -WorkDir $WorkDir -Instruction $CodexInstruction -UseWsl:$UseWslForCodex
-
-Write-Host "`n✅ Unified orchestration complete." -ForegroundColor Green
+Write-Host "`nUnified orchestration complete." -ForegroundColor Green

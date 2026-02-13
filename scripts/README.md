@@ -192,10 +192,13 @@ pwsh ./Smoketest.ps1
 
 **Purpose**: Run the orchestration pipeline directly.
 
+**Canonical path**: `Orchestration/scripts/Unified-Orchestration.ps1`  
+`scripts/Unified-Orchestration.ps1` is a compatibility shim that forwards to the canonical script.
+
 **Usage**:
 
 ```powershell
-pwsh ./scripts/Unified-Orchestration.ps1 `
+pwsh ./Orchestration/scripts/Unified-Orchestration.ps1 `
   -RepoRoot $PWD `
   -GoalFile ./Goals/CurrentGoal.txt `
   -Model gpt-4o-mini `

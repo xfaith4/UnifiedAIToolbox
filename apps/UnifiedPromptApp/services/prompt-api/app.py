@@ -203,9 +203,12 @@ def _resolve_env_path(env_key: str, default_path: pathlib.Path) -> pathlib.Path:
         return pathlib.Path(value).expanduser().resolve()
     return default_path
 
+DEFAULT_UNIFIED_ORCHESTRATOR = (
+    ROOT_DIR / "Orchestration" / "scripts" / "Unified-Orchestration.ps1"
+).resolve()
 DEFAULT_POF = (ROOT_DIR / "Orchestration" / "scripts" / "POF.ps1").resolve()
 POF_PS1 = _resolve_env_path("POF_PS1", DEFAULT_POF)
-ORCH_PS1 = _resolve_env_path("ORCHESTRATOR_PS1", POF_PS1)
+ORCH_PS1 = _resolve_env_path("ORCHESTRATOR_PS1", DEFAULT_UNIFIED_ORCHESTRATOR)
 CODEX_SWARM_PS1 = os.environ.get("CODEX_SWARM_PS1") or str(
     (ROOT_DIR / "Orchestration" / "engine" / "codex-multiagent-swarm" / "Orchestrate-Codex.ps1").resolve()
 )
@@ -2614,7 +2617,7 @@ class RepoOrchestrationOptions(BaseModel):
     base_branch: Optional[str] = None
     integration_branch: Optional[str] = None
     allowed_paths: List[str] = Field(default_factory=list)
-    max_parallel: int = 1
+    max_parallel: int = 3
     risk_posture: str = "standard"
     github_token: Optional[str] = Field(
         default=None, description="GitHub token (not persisted to disk)"
@@ -2640,7 +2643,7 @@ _repo_state_lock = asyncio.Lock()
 def orchestrate_run(req: OrchestrationRequest):
     """
     Queue an orchestration run (lightweight orchestrator). Writes a manifest and kicks off a
-    background task that executes the external orchestrator (POF.ps1 by default), otherwise
+    background task that executes the external orchestrator (Unified-Orchestration.ps1 by default), otherwise
     simulates a completion.
     """
     # Sanitize the raw run base to ensure it's safe for filesystem use on Windows
@@ -2797,7 +2800,7 @@ def orchestrate_run(req: OrchestrationRequest):
             repo_root = req.repo_root or REPO_ROOT_DEFAULT
             ps_exe = shutil.which("pwsh") or shutil.which("powershell")
 
-            # choose orchestrator script based on run_mode (default => POF)
+            # choose orchestrator script based on run_mode (default => unified orchestrator)
             run_mode = (req.run_mode or "default").lower()
             ps1_candidate = pathlib.Path(CODEX_SWARM_PS1 if run_mode == "codex-swarm" else ORCH_PS1)
             data.setdefault("events", []).append({
@@ -2980,7 +2983,7 @@ def orchestrate_run(req: OrchestrationRequest):
                     [{"ts": now_iso(), "type": "error", "message": error_detail, "error_detail": str(exc), "traceback": str(type(exc).__name__)}]
                 )
                 data = safe_json_load(path, default={}, context=f"execute_error:{run_id}")
-                data["status"] = f"error:Expecting value..."
+                data["status"] = f"error:{type(exc).__name__}"
                 data["completed_at"] = now_iso()
                 data["error_detail"] = str(exc)
                 data["last_step"] = "orchestrator execution"
@@ -4155,6 +4158,7 @@ async def start_repo_orchestration(req: RepoOrchestrationRequest, request: Reque
                 "allowed_paths": req.options.allowed_paths,
                 "max_parallel": req.options.max_parallel,
                 "risk_posture": req.options.risk_posture,
+                "model": req.options.model,
             }
             taskgraph = planner.generate_taskgraph(
                 run_id=run_id,
@@ -4200,6 +4204,14 @@ async def start_repo_orchestration(req: RepoOrchestrationRequest, request: Reque
             manifest.update({"tasks": execution_result, "status": "executed"})
             _persist_repo_state(manifest_path, manifest)
             await _enqueue({"type": "tasks_complete", "tasks": execution_result})
+
+            task_results = execution_result.get("tasks") or []
+            failed_tasks = [
+                task for task in task_results if str(task.get("status") or "").lower() not in {"completed", "success"}
+            ]
+            if failed_tasks:
+                failed_ids = [str(task.get("task_id") or "<unknown>") for task in failed_tasks]
+                raise TaskExecutionError(f"task execution failed for: {', '.join(failed_ids)}")
 
             if cancel_event.is_set():
                 raise TaskExecutionError("cancelled")

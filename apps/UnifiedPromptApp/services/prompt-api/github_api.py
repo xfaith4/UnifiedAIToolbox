@@ -16,12 +16,13 @@ from fastapi import APIRouter, HTTPException, Header, Query, Body
 from pydantic import BaseModel, Field
 
 # Lazy import of GitHub services to avoid dependency issues
+import sys
+
+bridge_path = Path(__file__).parent.parent.parent.parent.parent / "apps" / "orchestration-bridge"
+if str(bridge_path) not in sys.path:
+    sys.path.insert(0, str(bridge_path))
+
 try:
-    import sys
-    bridge_path = Path(__file__).parent.parent.parent.parent.parent / "apps" / "orchestration-bridge"
-    if str(bridge_path) not in sys.path:
-        sys.path.insert(0, str(bridge_path))
-    
     from github_integration.clone_service import GitHubCloneService, RepositoryCloneError
     from github_integration.pr_service import GitHubPRService, PRCreationError
     from github_integration.repo_intake_service import RepoIntakeService, RepoIntakeError
@@ -30,50 +31,15 @@ try:
     GITHUB_AVAILABLE = True
 except ImportError as e:
     logging.warning(f"GitHub integration services not available: {e}")
-    GITHUB_AVAILABLE = False
-try:
-    import sys
-    bridge_path = Path(__file__).parent.parent.parent.parent.parent / "apps" / "orchestration-bridge"
-    if str(bridge_path) not in sys.path:
-        sys.path.insert(0, str(bridge_path))
-    
-    from github_integration.clone_service import GitHubCloneService, RepositoryCloneError
-    from github_integration.pr_service import GitHubPRService, PRCreationError
-    from github_integration.repo_intake_service import RepoIntakeService, RepoIntakeError
-    from github_integration.supervisor_planner import SupervisorPlanner, SupervisorPlannerError
-    from shared.github_core import parse_repo_url
-    GITHUB_AVAILABLE = True
-except ImportError as e:
-    logging.warning(f"GitHub integration services not available: {e}")
-    GITHUB_AVAILABLE = False
-try:
-    import sys
-    bridge_path = Path(__file__).parent.parent.parent.parent.parent / "apps" / "orchestration-bridge"
-    if str(bridge_path) not in sys.path:
-        sys.path.insert(0, str(bridge_path))
-    
-    from github_integration.clone_service import GitHubCloneService, RepositoryCloneError
-    from github_integration.pr_service import GitHubPRService, PRCreationError
-    from github_integration.repo_intake_service import RepoIntakeService, RepoIntakeError
-    from github_integration.supervisor_planner import SupervisorPlanner, SupervisorPlannerError
-    from shared.github_core import parse_repo_url
-    GITHUB_AVAILABLE = True
-except ImportError as e:
-    logging.warning(f"GitHub integration services not available: {e}")
-    GITHUB_AVAILABLE = False
-try:
-    import sys
-    bridge_path = Path(__file__).parent.parent.parent.parent.parent / "apps" / "orchestration-bridge"
-    if str(bridge_path) not in sys.path:
-        sys.path.insert(0, str(bridge_path))
-    
-    from github_integration.clone_service import GitHubCloneService, RepositoryCloneError
-    from github_integration.pr_service import GitHubPRService, PRCreationError
-    from github_integration.repo_intake_service import RepoIntakeService, RepoIntakeError
-    from shared.github_core import parse_repo_url
-    GITHUB_AVAILABLE = True
-except ImportError as e:
-    logging.warning(f"GitHub integration services not available: {e}")
+    GitHubCloneService = None  # type: ignore[assignment]
+    RepositoryCloneError = Exception  # type: ignore[assignment]
+    GitHubPRService = None  # type: ignore[assignment]
+    PRCreationError = Exception  # type: ignore[assignment]
+    RepoIntakeService = None  # type: ignore[assignment]
+    RepoIntakeError = Exception  # type: ignore[assignment]
+    SupervisorPlanner = None  # type: ignore[assignment]
+    SupervisorPlannerError = Exception  # type: ignore[assignment]
+    parse_repo_url = None  # type: ignore[assignment]
     GITHUB_AVAILABLE = False
 
 router = APIRouter(prefix="/github", tags=["github"])
@@ -149,8 +115,12 @@ class RepoIntakeResponse(BaseModel):
 class TaskGraphConstraints(BaseModel):
     """Constraints influencing the task graph."""
     allowed_paths: List[str] = Field(default_factory=list)
-    max_parallel: int = Field(default=1, ge=1)
+    max_parallel: int = Field(default=3, ge=1)
     risk_posture: str = Field(default="standard")
+    model: Optional[str] = Field(
+        default=None,
+        description="Optional model override for Codex task execution",
+    )
 
 
 class TaskGraphRequest(BaseModel):
@@ -164,166 +134,6 @@ class TaskGraphRequest(BaseModel):
 class TaskGraphResponse(BaseModel):
     """Response with task graph data."""
     taskgraph: Dict[str, Any]
-
-
-class CloneRepositoryRequest(BaseModel):
-    """Request model for cloning a repository."""
-    repo_url: str = Field(..., description="Repository URL or owner/repo format")
-    branch: Optional[str] = Field(None, description="Specific branch to clone")
-    private: bool
-    archived: bool
-    updated_at: Optional[str] = None
-    open_prs_count: int = 0
-
-
-class AccessibleRepository(BaseModel):
-    """Repository listing entry for accessible repositories."""
-    id: Optional[int] = None
-    full_name: str
-    name: str
-    owner: Optional[str] = None
-    description: Optional[str] = ""
-    html_url: str
-    clone_url: Optional[str] = None
-    default_branch: Optional[str] = None
-    private: bool = False
-    archived: bool = False
-    visibility: Optional[str] = None
-    updated_at: Optional[str] = None
-    open_prs_count: int = 0
-    appfactory: Optional[Dict[str, Any]] = None
-
-
-class RepoIntakeRequest(BaseModel):
-    """Request model for repository intake."""
-    repo_url: str = Field(..., description="Repository URL or owner/repo format")
-    run_id: str = Field(..., description="Workspace/run identifier for artifacts")
-    branch: Optional[str] = Field(None, description="Optional branch to checkout")
-
-
-class RepoIntakeResponse(BaseModel):
-    """Response model for repository intake."""
-    intake: Dict[str, Any]
-
-
-class TaskGraphConstraints(BaseModel):
-    """Constraints influencing the task graph."""
-    allowed_paths: List[str] = Field(default_factory=list)
-    max_parallel: int = Field(default=1, ge=1)
-    risk_posture: str = Field(default="standard")
-
-
-class TaskGraphRequest(BaseModel):
-    """Request for supervisor planning."""
-    run_id: str = Field(..., description="Workspace/run identifier containing intake artifacts")
-    user_goal: str = Field(..., description="High-level objective to plan towards")
-    constraints: TaskGraphConstraints = Field(default_factory=TaskGraphConstraints)
-    intake: Optional[Dict[str, Any]] = Field(None, description="Inline intake report; falls back to disk if omitted")
-
-
-class TaskGraphResponse(BaseModel):
-    """Response with task graph data."""
-    taskgraph: Dict[str, Any]
-
-
-class CloneRepositoryRequest(BaseModel):
-    """Request model for cloning a repository."""
-    repo_url: str = Field(..., description="Repository URL or owner/repo format")
-    branch: Optional[str] = Field(None, description="Specific branch to clone")
-    private: bool
-    archived: bool
-    updated_at: Optional[str] = None
-    open_prs_count: int = 0
-
-
-class AccessibleRepository(BaseModel):
-    """Repository listing entry for accessible repositories."""
-    id: Optional[int] = None
-    full_name: str
-    name: str
-    owner: Optional[str] = None
-    description: Optional[str] = ""
-    html_url: str
-    clone_url: Optional[str] = None
-    default_branch: Optional[str] = None
-    private: bool = False
-    archived: bool = False
-    visibility: Optional[str] = None
-    updated_at: Optional[str] = None
-    open_prs_count: int = 0
-    appfactory: Optional[Dict[str, Any]] = None
-
-
-class RepoIntakeRequest(BaseModel):
-    """Request model for repository intake."""
-    repo_url: str = Field(..., description="Repository URL or owner/repo format")
-    run_id: str = Field(..., description="Workspace/run identifier for artifacts")
-    branch: Optional[str] = Field(None, description="Optional branch to checkout")
-
-
-class RepoIntakeResponse(BaseModel):
-    """Response model for repository intake."""
-    intake: Dict[str, Any]
-
-
-class TaskGraphConstraints(BaseModel):
-    """Constraints influencing the task graph."""
-    allowed_paths: List[str] = Field(default_factory=list)
-    max_parallel: int = Field(default=1, ge=1)
-    risk_posture: str = Field(default="standard")
-
-
-class TaskGraphRequest(BaseModel):
-    """Request for supervisor planning."""
-    run_id: str = Field(..., description="Workspace/run identifier containing intake artifacts")
-    user_goal: str = Field(..., description="High-level objective to plan towards")
-    constraints: TaskGraphConstraints = Field(default_factory=TaskGraphConstraints)
-    intake: Optional[Dict[str, Any]] = Field(None, description="Inline intake report; falls back to disk if omitted")
-
-
-class TaskGraphResponse(BaseModel):
-    """Response with task graph data."""
-    taskgraph: Dict[str, Any]
-
-
-class CloneRepositoryRequest(BaseModel):
-    """Request model for cloning a repository."""
-    repo_url: str = Field(..., description="Repository URL or owner/repo format")
-    branch: Optional[str] = Field(None, description="Specific branch to clone")
-    private: bool
-    archived: bool
-    updated_at: Optional[str] = None
-    open_prs_count: int = 0
-
-
-class AccessibleRepository(BaseModel):
-    """Repository listing entry for accessible repositories."""
-    id: Optional[int] = None
-    full_name: str
-    name: str
-    owner: Optional[str] = None
-    description: Optional[str] = ""
-    html_url: str
-    clone_url: Optional[str] = None
-    default_branch: Optional[str] = None
-    private: bool = False
-    archived: bool = False
-    visibility: Optional[str] = None
-    updated_at: Optional[str] = None
-    open_prs_count: int = 0
-    appfactory: Optional[Dict[str, Any]] = None
-
-
-class RepoIntakeRequest(BaseModel):
-    """Request model for repository intake."""
-    repo_url: str = Field(..., description="Repository URL or owner/repo format")
-    run_id: str = Field(..., description="Workspace/run identifier for artifacts")
-    branch: Optional[str] = Field(None, description="Optional branch to checkout")
-
-
-class RepoIntakeResponse(BaseModel):
-    """Response model for repository intake."""
-    intake: Dict[str, Any]
 
 
 class CloneRepositoryRequest(BaseModel):

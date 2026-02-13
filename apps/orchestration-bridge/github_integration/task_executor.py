@@ -64,8 +64,15 @@ class TaskExecutor:
             raise TaskExecutionError(f"TaskGraph not found: {taskgraph_path}")
 
         taskgraph = json.loads(taskgraph_path.read_text(encoding="utf-8"))
+        constraints = taskgraph.get("constraints") or {}
         user_goal = (taskgraph.get("user_goal") or "").strip()
         tasks = taskgraph.get("tasks") or []
+        default_model = str(constraints.get("model") or "gpt-5-codex")
+        try:
+            default_max_parallel = int(constraints.get("max_parallel") or 3)
+        except Exception:
+            default_max_parallel = 3
+        default_max_parallel = max(1, default_max_parallel)
 
         results: List[Dict[str, Any]] = []
         completed: Set[str] = set()
@@ -98,6 +105,8 @@ class TaskExecutor:
                 run_id,
                 task,
                 user_goal=user_goal,
+                default_model=default_model,
+                default_max_parallel=default_max_parallel,
                 progress_callback=progress_callback,
                 cancel_event=cancel_event,
             )
@@ -115,12 +124,20 @@ class TaskExecutor:
         run_id: str,
         task: Dict[str, Any],
         user_goal: str = "",
+        default_model: str = "gpt-5-codex",
+        default_max_parallel: int = 3,
         progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
         cancel_event: Optional[asyncio.Event] = None,
     ) -> Dict[str, Any]:
         task_id = task["id"]
         branch = self._normalize_branch_name(task.get("branch") or f"{run_id}-{task_id}")
         allowed_paths = task.get("file_scope") or ["."]
+        task_model = str(task.get("model") or default_model or "gpt-5-codex")
+        try:
+            task_max_parallel = int(task.get("max_parallel") or default_max_parallel or 1)
+        except Exception:
+            task_max_parallel = 1
+        task_max_parallel = max(1, task_max_parallel)
         task_dir = self.runs_dir / run_id / "tasks" / task_id
         task_dir.mkdir(parents=True, exist_ok=True)
 
@@ -169,8 +186,8 @@ class TaskExecutor:
             codex_run_id = asyncio.run(
                 self.codex_service.start_codex_run(
                     repo_path=worktree_path,
-                    model="gpt-5-codex",
-                    max_parallel=1,
+                    model=task_model,
+                    max_parallel=task_max_parallel,
                     run_id=f"{run_id}-{task_id}",
                     goal=task_goal,
                 )
@@ -296,6 +313,8 @@ class TaskExecutor:
             "branch": branch,
             "status": status,
             "codex_run_id": codex_run_id,
+            "model": task_model,
+            "max_parallel": task_max_parallel,
             "orchestration_summary": orchestration_summary,
             "artifacts": {
                 "log": str(artifacts.log_file),
