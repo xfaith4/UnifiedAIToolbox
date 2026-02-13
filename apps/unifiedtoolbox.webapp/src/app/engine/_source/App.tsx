@@ -39,9 +39,10 @@ const App: React.FC = () => {
     clearHistory
   } = useOrchestrator();
 
-  const { data: jobTypesData } = useJobTypes()
+  const { data: jobTypesData, loading: jobTypesLoading } = useJobTypes()
   const [jobType, setJobType] = useState<string>('build_new_app')
   const jobTypeConfig = jobTypesData?.job_types?.[jobType] ?? null
+  const isJobTypesHydrating = jobTypesLoading && !jobTypesData
   const isMaintenance = jobType === 'maintain_existing_app'
   const jobTypeOptions = useMemo(
     () =>
@@ -74,6 +75,13 @@ const App: React.FC = () => {
   const [isApiKeyMissing, setIsApiKeyMissing] = useState(false);
   const [viewFile, setViewFile] = useState<{ runId: string; relPath: string; scope?: 'repo' | 'run' } | null>(null);
   const [autoValidatedSessionId, setAutoValidatedSessionId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!jobTypesData?.job_types) return
+    if (jobTypesData.job_types[jobType]) return
+    const firstJobType = Object.keys(jobTypesData.job_types)[0]
+    if (firstJobType) setJobType(firstJobType)
+  }, [jobType, jobTypesData])
 
   // Timer effect to update elapsed time when orchestrating
   useEffect(() => {
@@ -332,71 +340,83 @@ const App: React.FC = () => {
         jobTypeLabel={jobTypeConfig?.label || jobType}
       />
       <main className={`flex-1 min-h-0 flex flex-col ${isMaintenance ? 'overflow-y-auto' : 'overflow-hidden'}`}>
-        <GoalInput
-          onGoalSubmit={handleGoalSubmit}
-          isOrchestrating={isMaintenance ? maintenanceRunning : isOrchestrating}
-          onCancelOrchestration={isMaintenance ? cancelMaintenanceRun : cancelOrchestration}
-          jobType={jobType}
-          jobTypeConfig={jobTypeConfig}
-          jobTypeOptions={jobTypeOptions}
-          onJobTypeChange={setJobType}
-        />
-        <JobTypeOverviewPanel jobType={jobType} config={jobTypeConfig} />
-        {isMaintenance ? (
-          <MaintenanceRunPanel
-            runId={maintenanceRunId}
-            status={maintenanceStatus}
-            loading={maintenanceStatusLoading}
-            error={maintenanceError}
-            onOpenArtifact={(relPath) => {
-              if (!maintenanceRunId) return
-              setViewFile({ runId: maintenanceRunId, relPath, scope: 'run' })
-            }}
-            onCancel={cancelMaintenanceRun}
-          />
+        {isJobTypesHydrating ? (
+          <section className="px-4 py-6 border-b border-gray-700 bg-gray-900/30">
+            <div className="max-w-6xl mx-auto">
+              <div className="rounded-lg border border-gray-700 bg-gray-800/40 p-4 text-sm text-gray-300">
+                Loading App Factory configuration...
+              </div>
+            </div>
+          </section>
         ) : (
           <>
-            <PipelineStepper pipeline={pipeline} />
-            <ExpectedOutputsPanel
-              onLearnMore={() => setShowDefinitions(true)}
-              pipeline={pipeline}
-              onViewFile={(relPath) => {
-                if (!pipeline?.runId) return
-                setViewFile({ runId: pipeline.runId, relPath, scope: 'repo' })
-              }}
+            <GoalInput
+              onGoalSubmit={handleGoalSubmit}
+              isOrchestrating={isMaintenance ? maintenanceRunning : isOrchestrating}
+              onCancelOrchestration={isMaintenance ? cancelMaintenanceRun : cancelOrchestration}
+              jobType={jobType}
+              jobTypeConfig={jobTypeConfig}
+              jobTypeOptions={jobTypeOptions}
+              onJobTypeChange={setJobType}
             />
+            <JobTypeOverviewPanel jobType={jobType} config={jobTypeConfig} />
+            {isMaintenance ? (
+              <MaintenanceRunPanel
+                runId={maintenanceRunId}
+                status={maintenanceStatus}
+                loading={maintenanceStatusLoading}
+                error={maintenanceError}
+                onOpenArtifact={(relPath) => {
+                  if (!maintenanceRunId) return
+                  setViewFile({ runId: maintenanceRunId, relPath, scope: 'run' })
+                }}
+                onCancel={cancelMaintenanceRun}
+              />
+            ) : (
+              <>
+                <PipelineStepper pipeline={pipeline} />
+                <ExpectedOutputsPanel
+                  onLearnMore={() => setShowDefinitions(true)}
+                  pipeline={pipeline}
+                  onViewFile={(relPath) => {
+                    if (!pipeline?.runId) return
+                    setViewFile({ runId: pipeline.runId, relPath, scope: 'repo' })
+                  }}
+                />
+              </>
+            )}
+            <div className="flex-1 min-h-0 flex overflow-hidden">
+              <div className="flex-1 min-h-0 flex flex-col min-w-0">
+                <RunMonitorPanel
+                  tasks={tasks}
+                  isOrchestrating={isMaintenance ? maintenanceRunning : isOrchestrating}
+                  viewMode={viewMode}
+                  onChangeViewMode={setViewMode}
+                />
+                <div className="flex-1 min-h-0">
+                  {viewMode === 'graph' ? (
+                    <TaskGraph
+                      tasks={tasks}
+                      onSelectTask={handleSelectTask}
+                      selectedTaskId={selectedTaskId}
+                    />
+                  ) : (
+                    <TaskClustersView
+                      tasks={tasks}
+                      onSelectTask={handleSelectTask}
+                      selectedTaskId={selectedTaskId}
+                    />
+                  )}
+                </div>
+              </div>
+              <SidePanel
+                task={selectedTask}
+                clearSelection={handleClearSelection}
+                onShowDefinitions={() => setShowDefinitions(true)}
+              />
+            </div>
           </>
         )}
-        <div className="flex-1 min-h-0 flex overflow-hidden">
-          <div className="flex-1 min-h-0 flex flex-col min-w-0">
-            <RunMonitorPanel
-              tasks={tasks}
-              isOrchestrating={isMaintenance ? maintenanceRunning : isOrchestrating}
-              viewMode={viewMode}
-              onChangeViewMode={setViewMode}
-            />
-            <div className="flex-1 min-h-0">
-              {viewMode === 'graph' ? (
-                <TaskGraph
-                  tasks={tasks}
-                  onSelectTask={handleSelectTask}
-                  selectedTaskId={selectedTaskId}
-                />
-              ) : (
-                <TaskClustersView
-                  tasks={tasks}
-                  onSelectTask={handleSelectTask}
-                  selectedTaskId={selectedTaskId}
-                />
-              )}
-            </div>
-          </div>
-          <SidePanel
-            task={selectedTask}
-            clearSelection={handleClearSelection}
-            onShowDefinitions={() => setShowDefinitions(true)}
-          />
-        </div>
       </main>
 
       {/* Modals and Panels */}

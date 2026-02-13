@@ -79,6 +79,50 @@ async function markRunLaunchFailure(
   }
 }
 
+async function markRunLaunchSuccess(
+  runDir: string,
+  runId: string,
+  details: Record<string, unknown> = {}
+): Promise<void> {
+  const statePath = path.join(runDir, 'run_state.json')
+  const eventsPath = path.join(runDir, 'events.ndjson')
+  const now = new Date().toISOString()
+
+  try {
+    const raw = await fsp.readFile(statePath, 'utf8')
+    const state = JSON.parse(raw) as Record<string, unknown>
+    const existingErrors = Array.isArray(state.errors) ? state.errors.map(String) : []
+    const existingWarnings = Array.isArray(state.warnings) ? state.warnings.map(String) : []
+    const next = {
+      ...state,
+      run_id: runId,
+      status: 'succeeded',
+      current_stage: null,
+      progress: 100,
+      ended_at: now,
+      updated_at: now,
+      errors: existingErrors,
+      warnings: existingWarnings,
+    }
+    await fsp.writeFile(statePath, JSON.stringify(next, null, 2) + '\n', 'utf8')
+  } catch {
+    // If state writing fails, still attempt to append an event for diagnostics.
+  }
+
+  const eventRecord = {
+    ts: now,
+    type: 'status',
+    stage: 'run',
+    message: 'succeeded',
+    data: details,
+  }
+  try {
+    await fsp.appendFile(eventsPath, JSON.stringify(eventRecord) + '\n', 'utf8')
+  } catch {
+    // no-op
+  }
+}
+
 export async function POST(req: Request) {
   let payload: StartRunRequest = {}
   try {
@@ -136,12 +180,12 @@ export async function POST(req: Request) {
   await fsp.appendFile(eventsPath, JSON.stringify({ ts: now, type: 'info', message: 'queued' }) + '\n', 'utf8')
 
   const repoRoot = path.resolve(process.cwd(), '..', '..')
-  const scriptPath = path.join(repoRoot, 'Orchestration', 'scripts', 'MilestoneController.ps1')
+  const scriptPath = path.join(repoRoot, 'Orchestration', 'scripts', 'Unified-Orchestration.ps1')
   if (!fs.existsSync(scriptPath)) {
     const errorPath = path.join(runDir, 'run_error.md')
-    await fsp.writeFile(errorPath, '# Run Error\n\nMilestoneController.ps1 not found.\n', 'utf8')
+    await fsp.writeFile(errorPath, '# Run Error\n\nUnified-Orchestration.ps1 not found.\n', 'utf8')
     return NextResponse.json(
-      { error: { code: 'SCRIPT_MISSING', message: 'MilestoneController.ps1 not found', details: { path: scriptPath } } },
+      { error: { code: 'SCRIPT_MISSING', message: 'Unified-Orchestration.ps1 not found', details: { path: scriptPath } } },
       { status: 500 }
     )
   }
@@ -151,6 +195,12 @@ export async function POST(req: Request) {
   const logFd = fs.openSync(logPath, 'a')
 
   try {
+    const goal = String(request.goal || '').trim()
+    const model = typeof request.model === 'string' && request.model.trim()
+      ? request.model.trim()
+      : null
+    const instruction = `Job type: ${jobType}\nRun ID: ${runId}`
+
     const psArgs = [
       '-NoLogo',
       '-NoProfile',
@@ -159,13 +209,17 @@ export async function POST(req: Request) {
       'Bypass',
       '-File',
       scriptPath,
-      '-RequestPath',
-      requestPath,
-      '-JobType',
-      jobType,
+      '-Goal',
+      goal,
+      '-Instruction',
+      instruction,
       '-OutputDir',
       runDir,
+      '-RunCodex',
     ]
+    if (model) {
+      psArgs.push('-Model', model)
+    }
     const child = spawn(psExe, psArgs, {
       cwd: repoRoot,
       env: { ...process.env, UAIT_JOB_TYPE: jobType, UAIT_REQUEST_PATH: requestPath },
@@ -183,7 +237,14 @@ export async function POST(req: Request) {
     })
 
     child.on('exit', (code, signal) => {
-      if (code === 0) return
+      if (code === 0) {
+        void markRunLaunchSuccess(runDir, runId, {
+          kind: 'completed',
+          code,
+          signal,
+        })
+        return
+      }
       const reason =
         typeof code === 'number'
           ? `Run worker exited early with code ${code}.`

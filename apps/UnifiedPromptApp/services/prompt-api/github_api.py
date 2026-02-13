@@ -8,6 +8,8 @@ pull requests, issues, and orchestration result uploads.
 import os
 import json
 import logging
+import shutil
+import subprocess
 from typing import Optional, Dict, Any, List
 from pathlib import Path
 from datetime import datetime
@@ -629,6 +631,10 @@ class OrchestrationRunRequest(BaseModel):
     """Request model for running orchestration on a GitHub repository."""
     repo_url: str = Field(..., description="Repository URL or owner/repo format")
     branch: Optional[str] = Field(None, description="Specific branch to clone")
+    goal: Optional[str] = Field(None, description="Optional goal override for orchestration")
+    model: Optional[str] = Field(None, description="Optional model override")
+    instruction: Optional[str] = Field(None, description="Optional instruction override")
+    run_codex: Optional[bool] = Field(None, description="Whether to run Codex swarm")
     create_pr: bool = Field(False, description="Create PR with orchestration results")
     pr_base_branch: str = Field("main", description="Base branch for PR")
     orchestration_type: str = Field("codex", description="Type of orchestration to run (codex, custom)")
@@ -650,13 +656,6 @@ def run_orchestration_on_repo(
 ):
     """
     Clone a GitHub repository and run orchestration on it.
-    
-    This endpoint:
-    1. Clones the specified repository
-    2. Runs the configured orchestration (e.g., Codex swarm)
-    3. Optionally creates a PR with the results
-    
-    This is the main integration point for running orchestration on GitHub repositories.
     """
     validate_github_available()
     
@@ -680,20 +679,99 @@ def run_orchestration_on_repo(
         )
         
         logger.info(f"Cloned repository to {clone_path} for orchestration run {run_id}")
-        
-        # For now, we'll return a placeholder response
-        # The actual orchestration integration would call the PowerShell scripts
-        # or Python orchestration services here
-        
+
+        repo_root = Path(__file__).resolve().parents[4]
+        orchestrator_script = repo_root / "Orchestration" / "scripts" / "Unified-Orchestration.ps1"
+        if not orchestrator_script.exists():
+            raise RuntimeError(f"Orchestration script not found: {orchestrator_script}")
+
+        runs_dir = repo_root / "apps" / "orchestration-bridge" / "runs"
+        run_output_dir = runs_dir / run_id
+        run_output_dir.mkdir(parents=True, exist_ok=True)
+
+        goal_text = (
+            (request.goal or "").strip()
+            or f"Run repository orchestration for {owner}/{repo_name}"
+        )
+        run_codex = request.run_codex
+        if run_codex is None:
+            run_codex = (request.orchestration_type or "").strip().lower() == "codex"
+
+        ps_exe = shutil.which("pwsh") or shutil.which("powershell")
+        if not ps_exe:
+            raise RuntimeError("PowerShell executable not found (pwsh or powershell).")
+
+        args = [
+            ps_exe,
+            "-NoLogo",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(orchestrator_script),
+            "-RepoRoot",
+            str(clone_path),
+            "-Goal",
+            goal_text,
+            "-OutputDir",
+            str(run_output_dir),
+        ]
+
+        if request.model and request.model.strip():
+            args.extend(["-Model", request.model.strip()])
+        if request.instruction and request.instruction.strip():
+            args.extend(["-Instruction", request.instruction.strip()])
+        if run_codex:
+            args.append("-RunCodex")
+
+        logger.info("Executing orchestration command for run_id=%s", run_id)
+        proc = subprocess.run(
+            args,
+            cwd=str(clone_path),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            check=False,
+        )
+
+        if proc.returncode != 0:
+            tail = (proc.stdout or "")[-4000:]
+            raise RuntimeError(
+                f"Orchestration failed for run_id={run_id} with exit code {proc.returncode}. Output tail: {tail}"
+            )
+
+        pr_url = None
+        if request.create_pr:
+            if not token:
+                raise HTTPException(
+                    status_code=401,
+                    detail="GitHub token required to create a pull request.",
+                )
+
+            pr_service = GitHubPRService(github_token=token)
+            pr_info = pr_service.create_pr_from_run(
+                repo_path=Path(clone_path),
+                repo_owner=owner,
+                repo_name=repo_name,
+                findings=[],
+                base_branch=request.pr_base_branch,
+                branch_name=None,
+            )
+            pr_url = pr_info.get("pr_url")
+
         return OrchestrationRunResponse(
             run_id=run_id,
             repo_path=str(clone_path),
-            status="cloned",
-            message=f"Repository cloned successfully. Orchestration run queued. Path: {clone_path}",
-            pr_url=None
+            status="completed",
+            message=f"Repository orchestration completed successfully. Output: {run_output_dir}",
+            pr_url=pr_url,
         )
     except RepositoryCloneError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except PRCreationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to run orchestration: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to run orchestration: {str(e)}")

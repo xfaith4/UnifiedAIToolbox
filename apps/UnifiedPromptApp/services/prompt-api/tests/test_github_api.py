@@ -10,7 +10,7 @@ import os
 import sys
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 from fastapi import FastAPI
@@ -18,15 +18,6 @@ from fastapi.testclient import TestClient
 
 # Ensure prompt-api package directory is importable
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-# Mock orchestration-bridge deps so `github_api` can import in isolation.
-sys.modules.setdefault("github_integration", MagicMock())
-sys.modules.setdefault("github_integration.clone_service", MagicMock())
-sys.modules.setdefault("github_integration.pr_service", MagicMock())
-sys.modules.setdefault("github_integration.repo_intake_service", MagicMock())
-sys.modules.setdefault("github_integration.supervisor_planner", MagicMock())
-sys.modules.setdefault("shared", MagicMock())
-sys.modules.setdefault("shared.github_core", MagicMock())
 
 from github_api import router  # noqa: E402
 
@@ -330,22 +321,34 @@ class TestPullRequestsIssuesBranches:
 
 class TestOrchestrationIntegration:
     @patch("github_api.GITHUB_AVAILABLE", True)
+    @patch("github_api.shutil.which")
+    @patch("github_api.subprocess.run")
     @patch("github_api.GitHubCloneService")
     @patch("github_api.parse_repo_url")
-    def test_run_orchestration_on_repo(self, mock_parse, mock_service_class):
+    def test_run_orchestration_on_repo(
+        self,
+        mock_parse,
+        mock_service_class,
+        mock_subprocess_run,
+        mock_which,
+    ):
         mock_parse.return_value = ("owner", "repo")
+        mock_which.return_value = "pwsh"
 
         mock_service = Mock()
         mock_service.clone_repository.return_value = Path("/tmp/clones/orch_owner_repo_12345")
         mock_service_class.return_value = mock_service
+        mock_subprocess_run.return_value = Mock(returncode=0, stdout="ok")
 
         response = client.post("/github/orchestration/run", json={"repo_url": "https://github.com/owner/repo", "create_pr": False})
         assert response.status_code == 200
         data = response.json()
         assert "run_id" in data
         assert "repo_path" in data
-        assert data["status"] == "cloned"
+        assert data["status"] == "completed"
         assert "orch_owner_repo" in data["run_id"]
+        command = mock_subprocess_run.call_args[0][0]
+        assert "-RunCodex" in command
 
     @patch("github_api.GITHUB_AVAILABLE", True)
     @patch("github_api.GitHubPRService")

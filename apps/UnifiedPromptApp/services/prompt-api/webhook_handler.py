@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 # Configuration
 WEBHOOK_SECRET = os.environ.get("GITHUB_WEBHOOK_SECRET", "")
 REPO_ROOT = pathlib.Path(__file__).parents[5].resolve()
-ORCHESTRATOR_SCRIPT = REPO_ROOT / "Orchestration" / "MilestoneController.ps1"
+ORCHESTRATOR_SCRIPT = REPO_ROOT / "Orchestration" / "scripts" / "Unified-Orchestration.ps1"
 REPO_ANALYSIS_SCRIPT = REPO_ROOT / "scripts" / "Run-RepoAnalysis.ps1"
 
 # Router for webhook endpoints
@@ -107,7 +107,10 @@ DEFAULT_TRIGGERS: List[OrchestrationTrigger] = [
         actions=["opened", "synchronize", "reopened"],
         orchestration_action=OrchestrationAction.CODE_REVIEW,
         script_path=ORCHESTRATOR_SCRIPT,
-        script_args={"Action": "review-pr"},
+        script_args={
+            "RunCodex": True,
+            "Goal": "Perform a pull request quality review and propose required fixes.",
+        },
         enabled=True
     ),
     # Trigger security scan on PR opened
@@ -116,7 +119,10 @@ DEFAULT_TRIGGERS: List[OrchestrationTrigger] = [
         actions=["opened"],
         orchestration_action=OrchestrationAction.SECURITY_SCAN,
         script_path=ORCHESTRATOR_SCRIPT,
-        script_args={"Action": "security-scan"},
+        script_args={
+            "RunCodex": True,
+            "Goal": "Perform a repository security review and propose remediations.",
+        },
         enabled=True
     ),
 ]
@@ -197,7 +203,8 @@ def should_trigger_orchestration(
 def execute_orchestration(
     trigger: OrchestrationTrigger,
     webhook_payload: WebhookPayload,
-    webhook_id: str
+    webhook_id: str,
+    event_type: str,
 ) -> str:
     """
     Execute the orchestration script in the background.
@@ -222,21 +229,40 @@ def execute_orchestration(
             "-ExecutionPolicy", "Bypass",
             "-File", str(trigger.script_path)
         ]
-        
-        # Add script-specific arguments
-        for key, value in trigger.script_args.items():
+
+        # Add script-specific arguments.
+        script_args = dict(trigger.script_args or {})
+
+        if trigger.script_path == ORCHESTRATOR_SCRIPT:
+            repo_name = (
+                webhook_payload.repository.get("full_name", "unknown/repository")
+                if webhook_payload.repository
+                else "unknown/repository"
+            )
+            action = webhook_payload.action or "unknown"
+            default_goal = f"Process GitHub webhook for {repo_name} ({event_type}:{action})"
+            instruction = (
+                f"Webhook delivery id: {webhook_id}\n"
+                f"Event type: {event_type}\n"
+                f"Action: {action}\n"
+                f"Repository: {repo_name}\n"
+                f"Orchestration action: {trigger.orchestration_action.value}"
+            )
+            output_dir = REPO_ROOT / "artifacts" / "webhooks" / webhook_id
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            script_args.setdefault("Goal", default_goal)
+            script_args.setdefault("Instruction", instruction)
+            script_args.setdefault("OutputDir", str(output_dir))
+
+        for key, value in script_args.items():
+            if isinstance(value, bool):
+                if value:
+                    args.append(f"-{key}")
+                continue
+            if value is None:
+                continue
             args.extend([f"-{key}", str(value)])
-        
-        # Add webhook context
-        args.extend([
-            "-WebhookId", webhook_id,
-            "-EventType", webhook_payload.action or "unknown"
-        ])
-        
-        # Extract repository info if available
-        if webhook_payload.repository:
-            repo_name = webhook_payload.repository.get("full_name", "unknown")
-            args.extend(["-Repository", repo_name])
         
         logger.info(f"Executing orchestration: {' '.join(args)}")
         
@@ -330,7 +356,12 @@ async def handle_github_webhook(
             )
             
             # Queue orchestration execution in background
-            run_id = execute_orchestration(trigger, webhook_payload, webhook_id)
+            run_id = execute_orchestration(
+                trigger=trigger,
+                webhook_payload=webhook_payload,
+                webhook_id=webhook_id,
+                event_type=x_github_event or "unknown",
+            )
             triggered_orchestrations.append(run_id)
     
     # Return response immediately
