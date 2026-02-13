@@ -12,9 +12,10 @@ export function nodeMatchesFilter(node: unknown, filter: string): boolean {
 }
 
 /**
- * Render markdown content
+ * Prepare markdown content for rendering
+ * Note: This is a pass-through function that returns the content unchanged.
+ * Actual markdown rendering is handled by the UI component.
  */
 export function renderMarkdown(content: string): string {
-  // Basic markdown rendering - can be enhanced later
   return content
 }

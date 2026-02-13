@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type JsonObject = Record<string, any>
 
 function readJson(filePath: string): JsonObject {
