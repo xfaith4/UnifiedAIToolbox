@@ -189,7 +189,7 @@ $report = [ordered]@{
 }
 
 if (-not $SkipCodex) {
-    $codexScript = Join-Path $repoRoot 'codex-multiagent-swarm' 'Orchestrate-Codex.ps1'
+    $codexScript = Join-Path $repoRoot 'Orchestration' 'engine' 'codex-multiagent-swarm' 'Orchestrate-Codex.ps1'
     if (-not (Test-Path -LiteralPath $codexScript)) {
         throw "Codex swarm script not found: $codexScript"
     }

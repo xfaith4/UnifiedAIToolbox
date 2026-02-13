@@ -4,6 +4,8 @@ import type { RepoContract } from './RepoContract'
 import { globToRegExp } from './glob'
 import { DEFAULT_CODE_FILE_FORBIDDEN } from './defaultForbidden'
 
+type PackageJson = Record<string, unknown>
+
 export type ContractFailure =
   | { kind: 'missing_required_file'; pattern: string; message: string }
   | { kind: 'missing_required_any'; patterns: string[]; message: string }

@@ -5,12 +5,12 @@ import { NextResponse } from 'next/server'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-type JsonValue = string | number | boolean | null | JsonObject | JsonValue[]
-type JsonObject = Record<string, JsonValue>
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type JsonObject = Record<string, any>
 
 function readJson(filePath: string): JsonObject {
   const raw = fs.readFileSync(filePath, 'utf8')
-  return JSON.parse(raw)
+  return JSON.parse(raw) as JsonObject
 }
 
 function resolveRepoPath(repoRoot: string, input?: string): string | null {

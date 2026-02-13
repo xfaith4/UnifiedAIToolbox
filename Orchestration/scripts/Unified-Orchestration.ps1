@@ -37,7 +37,7 @@ Import-Module $CommonModule -Force
 $RepoRoot = (Resolve-Path $RepoRoot).Path
 $BaseDir  = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $ScriptsDir = Join-Path $BaseDir "scripts"
-$DataDir    = Join-Path $BaseDir "MilestoneDashboard\public\data"
+$DataDir    = Join-Path $RepoRoot "data"
 $LogPath    = Join-Path $DataDir "Milestone_Log.json"
 $TrendPath  = Join-Path $DataDir "Metrics_Trend.json"
 
@@ -95,7 +95,7 @@ if ($SkipCodex) {
     return
 }
 
-$codexScript = Join-Path $BaseDir "codex-multiagent-swarm\Orchestrate-Codex.ps1"
+$codexScript = Join-Path $BaseDir "engine\codex-multiagent-swarm\Orchestrate-Codex.ps1"
 if (-not (Test-Path $codexScript)) {
     throw "Codex orchestrator script not found at $codexScript"
 }

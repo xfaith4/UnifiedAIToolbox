@@ -70,20 +70,25 @@ interface SearchFilters {
 
 interface MCPCollection {
   id: string
+  collection_id: string
   name: string
   description?: string
   server_ids: string[]
   tags: string[]
   created_at?: string
+  created_by?: string
 }
 
 interface MCPInstallation {
+  install_id: string
   server_id: string
   name: string
   status: string
   installed_at?: string
+  installed_by?: string
   version?: string
   location?: string
+  notes?: string
 }
 
 export default function MCPLibraryPage() {
@@ -651,7 +656,7 @@ export default function MCPLibraryPage() {
                         </TableCell>
                         <TableCell>{install.installed_by}</TableCell>
                         <TableCell>
-                          {new Date(install.installed_at).toLocaleDateString()}
+                          {install.installed_at && new Date(install.installed_at).toLocaleDateString()}
                         </TableCell>
                         <TableCell>
                           <FormControlLabel
