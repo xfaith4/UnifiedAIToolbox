@@ -5,7 +5,8 @@ import { NextResponse } from 'next/server'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-type JsonValue = string | number | boolean | null | JsonObject | JsonValue[]
+type JsonValue = string | number | boolean | null | JsonObject | JsonArray
+type JsonArray = JsonValue[]
 type JsonObject = Record<string, JsonValue>
 
 function readJson(filePath: string): JsonObject {

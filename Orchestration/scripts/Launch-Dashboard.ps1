@@ -4,7 +4,7 @@ $BaseDir = (Resolve-Path $BaseDir).Path
 if (-not (Test-Path $BaseDir)) {
     throw "Base directory not found: $BaseDir"
 }
-$indexPath = Join-Path $BaseDir "MilestoneDashboard\index.html"
+$indexPath = Join-Path $BaseDir "demo-orchestration-sim.html"
 if (-not (Test-Path $indexPath)) {
     Write-Warning "Dashboard file not found: $indexPath"
     return
