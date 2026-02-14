@@ -43,7 +43,7 @@ jobs:
     steps:
       - name: Summarize coverage
         run: |
-          api_result="${{ needs.prompt_api.result }}"
+          api_result="${API_RESULT}"
 
           checkbox() {
             if [ "$1" = "success" ]; then
@@ -64,3 +64,5 @@ jobs:
           if [ "$api_result" = "failure" ]; then
             exit 1
           fi
+        env:
+          API_RESULT: ${{ needs.prompt_api.result }}
