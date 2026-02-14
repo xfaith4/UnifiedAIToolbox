@@ -38,7 +38,7 @@ const loadEnvFromRepoRoot = () => {
 loadEnvFromRepoRoot()
 
 const nextConfig = {
-  reactCompiler: true,
+  reactCompiler: false,
   turbopack: {
     root: path.resolve(appRoot, '..', '..'),
   },
