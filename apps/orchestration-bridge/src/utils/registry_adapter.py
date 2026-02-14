@@ -11,8 +11,9 @@ import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import Any, Dict, List, Optional
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 import requests
 from pydantic import ValidationError
@@ -136,23 +137,28 @@ class OfficialMCPRegistryAdapter(RegistrySource):
         url: str = "https://registry.modelcontextprotocol.io/v0.1/servers",
         timeout: int = 30,
         include_deprecated: bool = False,
+        updated_since: Optional[str] = None,
     ):
         super().__init__(source_id="official", url=url)
         self.timeout = timeout
         self.include_deprecated = include_deprecated
+        self.updated_since = updated_since
 
         self._max_retries = 3
         self._retry_backoff_s = 1.0
+        self._max_retry_after_s = 30.0
         self._page_limit = 100
         self._remote_type_preference = ("streamable-http", "sse")
         self._user_agent = "UnifiedAIToolbox/orchestration-bridge registry-ingestor"
         self._latest_fetch_workers = 4
         self._prefer_list_manifest_when_available = True
+        self._allowed_schema_hosts = {"static.modelcontextprotocol.io"}
         self._schema_cache: Dict[str, Dict[str, Any]] = {_PINNED_SERVER_SCHEMA_URI: dict(_PINNED_SERVER_SCHEMA_BASELINE)}
         self._schema_fetch_failures: set[str] = set()
 
         # Diagnostics only (future packages/stdio support).
         self.packages_only_servers: List[str] = []
+        self.packages_only_manifests: List[Dict[str, Any]] = []
         self.skipped_deleted_servers: List[str] = []
         self.skipped_deprecated_servers: List[str] = []
 
@@ -185,9 +191,16 @@ class OfficialMCPRegistryAdapter(RegistrySource):
             retry_after = response.headers.get("Retry-After")
             if retry_after:
                 try:
-                    return max(float(retry_after), 0.1)
+                    return min(max(float(retry_after), 0.1), self._max_retry_after_s)
                 except ValueError:
-                    pass
+                    try:
+                        dt = parsedate_to_datetime(retry_after)
+                        if dt.tzinfo is None:
+                            dt = dt.replace(tzinfo=timezone.utc)
+                        seconds = (dt - datetime.now(timezone.utc)).total_seconds()
+                        return min(max(seconds, 0.1), self._max_retry_after_s)
+                    except Exception:
+                        pass
         return min(self._retry_backoff_s * (2 ** (attempt - 1)), 8.0)
 
     def _request_json_with_retry(
@@ -258,6 +271,8 @@ class OfficialMCPRegistryAdapter(RegistrySource):
             params: Dict[str, Any] = {"limit": self._page_limit}
             if cursor:
                 params["cursor"] = cursor
+            if self.updated_since and not cursor:
+                params["updated_since"] = self.updated_since
 
             payload = self._request_json_with_retry(self._list_endpoint(), params=params)
             page_items: List[Any] = []
@@ -368,6 +383,13 @@ class OfficialMCPRegistryAdapter(RegistrySource):
 
         return summary
 
+    def _is_allowed_schema_uri(self, schema_uri: str) -> bool:
+        parsed = urlparse((schema_uri or "").strip())
+        if parsed.scheme != "https":
+            return False
+        host = (parsed.hostname or "").strip().lower()
+        return host in self._allowed_schema_hosts
+
     def _can_use_prefetched_manifest(self, manifest: Dict[str, Any]) -> bool:
         if not isinstance(manifest, dict):
             return False
@@ -378,6 +400,10 @@ class OfficialMCPRegistryAdapter(RegistrySource):
     def _load_schema(self, schema_uri: str) -> Optional[Dict[str, Any]]:
         uri = (schema_uri or "").strip()
         if not uri:
+            return None
+        if not self._is_allowed_schema_uri(uri):
+            logger.debug("Blocked schema fetch for non-allowlisted URI: %s", uri)
+            self._schema_fetch_failures.add(uri)
             return None
         if uri in self._schema_cache:
             return self._schema_cache[uri]
@@ -409,16 +435,22 @@ class OfficialMCPRegistryAdapter(RegistrySource):
         requested_uri = declared_uri or _PINNED_SERVER_SCHEMA_URI
         mode = "manifest" if declared_uri else "baseline"
 
-        schema = self._load_schema(requested_uri)
+        schema: Optional[Dict[str, Any]] = None
         schema_uri_used = requested_uri
-        if schema is None and requested_uri != _PINNED_SERVER_SCHEMA_URI:
-            schema = self._load_schema(_PINNED_SERVER_SCHEMA_URI)
+        if declared_uri and not self._is_allowed_schema_uri(declared_uri):
+            schema = self._schema_cache.get(_PINNED_SERVER_SCHEMA_URI, _PINNED_SERVER_SCHEMA_BASELINE)
             schema_uri_used = _PINNED_SERVER_SCHEMA_URI
-            mode = "manifest_fallback"
-        elif schema is None:
-            schema = _PINNED_SERVER_SCHEMA_BASELINE
-            schema_uri_used = _PINNED_SERVER_SCHEMA_URI
-            mode = "baseline_fallback"
+            mode = "baseline_untrusted_schema_uri"
+        else:
+            schema = self._load_schema(requested_uri)
+            if schema is None and requested_uri != _PINNED_SERVER_SCHEMA_URI:
+                schema = self._load_schema(_PINNED_SERVER_SCHEMA_URI)
+                schema_uri_used = _PINNED_SERVER_SCHEMA_URI
+                mode = "manifest_fallback"
+            elif schema is None:
+                schema = _PINNED_SERVER_SCHEMA_BASELINE
+                schema_uri_used = _PINNED_SERVER_SCHEMA_URI
+                mode = "baseline_fallback"
 
         errors: List[str] = []
         validation_ok = True
@@ -610,6 +642,23 @@ class OfficialMCPRegistryAdapter(RegistrySource):
                 # packages[] only; current MCPServer model cannot activate local launch config.
                 if has_packages:
                     self.packages_only_servers.append(server_id)
+                    self.packages_only_manifests.append(
+                        {
+                            "id": server_id,
+                            "name": str(manifest.get("title") or server_id),
+                            "status": status,
+                            "schemaUri": validation.get("declaredSchemaUri") or validation.get("schemaUri"),
+                            "version": manifest.get("version"),
+                            "repository": manifest.get("repository"),
+                            "websiteUrl": manifest.get("websiteUrl"),
+                            "packages": manifest.get("packages", []),
+                            "remotes": manifest.get("remotes", []),
+                            "activatable": False,
+                            "activationReason": "packages_only_not_supported_yet",
+                            "source": "official-registry",
+                            "ingested_at": datetime.now(timezone.utc).isoformat(),
+                        }
+                    )
                     logger.debug("Skipping packages-only MCP server (no remotes[]): %s", server_id)
                 else:
                     logger.warning(
@@ -805,8 +854,9 @@ def ingest_from_source(
         stats["servers_total"] = len(existing_registry.servers)
         existing_registry.metadata["last_sync"] = datetime.now(timezone.utc).isoformat()
         existing_registry.metadata["last_source"] = str(source.source_id)
-        if hasattr(source, "packages_only_servers"):
-            skipped_packages = len(getattr(source, "packages_only_servers", []))
+        packages_only_servers = getattr(source, "packages_only_servers", None)
+        if isinstance(packages_only_servers, list):
+            skipped_packages = len(packages_only_servers)
             if skipped_packages:
                 logger.warning(
                     "Skipped %d packages-only servers from source '%s' (metadata-only for now)",
@@ -814,6 +864,16 @@ def ingest_from_source(
                     source.source_id,
                 )
                 existing_registry.metadata.setdefault("skipped_packages_only", {})[str(source.source_id)] = skipped_packages
+        packages_only_manifests = getattr(source, "packages_only_manifests", None)
+        if isinstance(packages_only_manifests, list):
+            metadata_only = existing_registry.metadata.setdefault("metadata_only_servers", {})
+            source_bucket = metadata_only.setdefault(str(source.source_id), {})
+            for entry in packages_only_manifests:
+                if not isinstance(entry, dict):
+                    continue
+                entry_id = entry.get("id")
+                if isinstance(entry_id, str) and entry_id.strip():
+                    source_bucket[entry_id] = entry
 
         logger.info(
             "Ingestion complete: %d added, %d updated, %d total",

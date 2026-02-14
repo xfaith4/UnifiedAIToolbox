@@ -273,6 +273,28 @@ class TestOfficialMCPRegistryAdapter:
         assert server.metadata["structuredInputs"]["remoteInputs"] >= 1
         assert server.metadata["structuredInputs"]["packageRuntimeArguments"] >= 1
 
+    def test_normalize_untrusted_schema_uri_uses_pinned_baseline_mode(self):
+        adapter = OfficialMCPRegistryAdapter()
+        raw_data = {
+            "$schema": "http://169.254.169.254/evil.schema.json",
+            "name": "org/untrusted-schema",
+            "description": "Untrusted schema URI should not be fetched",
+            "version": "1.0.0",
+            "remotes": [{"type": "streamable-http", "url": "https://safe.example/mcp"}],
+        }
+
+        with patch("requests.get") as mock_get:
+            server = adapter.normalize(raw_data)
+
+        assert server is not None
+        assert server.metadata["schemaUri"] == "http://169.254.169.254/evil.schema.json"
+        assert server.metadata["schemaValidation"]["mode"] == "baseline_untrusted_schema_uri"
+        assert (
+            server.metadata["schemaValidation"]["schemaUriUsed"]
+            == "https://static.modelcontextprotocol.io/schemas/2025-09-16/server.schema.json"
+        )
+        mock_get.assert_not_called()
+
     def test_fetch_retries_transient_errors(self):
         adapter = OfficialMCPRegistryAdapter()
 
@@ -380,3 +402,26 @@ class TestIngestFromSource:
         assert stats["servers_updated"] == 0
         assert len(stats["errors"]) == 1
         assert "Network error" in stats["errors"][0]
+
+    def test_ingest_persists_packages_only_metadata_entries(self):
+        existing = MCPRegistry(servers=[], metadata={})
+        source = Mock()
+        source.source_id = "official"
+        source.fetch.return_value = []
+        source.normalize = lambda raw: None
+        source.packages_only_servers = ["org/pkg-only"]
+        source.packages_only_manifests = [
+            {
+                "id": "org/pkg-only",
+                "activatable": False,
+                "activationReason": "packages_only_not_supported_yet",
+            }
+        ]
+
+        stats = ingest_from_source(source, existing)
+
+        assert stats["errors"] == []
+        metadata_only = existing.metadata["metadata_only_servers"]["official"]
+        assert "org/pkg-only" in metadata_only
+        assert metadata_only["org/pkg-only"]["activatable"] is False
+        assert existing.metadata["skipped_packages_only"]["official"] == 1

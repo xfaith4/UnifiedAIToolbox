@@ -119,12 +119,21 @@ class RegistryRefreshService:
         except Exception as e:
             logger.error(f"Failed to load existing registry: {e}")
             registry = MCPRegistry(servers=[], metadata={})
+
+        cache_data = self._load_cache()
+        updated_since: Optional[str] = None
+        if not force:
+            cache_sync = cache_data.get("lastSuccessfulRegistrySyncAt") or cache_data.get("last_successful_registry_sync_at")
+            cache_refresh = cache_data.get("last_refresh")
+            updated_since = cache_sync or cache_refresh
         
         # Try to ingest from official registry
         official_source = OfficialMCPRegistryAdapter(
             url=settings.mcp_registry_url,
-            timeout=settings.mcp_fetch_timeout
+            timeout=settings.mcp_fetch_timeout,
+            updated_since=updated_since,
         )
+        official_sync_success = False
         
         try:
             logger.info("Attempting to refresh from official MCP registry")
@@ -138,6 +147,7 @@ class RegistryRefreshService:
             
             if not stats["errors"]:
                 result["success"] = True
+                official_sync_success = True
             
         except Exception as e:
             error_msg = f"Failed to fetch from official registry: {str(e)}"
@@ -169,10 +179,18 @@ class RegistryRefreshService:
                 logger.info(f"Saved registry with {result['servers_total']} servers")
                 
                 # Update cache metadata
-                self._save_cache({
-                    "last_refresh": datetime.now(timezone.utc).isoformat(),
+                sync_timestamp = datetime.now(timezone.utc).isoformat()
+                cache_payload = {
+                    "last_refresh": sync_timestamp,
                     "servers_count": result["servers_total"],
                     "sources": result["sources_synced"]
+                }
+                if official_sync_success:
+                    cache_payload["last_successful_registry_sync_at"] = sync_timestamp
+                    cache_payload["lastSuccessfulRegistrySyncAt"] = sync_timestamp
+                self._save_cache({
+                    **cache_data,
+                    **cache_payload,
                 })
                 
             except Exception as e:

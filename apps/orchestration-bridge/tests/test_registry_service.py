@@ -310,5 +310,41 @@ class TestRegistryRefreshService:
             with open(cache_path, "r") as f:
                 cache_data = json.load(f)
                 assert "last_refresh" in cache_data
+                assert "last_successful_registry_sync_at" in cache_data
                 assert cache_data["servers_count"] == 1
                 assert "official" in cache_data["sources"]
+
+    def test_refresh_uses_updated_since_from_last_successful_sync(self, tmp_path):
+        """Test incremental official sync passes updated_since from cache metadata."""
+        registry_path = tmp_path / "registry.json"
+        cache_path = tmp_path / "cache.json"
+
+        last_successful = "2026-02-10T12:00:00+00:00"
+        stale_refresh = (datetime.now(timezone.utc) - timedelta(hours=30)).isoformat()
+        with open(cache_path, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "last_refresh": stale_refresh,
+                    "last_successful_registry_sync_at": last_successful,
+                    "servers_count": 0,
+                    "sources": ["official"],
+                },
+                f,
+            )
+
+        service = RegistryRefreshService(
+            registry_path=registry_path,
+            cache_path=cache_path,
+        )
+
+        with patch("src.utils.registry_service.OfficialMCPRegistryAdapter") as mock_adapter_class:
+            mock_adapter = Mock()
+            mock_adapter_class.return_value = mock_adapter
+            mock_adapter.fetch.return_value = []
+            mock_adapter.normalize.side_effect = lambda data: data
+
+            result = service.refresh(force=False)
+
+            assert result["success"] is True
+            kwargs = mock_adapter_class.call_args.kwargs
+            assert kwargs["updated_since"] == last_successful
