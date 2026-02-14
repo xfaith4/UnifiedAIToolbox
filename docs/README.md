@@ -10,6 +10,13 @@ Purpose: Provide a concise navigation map for Unified AI Toolbox documentation.
 - [Hardening](hardening.md) — App Factory hardening, normalization, and gates
 - [Integrations](integrations.md) — GitHub and webhook setup
 
+## Prompt Chain for Rebuilding
+- **[Prompt Chain Package Summary](PROMPT_CHAIN_SUMMARY.md)** — overview of all prompt chain resources ⭐ **START HERE**
+- [Prompt Chain Rebuild Guide](PROMPT_CHAIN_REBUILD.md) — comprehensive phased prompts to recreate this application
+- [Prompt Chain Quick Reference](PROMPT_CHAIN_QUICK_REFERENCE.md) — quick guide with checklist and tips
+- [Prompt Chain Examples](PROMPT_CHAIN_EXAMPLES.md) — real-world usage examples and patterns
+- [Prompt Chain Flow Diagrams](PROMPT_CHAIN_FLOW.md) — visual flow charts and architecture diagrams
+
 ## Core docs
 - [Architecture](architecture.md)
 - [Orchestration](orchestration.md)

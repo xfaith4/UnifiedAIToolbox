@@ -195,10 +195,35 @@ The AI Toolbox follows a lightweight orchestration workflow for Codex-driven cha
 
 See [AGENTS.md](AGENTS.md) for orchestration rules and definition of done.
 
+## 🎯 Recreate This Application Anytime
+
+**Want to rebuild or fork this platform?** We've created a comprehensive **prompt chain** that can recreate the entire UnifiedAIToolbox application from scratch using AI assistants like GPT-4 or Claude.
+
+### 📖 Prompt Chain Resources
+
+- **[📦 Package Summary](docs/PROMPT_CHAIN_SUMMARY.md)** - Overview of all resources ⭐ **START HERE**
+- **[📋 Complete Rebuild Guide](docs/PROMPT_CHAIN_REBUILD.md)** - Full prompt chain with 26 detailed prompts
+- **[⚡ Quick Reference](docs/PROMPT_CHAIN_QUICK_REFERENCE.md)** - Checklist and time estimates
+- **[💡 Usage Examples](docs/PROMPT_CHAIN_EXAMPLES.md)** - Real-world scenarios and patterns
+- **[📊 Flow Diagrams](docs/PROMPT_CHAIN_FLOW.md)** - Visual architecture and dependency graphs
+
+**Time to rebuild**: 38-54 hours (1-2 weeks) following the structured approach
+
+The prompt chain follows **industry-standard best practices**:
+- ✅ Phased approach with proper dependency ordering (6 phases, 26 prompts)
+- ✅ Each prompt builds on previous ones
+- ✅ Includes testing and quality gates
+- ✅ Comprehensive documentation generation
+- ✅ Deployment configurations included
+
+---
+
 ## 📚 Documentation
 
 - **Start here** - [docs/README.md](docs/README.md)
 - **Getting started** - [docs/getting-started.md](docs/getting-started.md)
+- **Prompt Chain Rebuild** - [docs/PROMPT_CHAIN_REBUILD.md](docs/PROMPT_CHAIN_REBUILD.md) - **Recreate this app at any time!**
+- **Prompt Chain Quick Ref** - [docs/PROMPT_CHAIN_QUICK_REFERENCE.md](docs/PROMPT_CHAIN_QUICK_REFERENCE.md)
 - **Architecture** - [docs/architecture.md](docs/architecture.md)
 - **Orchestration** - [docs/orchestration.md](docs/orchestration.md)
 - **Hardening** - [docs/hardening.md](docs/hardening.md)
