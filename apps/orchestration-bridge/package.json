@@ -2,17 +2,19 @@
   "name": "orchestration-bridge",
   "version": "1.0.0",
   "description": "Orchestration bridge with run tracking and API endpoints",
-  "main": "bridge.py",
+  "main": "bridge.js",
   "scripts": {
     "test": "jest"
   },
+  "engines": {
+    "node": ">=24.13.1"
+  },
   "dependencies": {
-    "cors": "^2.8.5",
-    "express": "^4.18.2",
-    "node": "^24.12.0",
-    "uuid": "^9.0.0"
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "uuid": "^13.0.0"
   },
   "devDependencies": {
-    "jest": "^29.7.0"
+    "jest": "^30.2.0"
   }
 }
