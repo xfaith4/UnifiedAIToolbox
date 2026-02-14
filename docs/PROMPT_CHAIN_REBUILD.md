@@ -781,10 +781,11 @@ Requirements:
 
 1. **cost_metrics.py** (cost calculation):
    - Define token costs for each OpenAI model:
-     * GPT-5.2: $X per 1K input tokens, $Y per 1K output tokens
-     * GPT-4: $0.03/$0.06 per 1K tokens
-     * GPT-4o: $0.005/$0.015 per 1K tokens
-     * GPT-4o-mini: $0.00015/$0.0006 per 1K tokens
+     * GPT-5.2: TBD (verify current pricing from https://openai.com/api/pricing/)
+     * GPT-4: $0.03/$0.06 per 1K tokens (input/output)
+     * GPT-4o: $0.005/$0.015 per 1K tokens (input/output)
+     * GPT-4o-mini: $0.00015/$0.0006 per 1K tokens (input/output)
+     * Note: Always verify current pricing from OpenAI's official pricing page
    - Calculate cost per request
    - Calculate cost per run
    - Calculate cost per agent
