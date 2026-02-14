@@ -10,9 +10,14 @@ export type RunStage = {
 
 export type RunEvent = {
   ts: string
+  runId?: string
   type?: string
   stage?: string
+  phase?: string
+  agent?: string
+  status?: 'running' | 'success' | 'failed' | 'skipped' | 'retrying' | 'pending' | string
   message: string
+  details?: Record<string, unknown>
   data?: Record<string, unknown>
 }
 

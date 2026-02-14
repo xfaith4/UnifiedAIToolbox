@@ -91,6 +91,7 @@ export async function repairLoop(options: {
   gateReport: GateReport
   config: RepairLoopConfig
   onCycle: (cycle: number) => Promise<{ normalization: NormalizeRepoResult; contractEval: RepoContractEvaluation; gateReport: GateReport }>
+  onEvent?: (event: { phase?: string; agent?: string; status?: string; message: string; details?: Record<string, unknown> }) => Promise<void>
 }): Promise<RepairLoopResult> {
   const patchLogPath = path.join(options.repoDir, 'PATCHLOG.md')
   const cycles: RepairCycleResult[] = []
@@ -122,7 +123,12 @@ export async function repairLoop(options: {
       )
       content = res.content
     } catch (err) {
-      cycles.push({ cycle, status: 'failed', message: `Fixer API call failed: ${err instanceof Error ? err.message : String(err)}` })
+      const msg = err instanceof Error ? err.message : String(err)
+      if (msg.includes('429')) {
+        await options.onEvent?.({ phase: 'repair', agent: 'Synthesizer', status: 'retrying', message: `Rate limited — retrying repair cycle ${cycle}`, details: { retryAttempt: cycle } })
+      }
+      cycles.push({ cycle, status: 'failed', message: `Fixer API call failed: ${msg}` })
+      await options.onEvent?.({ phase: 'repair', agent: 'Synthesizer', status: 'failed', message: `Repair cycle ${cycle} failed`, details: { error: msg } })
       break
     }
 
@@ -142,6 +148,7 @@ export async function repairLoop(options: {
     }
 
     cycles.push({ cycle, status: 'applied', message: 'Patch applied', patchPath, patchStat: applied.stat })
+    await options.onEvent?.({ phase: 'repair', agent: 'Synthesizer', status: 'running', message: `Repair cycle ${cycle} patch applied` })
 
     const refreshed = await options.onCycle(cycle)
     options.normalization = refreshed.normalization
