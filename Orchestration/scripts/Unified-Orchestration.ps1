@@ -26,7 +26,13 @@ param(
     [int]$MaxParallel = 3,
     [string]$WorkDir = ".codex_out",
     [string]$OutputDir = "",
-    [switch]$VerboseMode
+    [switch]$VerboseMode,
+    [string]$JobType = "",
+    [string]$RequestPath = "",
+    [string]$ContractPath = "",
+    [switch]$ValidateOnly,
+    [switch]$DryRun,
+    [string]$LogLevel = "Info"
 )
 
 $ErrorActionPreference = "Stop"
@@ -48,10 +54,14 @@ Ensure-OrchDirectory (Join-Path $BaseDir "Goals")
 $contextResolver = Join-Path $ScriptsDir "ContextResolver.ps1"
 $resolvedGoal = Join-Path $BaseDir "Goals\_ResolvedGoal.txt"
 $pofScript = Join-Path $ScriptsDir "POF.ps1"
+$milestoneScript = Join-Path $ScriptsDir "MilestoneController.ps1"
 $codexScript = Join-Path $BaseDir "engine\codex-multiagent-swarm\Orchestrate-Codex.ps1"
 
 if (-not (Test-Path -LiteralPath $pofScript)) {
     throw "POF orchestration script not found at $pofScript"
+}
+if (-not (Test-Path -LiteralPath $milestoneScript)) {
+    throw "Milestone controller script not found at $milestoneScript"
 }
 if ((-not $SkipCodex) -and $RunCodex -and (-not (Test-Path -LiteralPath $codexScript))) {
     throw "Codex orchestrator script not found at $codexScript"
@@ -108,6 +118,49 @@ Ensure-OrchDirectory $resolvedRunOutput
 $effectiveInstruction = $Instruction
 if ([string]::IsNullOrWhiteSpace($effectiveInstruction) -and -not [string]::IsNullOrWhiteSpace($ModelInstruction)) {
     $effectiveInstruction = $ModelInstruction
+}
+
+$requestMode = $false
+if (-not [string]::IsNullOrWhiteSpace($JobType)) {
+    $requestMode = $true
+}
+if (-not [string]::IsNullOrWhiteSpace($RequestPath)) {
+    $requestMode = $true
+}
+if (-not [string]::IsNullOrWhiteSpace($ContractPath)) {
+    $requestMode = $true
+}
+
+if ($requestMode) {
+    $milestoneParams = @{
+        Goal = $goalText
+        Model = $Model
+        OutputDir = $resolvedRunOutput
+        LogLevel = $LogLevel
+    }
+    if (-not [string]::IsNullOrWhiteSpace($JobType)) {
+        $milestoneParams["JobType"] = $JobType
+    }
+    if (-not [string]::IsNullOrWhiteSpace($RequestPath)) {
+        $milestoneParams["RequestPath"] = $RequestPath
+    }
+    if (-not [string]::IsNullOrWhiteSpace($ContractPath)) {
+        $milestoneParams["ContractPath"] = $ContractPath
+    }
+    if ($ValidateOnly) {
+        $milestoneParams["ValidateOnly"] = $true
+    }
+    if ($DryRun) {
+        $milestoneParams["DryRun"] = $true
+    }
+
+    Write-Host "`nRunning maintenance orchestration..." -ForegroundColor Green
+    & $milestoneScript @milestoneParams
+    if ($LASTEXITCODE -ne 0) {
+        throw "Maintenance orchestration failed with exit code $LASTEXITCODE"
+    }
+    Write-Host "`nUnified orchestration complete (maintenance mode)." -ForegroundColor Green
+    return
 }
 
 Write-Host "`nRunning POF orchestration..." -ForegroundColor Green

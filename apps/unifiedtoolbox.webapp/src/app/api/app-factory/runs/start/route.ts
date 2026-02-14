@@ -79,47 +79,15 @@ async function markRunLaunchFailure(
   }
 }
 
-async function markRunLaunchSuccess(
-  runDir: string,
-  runId: string,
-  details: Record<string, unknown> = {}
-): Promise<void> {
+async function readRunStateStatus(runDir: string): Promise<string | null> {
   const statePath = path.join(runDir, 'run_state.json')
-  const eventsPath = path.join(runDir, 'events.ndjson')
-  const now = new Date().toISOString()
-
   try {
     const raw = await fsp.readFile(statePath, 'utf8')
     const state = JSON.parse(raw) as Record<string, unknown>
-    const existingErrors = Array.isArray(state.errors) ? state.errors.map(String) : []
-    const existingWarnings = Array.isArray(state.warnings) ? state.warnings.map(String) : []
-    const next = {
-      ...state,
-      run_id: runId,
-      status: 'succeeded',
-      current_stage: null,
-      progress: 100,
-      ended_at: now,
-      updated_at: now,
-      errors: existingErrors,
-      warnings: existingWarnings,
-    }
-    await fsp.writeFile(statePath, JSON.stringify(next, null, 2) + '\n', 'utf8')
+    const status = typeof state.status === 'string' ? state.status.trim().toLowerCase() : ''
+    return status || null
   } catch {
-    // If state writing fails, still attempt to append an event for diagnostics.
-  }
-
-  const eventRecord = {
-    ts: now,
-    type: 'status',
-    stage: 'run',
-    message: 'succeeded',
-    data: details,
-  }
-  try {
-    await fsp.appendFile(eventsPath, JSON.stringify(eventRecord) + '\n', 'utf8')
-  } catch {
-    // no-op
+    return null
   }
 }
 
@@ -209,6 +177,10 @@ export async function POST(req: Request) {
       'Bypass',
       '-File',
       scriptPath,
+      '-JobType',
+      jobType,
+      '-RequestPath',
+      requestPath,
       '-Goal',
       goal,
       '-Instruction',
@@ -223,7 +195,8 @@ export async function POST(req: Request) {
     const child = spawn(psExe, psArgs, {
       cwd: repoRoot,
       env: { ...process.env, UAIT_JOB_TYPE: jobType, UAIT_REQUEST_PATH: requestPath },
-      detached: true,
+      // Detached pwsh launches on Windows can exit 0 immediately without running the script.
+      detached: false,
       stdio: ['ignore', logFd, logFd],
     })
 
@@ -237,23 +210,23 @@ export async function POST(req: Request) {
     })
 
     child.on('exit', (code, signal) => {
-      if (code === 0) {
-        void markRunLaunchSuccess(runDir, runId, {
-          kind: 'completed',
+      void (async () => {
+        // Allow final run_state flushes by the orchestration worker before evaluating launcher failure.
+        await new Promise((resolve) => setTimeout(resolve, 500))
+        const status = await readRunStateStatus(runDir)
+        if (status === 'succeeded' || status === 'failed') return
+
+        const reason =
+          typeof code === 'number'
+            ? `Run worker exited with code ${code} before writing terminal run state.`
+            : `Run worker exited due to signal ${String(signal)} before writing terminal run state.`
+        await markRunLaunchFailure(runDir, runId, reason, {
+          kind: 'missing_terminal_state',
           code,
           signal,
+          state: status,
         })
-        return
-      }
-      const reason =
-        typeof code === 'number'
-          ? `Run worker exited early with code ${code}.`
-          : `Run worker exited early due to signal ${String(signal)}.`
-      void markRunLaunchFailure(runDir, runId, reason, {
-        kind: 'early_exit',
-        code,
-        signal,
-      })
+      })()
     })
 
     child.unref()

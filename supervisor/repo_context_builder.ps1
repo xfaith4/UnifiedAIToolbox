@@ -198,7 +198,7 @@ function Get-CiEntries {
 
     $githubDir = Join-Path $RepoRoot ".github\workflows"
     if (Test-Path -LiteralPath $githubDir) {
-        $workflowFiles = Get-ChildItem -LiteralPath $githubDir -File -ErrorAction SilentlyContinue | Where-Object { $_.Extension -in @(".yml", ".yaml") }
+        $workflowFiles = @(Get-ChildItem -LiteralPath $githubDir -File -ErrorAction SilentlyContinue | Where-Object { $_.Extension -in @(".yml", ".yaml") })
         if ($workflowFiles.Count -gt 0) {
             $evidence = @()
             $workflows = @()
@@ -207,7 +207,7 @@ function Get-CiEntries {
                 $evidence += $rel
                 $workflows += $wf.Name
 
-                $lines = Get-Content -LiteralPath $wf.FullName -ErrorAction SilentlyContinue
+                $lines = @(Get-Content -LiteralPath $wf.FullName -ErrorAction SilentlyContinue)
                 for ($i = 0; $i -lt $lines.Count; $i++) {
                     $line = $lines[$i]
                     if ($line -match "^\s*run:\s*(.+)$") {
@@ -658,8 +658,14 @@ function Invoke-CommandWithTimeout {
         $useWindowsShell = $true
     }
     if ($useWindowsShell) {
-        $shell = "cmd.exe"
-        $shellArgs = @("/c", $Command)
+        $pwshCmd = Get-Command -Name "pwsh" -ErrorAction SilentlyContinue
+        if ($pwshCmd) {
+            $shell = "pwsh"
+        }
+        else {
+            $shell = "powershell"
+        }
+        $shellArgs = @("-NoLogo", "-NoProfile", "-NonInteractive", "-Command", $Command)
     }
     else {
         $shell = "/bin/bash"
@@ -668,14 +674,30 @@ function Invoke-CommandWithTimeout {
 
     $start = Get-Date
     $process = Start-Process -FilePath $shell -ArgumentList $shellArgs -WorkingDirectory $WorkingDirectory -NoNewWindow -PassThru -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
-    $completed = $process | Wait-Process -Timeout $TimeoutSeconds -ErrorAction SilentlyContinue
-    if (-not $completed) {
-        try { $process.Kill() } catch { }
+    $timedOut = $false
+    try {
+        Wait-Process -Id $process.Id -Timeout $TimeoutSeconds -ErrorAction Stop
     }
+    catch {
+        $timedOut = $true
+        try {
+            if (-not $process.HasExited) {
+                $process.Kill()
+            }
+        }
+        catch { }
+    }
+
+    try {
+        if (-not $process.HasExited) {
+            $process.WaitForExit()
+        }
+    }
+    catch { }
+
     $end = Get-Date
 
-    $exitCode = $process.ExitCode
-    if (-not $completed) { $exitCode = 124 }
+    $exitCode = if ($timedOut) { 124 } else { [int]$process.ExitCode }
 
     $stdout = ""
     $stderr = ""
@@ -768,6 +790,25 @@ function Invoke-RepoContextBuilder {
             if ($repoProps -contains "local_path" -and $contract.repo.local_path) {
                 $RepoRoot = $contract.repo.local_path
             }
+
+            if (-not $RepoRoot -and $repoProps -contains "full_name" -and $contract.repo.full_name) {
+                $repoFullName = [string]$contract.repo.full_name
+                $repoLeaf = ($repoFullName -split "[\\/]+") | Select-Object -Last 1
+                if (-not [string]::IsNullOrWhiteSpace($repoLeaf)) {
+                    $toolboxRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+                    $toolboxParent = Split-Path -Parent $toolboxRoot
+                    $candidates = @(
+                        (Join-Path $toolboxParent $repoLeaf),
+                        (Join-Path $toolboxRoot $repoLeaf)
+                    )
+                    foreach ($candidate in $candidates) {
+                        if ($candidate -and (Test-Path -LiteralPath $candidate -PathType Container)) {
+                            $RepoRoot = (Resolve-Path -LiteralPath $candidate).Path
+                            break
+                        }
+                    }
+                }
+            }
         }
     }
     if (-not $RepoRoot) {
@@ -792,7 +833,21 @@ function Invoke-RepoContextBuilder {
     $maxFiles = 5000
     $maxRuntimeSeconds = 300
     $maxCloneSizeMb = $null
+    $baselineMode = "required_pass"
+    if ($contract) {
+        $baselineConfig = Get-OptionalPropertyValue -Object $contract -Name "baseline"
+        if ($baselineConfig) {
+            $modeCandidate = Get-OptionalPropertyValue -Object $baselineConfig -Name "mode"
+            if ($modeCandidate) {
+                $baselineMode = [string]$modeCandidate
+            }
+        }
+    }
+
     $baselineEnabled = $false
+    if ($baselineMode -in @("required_pass", "allow_fail_then_stabilize")) {
+        $baselineEnabled = $true
+    }
     $confidenceThreshold = 0.7
     $allowConvention = $false
     $requiredEnvVars = @()
@@ -808,8 +863,8 @@ function Invoke-RepoContextBuilder {
         if ($props -contains "max_clone_size_mb" -and $repoContextSettings.max_clone_size_mb) {
             $maxCloneSizeMb = [double]$repoContextSettings.max_clone_size_mb
         }
-        if ($props -contains "baseline_verification_enabled" -and $repoContextSettings.baseline_verification_enabled -eq $true) {
-            $baselineEnabled = $true
+        if ($props -contains "baseline_verification_enabled") {
+            $baselineEnabled = [bool]$repoContextSettings.baseline_verification_enabled
         }
         if ($props -contains "command_confidence_threshold" -and $repoContextSettings.command_confidence_threshold) {
             $confidenceThreshold = [double]$repoContextSettings.command_confidence_threshold
