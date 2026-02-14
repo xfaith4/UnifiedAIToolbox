@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node ./node_modules/vitest/vitest.mjs run",
+    "test": "vitest run",
     "typecheck": "node ./node_modules/typescript/bin/tsc -p tsconfig.json --noEmit",
     "ux:simulate": "node ./scripts/ux-simulate.cjs",
     "ux:analyze:api-errors": "node ./scripts/ux-analyze-api-errors.cjs"
