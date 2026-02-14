@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "typecheck": "node ./node_modules/typescript/bin/tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc --noEmit",
     "ux:simulate": "node ./scripts/ux-simulate.cjs",
     "ux:analyze:api-errors": "node ./scripts/ux-analyze-api-errors.cjs"
   },
