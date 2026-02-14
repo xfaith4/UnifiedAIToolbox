@@ -20,6 +20,18 @@ from html.parser import HTMLParser
 
 from auth_github import ensure_github_token
 
+try:
+    from mcp_governance import storage as mcp_storage
+    from mcp_governance.models import Allowlist, AllowlistScope
+    from orchestration_mcp_middleware import OrchestrationMCPMiddleware
+    MCP_ENFORCEMENT_IMPORTS_AVAILABLE = True
+except ImportError:
+    mcp_storage = None  # type: ignore
+    Allowlist = None  # type: ignore
+    AllowlistScope = None  # type: ignore
+    OrchestrationMCPMiddleware = None  # type: ignore
+    MCP_ENFORCEMENT_IMPORTS_AVAILABLE = False
+
 # Configure logging at module level
 logger = logging.getLogger(__name__)
 
@@ -2608,6 +2620,34 @@ class OrchestrationRequest(BaseModel):
     run_mode: Optional[str] = "default"  # default | codex-swarm | swarms
     repo_root: Optional[str] = None
     max_iterations: Optional[int] = None
+    mcp_allowed_servers: List[str] = Field(default_factory=list)
+    mcp_allowed_collections: List[str] = Field(default_factory=list)
+
+
+def _create_run_allowlist_if_requested(run_id: str, req: OrchestrationRequest) -> Optional[str]:
+    """Create a run-scoped MCP allowlist if requested by run creation payload."""
+    if not MCP_ENFORCEMENT_IMPORTS_AVAILABLE or not mcp_storage:
+        return None
+
+    if not req.mcp_allowed_servers and not req.mcp_allowed_collections:
+        return None
+
+    allowlist_id = f"run-{run_id}-allowlist"
+    existing = mcp_storage.get_allowlist(allowlist_id)
+    if existing:
+        return allowlist_id
+
+    allowlist = Allowlist(
+        allowlist_id=allowlist_id,
+        scope=AllowlistScope.RUN,
+        scope_id=run_id,
+        allowed_servers=req.mcp_allowed_servers,
+        allowed_collections=req.mcp_allowed_collections,
+        created_by="system",
+        metadata={"source": "orchestrate_run"},
+    )
+    mcp_storage.save_allowlist(allowlist)
+    return allowlist_id
 
 
 class RepoOrchestrationOptions(BaseModel):
@@ -2637,6 +2677,23 @@ class RepoOrchestrationRequest(BaseModel):
 
 _repo_orchestration_state: Dict[str, Dict[str, Any]] = {}
 _repo_state_lock = asyncio.Lock()
+_mcp_middleware: Optional["OrchestrationMCPMiddleware"] = None
+
+
+def get_orchestration_mcp_middleware() -> Optional["OrchestrationMCPMiddleware"]:
+    """Lazy-initialize runtime MCP middleware for orchestration integrations."""
+    global _mcp_middleware
+    if not MCP_ENFORCEMENT_IMPORTS_AVAILABLE or OrchestrationMCPMiddleware is None:
+        return None
+    if _mcp_middleware is None:
+        try:
+            _mcp_middleware = OrchestrationMCPMiddleware.from_environment(
+                audit_log_dir=str(ROOT_DIR / "data" / "audit")
+            )
+        except Exception as exc:
+            logger.warning("Failed to initialize orchestration MCP middleware: %s", exc)
+            return None
+    return _mcp_middleware
 
 
 @app.post("/orchestrate/run")
@@ -2653,6 +2710,9 @@ def orchestrate_run(req: OrchestrationRequest):
     out_dir = BRIDGE_RUN_DIR / run_id
     log_path = BRIDGE_RUN_DIR / f"{run_id}.log"
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    allowlist_id = _create_run_allowlist_if_requested(run_id, req)
+    middleware = get_orchestration_mcp_middleware()
 
     # Initialize orchestrator logger if available
     orch_logger = None
@@ -2696,6 +2756,10 @@ def orchestrate_run(req: OrchestrationRequest):
         "model": req.model or DEFAULT_MODEL,
         "run_mode": req.run_mode or "default",
         "mode": "simulated",
+        "mcp_allowlist_id": allowlist_id,
+        "mcp_allowed_servers": req.mcp_allowed_servers,
+        "mcp_allowed_collections": req.mcp_allowed_collections,
+        "mcp_enforcement_enabled": bool(getattr(middleware, "enabled", False)),
         "run_dir": str(out_dir),
         "log_path": str(log_path),
         "events": [

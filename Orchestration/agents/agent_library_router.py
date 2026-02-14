@@ -32,9 +32,14 @@ import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from pydantic import BaseModel, Field
+
+try:
+    from orchestration_mcp_middleware import OrchestrationMCPMiddleware
+except ImportError:  # pragma: no cover - optional integration path
+    OrchestrationMCPMiddleware = None  # type: ignore
 
 if TYPE_CHECKING:
     from agents import Agent as _Agent  # pragma: no cover
@@ -218,6 +223,21 @@ def read_file(path: str) -> str:
 
 def compute_sha256(text: str) -> str:
     return _sha256(text)
+
+
+def execute_mcp_tool_with_enforcement(
+    runtime_context: Dict[str, Any],
+    invocation: Dict[str, Any],
+    execute_fn: Callable[[], Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Execute an MCP tool call with optional runtime governance enforcement."""
+    if OrchestrationMCPMiddleware is None:
+        return execute_fn()
+
+    middleware = OrchestrationMCPMiddleware.from_environment(
+        audit_log_dir=str(Path(__file__).resolve().parents[2] / "data" / "audit")
+    )
+    return middleware.execute_tool_call(runtime_context, invocation, execute_fn)
 
 
 # -----------------------------
