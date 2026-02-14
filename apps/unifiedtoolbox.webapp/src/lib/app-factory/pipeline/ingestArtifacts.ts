@@ -150,6 +150,16 @@ function looksLikePromptFragmentOnly(content: string): boolean {
   return signalCount >= 2 && !codeLike
 }
 
+
+function hasInvalidCodeBoundary(content: string, relPath: string): { ok: boolean; reason?: string } {
+  const ext = path.extname(relPath).toLowerCase()
+  if (!['.ts', '.tsx', '.js', '.jsx'].includes(ext)) return { ok: true }
+  const text = String(content || '')
+  if (/```/.test(text)) return { ok: false, reason: 'code file contains markdown fence markers' }
+  if (/^#\s+.+/m.test(text)) return { ok: false, reason: 'code file appears to contain markdown heading content' }
+  return { ok: true }
+}
+
 function looksLikeMultiTargetOrGlob(name: string): boolean {
   return (
     name.includes(',') ||
@@ -281,6 +291,12 @@ export async function ingestArtifacts(
 
       const full = entry.fullPath || ensureWithinRepo(repoDir, rel)
       await fs.mkdir(path.dirname(full), { recursive: true })
+
+      const boundaryCheck = hasInvalidCodeBoundary(art.content || '', rel)
+      if (!boundaryCheck.ok) {
+        items.push({ originalName, status: 'skipped', reason: boundaryCheck.reason, sourceTeamId: art.sourceTeamId, sourceTaskId: art.sourceTaskId })
+        continue
+      }
 
       if ((art.type || '').toUpperCase() === 'IMAGE') {
         const buf = Buffer.from(art.content || '', 'base64')

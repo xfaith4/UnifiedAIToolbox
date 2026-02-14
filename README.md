@@ -187,6 +187,7 @@ The AI Toolbox follows a lightweight orchestration workflow for Codex-driven cha
 
 - **Local orchestration artifacts**: `.uaitoolbox/` or `runs/` (git-ignored)
 - **App Factory runs**: `.uaitoolbox/app-factory/runs/<runId>/` (generated repo + hardening reports during export)
+- **Run observatory override**: set `UAITOOLBOX_RUNS_DIR` or create `config/run-observatory.json` (see `config/run-observatory.example.json`) to centralize run storage, e.g. `F:\\Orchestration_Runs\\runs`.
 - **Prompts**: `data/prompts/` (YAML)
 - **Agents**: `data/agents/` (YAML/JSON)
 - **Run tracking**: `apps/orchestration-bridge/runs/` (JSON)

@@ -1,6 +1,7 @@
 import 'server-only'
 import path from 'path'
 import { promises as fs } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 import type { RunArtifact, RunEvent, RunStage, RunStageStatus, RunStatusResponse } from './types'
 
 type RunStatusOptions = {
@@ -32,6 +33,17 @@ export function getRunsRoot(): string {
   const override = process.env.UAITOOLBOX_RUNS_DIR
   if (override && override.trim()) {
     return path.resolve(override)
+  }
+  const configPath = path.resolve(process.cwd(), '..', '..', 'config', 'run-observatory.json')
+  if (existsSync(configPath)) {
+    try {
+      const raw = JSON.parse(readFileSync(configPath, 'utf8')) as { runsRoot?: string }
+      if (raw?.runsRoot && raw.runsRoot.trim()) {
+        return path.resolve(raw.runsRoot)
+      }
+    } catch {
+      // fall back to default root
+    }
   }
   return path.resolve(process.cwd(), '..', '..', '.uaitoolbox', 'app-factory', 'runs')
 }

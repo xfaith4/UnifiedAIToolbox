@@ -4,6 +4,16 @@ import { CloseIcon, DownloadIcon, PaperclipIcon, LoadingIcon } from './icons';
 import type { EnginePipelinePayload, PipelineStage } from '@/lib/app-factory/pipeline/pipelineStatus'
 import type { RunArtifact } from '@/lib/app-factory/runs/types'
 
+type ExportBlocker = {
+  kind: string
+  filePath?: string
+  ruleId: string
+  message: string
+  lines?: number[]
+  snippet?: string
+  phase?: string
+}
+
 interface ExportModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -40,6 +50,7 @@ const ExportModal: React.FC<ExportModalProps> = ({
 }) => {
   const [isZipping, setIsZipping] = useState(false);
   const [lastValidationError, setLastValidationError] = useState<string | null>(null)
+  const [exportBlockers, setExportBlockers] = useState<ExportBlocker[]>([])
 
   const uniqueArtifacts = useMemo(() => {
     // Defensively handle potentially malformed task data from sources like localStorage.
@@ -78,6 +89,7 @@ const ExportModal: React.FC<ExportModalProps> = ({
       return null
     }
     setLastValidationError(null)
+    setExportBlockers([])
     const startedAt = new Date().toISOString()
     setPipeline({
       ...pipeline,
@@ -171,7 +183,13 @@ const ExportModal: React.FC<ExportModalProps> = ({
 
     if (!res.ok) {
       const contentType = res.headers.get('content-type') || ''
-      const detail = contentType.includes('application/json') ? JSON.stringify(await res.json(), null, 2) : await res.text()
+      const payload = contentType.includes('application/json') ? await res.json().catch(() => null) : null
+      if (res.status === 422) {
+        const blockers = Array.isArray(payload?.blockers) ? (payload.blockers as ExportBlocker[]) : []
+        setExportBlockers(blockers)
+        setLastValidationError('Export blocked by validation')
+      }
+      const detail = payload ? JSON.stringify(payload, null, 2) : await res.text()
       throw new Error(`export failed: HTTP ${res.status}\n${detail}`)
     }
 
@@ -188,13 +206,16 @@ const ExportModal: React.FC<ExportModalProps> = ({
   const handleValidate = async () => {
     if (isZipping) return;
     setIsZipping(true);
+    setExportBlockers([])
 
     try {
       if (!pipeline.hardeningEnabled) return
       await validateHardening()
     } catch (error) {
       console.error("Failed to generate zip file:", error);
-      alert("An error occurred while creating the zip file. Please check the console.");
+      if (!lastValidationError) {
+        alert("An error occurred while creating the zip file. Please check the console.")
+      }
     } finally {
       setIsZipping(false);
     }
@@ -236,7 +257,9 @@ const ExportModal: React.FC<ExportModalProps> = ({
       await downloadLegacy()
     } catch (error) {
       console.error("Failed to generate zip file:", error);
-      alert("An error occurred while creating the zip file. Please check the console.");
+      if (!lastValidationError) {
+        alert("An error occurred while creating the zip file. Please check the console.")
+      }
     } finally {
       setIsZipping(false);
     }
@@ -271,6 +294,31 @@ const ExportModal: React.FC<ExportModalProps> = ({
               {lastValidationError.length > 1800 ? lastValidationError.slice(0, 1800) + '…' : lastValidationError}
             </div>
           )}
+          {exportBlockers.length > 0 && (
+            <div className="mb-4 p-3 rounded border border-rose-700 bg-rose-950/30 text-rose-100">
+              <div className="font-semibold mb-2">Export Blockers</div>
+              <ul className="space-y-2 text-xs">
+                {exportBlockers.map((blocker, index) => (
+                  <li key={`${blocker.ruleId}-${index}`} className="rounded border border-rose-800/70 p-2">
+                    <div className="font-mono">{blocker.filePath || '(pipeline)'}</div>
+                    <div>{blocker.ruleId}: {blocker.message}</div>
+                    {Array.isArray(blocker.lines) && blocker.lines.length > 0 && <div>Lines: {blocker.lines.join(', ')}</div>}
+                    {blocker.snippet && <pre className="mt-1 overflow-x-auto whitespace-pre-wrap text-[11px] text-rose-200">{blocker.snippet}</pre>}
+                    {blocker.filePath && (
+                      <button
+                        type="button"
+                        className="mt-1 rounded bg-rose-900/40 px-2 py-1 text-[11px] hover:bg-rose-900/70"
+                        onClick={() => navigator.clipboard?.writeText(blocker.filePath || '')}
+                      >
+                        Copy path
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           <div className="bg-gray-700/50 p-4 rounded-lg">
             <h3 className="flex items-center text-lg font-semibold mb-3">
               <PaperclipIcon className="w-5 h-5 mr-2 text-indigo-400" /> Generated Artifacts

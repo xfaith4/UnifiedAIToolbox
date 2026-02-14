@@ -2,12 +2,14 @@ import { NextResponse } from 'next/server'
 import path from 'path'
 import { promises as fs } from 'fs'
 import { getRunsRoot, isValidRunId } from '@/lib/app-factory/runs/runStatus'
+import { getBufferedEvents, subscribeRunEvents, type RunStreamEvent } from '@/lib/app-factory/runs/runEvents'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 const MAX_EVENT_BYTES = 512 * 1024
 const DEFAULT_LIMIT = 200
+const HEARTBEAT_MS = 15000
 
 const safeDecode = (value: string) => {
   try {
@@ -58,12 +60,63 @@ async function readTailLines(filePath: string, maxLines: number): Promise<string
   return lines.slice(-maxLines)
 }
 
-function parseEvent(line: string) {
+function parseEvent(line: string, runId: string): RunStreamEvent {
   try {
-    return JSON.parse(line)
+    const parsed = JSON.parse(line) as RunStreamEvent
+    return {
+      ...parsed,
+      runId: parsed.runId || runId,
+      ts: parsed.ts || new Date().toISOString(),
+      message: parsed.message || 'event',
+    }
   } catch {
-    return { ts: new Date().toISOString(), type: 'info', message: line }
+    return { ts: new Date().toISOString(), runId, type: 'info', message: line }
   }
+}
+
+async function loadHistoryEvents(runDir: string, runId: string, limit: number, since?: string | null): Promise<RunStreamEvent[]> {
+  const eventsPath = (await fileExists(path.join(runDir, 'events.ndjson')))
+    ? path.join(runDir, 'events.ndjson')
+    : (await fileExists(path.join(runDir, 'events.jsonl')))
+      ? path.join(runDir, 'events.jsonl')
+      : (await fileExists(path.join(runDir, 'events.log')))
+        ? path.join(runDir, 'events.log')
+        : null
+
+  let events: RunStreamEvent[] = []
+  if (eventsPath) {
+    const lines = await readTailLines(eventsPath, limit)
+    events = lines.map((line) => parseEvent(line, runId))
+  }
+
+  const buffered = getBufferedEvents(runId, since || undefined)
+  if (buffered.length) {
+    const seen = new Set(events.map((event) => `${event.ts}:${event.message}`))
+    for (const event of buffered) {
+      const key = `${event.ts}:${event.message}`
+      if (!seen.has(key)) events.push(event)
+    }
+  }
+
+  if (since) {
+    const sinceTime = new Date(since).getTime()
+    if (!Number.isNaN(sinceTime)) {
+      events = events.filter((event) => {
+        const ts = new Date(event.ts || '').getTime()
+        return !Number.isNaN(ts) && ts > sinceTime
+      })
+    }
+  }
+
+  if (events.length > limit) {
+    events = events.slice(-limit)
+  }
+
+  return events.sort((a, b) => a.ts.localeCompare(b.ts))
+}
+
+function toSseFrame(event: RunStreamEvent): string {
+  return `id: ${event.ts}\nevent: run\ndata: ${JSON.stringify(event)}\n\n`
 }
 
 export async function GET(req: Request, { params }: { params: { runId: string } }) {
@@ -88,32 +141,46 @@ export async function GET(req: Request, { params }: { params: { runId: string } 
   const since = url.searchParams.get('since')
   const limitParam = url.searchParams.get('limit')
   const limit = limitParam ? Math.max(1, Number.parseInt(limitParam, 10) || DEFAULT_LIMIT) : DEFAULT_LIMIT
+  const accept = req.headers.get('accept') || ''
+  const wantsSse = accept.includes('text/event-stream') || url.searchParams.get('stream') === '1'
 
-  const eventsPath = (await fileExists(path.join(runDir, 'events.ndjson')))
-    ? path.join(runDir, 'events.ndjson')
-    : (await fileExists(path.join(runDir, 'events.jsonl')))
-      ? path.join(runDir, 'events.jsonl')
-      : (await fileExists(path.join(runDir, 'events.log')))
-        ? path.join(runDir, 'events.log')
-        : null
+  const events = await loadHistoryEvents(runDir, runId, limit, since)
 
-  if (!eventsPath) {
-    return NextResponse.json({ runId, events: [], cursor: null }, { status: 200 })
+  if (!wantsSse) {
+    const cursor = events.length ? events[events.length - 1].ts || null : null
+    return NextResponse.json({ runId, events, cursor }, { status: 200 })
   }
 
-  const lines = await readTailLines(eventsPath, limit)
-  let events = lines.map(parseEvent)
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const encoder = new TextEncoder()
+      controller.enqueue(encoder.encode(': connected\n\n'))
+      for (const event of events) {
+        controller.enqueue(encoder.encode(toSseFrame(event)))
+      }
 
-  if (since) {
-    const sinceTime = new Date(since).getTime()
-    if (!Number.isNaN(sinceTime)) {
-      events = events.filter((event) => {
-        const ts = new Date(event.ts || event.timestamp || event.time || '').getTime()
-        return !Number.isNaN(ts) && ts > sinceTime
+      const unsubscribe = subscribeRunEvents(runId, (event) => {
+        controller.enqueue(encoder.encode(toSseFrame(event)))
       })
-    }
-  }
 
-  const cursor = events.length ? events[events.length - 1].ts || null : null
-  return NextResponse.json({ runId, events, cursor }, { status: 200 })
+      const heartbeat = setInterval(() => {
+        controller.enqueue(encoder.encode(`event: heartbeat\ndata: {"ts":"${new Date().toISOString()}","runId":"${runId}"}\n\n`))
+      }, HEARTBEAT_MS)
+
+      req.signal.addEventListener('abort', () => {
+        clearInterval(heartbeat)
+        unsubscribe()
+        controller.close()
+      })
+    },
+  })
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    },
+  })
 }

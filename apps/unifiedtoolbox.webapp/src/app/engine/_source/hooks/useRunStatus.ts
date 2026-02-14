@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { RunStatusResponse } from '@/lib/app-factory/runs/types'
 
 type UseRunStatusOptions = {
@@ -11,12 +11,16 @@ export function useRunStatus(runId: string | null, options: UseRunStatusOptions 
   const [status, setStatus] = useState<RunStatusResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const lastEventTsRef = useRef<string | null>(null)
+  const seenEventKeysRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
     if (!enabled || !runId) {
       setStatus(null)
       setError(null)
       setLoading(false)
+      lastEventTsRef.current = null
+      seenEventKeysRef.current.clear()
       return
     }
 
@@ -35,7 +39,14 @@ export function useRunStatus(runId: string | null, options: UseRunStatusOptions 
           if (!cancelled) setStatus(null)
           return null
         } else {
-          if (!cancelled) setStatus(json as RunStatusResponse)
+          if (!cancelled) {
+            const next = json as RunStatusResponse
+            setStatus(next)
+            for (const event of next.events || []) {
+              seenEventKeysRef.current.add(`${event.ts}:${event.message}`)
+              lastEventTsRef.current = event.ts
+            }
+          }
           if (!cancelled) setError(null)
           return (json as RunStatusResponse).status
         }
@@ -72,6 +83,52 @@ export function useRunStatus(runId: string | null, options: UseRunStatusOptions 
       if (timer) clearTimeout(timer)
     }
   }, [enabled, runId, pollIntervalMs])
+
+
+
+  useEffect(() => {
+    if (!enabled || !runId) return
+    let source: EventSource | null = null
+    let disposed = false
+
+    const connect = () => {
+      if (disposed) return
+      const since = lastEventTsRef.current ? `?since=${encodeURIComponent(lastEventTsRef.current)}` : ''
+      source = new EventSource(`/api/app-factory/runs/${encodeURIComponent(runId)}/events${since}`)
+
+      source.addEventListener('run', (raw) => {
+        const evt = raw as MessageEvent<string>
+        try {
+          const event = JSON.parse(evt.data) as RunStatusResponse['events'][number]
+          const key = `${event.ts}:${event.message}`
+          if (seenEventKeysRef.current.has(key)) return
+          seenEventKeysRef.current.add(key)
+          lastEventTsRef.current = event.ts
+          setStatus((current) => {
+            if (!current) return current
+            return { ...current, events: [...(current.events || []), event] }
+          })
+        } catch {
+          // ignore malformed event payloads
+        }
+      })
+
+      source.onerror = () => {
+        if (source) source.close()
+        source = null
+        if (!disposed) {
+          window.setTimeout(connect, 1200)
+        }
+      }
+    }
+
+    connect()
+
+    return () => {
+      disposed = true
+      if (source) source.close()
+    }
+  }, [enabled, runId])
 
   return { status, error, loading }
 }

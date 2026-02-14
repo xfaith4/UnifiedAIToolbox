@@ -9,6 +9,8 @@ import { featureFlags } from '@/lib/app-factory/flags'
 import { exportRepoLegacy } from '@/lib/app-factory/pipeline/exportRepoLegacy'
 import { loadArtifactsFromHistoryFile } from '@/lib/app-factory/history/loadArtifactsFromHistory'
 import { ingestArtifacts } from '@/lib/app-factory/pipeline/ingestArtifacts'
+import { buildExportBlockers } from '@/lib/app-factory/pipeline/exportBlockers'
+import { emitRunEvent } from '@/lib/app-factory/runs/runEvents'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -121,6 +123,7 @@ export async function POST(req: Request) {
     }
 
     const result = await hardenRepo({
+      onEvent: emitRunEvent,
       artifacts,
       contract,
       workRootDir,
@@ -138,11 +141,13 @@ export async function POST(req: Request) {
       const decisionLockReport = await readTextIfExists(path.join(result.repoDir, 'DECISION_LOCK_REPORT.md'))
       const contractJson = await readTextIfExists(path.join(result.repoDir, 'REPO_CONTRACT.json'))
 
+      const blockers = buildExportBlockers({ normalization: result.normalization, contractEval: result.contractEval, gateReport: result.gateReport, repair: result.repair })
       return NextResponse.json(
         {
           passed: false,
           runId: result.runId,
           repoDir: result.repoDir,
+          blockers,
           reports: {
             assembly: assemblyReport,
             decisionLock: decisionLockReport,

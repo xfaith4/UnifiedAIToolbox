@@ -6,6 +6,8 @@ import { featureFlags } from '@/lib/app-factory/flags'
 import { exportRepoLegacy } from '@/lib/app-factory/pipeline/exportRepoLegacy'
 import { buildEnginePipelinePayload } from '@/lib/app-factory/pipeline/pipelineStatus'
 import { loadArtifactsFromHistoryFile } from '@/lib/app-factory/history/loadArtifactsFromHistory'
+import { emitRunEvent } from '@/lib/app-factory/runs/runEvents'
+import { buildExportBlockers } from '@/lib/app-factory/pipeline/exportBlockers'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -76,6 +78,7 @@ export async function POST(req: Request) {
     }
 
     const result = await hardenRepo({
+      onEvent: emitRunEvent,
       artifacts,
       contract,
       workRootDir,
@@ -98,7 +101,7 @@ export async function POST(req: Request) {
       repair: result.repair ?? null,
     })
 
-    return NextResponse.json({ passed: result.passed, hardeningEnabled: true, runId: pipeline.runId, repoDir: result.repoDir, pipeline }, { status: result.passed ? 200 : 422 })
+    return NextResponse.json({ passed: result.passed, hardeningEnabled: true, runId: pipeline.runId, repoDir: result.repoDir, pipeline, blockers: result.passed ? [] : buildExportBlockers({ normalization: result.normalization, contractEval: result.contractEval, gateReport: result.gateReport, repair: result.repair }) }, { status: result.passed ? 200 : 422 })
   } catch (err) {
     return NextResponse.json({ error: 'Unhandled validate error', detail: err instanceof Error ? err.message : String(err) }, { status: 500 })
   }
