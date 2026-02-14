@@ -1,11 +1,9 @@
 {
   "OpenAI": {
-    "apiKey": "PUT-YOUR-KEY-HERE"
+    "apiKey": "$env:OPENAI_API_KEY"
   },
   "Gemini": {
-    "apiKey": "PUT-YOUR-KEY-HERE"
-  },
-  "Strider": {
-    "token": "PUT-YOUR-TOKEN-HERE"
+    "apiKey": "$env:GEMINI_API_KEY",
+    "apiSecret": "$env:GEMINI_API_SECRET"
   }
 }
