@@ -58,7 +58,7 @@ class Settings(BaseSettings):
     
     # Registry ingestion settings
     mcp_registry_url: str = Field(
-        default="https://registry.modelcontextprotocol.io/v1/servers",
+        default="https://registry.modelcontextprotocol.io/v0.1/servers",
         description="URL for the official MCP registry"
     )
     
@@ -80,6 +80,42 @@ class Settings(BaseSettings):
     mcp_enable_github_source: bool = Field(
         default=False,
         description="Enable optional GitHub topic-based discovery (requires GITHUB_TOKEN)"
+    )
+
+    # MCP scorecard settings
+    mcp_allowlist_path: Path = Field(
+        default_factory=lambda: Path(__file__).resolve().parents[3] / "data" / "mcp" / "servers.allowlist.json",
+        description="Path to MCP probing allowlist policy"
+    )
+
+    mcp_scorecard_path: Path = Field(
+        default_factory=lambda: Path(__file__).resolve().parents[3] / "data" / "mcp" / "servers.scorecard.json",
+        description="Path to the generated MCP server scorecard report"
+    )
+
+    mcp_scorecard_runs_dir: Path = Field(
+        default_factory=lambda: Path(__file__).resolve().parents[3] / "data" / "mcp" / "runs",
+        description="Directory for per-run MCP scorecard probe artifacts"
+    )
+
+    mcp_scorecard_timeout_ms: int = Field(
+        default=30000,
+        description="Timeout in milliseconds for MCP probe calls"
+    )
+
+    mcp_scorecard_retries: int = Field(
+        default=2,
+        description="Retry attempts for MCP probing"
+    )
+
+    mcp_scorecard_max_servers: int = Field(
+        default=25,
+        description="Safety cap for servers probed in a single scorecard run"
+    )
+
+    mcp_scorecard_allowlisted_only: bool = Field(
+        default=True,
+        description="When true, probe only allowlisted servers"
     )
     
     # API settings
@@ -111,14 +147,28 @@ class Settings(BaseSettings):
     )
     
     # Validation
-    @field_validator('runs_dir', 'runbooks_dir', 'state_dir', 'supervisor_queue_dir', mode='before')
+    @field_validator(
+        'runs_dir',
+        'runbooks_dir',
+        'state_dir',
+        'supervisor_queue_dir',
+        'mcp_scorecard_runs_dir',
+        mode='before',
+    )
     @classmethod
     def ensure_directories_exist(cls, v: Path) -> Path:
         """Ensure the directory exists."""
-        v.mkdir(parents=True, exist_ok=True)
-        return v
+        path = Path(v).expanduser()
+        path.mkdir(parents=True, exist_ok=True)
+        return path
 
-    @field_validator('mcp_registry_path', 'mcp_registry_cache_path', mode='before')
+    @field_validator(
+        'mcp_registry_path',
+        'mcp_registry_cache_path',
+        'mcp_allowlist_path',
+        'mcp_scorecard_path',
+        mode='before',
+    )
     @classmethod
     def ensure_registry_parent(cls, v: Path) -> Path:
         """Ensure the MCP registry directory exists and expand user paths."""
@@ -139,7 +189,8 @@ class Settings(BaseSettings):
         "env_prefix": "BRIDGE_",
         "case_sensitive": False,
         "env_file": ".env",
-        "env_file_encoding": "utf-8"
+        "env_file_encoding": "utf-8",
+        "extra": "ignore",
     }
 
 

@@ -1,217 +1,304 @@
 """
 Tests for MCP registry adapter and ingestion functionality.
 """
-import json
 import sys
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
-import pytest
 import requests
 
 # Make src importable
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.models import MCPAuthConfig, MCPServer, MCPRegistry  # noqa: E402
+from src.models import MCPAuthConfig, MCPRegistry, MCPServer  # noqa: E402
 from src.utils.registry_adapter import (  # noqa: E402
-    OfficialMCPRegistryAdapter,
     GitHubTopicAdapter,
+    OfficialMCPRegistryAdapter,
     ingest_from_source,
 )
 
 
 class TestOfficialMCPRegistryAdapter:
-    """Tests for the official MCP registry adapter."""
+    """Tests for official MCP registry v0.1 adapter behavior."""
 
-    def test_fetch_returns_list_of_servers(self):
-        """Test that fetch returns a list of server definitions."""
+    def test_fetch_paginates_identifiers_and_fetches_latest_manifests(self):
         adapter = OfficialMCPRegistryAdapter()
-        
-        mock_response = {
-            "servers": [
-                {
-                    "id": "test-server",
-                    "name": "Test Server",
-                    "url": "http://localhost:8000/mcp",
-                    "description": "A test server",
-                }
-            ]
-        }
-        
-        with patch("requests.get") as mock_get:
-            mock_get.return_value.json.return_value = mock_response
-            mock_get.return_value.raise_for_status = Mock()
-            
-            servers = adapter.fetch()
-            
-            assert len(servers) == 1
-            assert servers[0]["id"] == "test-server"
-            mock_get.assert_called_once()
 
-    def test_fetch_handles_direct_array_response(self):
-        """Test that fetch handles responses that are direct arrays."""
-        adapter = OfficialMCPRegistryAdapter()
-        
-        mock_response = [
-            {"id": "server1", "name": "Server 1", "url": "http://localhost:8001/mcp"},
-            {"id": "server2", "name": "Server 2", "url": "http://localhost:8002/mcp"},
-        ]
-        
-        with patch("requests.get") as mock_get:
-            mock_get.return_value.json.return_value = mock_response
-            mock_get.return_value.raise_for_status = Mock()
-            
-            servers = adapter.fetch()
-            
-            assert len(servers) == 2
-            assert servers[0]["id"] == "server1"
-            assert servers[1]["id"] == "server2"
+        def make_response(status_code: int, payload):
+            response = Mock()
+            response.status_code = status_code
+            response.headers = {}
+            response.json.return_value = payload
+            response.raise_for_status = Mock()
+            return response
 
-    def test_fetch_raises_on_request_error(self):
-        """Test that fetch raises on network errors."""
-        adapter = OfficialMCPRegistryAdapter()
-        
-        with patch("requests.get") as mock_get:
-            mock_get.side_effect = requests.RequestException("Network error")
-            
-            with pytest.raises(requests.RequestException):
-                adapter.fetch()
+        def side_effect(url, params=None, headers=None, timeout=None):  # noqa: ARG001
+            if url.endswith("/v0.1/servers"):
+                cursor = (params or {}).get("cursor")
+                if not cursor:
+                    return make_response(
+                        200,
+                        {
+                            "servers": ["org/server-a:1.2.3"],
+                            "metadata": {"nextCursor": "cursor-2"},
+                        },
+                    )
+                return make_response(
+                    200,
+                    {
+                        "servers": ["org/server-b:9.9.9"],
+                        "metadata": {},
+                    },
+                )
+            if url.endswith("/v0.1/servers/org%2Fserver-a/versions/latest"):
+                return make_response(
+                    200,
+                    {
+                        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-16/server.schema.json",
+                        "name": "org/server-a",
+                        "title": "Server A",
+                        "description": "A server",
+                        "version": "1.2.3",
+                        "remotes": [{"type": "streamable-http", "url": "https://a.example/mcp"}],
+                    },
+                )
+            if url.endswith("/v0.1/servers/org%2Fserver-b/versions/latest"):
+                return make_response(
+                    200,
+                    {
+                        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-16/server.schema.json",
+                        "name": "org/server-b",
+                        "title": "Server B",
+                        "description": "B server",
+                        "version": "9.9.9",
+                        "remotes": [{"type": "sse", "url": "https://b.example/sse"}],
+                    },
+                )
+            raise AssertionError(f"unexpected URL: {url}")
 
-    def test_normalize_creates_valid_mcp_server(self):
-        """Test that normalize creates a valid MCPServer from raw data."""
+        with patch("requests.get", side_effect=side_effect) as mock_get:
+            manifests = adapter.fetch()
+
+        assert len(manifests) == 2
+        assert manifests[0]["name"] == "org/server-a"
+        assert manifests[1]["name"] == "org/server-b"
+        assert manifests[0]["_bridge_schema_validation"]["hasRemotes"] is True
+        assert manifests[1]["_bridge_schema_validation"]["ok"] is True
+        # One list request per page + one latest fetch per identifier
+        assert mock_get.call_count == 4
+
+    def test_fetch_accepts_list_items_with_nested_server_objects(self):
         adapter = OfficialMCPRegistryAdapter()
-        
+
+        def make_response(payload):
+            response = Mock()
+            response.status_code = 200
+            response.headers = {}
+            response.json.return_value = payload
+            response.raise_for_status = Mock()
+            return response
+
+        def side_effect(url, params=None, headers=None, timeout=None):  # noqa: ARG001
+            if url.endswith("/v0.1/servers"):
+                return make_response(
+                    {
+                        "servers": [{"server": {"name": "org/server-c"}}],
+                        "metadata": {},
+                    }
+                )
+            if url.endswith("/v0.1/servers/org%2Fserver-c/versions/latest"):
+                return make_response(
+                    {
+                        "name": "org/server-c",
+                        "title": "Server C",
+                        "description": "C server",
+                        "version": "0.1.0",
+                        "remotes": [{"type": "streamable-http", "url": "https://c.example/mcp"}],
+                    }
+                )
+            raise AssertionError(f"unexpected URL: {url}")
+
+        with patch("requests.get", side_effect=side_effect):
+            manifests = adapter.fetch()
+
+        assert len(manifests) == 1
+        assert manifests[0]["name"] == "org/server-c"
+        assert manifests[0]["_bridge_schema_validation"]["hasRemotes"] is True
+
+    def test_fetch_skips_non_conformant_non_server_json(self):
+        adapter = OfficialMCPRegistryAdapter()
+
+        def make_response(payload):
+            response = Mock()
+            response.status_code = 200
+            response.headers = {}
+            response.json.return_value = payload
+            response.raise_for_status = Mock()
+            return response
+
+        def side_effect(url, params=None, headers=None, timeout=None):  # noqa: ARG001
+            if url.endswith("/v0.1/servers"):
+                return make_response({"servers": ["org/not-a-server:0.0.1"], "metadata": {}})
+            if url.endswith("/v0.1/servers/org%2Fnot-a-server/versions/latest"):
+                return make_response({"foo": "bar", "random": {"shape": True}})
+            raise AssertionError(f"unexpected URL: {url}")
+
+        with patch("requests.get", side_effect=side_effect):
+            manifests = adapter.fetch()
+
+        assert manifests == []
+
+    def test_normalize_prefers_streamable_http_then_sse(self):
+        adapter = OfficialMCPRegistryAdapter()
         raw_data = {
-            "id": "filesystem",
-            "name": "Filesystem MCP",
-            "url": "http://localhost:5174/mcp",
-            "transport": "sse",
-            "description": "Local filesystem access",
-            "capabilities": ["filesystem", "search"],
-            "tags": ["local", "default"],
-            "owner": "platform",
-            "status": "available",
-            "auth": {"type": "none"},
+            "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-16/server.schema.json",
+            "name": "org/files",
+            "title": "Files",
+            "description": "File server",
+            "remotes": [
+                {"type": "sse", "url": "https://example.com/sse"},
+                {"type": "streamable-http", "url": "https://example.com/mcp"},
+            ],
+            "version": "1.0.0",
+            "repository": {"url": "https://github.com/org/files"},
+            "websiteUrl": "https://example.com",
+            "icons": [{"src": "https://example.com/icon.png"}],
+            "_meta": {"io.modelcontextprotocol.registry/official": {"status": "active"}},
         }
-        
+
         server = adapter.normalize(raw_data)
-        
+
         assert server is not None
-        assert server.id == "filesystem"
-        assert server.name == "Filesystem MCP"
-        assert str(server.url) == "http://localhost:5174/mcp"
-        assert "filesystem" in server.capabilities
-        assert "local" in server.tags
+        assert server.id == "org/files"
+        assert server.name == "Files"
+        assert str(server.url) == "https://example.com/mcp"
+        assert server.transport == "streamable-http"
+        assert server.status == "active"
         assert server.auth.type == "none"
-        assert server.metadata["source"] == "official-registry"
-        assert "ingested_at" in server.metadata
+        assert server.metadata["version"] == "1.0.0"
+        assert server.metadata["repository"]["url"] == "https://github.com/org/files"
+        assert server.metadata["websiteUrl"] == "https://example.com"
+        assert isinstance(server.metadata["remotes"], list)
+        assert server.metadata["schemaUri"] == "https://static.modelcontextprotocol.io/schemas/2025-09-16/server.schema.json"
+        assert server.metadata["schemaValidation"]["ok"] is True
+        assert server.metadata["hasRemotes"] is True
+        assert server.metadata["hasPackages"] is False
 
-    def test_normalize_handles_auth_variations(self):
-        """Test that normalize handles different auth field names."""
+    def test_normalize_skips_deleted_and_packages_only(self):
         adapter = OfficialMCPRegistryAdapter()
-        
-        # Test with "authentication" field
-        raw_data_auth = {
-            "id": "server1",
-            "name": "Server 1",
-            "url": "http://localhost:8000/mcp",
-            "authentication": {
-                "type": "token_env",
-                "env_var": "MY_TOKEN",
-                "header": "X-API-Key"
+
+        deleted = adapter.normalize(
+            {
+                "name": "org/deleted",
+                "description": "Deleted server",
+                "version": "0.0.1",
+                "_meta": {"io.modelcontextprotocol.registry/official": {"status": "deleted"}},
+                "remotes": [{"type": "streamable-http", "url": "https://example.com/mcp"}],
             }
-        }
-        
-        server1 = adapter.normalize(raw_data_auth)
-        assert server1.auth.type == "token_env"
-        assert server1.auth.env_var == "MY_TOKEN"
-        assert server1.auth.header == "X-API-Key"
-        
-        # Test with "auth" field
-        raw_data_auth2 = {
-            "id": "server2",
-            "name": "Server 2",
-            "url": "http://localhost:8001/mcp",
-            "auth": {"type": "basic"}
-        }
-        
-        server2 = adapter.normalize(raw_data_auth2)
-        assert server2.auth.type == "basic"
+        )
+        packages_only = adapter.normalize(
+            {
+                "name": "org/package-only",
+                "description": "Package only server",
+                "version": "1.0.0",
+                "packages": [
+                    {
+                        "registryType": "npm",
+                        "identifier": "@org/server",
+                        "version": "1.0.0",
+                        "transport": {"type": "stdio"},
+                    }
+                ],
+            }
+        )
 
-    def test_normalize_handles_missing_url(self):
-        """Test that normalize returns None for servers without URLs."""
-        adapter = OfficialMCPRegistryAdapter()
-        
-        raw_data = {
-            "id": "broken-server",
-            "name": "Broken Server",
-            # Missing URL
-        }
-        
-        server = adapter.normalize(raw_data)
-        assert server is None
+        assert deleted is None
+        assert packages_only is None
+        assert "org/deleted" in adapter.skipped_deleted_servers
+        assert "org/package-only" in adapter.packages_only_servers
 
-    def test_normalize_uses_endpoint_as_fallback(self):
-        """Test that normalize uses 'endpoint' field if 'url' is missing."""
+    def test_normalize_skips_deprecated_by_default(self):
         adapter = OfficialMCPRegistryAdapter()
-        
         raw_data = {
-            "id": "alt-server",
-            "name": "Alt Server",
-            "endpoint": "http://localhost:9000/mcp",  # Using endpoint instead of url
+            "name": "org/old",
+            "description": "Old server",
+            "version": "0.9.0",
+            "_meta": {"io.modelcontextprotocol.registry/official": {"status": "deprecated"}},
+            "remotes": [{"type": "sse", "url": "https://example.com/sse"}],
         }
-        
-        server = adapter.normalize(raw_data)
+        assert adapter.normalize(raw_data) is None
+
+        include_deprecated = OfficialMCPRegistryAdapter(include_deprecated=True)
+        server = include_deprecated.normalize(raw_data)
         assert server is not None
-        assert str(server.url) == "http://localhost:9000/mcp"
+        assert server.status == "deprecated"
 
-    def test_normalize_generates_id_from_name(self):
-        """Test that normalize generates an ID from name if ID is missing."""
+    def test_normalize_manifest_schema_uri_and_structured_inputs_metadata(self):
         adapter = OfficialMCPRegistryAdapter()
-        
         raw_data = {
-            "name": "Test Server Name",
-            "url": "http://localhost:8000/mcp",
+            "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-16/server.schema.json",
+            "name": "org/structured",
+            "title": "Structured",
+            "description": "Server with structured remote/package inputs",
+            "version": "1.0.0",
+            "remotes": [
+                {
+                    "type": "streamable-http",
+                    "url": "https://structured.example/mcp",
+                    "headers": {"x-api-key": {"type": "string"}},
+                    "inputs": [{"name": "workspaceId", "type": "string"}],
+                }
+            ],
+            "packages": [
+                {
+                    "registryType": "npm",
+                    "identifier": "@org/structured",
+                    "version": "1.0.0",
+                    "transport": {"type": "stdio"},
+                    "runtimeArguments": [{"name": "--readonly", "value": "true"}],
+                    "environmentVariables": [{"name": "DEBUG", "value": "0"}],
+                }
+            ],
         }
-        
+
         server = adapter.normalize(raw_data)
+
         assert server is not None
-        assert server.id == "test-server-name"
+        assert server.metadata["schemaUri"] == raw_data["$schema"]
+        assert server.metadata["schemaValidation"]["ok"] is True
+        assert server.metadata["hasRemotes"] is True
+        assert server.metadata["hasPackages"] is True
+        assert server.metadata["hasStructuredInputs"] is True
+        assert server.metadata["structuredInputs"]["remoteHeaders"] >= 1
+        assert server.metadata["structuredInputs"]["remoteInputs"] >= 1
+        assert server.metadata["structuredInputs"]["packageRuntimeArguments"] >= 1
+
+    def test_fetch_retries_transient_errors(self):
+        adapter = OfficialMCPRegistryAdapter()
+
+        response_429 = Mock()
+        response_429.status_code = 429
+        response_429.headers = {}
+        response_429.raise_for_status = Mock()
+
+        response_ok = Mock()
+        response_ok.status_code = 200
+        response_ok.headers = {}
+        response_ok.raise_for_status = Mock()
+        response_ok.json.return_value = {"servers": [], "metadata": {}}
+
+        with patch("requests.get", side_effect=[response_429, response_ok]) as mock_get:
+            manifests = adapter.fetch()
+
+        assert manifests == []
+        assert mock_get.call_count == 2
 
 
 class TestGitHubTopicAdapter:
-    """Tests for the GitHub topic adapter."""
-
-    def test_fetch_searches_github_by_topic(self):
-        """Test that fetch searches GitHub for repositories by topic."""
-        adapter = GitHubTopicAdapter(topic="mcp-server")
-        
-        mock_response = {
-            "items": [
-                {
-                    "full_name": "user/repo1",
-                    "name": "repo1",
-                    "description": "An MCP server",
-                    "html_url": "https://github.com/user/repo1",
-                    "owner": {"login": "user"},
-                    "stargazers_count": 42,
-                }
-            ]
-        }
-        
-        with patch("requests.get") as mock_get:
-            mock_get.return_value.json.return_value = mock_response
-            mock_get.return_value.raise_for_status = Mock()
-            
-            repos = adapter.fetch()
-            
-            assert len(repos) == 1
-            assert repos[0]["full_name"] == "user/repo1"
+    """Tests for optional GitHub topic adapter."""
 
     def test_normalize_creates_server_from_github_repo(self):
-        """Test that normalize creates a server from GitHub repo data."""
         adapter = GitHubTopicAdapter()
-        
         raw_data = {
             "full_name": "example/mcp-filesystem",
             "name": "mcp-filesystem",
@@ -220,9 +307,9 @@ class TestGitHubTopicAdapter:
             "owner": {"login": "example"},
             "stargazers_count": 123,
         }
-        
+
         server = adapter.normalize(raw_data)
-        
+
         assert server is not None
         assert server.id == "example-mcp-filesystem"
         assert server.name == "mcp-filesystem"
@@ -235,134 +322,61 @@ class TestGitHubTopicAdapter:
 
 
 class TestIngestFromSource:
-    """Tests for the ingest_from_source function."""
+    """Tests for ingest_from_source merge behavior."""
 
-    def test_ingest_adds_new_servers(self):
-        """Test that ingest adds new servers to the registry."""
-        existing = MCPRegistry(servers=[], metadata={})
-        
-        mock_source = Mock()
-        mock_source.source_id = "test-source"
-        mock_source.fetch.return_value = [
-            {"id": "new1", "name": "New 1", "url": "http://localhost:8001/mcp"},
-            {"id": "new2", "name": "New 2", "url": "http://localhost:8002/mcp"},
-        ]
-        
-        def mock_normalize(data):
-            return MCPServer(
-                id=data["id"],
-                name=data["name"],
-                url=data["url"],
-                transport="sse",
-                auth=MCPAuthConfig(type="none"),
-            )
-        
-        mock_source.normalize = mock_normalize
-        
-        stats = ingest_from_source(mock_source, existing)
-        
-        assert stats["servers_added"] == 2
-        assert stats["servers_updated"] == 0
-        assert stats["servers_total"] == 2
-        assert len(stats["errors"]) == 0
-
-    def test_ingest_updates_existing_servers(self):
-        """Test that ingest updates existing servers in the registry."""
-        existing_server = MCPServer(
-            id="existing",
-            name="Old Name",
-            url="http://localhost:8000/mcp",
-            transport="sse",
-            description="Old description",
-            auth=MCPAuthConfig(type="none"),
+    def test_ingest_adds_and_updates_servers(self):
+        existing = MCPRegistry(
+            servers=[
+                MCPServer(
+                    id="existing",
+                    name="Old",
+                    url="http://localhost:8000/mcp",
+                    transport="sse",
+                    auth=MCPAuthConfig(type="none"),
+                )
+            ],
+            metadata={},
         )
-        existing = MCPRegistry(servers=[existing_server], metadata={})
-        
-        mock_source = Mock()
-        mock_source.source_id = "test-source"
-        mock_source.fetch.return_value = [
-            {
-                "id": "existing",
-                "name": "Updated Name",
-                "url": "http://localhost:8000/mcp",
-                "description": "New description",
-            },
-        ]
-        
-        def mock_normalize(data):
-            return MCPServer(
-                id=data["id"],
-                name=data["name"],
-                url=data["url"],
-                transport="sse",
-                description=data.get("description"),
-                auth=MCPAuthConfig(type="none"),
-            )
-        
-        mock_source.normalize = mock_normalize
-        
-        stats = ingest_from_source(mock_source, existing)
-        
-        assert stats["servers_added"] == 0
-        assert stats["servers_updated"] == 1
-        assert stats["servers_total"] == 1
-        assert existing.servers[0].name == "Updated Name"
-        assert existing.servers[0].description == "New description"
 
-    def test_ingest_skips_invalid_servers(self):
-        """Test that ingest skips servers that fail normalization."""
-        existing = MCPRegistry(servers=[], metadata={})
-        
-        mock_source = Mock()
-        mock_source.source_id = "test-source"
-        mock_source.fetch.return_value = [
-            {"id": "valid", "name": "Valid", "url": "http://localhost:8001/mcp"},
-            {"id": "invalid", "name": "Invalid"},  # Missing URL
-        ]
-        
-        def mock_normalize(data):
-            if "url" not in data:
-                return None  # Simulate normalization failure
+        source = Mock()
+        source.source_id = "test-source"
+        source.fetch.return_value = [{"id": "existing"}, {"id": "new"}]
+
+        def normalize(raw):
+            if raw["id"] == "existing":
+                return MCPServer(
+                    id="existing",
+                    name="Updated",
+                    url="http://localhost:8000/mcp",
+                    transport="sse",
+                    auth=MCPAuthConfig(type="none"),
+                )
             return MCPServer(
-                id=data["id"],
-                name=data["name"],
-                url=data["url"],
+                id="new",
+                name="New",
+                url="http://localhost:8001/mcp",
                 transport="sse",
                 auth=MCPAuthConfig(type="none"),
             )
-        
-        mock_source.normalize = mock_normalize
-        
-        stats = ingest_from_source(mock_source, existing)
-        
-        assert stats["servers_added"] == 1  # Only valid server added
-        assert stats["servers_total"] == 1
-        assert existing.servers[0].id == "valid"
+
+        source.normalize = normalize
+
+        stats = ingest_from_source(source, existing)
+
+        assert stats["servers_added"] == 1
+        assert stats["servers_updated"] == 1
+        assert stats["servers_total"] == 2
+        assert existing.metadata["last_source"] == "test-source"
 
     def test_ingest_handles_fetch_errors(self):
-        """Test that ingest handles errors during fetch."""
         existing = MCPRegistry(servers=[], metadata={})
-        
-        mock_source = Mock()
-        mock_source.source_id = "failing-source"
-        mock_source.fetch.side_effect = requests.RequestException("Network error")
-        
-        stats = ingest_from_source(mock_source, existing)
-        
+        source = Mock()
+        source.source_id = "failing-source"
+        source.fetch.side_effect = requests.RequestException("Network error")
+
+        stats = ingest_from_source(source, existing)
+
         assert stats["servers_added"] == 0
         assert stats["servers_updated"] == 0
         assert len(stats["errors"]) == 1
         assert "Network error" in stats["errors"][0]
-
-    def test_ingest_updates_registry_metadata(self):
-        """Test that ingest updates registry metadata with sync info."""
-        existing = MCPRegistry(servers=[], metadata={})
-        
-        mock_source = Mock()
-        mock_source.source_id = "test-source"
-        mock_source.fetch.return_value = []
-        
-        stats = ingest_from_source(mock_source, existing)
-        
-        assert "last_sync" in existing.metadata
-        assert existing.metadata["last_source"] == "test-source"

@@ -371,9 +371,9 @@ To contribute to remaining tasks:
 ## 📞 Support & Questions
 
 **Technical Lead**: Platform Team
-**Repository**: https://github.com/xfaith4/UnifiedAIToolbox
-**Issues**: https://github.com/xfaith4/UnifiedAIToolbox/issues
-**Discussions**: https://github.com/xfaith4/UnifiedAIToolbox/discussions
+**Repository**: <https://github.com/xfaith4/UnifiedAIToolbox>
+**Issues**: <https://github.com/xfaith4/UnifiedAIToolbox/issues>
+**Discussions**: <https://github.com/xfaith4/UnifiedAIToolbox/discussions>
 
 For questions about MCP Library:
 
