@@ -95,8 +95,8 @@ That's it! The launcher will automatically:
 The orchestration tool includes an automatic artifact normalizer that ensures generated code is runnable:
 
 1. **Intake**: Unzips and indexes the generated artifact
-2. **Cleanup**: 
-   - Strips accidental markdown code fences (```html, ```css, ```javascript, etc.) from code files during ingestion
+2. **Cleanup**:
+   - Strips accidental markdown code fences (```html,```css, ```javascript, etc.) from code files during ingestion
    - Splits bundled multi-file blobs into discrete files
    - Relocates orphaned/weirdly-named files to appropriate locations
 3. **Scaffolding**: Creates missing configuration files:
@@ -106,6 +106,7 @@ The orchestration tool includes an automatic artifact normalizer that ensures ge
 5. **Report**: Generates `normalization_report.md` with all transformations
 
 Configure normalization in `.env`:
+
 ```bash
 NORMALIZE_ARTIFACTS=true    # Enable/disable normalization (default: true)
 NORMALIZE_STRICT=false      # Fail on unresolved issues (default: false)
