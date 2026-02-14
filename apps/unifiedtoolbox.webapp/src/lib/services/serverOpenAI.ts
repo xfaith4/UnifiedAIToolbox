@@ -1,5 +1,10 @@
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions'
 
+const TOKEN_REDACTION_PATTERNS = [
+  /Bearer\s+[A-Za-z0-9._-]+/gi,
+  /sk-[A-Za-z0-9_-]{10,}/g,
+]
+
 export type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string }
 export type ChatUsage = {
   prompt_tokens?: number
@@ -10,6 +15,36 @@ export type ChatUsage = {
 export interface OpenAIChatResult {
   content: string
   usage?: ChatUsage
+}
+
+export class OpenAIChatError extends Error {
+  readonly status: number
+  readonly retryAfterSeconds?: number
+
+  constructor(message: string, status: number, retryAfterSeconds?: number) {
+    super(message)
+    this.name = 'OpenAIChatError'
+    this.status = status
+    this.retryAfterSeconds = retryAfterSeconds
+  }
+}
+
+function redactTokenLikeValues(text: string): string {
+  let redacted = text
+  for (const pattern of TOKEN_REDACTION_PATTERNS) {
+    redacted = redacted.replace(pattern, '[REDACTED]')
+  }
+  return redacted
+}
+
+function normalizeOpenAIError(detail: string): string {
+  const redacted = redactTokenLikeValues(detail)
+  try {
+    const parsed = JSON.parse(redacted) as { error?: { message?: string } }
+    return parsed.error?.message?.trim() || redacted
+  } catch {
+    return redacted
+  }
 }
 
 export async function callOpenAIChat(
@@ -35,7 +70,16 @@ export async function callOpenAIChat(
 
   if (!response.ok) {
     const detail = await response.text()
-    throw new Error(`OpenAI API error (${response.status}): ${detail}`)
+    const safeDetail = normalizeOpenAIError(detail)
+    const retryAfterValue = response.headers.get('retry-after')
+    const retryAfterSeconds = retryAfterValue ? Number.parseInt(retryAfterValue, 10) : undefined
+    const validRetryAfterSeconds = Number.isFinite(retryAfterSeconds) ? retryAfterSeconds : undefined
+
+    throw new OpenAIChatError(
+      `OpenAI API error (${response.status}): ${safeDetail}`,
+      response.status,
+      validRetryAfterSeconds,
+    )
   }
 
   const data = (await response.json()) as {

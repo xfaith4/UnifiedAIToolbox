@@ -3,7 +3,7 @@
 import { evaluatePromptQuality, generateRefinementDraft, getPromptQualityCriteria } from '@/lib/utils/promptQuality'
 import { extractSummaryFromChange } from '@/lib/utils/promptRefiner'
 import { PromptQualitySubscores } from '@/lib/types/prompts'
-import { callOpenAIChat, type ChatUsage, type ChatMessage } from '@/lib/services/serverOpenAI'
+import { OpenAIChatError, callOpenAIChat, type ChatUsage, type ChatMessage } from '@/lib/services/serverOpenAI'
 
 const MODEL = process.env.OPENAI_PROMPT_REFINER_MODEL || 'gpt-4o-mini'
 const COST_PER_THOUSAND = parseFloat(process.env.OPENAI_REFINE_COST_PER_THOUSAND || '0')
@@ -139,6 +139,39 @@ function clampIterations(value: number | undefined): number {
   return Math.max(1, Math.min(10, Math.floor(value)))
 }
 
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms)
+  })
+}
+
+function computeBackoffMs(attempt: number, retryAfterSeconds?: number): number {
+  if (typeof retryAfterSeconds === 'number' && retryAfterSeconds > 0) {
+    return retryAfterSeconds * 1000
+  }
+  const base = 500
+  const max = 8_000
+  return Math.min(max, base * 2 ** (attempt - 1))
+}
+
+async function callOpenAIChatWithRetry(messages: ChatMessage[], apiKey: string, model: string): Promise<{ content: string; usage?: ChatUsage }> {
+  const maxAttempts = 3
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await callOpenAIChat(messages, apiKey, model)
+    } catch (error) {
+      const isLastAttempt = attempt === maxAttempts
+      const isRetryable = error instanceof OpenAIChatError && (error.status === 429 || error.status >= 500)
+      if (!isRetryable || isLastAttempt) {
+        throw error
+      }
+      await wait(computeBackoffMs(attempt, error.retryAfterSeconds))
+    }
+  }
+
+  throw new Error('OpenAI API retry loop exhausted unexpectedly.')
+}
+
 async function runCritic(payload: PromptRefinerPayload, apiKey: string): Promise<{ bullets: string[]; usage: ChatUsage }> {
   const metadata = buildMetadata(payload)
   const criteriaText = formatCriteriaForPrompt()
@@ -154,7 +187,7 @@ async function runCritic(payload: PromptRefinerPayload, apiKey: string): Promise
     },
   ]
 
-  const response = await callOpenAIChat(messages, apiKey, MODEL)
+  const response = await callOpenAIChatWithRetry(messages, apiKey, MODEL)
   const parsed = safeParseJson<CriticResponse>(response.content)
   const bullets = parsed?.critiqueBullets ?? response.content
     .split('\n')
@@ -195,7 +228,7 @@ async function runEngineer(
     },
   ]
 
-  const response = await callOpenAIChat(messages, apiKey, MODEL)
+  const response = await callOpenAIChatWithRetry(messages, apiKey, MODEL)
   const parsed = safeParseJson<EngineerResponse>(response.content)
   if (parsed?.refinedTemplate || parsed?.changeSummary?.length) {
     return { result: parsed, usage: response.usage ?? {} }
@@ -326,8 +359,11 @@ export async function POST(request: Request) {
     )
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error'
+    const status = error instanceof OpenAIChatError && (error.status === 429 || error.status >= 500)
+      ? 502
+      : 500
     return new Response(JSON.stringify({ error: message }), {
-      status: 500,
+      status,
     })
   }
 }
