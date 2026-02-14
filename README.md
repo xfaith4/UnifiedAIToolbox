@@ -195,6 +195,28 @@ The AI Toolbox follows a lightweight orchestration workflow for Codex-driven cha
 
 See [AGENTS.md](AGENTS.md) for orchestration rules and definition of done.
 
+## 🎯 Recreate This Application Anytime
+
+**Want to rebuild or fork this platform?** We've created a comprehensive **prompt chain** that can recreate the entire UnifiedAIToolbox application from scratch using AI assistants like GPT-4 or Claude.
+
+### 📖 Prompt Chain Resources
+
+- **[Complete Rebuild Guide](docs/PROMPT_CHAIN_REBUILD.md)** - Full prompt chain with 22 detailed prompts across 6 phases
+- **[Quick Reference](docs/PROMPT_CHAIN_QUICK_REFERENCE.md)** - Checklist and time estimates
+- **[Usage Examples](docs/PROMPT_CHAIN_EXAMPLES.md)** - Real-world scenarios and patterns
+- **[Flow Diagrams](docs/PROMPT_CHAIN_FLOW.md)** - Visual architecture and dependency graphs
+
+**Time to rebuild**: 38-54 hours (1-2 weeks) following the structured approach
+
+The prompt chain follows **industry-standard best practices**:
+- ✅ Phased approach with proper dependency ordering
+- ✅ Each prompt builds on previous ones
+- ✅ Includes testing and quality gates
+- ✅ Comprehensive documentation generation
+- ✅ Deployment configurations included
+
+---
+
 ## 📚 Documentation
 
 - **Start here** - [docs/README.md](docs/README.md)

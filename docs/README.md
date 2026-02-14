@@ -13,6 +13,8 @@ Purpose: Provide a concise navigation map for Unified AI Toolbox documentation.
 ## Prompt Chain for Rebuilding
 - [Prompt Chain Rebuild Guide](PROMPT_CHAIN_REBUILD.md) — comprehensive phased prompts to recreate this application
 - [Prompt Chain Quick Reference](PROMPT_CHAIN_QUICK_REFERENCE.md) — quick guide with checklist and tips
+- [Prompt Chain Examples](PROMPT_CHAIN_EXAMPLES.md) — real-world usage examples and patterns
+- [Prompt Chain Flow Diagrams](PROMPT_CHAIN_FLOW.md) — visual flow charts and architecture diagrams
 
 ## Core docs
 - [Architecture](architecture.md)
