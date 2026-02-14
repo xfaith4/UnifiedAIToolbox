@@ -7,6 +7,7 @@
     "dev": "echo 'Use launch.sh or Start-Toolbox.ps1 to start the development environment'",
     "build": "npm run build --workspaces",
     "test": "npm run test --workspaces",
+    "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "npm run lint --workspaces",
     "clean": "rm -rf node_modules apps/*/node_modules packages/*/node_modules"
   },
