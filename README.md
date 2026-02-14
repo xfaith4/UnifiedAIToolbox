@@ -199,6 +199,8 @@ See [AGENTS.md](AGENTS.md) for orchestration rules and definition of done.
 
 - **Start here** - [docs/README.md](docs/README.md)
 - **Getting started** - [docs/getting-started.md](docs/getting-started.md)
+- **Prompt Chain Rebuild** - [docs/PROMPT_CHAIN_REBUILD.md](docs/PROMPT_CHAIN_REBUILD.md) - **Recreate this app at any time!**
+- **Prompt Chain Quick Ref** - [docs/PROMPT_CHAIN_QUICK_REFERENCE.md](docs/PROMPT_CHAIN_QUICK_REFERENCE.md)
 - **Architecture** - [docs/architecture.md](docs/architecture.md)
 - **Orchestration** - [docs/orchestration.md](docs/orchestration.md)
 - **Hardening** - [docs/hardening.md](docs/hardening.md)
