@@ -12,6 +12,19 @@
       "config": {},
       "metadata": {},
       "notes": null
+    },
+    {
+      "install_id": "469f750c-6229-4341-b283-22f93f0b2928",
+      "server_id": "local-filesystem",
+      "status": "pending",
+      "installed_at": "2026-02-14 05:29:01.297861",
+      "installed_by": "system",
+      "enabled_at": null,
+      "disabled_at": null,
+      "version": null,
+      "config": {},
+      "metadata": {},
+      "notes": null
     }
   ]
 }
