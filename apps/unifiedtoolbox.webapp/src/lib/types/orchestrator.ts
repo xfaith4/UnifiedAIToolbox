@@ -20,7 +20,7 @@ export interface OrchestrationRun {
   // Goal-based orchestration (multi-agent)
   goal?: string
   agents?: string[]  // Agent names participating
-  runMode?: 'default' | 'codex-swarm' | 'multi-agent'
+  runMode?: 'default' | 'multi-agent'
   mode?: 'executed' | 'simulated'
   
   // Status and timing
@@ -68,7 +68,7 @@ export interface OrchestrationForm {
   reviewPolicy: string
   datasetId?: string
   datasetName?: string
-  runMode: 'default' | 'codex-swarm' | 'multi-agent'
+  runMode: 'default' | 'multi-agent'
   agents: string[]
   model?: string
 }

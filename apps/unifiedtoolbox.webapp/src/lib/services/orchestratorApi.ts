@@ -185,7 +185,7 @@ function normalizeApiRun(raw: Record<string, unknown>): OrchestrationRun {
     agents: Array.isArray(raw.agents) ? raw.agents.map(String) : [],
     status: String(raw.status || 'unknown'),
     mode: raw.mode as 'executed' | 'simulated' | undefined,
-    runMode: (raw.run_mode || 'default') as 'default' | 'codex-swarm' | 'multi-agent',
+    runMode: (raw.run_mode === 'codex-swarm' ? 'multi-agent' : (raw.run_mode || 'default')) as 'default' | 'multi-agent',
     requestedAt: raw.requested_at ? String(raw.requested_at) : undefined,
     startedAt: raw.started_at ? String(raw.started_at) : undefined,
     completedAt: raw.completed_at ? String(raw.completed_at) : undefined,

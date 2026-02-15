@@ -72,7 +72,7 @@ export function createNewRun(
 ): OrchestrationRun {
   const now = new Date().toISOString()
   return {
-    id: generateRunId(options.runMode === 'codex-swarm' ? 'codex' : 'multi-agent'),
+    id: generateRunId('multi-agent'),
     promptId: options.promptId || '',
     goal,
     agents: options.agents || [],

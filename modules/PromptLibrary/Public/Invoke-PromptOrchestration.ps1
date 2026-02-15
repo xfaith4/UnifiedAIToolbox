@@ -58,43 +58,9 @@ function Invoke-PromptOrchestration {
         throw "Prompt with ID '$PromptId' not found in the prompt library."
     }
     
-    # If using Codex, prepare the codex-multiagent-swarm command
+    # Swarming is disabled for this environment.
     if ($UseCodex) {
-        $codexScript = Join-Path $PSScriptRoot '..\..\codex-multiagent-swarm\Orchestrate-Codex.ps1'
-        if (-not (Test-Path $codexScript)) {
-            throw "codex-multiagent-swarm script not found at: $codexScript"
-        }
-        
-        # Prepare the goal file
-        $goalContent = @"
-# $($prompt.title)
-$($prompt.description)
-
-## Input Parameters
-$($Inputs | ConvertTo-Json -Depth 5)
-"@
-        
-        $tempGoalFile = [System.IO.Path]::GetTempFileName() + '.md'
-        $goalContent | Out-File -FilePath $tempGoalFile -Encoding utf8
-        
-        try {
-            # Execute codex-multiagent-swarm
-            $codexParams = @{
-                GoalFile = $tempGoalFile
-                Model = $CodexModel
-                MaxIterations = $MaxIterations
-                PassThreshold = $PassThreshold
-            }
-            
-            Write-Host "🚀 Starting Codex swarm with prompt: $($prompt.title)" -ForegroundColor Cyan
-            & $codexScript @codexParams
-        }
-        finally {
-            # Clean up temp file
-            if (Test-Path $tempGoalFile) {
-                Remove-Item $tempGoalFile -Force
-            }
-        }
+        throw "Swarming execution is disabled for this environment."
     }
     else {
         # Use standard orchestration

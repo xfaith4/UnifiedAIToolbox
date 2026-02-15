@@ -634,7 +634,7 @@ class OrchestrationRunRequest(BaseModel):
     goal: Optional[str] = Field(None, description="Optional goal override for orchestration")
     model: Optional[str] = Field(None, description="Optional model override")
     instruction: Optional[str] = Field(None, description="Optional instruction override")
-    run_codex: Optional[bool] = Field(None, description="Whether to run Codex swarm")
+    run_codex: Optional[bool] = Field(None, description="Deprecated: swarming is disabled")
     create_pr: bool = Field(False, description="Create PR with orchestration results")
     pr_base_branch: str = Field("main", description="Base branch for PR")
     orchestration_type: str = Field("codex", description="Type of orchestration to run (codex, custom)")
@@ -696,6 +696,11 @@ def run_orchestration_on_repo(
         run_codex = request.run_codex
         if run_codex is None:
             run_codex = (request.orchestration_type or "").strip().lower() == "codex"
+        if run_codex:
+            raise HTTPException(
+                status_code=400,
+                detail="Swarming execution is disabled for this environment.",
+            )
 
         ps_exe = shutil.which("pwsh") or shutil.which("powershell")
         if not ps_exe:
@@ -721,8 +726,7 @@ def run_orchestration_on_repo(
             args.extend(["-Model", request.model.strip()])
         if request.instruction and request.instruction.strip():
             args.extend(["-Instruction", request.instruction.strip()])
-        if run_codex:
-            args.append("-RunCodex")
+        # Swarming is explicitly disabled; never append -RunCodex.
 
         logger.info("Executing orchestration command for run_id=%s", run_id)
         proc = subprocess.run(

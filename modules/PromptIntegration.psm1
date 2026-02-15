@@ -130,13 +130,7 @@ function Invoke-Prompt {
     
     # Run the prompt
     if ($UseCodex) {
-        # Use codex-multiagent-swarm integration
-        $codexScript = Join-Path $PSScriptRoot '..\codex-multiagent-swarm\Orchestrate-Codex.ps1'
-        if (-not (Test-Path $codexScript)) {
-            throw "codex-multiagent-swarm integration not found at $codexScript"
-        }
-        
-        & $codexScript -PromptId $Id -Model $Model -Inputs $Parameters
+        throw "Swarming execution is disabled for this environment."
     } else {
         # Use standard orchestration
         Invoke-Orchestration -PromptId $Id -AgentId $AgentId -Inputs $Parameters -Model $Model
