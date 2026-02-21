@@ -1,0 +1,207 @@
+{
+  "workflowId": "trend-thesis-workbench",
+  "version": "1.0",
+  "title": "Trend Thesis Workbench — Contract-Gated Build",
+  "principles": [
+    "single-stack-only",
+    "demo-mode-no-keys",
+    "runnable-from-clean-machine",
+    "contracts-before-code",
+    "verify-and-ci-gated"
+  ],
+  "globalConstraints": {
+    "chooseExactlyOneStack": true,
+    "demoModeRequired": true,
+    "noMarkdownInJsonOrConfig": true,
+    "mustProvideVerifyScript": true,
+    "ciMustRunVerify": true
+  },
+  "stages": [
+    {
+      "id": "0_repo_contract_lock",
+      "title": "Repo Contract Lock",
+      "agentRole": "Release Engineer",
+      "mode": "docs-only",
+      "inputs": [],
+      "requiredOutputs": [
+        "docs/REPO_CONTRACT.md",
+        "docs/WORKFLOW_SPEC.json"
+      ],
+      "gates": [
+        {
+          "id": "gate_contract_exists",
+          "type": "files_exist",
+          "paths": ["docs/REPO_CONTRACT.md", "docs/WORKFLOW_SPEC.json"]
+        },
+        {
+          "id": "gate_contract_has_stack_and_commands",
+          "type": "doc_contains",
+          "path": "docs/REPO_CONTRACT.md",
+          "mustContain": [
+            "Stack decision:",
+            "Folder layout",
+            "Exact commands",
+            ".env.example",
+            "Demo mode",
+            "GitHub Actions"
+          ]
+        }
+      ],
+      "onFail": {
+        "action": "halt",
+        "reason": "Repo Contract is the first hard-stop gate. Fix the contract before proceeding."
+      }
+    },
+    {
+      "id": "1_prd",
+      "title": "PRD + UX Narrative",
+      "agentRole": "Product Strategist",
+      "mode": "docs-only",
+      "inputs": ["docs/REPO_CONTRACT.md"],
+      "requiredOutputs": ["docs/PRD.md"],
+      "gates": [
+        {
+          "id": "gate_prd_exists",
+          "type": "files_exist",
+          "paths": ["docs/PRD.md"]
+        },
+        {
+          "id": "gate_prd_matches_contract",
+          "type": "doc_crosscheck",
+          "leftPath": "docs/PRD.md",
+          "rightPath": "docs/REPO_CONTRACT.md",
+          "rules": [
+            "PRD stack references must match contract stack",
+            "PRD must not introduce a second backend stack",
+            "PRD must include explicit non-goals (no financial advice, no buy/sell)"
+          ]
+        }
+      ],
+      "onFail": { "action": "halt", "reason": "PRD must match the locked Repo Contract." }
+    },
+    {
+      "id": "2_architecture",
+      "title": "Architecture + Data Model + APIs",
+      "agentRole": "Architect + Data Engineer",
+      "mode": "docs-only",
+      "inputs": ["docs/REPO_CONTRACT.md", "docs/PRD.md"],
+      "requiredOutputs": [
+        "docs/ARCHITECTURE.md",
+        "docs/DATA_MODEL.md",
+        "docs/API.md",
+        "docs/JOBS.md"
+      ],
+      "gates": [
+        {
+          "id": "gate_arch_docs_exist",
+          "type": "files_exist",
+          "paths": [
+            "docs/ARCHITECTURE.md",
+            "docs/DATA_MODEL.md",
+            "docs/API.md",
+            "docs/JOBS.md"
+          ]
+        },
+        {
+          "id": "gate_demo_mode_supported",
+          "type": "doc_contains",
+          "path": "docs/ARCHITECTURE.md",
+          "mustContain": ["demo mode", "deterministic sample data", "data source abstraction"]
+        },
+        {
+          "id": "gate_backtest_and_leakage_present",
+          "type": "doc_contains",
+          "path": "docs/ARCHITECTURE.md",
+          "mustContain": ["walk-forward", "leakage", "provenance"]
+        }
+      ],
+      "onFail": { "action": "halt", "reason": "Architecture must satisfy contract and PRD constraints." }
+    },
+    {
+      "id": "3_vertical_slice",
+      "title": "Vertical Slice Implementation",
+      "agentRole": "Full-Stack Engineer",
+      "mode": "code",
+      "inputs": [
+        "docs/REPO_CONTRACT.md",
+        "docs/PRD.md",
+        "docs/ARCHITECTURE.md",
+        "docs/DATA_MODEL.md",
+        "docs/API.md",
+        "docs/JOBS.md"
+      ],
+      "requiredOutputs": [
+        "README.md",
+        "package.json",
+        ".env.example",
+        "scripts/dev",
+        "scripts/test",
+        "scripts/build",
+        "scripts/verify",
+        "docs/IMPLEMENTATION_NOTES.md"
+      ],
+      "gates": [
+        {
+          "id": "gate_required_files_exist",
+          "type": "files_exist",
+          "paths": [
+            "README.md",
+            "package.json",
+            ".env.example",
+            "scripts/verify"
+          ]
+        },
+        {
+          "id": "gate_commands_declared",
+          "type": "doc_contains",
+          "path": "README.md",
+          "mustContain": ["install", "dev", "test", "build", "demo mode"]
+        }
+      ],
+      "onFail": { "action": "halt", "reason": "Vertical slice must produce runnable repo skeleton with verify path." }
+    },
+    {
+      "id": "4_build_verifier_gate",
+      "title": "Build + Quality Verification",
+      "agentRole": "Verifier / Critic",
+      "mode": "verify",
+      "inputs": ["docs/REPO_CONTRACT.md", "repo_tree"],
+      "requiredOutputs": ["docs/VERIFICATION_REPORT.md"],
+      "gates": [
+        {
+          "id": "gate_report_exists",
+          "type": "files_exist",
+          "paths": ["docs/VERIFICATION_REPORT.md"]
+        },
+        {
+          "id": "gate_report_has_pass_fail",
+          "type": "doc_contains",
+          "path": "docs/VERIFICATION_REPORT.md",
+          "mustContain": ["PASS/FAIL", "Fix List", "P0", "P1", "P2"]
+        }
+      ],
+      "onFail": { "action": "halt", "reason": "Verifier must emit report; no silent failure allowed." }
+    },
+    {
+      "id": "5_fix_pass_p0_p1_only",
+      "title": "Fix Pass (P0/P1 only)",
+      "agentRole": "Full-Stack Engineer",
+      "mode": "fix-only",
+      "inputs": ["docs/VERIFICATION_REPORT.md"],
+      "requiredOutputs": ["docs/VERIFICATION_REPORT.md"],
+      "gates": [
+        {
+          "id": "gate_no_p0_p1_remaining",
+          "type": "doc_not_contains",
+          "path": "docs/VERIFICATION_REPORT.md",
+          "mustNotContain": ["P0:", "P1:"]
+        }
+      ],
+      "onFail": {
+        "action": "retry",
+        "maxRetries": 2,
+        "reason": "Fix pass must clear P0/P1. If retries exhausted, halt."
+      }
+    }
+  ]
+}
