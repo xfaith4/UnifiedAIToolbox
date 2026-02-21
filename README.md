@@ -156,10 +156,19 @@ OPENAI_MODEL=gpt-5.2
 # Optional (defaults shown)
 API_PORT=8000                # FastAPI backend port
 WEB_PORT=3000               # Next.js web portal port
+PROMPT_API_HOST=127.0.0.1   # Bind API to localhost by default
 
 # Optional - Artifact Normalization
 NORMALIZE_ARTIFACTS=true     # Enable automatic artifact cleanup
 NORMALIZE_STRICT=false       # Fail on unresolved issues
+
+# Optional - Security controls
+# For orchestration/admin mutation routes; if unset, dev/test can opt into ALLOW_INSECURE_LOCAL.
+PROMPT_API_ADMIN_TOKEN=change-me-admin-token
+PROMPT_API_EXECUTION_TOKEN=change-me-execution-token
+AUTH_ADMIN_USERNAME=admin
+AUTH_ADMIN_PASSWORD=change-me-strong-password
+ALLOW_INSECURE_LOCAL=false
 
 # Optional - GitHub Integration (for automated PR creation and repo operations)
 GITHUB_TOKEN=your-github-token

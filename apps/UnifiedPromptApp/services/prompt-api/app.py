@@ -1,5 +1,5 @@
 ### BEGIN FILE: app.py
-import os, json, hashlib, sqlite3, datetime, textwrap, pathlib, sys, subprocess, re, uuid, time, threading, shutil, logging, asyncio, io, zipfile
+import os, json, hashlib, hmac, sqlite3, datetime, textwrap, pathlib, sys, subprocess, re, uuid, time, threading, shutil, logging, asyncio, io, zipfile
 from typing import cast
 import openai
 from dataclasses import dataclass
@@ -203,6 +203,56 @@ if OPENAI_API_BASE in ("https://api.openai.com", "http://api.openai.com"):
 PROVIDER = (settings.provider or "openai").lower()
 PROMPT_SYNC_FILE = DATA_DIR / "prompt-library.json"
 AGENT_SYNC_FILE = DATA_DIR / "agent-library.json"
+
+
+def _normalized_runtime_env() -> str:
+    """Normalize environment name across legacy and new env vars."""
+    return (
+        os.environ.get("PROMPT_API_ENV")
+        or os.environ.get("ENVIRONMENT")
+        or "development"
+    ).strip().lower()
+
+
+def _is_development_environment() -> bool:
+    return _normalized_runtime_env() in {"dev", "development", "local", "test", "testing"}
+
+
+def _is_truthy(value: Optional[str]) -> bool:
+    if value is None:
+        return False
+    return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _allow_insecure_local() -> bool:
+    """
+    Whether insecure/no-token access is allowed.
+
+    Backwards-compatible default:
+    - dev/test/local: allowed unless explicitly disabled
+    - non-dev: denied unless explicitly enabled
+    """
+    raw = os.environ.get("ALLOW_INSECURE_LOCAL")
+    if raw is None:
+        return _is_development_environment()
+    return _is_truthy(raw)
+
+
+def _constant_time_equals(left: Optional[str], right: Optional[str]) -> bool:
+    if not left or not right:
+        return False
+    return hmac.compare_digest(left, right)
+
+
+def _get_execution_token() -> Optional[str]:
+    """
+    Resolve token used for process-executing orchestration routes.
+
+    Priority:
+    1. PROMPT_API_EXECUTION_TOKEN
+    2. PROMPT_API_ADMIN_TOKEN (settings.admin_token)
+    """
+    return os.environ.get("PROMPT_API_EXECUTION_TOKEN") or settings.admin_token
 
 BRIDGE_DIR = settings.bridge_dir
 BRIDGE_RUN_DIR = BRIDGE_DIR / "runs"
@@ -705,9 +755,33 @@ def save_synced_agents(payload: List[Dict[str, Any]]) -> None:
 def _require_admin_access(header_token: Optional[str]) -> None:
     expected = settings.admin_token
     if not expected:
-        return
-    if header_token != expected:
+        if _allow_insecure_local():
+            return
+        raise HTTPException(
+            status_code=401,
+            detail=(
+                "Admin token is not configured. Set PROMPT_API_ADMIN_TOKEN or "
+                "explicitly set ALLOW_INSECURE_LOCAL=true for local-only development."
+            ),
+        )
+    if not _constant_time_equals(header_token, expected):
         raise HTTPException(status_code=401, detail="Admin token missing or invalid.")
+
+
+def _require_execution_access(header_token: Optional[str]) -> None:
+    expected = _get_execution_token()
+    if not expected:
+        if _allow_insecure_local():
+            return
+        raise HTTPException(
+            status_code=401,
+            detail=(
+                "Execution token is not configured. Set PROMPT_API_EXECUTION_TOKEN "
+                "(or PROMPT_API_ADMIN_TOKEN), or explicitly set ALLOW_INSECURE_LOCAL=true."
+            ),
+        )
+    if not _constant_time_equals(header_token, expected):
+        raise HTTPException(status_code=401, detail="Execution token missing or invalid.")
 
 
 def _validate_prompt_sync_payload(prompts: List[Dict[str, Any]]) -> None:
@@ -1089,8 +1163,13 @@ try:
         get_security_headers, initialize_security
     )
     SECURITY_ENABLED = True
-except ImportError:
-    print("Warning: Security module not available")
+except ImportError as security_import_error:
+    if not _allow_insecure_local():
+        raise RuntimeError(
+            "Security middleware is required in non-local environments. "
+            "Ensure prompt-api/security.py is importable, or set ALLOW_INSECURE_LOCAL=true explicitly."
+        ) from security_import_error
+    print(f"Warning: Security module not available: {security_import_error}")
     SECURITY_ENABLED = False
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -2163,8 +2242,7 @@ def get_cost_summary(
     admin_token: Optional[str] = Header(None, alias="X-Admin-Token")
 ):
     """Get total cost summary for a time period."""
-    if settings.admin_token and admin_token != settings.admin_token:
-        raise HTTPException(status_code=401, detail="Admin token required")
+    _require_admin_access(admin_token)
     
     total_cost = cost_tracker.get_total_cost(
         start_date=start_date,
@@ -2190,8 +2268,7 @@ def get_cost_breakdown(
     admin_token: Optional[str] = Header(None, alias="X-Admin-Token")
 ):
     """Get detailed cost breakdown by provider, model, and day."""
-    if settings.admin_token and admin_token != settings.admin_token:
-        raise HTTPException(status_code=401, detail="Admin token required")
+    _require_admin_access(admin_token)
     
     by_provider = cost_tracker.get_cost_by_provider(
         start_date=start_date,
@@ -2224,8 +2301,7 @@ def check_budget_status(
     admin_token: Optional[str] = Header(None, alias="X-Admin-Token")
 ):
     """Check if costs are within budget."""
-    if settings.admin_token and admin_token != settings.admin_token:
-        raise HTTPException(status_code=401, detail="Admin token required")
+    _require_admin_access(admin_token)
     
     budget_status = cost_tracker.check_budget(
         budget_amount=budget_amount,
@@ -2247,8 +2323,7 @@ def get_costs_by_run(
     Get cost breakdown by orchestration run.
     Shows token usage and costs attributed to each run.
     """
-    if settings.admin_token and admin_token != settings.admin_token:
-        raise HTTPException(status_code=401, detail="Admin token required")
+    _require_admin_access(admin_token)
     
     return cost_tracker.get_cost_by_run(
         run_id=run_id,
@@ -2282,6 +2357,7 @@ def metrics_cost_summary(
     - Top models and agents by cost
     - Daily timeseries data
     """
+    _require_admin_access(admin_token)
     return get_metrics_summary(
         db_path=DB_PATH,
         start_date=start_date,
@@ -2313,6 +2389,7 @@ def metrics_cost_runs(
     - App name
     - Date range
     """
+    _require_admin_access(admin_token)
     return get_runs_metrics(
         db_path=DB_PATH,
         page=page,
@@ -2341,6 +2418,7 @@ def metrics_cost_models(
     - Average cost per call
     - Number of calls and runs
     """
+    _require_admin_access(admin_token)
     return get_models_metrics(
         db_path=DB_PATH,
         start_date=start_date,
@@ -2372,6 +2450,7 @@ def quality_rating(
     Records success status, quality score, notes, and whether manual fixes were needed.
     This endpoint is designed for web UI integration to capture human feedback.
     """
+    _require_admin_access(admin_token)
     return record_quality_rating(
         db_path=DB_PATH,
         run_id=run_id,
@@ -2393,6 +2472,7 @@ def automated_test(
     Captures boolean success status and numeric test scores from automated test suites.
     Use this when runs are part of a test suite that can programmatically assess quality.
     """
+    _require_admin_access(admin_token)
     return record_automated_test(
         db_path=DB_PATH,
         run_id=run_id,
@@ -2697,12 +2777,18 @@ def get_orchestration_mcp_middleware() -> Optional["OrchestrationMCPMiddleware"]
 
 
 @app.post("/orchestrate/run")
-def orchestrate_run(req: OrchestrationRequest):
+def orchestrate_run(
+    req: OrchestrationRequest,
+    execution_token: Optional[str] = Header(default=None, alias="X-Execution-Token"),
+    admin_token: Optional[str] = Header(default=None, alias="X-Admin-Token"),
+):
     """
     Queue an orchestration run (lightweight orchestrator). Writes a manifest and kicks off a
     background task that executes the external orchestrator (Unified-Orchestration.ps1 by default), otherwise
     simulates a completion.
     """
+    _require_execution_access(execution_token or admin_token)
+
     # Sanitize the raw run base to ensure it's safe for filesystem use on Windows
     raw_run_base = req.prompt_id or req.goal or "run"
     safe_run_base = sanitize_run_id(raw_run_base)
@@ -4116,8 +4202,15 @@ def _materialize_task_branches(
 
 
 @app.post("/orchestrate/repo", response_class=StreamingResponse)
-async def start_repo_orchestration(req: RepoOrchestrationRequest, request: Request):
+async def start_repo_orchestration(
+    req: RepoOrchestrationRequest,
+    request: Request,
+    execution_token: Optional[str] = Header(default=None, alias="X-Execution-Token"),
+    admin_token: Optional[str] = Header(default=None, alias="X-Admin-Token"),
+):
     """Start a repository-first orchestration workflow with streaming progress."""
+    _require_execution_access(execution_token or admin_token)
+
     if (
         GitHubCloneService is None
         or RepoIntakeService is None
@@ -4690,7 +4783,13 @@ def download_repo_artifacts_zip(run_id: str):
 
 
 @app.post("/orchestrate/repo/{run_id}/cancel")
-async def cancel_repo_orchestration(run_id: str):
+async def cancel_repo_orchestration(
+    run_id: str,
+    execution_token: Optional[str] = Header(default=None, alias="X-Execution-Token"),
+    admin_token: Optional[str] = Header(default=None, alias="X-Admin-Token"),
+):
+    _require_execution_access(execution_token or admin_token)
+
     async with _repo_state_lock:
         state = _repo_orchestration_state.get(run_id)
     if not state:
@@ -5089,7 +5188,7 @@ def _find_available_port(start_port: int, max_attempts: int = 10, host: str = "0
 
 if __name__ == "__main__":
     requested_port = int(os.environ.get("PROMPT_API_PORT", "8000"))
-    host = os.environ.get("PROMPT_API_HOST", "0.0.0.0")
+    host = os.environ.get("PROMPT_API_HOST", "127.0.0.1")
     
     # Check if port is available, find alternative if not
     if _is_port_available(requested_port, host):
@@ -5107,5 +5206,6 @@ if __name__ == "__main__":
     print(f"Starting server on {host}:{port}")
     uvicorn.run("app:app", host=host, port=port, reload=True)
 ### END FILE
+
 
 

@@ -60,6 +60,10 @@ if ([string]::IsNullOrEmpty($env:OPENAI_API_KEY) -or $env:OPENAI_API_KEY -eq "sk
 
 $ApiPort = if ($env:API_PORT) { $env:API_PORT } else { "8000" }
 $WebPort = if ($env:WEB_PORT) { $env:WEB_PORT } else { "3000" }
+if ([string]::IsNullOrWhiteSpace($env:PROMPT_API_HOST)) {
+    # Keep API loopback-bound by default to reduce accidental LAN exposure.
+    $env:PROMPT_API_HOST = "127.0.0.1"
+}
 
 Write-Host "Installing dependencies..." -ForegroundColor Cyan
 Write-Host ""

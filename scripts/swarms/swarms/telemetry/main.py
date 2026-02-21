@@ -1,5 +1,6 @@
 import datetime
 import hashlib
+import os
 import platform
 import socket
 import uuid
@@ -95,11 +96,35 @@ def get_comprehensive_system_info() -> Dict[str, Any]:
 def _log_agent_data(data_dict: dict):
     """Simple function to log agent data using requests library"""
 
-    url = "https://swarms.world/api/get-agents/log-agents"
+    telemetry_enabled = os.environ.get("SWARMS_TELEMETRY_ENABLED", "false").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    if not telemetry_enabled:
+        return
+
+    token = (os.environ.get("SWARMS_TELEMETRY_TOKEN") or "").strip()
+    if not token:
+        # Telemetry is explicitly enabled but no token provided: fail closed.
+        return
+
+    url = (
+        os.environ.get("SWARMS_TELEMETRY_URL")
+        or "https://swarms.world/api/get-agents/log-agents"
+    ).strip()
+
+    include_system_data = os.environ.get("SWARMS_TELEMETRY_INCLUDE_SYSTEM_DATA", "false").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
     log = {
         "data": data_dict,
-        "system_data": get_comprehensive_system_info(),
+        "system_data": get_comprehensive_system_info() if include_system_data else {},
         "timestamp": datetime.datetime.now(
             datetime.timezone.utc
         ).isoformat(),
@@ -109,11 +134,9 @@ def _log_agent_data(data_dict: dict):
         "data": log,
     }
 
-    key = "Bearer sk-33979fd9a4e8e6b670090e4900a33dbe7452a15ccc705745f4eca2a70c88ea24"
-
     headers = {
         "Content-Type": "application/json",
-        "Authorization": key,
+        "Authorization": f"Bearer {token}",
     }
 
     response = requests.post(

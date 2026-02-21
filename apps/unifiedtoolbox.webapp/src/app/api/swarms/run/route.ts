@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto'
+import { randomUUID, timingSafeEqual } from 'crypto'
 import { spawn } from 'child_process'
 import fs from 'fs'
 import path from 'path'
@@ -22,6 +22,61 @@ type ParsedRunnerPayload = {
 }
 
 const TIMEOUT_MS = 120_000
+
+function isTruthy(value: string | undefined): boolean {
+  if (!value) return false
+  return ['1', 'true', 'yes', 'y', 'on'].includes(value.trim().toLowerCase())
+}
+
+function allowInsecureLocal(): boolean {
+  const raw = process.env.ALLOW_INSECURE_LOCAL
+  if (raw == null) {
+    return process.env.NODE_ENV !== 'production'
+  }
+  return isTruthy(raw)
+}
+
+function resolveExecutionToken(): string {
+  return (
+    process.env.UAIT_EXECUTION_TOKEN ||
+    process.env.PROMPT_API_EXECUTION_TOKEN ||
+    process.env.PROMPT_API_ADMIN_TOKEN ||
+    ''
+  ).trim()
+}
+
+function tokenMatches(provided: string, expected: string): boolean {
+  const left = Buffer.from(provided)
+  const right = Buffer.from(expected)
+  if (left.length !== right.length) return false
+  return timingSafeEqual(left, right)
+}
+
+function requireExecutionAccess(req: Request): NextResponse | null {
+  const expectedToken = resolveExecutionToken()
+  if (!expectedToken) {
+    if (allowInsecureLocal()) return null
+    return NextResponse.json(
+      {
+        error: {
+          code: 'EXECUTION_TOKEN_UNCONFIGURED',
+          message:
+            'Execution token is not configured. Set UAIT_EXECUTION_TOKEN (or PROMPT_API_EXECUTION_TOKEN / PROMPT_API_ADMIN_TOKEN).',
+        },
+      },
+      { status: 401 }
+    )
+  }
+
+  const providedToken = (req.headers.get('x-execution-token') || req.headers.get('x-admin-token') || '').trim()
+  if (!tokenMatches(providedToken, expectedToken)) {
+    return NextResponse.json(
+      { error: { code: 'UNAUTHORIZED', message: 'Execution token missing or invalid.' } },
+      { status: 401 }
+    )
+  }
+  return null
+}
 
 function resolvePaths() {
   const repoRoot = path.resolve(process.cwd(), '..', '..')
@@ -86,6 +141,9 @@ function coerceGoal(body: SwarmRequest): string {
 }
 
 export async function POST(req: Request) {
+  const authError = requireExecutionAccess(req)
+  if (authError) return authError
+
   let payload: SwarmRequest = {}
   try {
     payload = await req.json()

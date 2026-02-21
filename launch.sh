@@ -29,6 +29,7 @@ fi
 
 API_PORT="${API_PORT:-8000}"
 WEB_PORT="${WEB_PORT:-3000}"
+PROMPT_API_HOST="${PROMPT_API_HOST:-127.0.0.1}"
 
 echo "📦 Installing dependencies..."
 echo ""
@@ -70,6 +71,7 @@ echo "  → Starting API (port $API_PORT)..."
     cd apps/UnifiedPromptApp/services/prompt-api
     source "$REPO_ROOT/.venv/bin/activate"
     export PYTHONPATH="$REPO_ROOT:$PYTHONPATH"
+    export PROMPT_API_HOST
     python app.py > "$REPO_ROOT/logs/api.log" 2>&1
 ) &
 pids+=($!)

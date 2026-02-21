@@ -170,6 +170,15 @@ pwsh ./scripts/Setup-Swarms.ps1
 
 This creates an isolated venv at `.uaitoolbox/swarms/.venv` and prints the python path; `Start-Toolbox.ps1` will auto-detect and set `SWARMS_PYTHON_BIN` for the Web UI and orchestration when available.
 
+Telemetry is disabled by default for vendored swarms. To enable it explicitly:
+
+```powershell
+$env:SWARMS_TELEMETRY_ENABLED = "true"
+$env:SWARMS_TELEMETRY_TOKEN = "<token>"
+# optional
+$env:SWARMS_TELEMETRY_INCLUDE_SYSTEM_DATA = "false"
+```
+
 ### Smoketest.ps1
 
 **Purpose**: PowerShell module smoke test for local development.

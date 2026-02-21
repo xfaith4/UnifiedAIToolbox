@@ -74,6 +74,21 @@ _users_db: dict[str, UserInDB] = {}
 _initialized = False
 
 
+def _is_truthy(value: Optional[str]) -> bool:
+    if value is None:
+        return False
+    return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _is_non_dev_environment() -> bool:
+    env = (
+        os.environ.get("PROMPT_API_ENV")
+        or os.environ.get("ENVIRONMENT")
+        or "development"
+    ).strip().lower()
+    return env not in {"dev", "development", "local", "test", "testing"}
+
+
 def _hash_password(password: str) -> str:
     """Hash a password using HMAC-SHA256."""
     return hmac.new(
@@ -155,6 +170,14 @@ def initialize_auth() -> None:
     # Create default admin user if no users exist
     admin_username = os.environ.get("AUTH_ADMIN_USERNAME", "admin")
     admin_password = os.environ.get("AUTH_ADMIN_PASSWORD", "admin")
+    if (
+        _is_non_dev_environment()
+        and admin_password == "admin"
+        and not _is_truthy(os.environ.get("ALLOW_INSECURE_LOCAL"))
+    ):
+        raise RuntimeError(
+            "AUTH_ADMIN_PASSWORD must be set to a non-default value in non-development environments."
+        )
     
     if admin_username not in _users_db:
         _users_db[admin_username] = UserInDB(
