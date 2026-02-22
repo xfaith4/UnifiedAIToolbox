@@ -11,37 +11,71 @@ import {
   Bot,
   Users,
   Sparkles,
+  Wrench,
+  PlayCircle,
+  History,
+  TrendingUp,
+  Home,
+  HelpCircle,
   type LucideIcon,
 } from 'lucide-react'
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 import { installUxInstrumentation, trackUxEvent } from '@/lib/ux/telemetry'
 import { UxDebugOverlay } from '@/components/ux/UxDebugOverlay'
+import { NAV_LABELS, ROUTES } from '@/lib/nav/navConfig'
+import { DocsHub } from '@/components/docs/DocsHub'
+import { FirstLaunchTour } from '@/components/tour/FirstLaunchTour'
+
+// ── Active-path helper ────────────────────────────────────────────────────────
+// Treats redirect aliases as active for their canonical route.
+const ACTIVE_ALIASES: Record<string, string> = {
+  '/home': '/dashboard',
+  '/overview': '/dashboard',
+  '/playground': '/orchestrator',
+  '/reports': '/milestones',
+}
+
+function isNavItemActive(pathname: string, href: string): boolean {
+  if (pathname === href) return true
+  const canonical = ACTIVE_ALIASES[pathname]
+  return canonical === href
+}
+
+// ── Nav data (consumed from navConfig constants) ──────────────────────────────
+type NavItem = { href: string; label: string; icon: LucideIcon }
+type NavSection = { title: string; isSettings?: boolean; items: NavItem[] }
 
 const navSections: NavSection[] = [
   {
-    title: 'Overview',
-    items: [{ href: '/dashboard', label: 'Dashboard', icon: BarChart3 }],
+    title: NAV_LABELS.sections.home,
+    items: [{ href: ROUTES.home, label: NAV_LABELS.items.home, icon: Home }],
   },
   {
-    title: 'Libraries',
+    title: NAV_LABELS.sections.build,
     items: [
-      { href: '/prompts', label: 'Prompt Library', icon: BookOpen },
-      { href: '/agents', label: 'Agent Library', icon: Bot },
-      { href: '/mcp-library', label: 'MCP Library', icon: Sparkles },
+      { href: ROUTES.prompts, label: NAV_LABELS.items.promptLibrary, icon: BookOpen },
+      { href: ROUTES.agents, label: NAV_LABELS.items.agentLibrary, icon: Bot },
+      { href: ROUTES.tooling, label: NAV_LABELS.items.tooling, icon: Wrench },
     ],
   },
   {
-    title: 'Integration Tools',
+    title: NAV_LABELS.sections.run,
     items: [
-      { href: '/orchestrator', label: 'Orchestrator', icon: Users },
-      { href: '/milestones', label: 'Milestones', icon: BarChart3 },
-      { href: '/engine', label: 'App Factory', icon: Workflow },
+      { href: ROUTES.playground, label: NAV_LABELS.items.playground, icon: PlayCircle },
+      { href: ROUTES.appFactory, label: NAV_LABELS.items.appFactory, icon: Workflow },
     ],
   },
   {
-    title: 'Settings',
+    title: NAV_LABELS.sections.observe,
+    items: [
+      { href: ROUTES.runs, label: NAV_LABELS.items.runs, icon: History },
+      { href: ROUTES.reports, label: NAV_LABELS.items.reports, icon: TrendingUp },
+    ],
+  },
+  {
+    title: NAV_LABELS.sections.settings,
     isSettings: true,
-    items: [{ href: '/settings', label: 'Settings', icon: Settings }],
+    items: [{ href: ROUTES.settings, label: NAV_LABELS.items.settings, icon: Settings }],
   },
 ]
 
@@ -50,11 +84,9 @@ const baseLinkClass =
 const inactiveLinkClass = 'text-gray-300 hover:bg-gray-800/70'
 const activeLinkClass = 'bg-gray-800/90 text-white font-medium shadow-inner'
 
-type NavItem = { href: string; label: string; icon: LucideIcon }
-type NavSection = { title: string; isSettings?: boolean; items: NavItem[] }
-
 export default function RootLayout({ children }: { children: ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [docsOpen, setDocsOpen] = useState(false)
   const pathname = usePathname()
   const searchParams = useSearchParams()
 
@@ -74,11 +106,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     if (process.env.NODE_ENV === 'production') return false
     const qsEnabled = searchParams.get('uxdebug') === '1'
     const stored = typeof window !== 'undefined' ? window.localStorage.getItem('utb_uxdebug') === '1' : false
-    
+
     if (qsEnabled && typeof window !== 'undefined') {
       window.localStorage.setItem('utb_uxdebug', '1')
     }
-    
+
     return qsEnabled || stored
   }, [searchParams])
 
@@ -104,14 +136,24 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                   <div className="text-[10px] text-gray-400">Unified Web App</div>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setSidebarOpen((prev) => !prev)}
-                className="rounded-md border border-gray-700 bg-gray-800/60 px-3 py-1 text-sm font-medium text-gray-100 shadow-sm"
-                aria-controls="sidebar-nav"
-              >
-                {sidebarOpen ? 'Close' : 'Menu'}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDocsOpen(true)}
+                  className="rounded-md border border-gray-700 bg-gray-800/60 p-1.5 text-gray-300 hover:text-white"
+                  aria-label="Open help and docs"
+                >
+                  <HelpCircle size={18} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSidebarOpen((prev) => !prev)}
+                  className="rounded-md border border-gray-700 bg-gray-800/60 px-3 py-1 text-sm font-medium text-gray-100 shadow-sm"
+                  aria-controls="sidebar-nav"
+                >
+                  {sidebarOpen ? 'Close' : 'Menu'}
+                </button>
+              </div>
             </div>
 
             {/* Overlay for mobile */}
@@ -126,9 +168,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 
             <aside
               id="sidebar-nav"
-              className={`fixed inset-y-0 left-0 z-40 w-64 border-r border-gray-800 bg-gray-900 p-4 transition-transform duration-200 ease-out md:static md:z-auto md:w-full md:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-                }`}
+              className={`fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-gray-800 bg-gray-900 p-4 transition-transform duration-200 ease-out md:static md:z-auto md:w-full md:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
             >
+              {/* Logo */}
               <div className="mb-6 hidden items-center gap-2 md:flex">
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-purple-600">
                   <Sparkles size={20} className="text-white" />
@@ -139,24 +181,29 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                 </div>
               </div>
 
-              <nav className="space-y-5">
+              {/* Nav sections */}
+              <nav className="flex-1 space-y-5" aria-label="Main navigation">
                 {navSections.map((section) => (
                   <div key={section.title}>
                     {section.isSettings && <hr className="mb-4 border-gray-800" />}
-                    <div className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+                    <div
+                      className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-gray-400"
+                      aria-hidden="true"
+                    >
                       {section.title}
                     </div>
                     <div className="space-y-1">
                       {section.items.map(({ href, label, icon: Icon }) => {
-                        const isActive = pathname === href
+                        const isActive = isNavItemActive(pathname, href)
                         return (
                           <Link
                             key={href}
                             href={href}
                             className={`${baseLinkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}
                             onClick={closeSidebar}
+                            aria-current={isActive ? 'page' : undefined}
                           >
-                            <Icon size={18} /> {label}
+                            <Icon size={18} aria-hidden="true" /> {label}
                           </Link>
                         )
                       })}
@@ -164,6 +211,19 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                   </div>
                 ))}
               </nav>
+
+              {/* Sidebar footer — Help button */}
+              <div className="mt-4 border-t border-gray-800 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setDocsOpen(true)}
+                  className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-gray-400 transition-colors hover:bg-gray-800/70 hover:text-gray-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                  aria-label="Open help and docs"
+                >
+                  <HelpCircle size={18} aria-hidden="true" />
+                  <span className="text-sm">Help &amp; Docs</span>
+                </button>
+              </div>
             </aside>
 
             <main id="main-content" className="bg-gray-950 p-4 md:p-6">
@@ -173,6 +233,12 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         </div>
 
         <UxDebugOverlay enabled={uxDebugEnabled} />
+
+        {/* Global docs hub — accessible from any page */}
+        <DocsHub open={docsOpen} onClose={() => setDocsOpen(false)} />
+
+        {/* First-launch tour — shown once, dismissed via localStorage */}
+        <FirstLaunchTour onOpenDocs={() => setDocsOpen(true)} />
       </body>
     </html>
   )

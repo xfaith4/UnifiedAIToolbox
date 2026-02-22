@@ -161,8 +161,8 @@ export default function App() {
       <header className="rounded-3xl border border-slate-800 bg-slate-900/80 p-6 shadow-sm backdrop-blur">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <p className="text-xs uppercase tracking-widest text-sky-300">Milestones</p>
-            <h1 className="text-3xl font-bold text-white">AI-Orchestration Milestone Dashboard</h1>
+            <p className="text-xs uppercase tracking-widest text-sky-300">Observe</p>
+            <h1 className="text-3xl font-bold text-white">Reports</h1>
             <p className="text-sm text-slate-300">
               Current health, what improved, and where to focus next. {rangeLabel}.
             </p>

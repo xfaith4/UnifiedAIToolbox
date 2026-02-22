@@ -704,7 +704,7 @@ export default function OrchestratorPage() {
             <svg className="h-6 w-6 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
-            <h1 className="text-2xl font-semibold">AI Orchestration</h1>
+            <h1 className="text-2xl font-semibold">Playground</h1>
           </div>
           <p className="text-sm text-slate-400">
             Transform high-level ideas into results through intelligent multi-agent collaboration
