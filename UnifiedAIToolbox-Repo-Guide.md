@@ -2,18 +2,17 @@
 
 What it solves • How to run it • How to use it over time
 
-
 ### How to read this document
 
 This repo has both “consumer” docs (get the toolbox running and productive quickly) and “developer” docs (architecture, schemas, hardening details, historical planning). This guide is intentionally linear and task-oriented.
 
 Sections 1–4 are the fast path. Sections 5–7 are deeper reference.
 
-## What this repository solves
+### What this repository solves
 
 Unified AI Toolbox is a local-first orchestration platform that brings together prompt libraries, agent definitions, run tracking, and multiple UX entry points (web portal, API, CLI/automation). It’s designed to make AI workflows repeatable, auditable, and improvable over time.
 
-### Core outcomes
+### Core Outcomes
 
 - Run multi-step, multi-agent workflows with saved artifacts and event logs.
 
@@ -33,7 +32,7 @@ Unified AI Toolbox is a local-first orchestration platform that brings together 
 
 - Builders who want a single toolbox to evolve from experiments into an operational system.
 
-# 2. Get it up and running
+### 2. Get it up and running
 
 The fastest path is the launch portal. Manual start is best for dev/debug.
 
@@ -47,11 +46,11 @@ The fastest path is the launch portal. Manual start is best for dev/debug.
 
 - Docker (optional)
 
-## Fastest start (launch portal)
+### Fastest start (launch portal)
 
-Open `launch-portal.html` in a browser.
+- Open `launch-portal.html` in a browser.
 
-Choose a launch mode and run the generated command.
+- Choose a launch mode and run the generated command.
 
 ## One-command launch
 
@@ -73,7 +72,7 @@ Prompt API (FastAPI):
 
 ```powershell
 cd apps\UnifiedPromptApp\services\prompt-api
-.\.venv\Scripts\python.exe -m uvicorn app:app --reload --host 0.0.0.0 --port 8000
+.\.venv\Scripts\python.exe -m uvicorn app:app --reload --host 127.0.0.1 --port 8000
 ```
 
 Health check:

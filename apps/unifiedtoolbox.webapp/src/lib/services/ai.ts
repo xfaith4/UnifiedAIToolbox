@@ -10,11 +10,11 @@ export interface ChatCompletionResult {
 }
 
 /**
- * Lightweight OpenAI chat helper. Uses a provided key or falls back to NEXT_PUBLIC_OPENAI_API_KEY.
+ * Lightweight OpenAI chat helper. Uses a provided key or falls back to browser-exposed env keys.
  * Returns a friendly echo if no key is configured so the UI still functions in demo mode.
  */
 export async function getChatCompletion(prompt: string, apiKey?: string): Promise<ChatCompletionResult> {
-  const key = apiKey || process.env.NEXT_PUBLIC_OPENAI_API_KEY
+  const key = apiKey || process.env.NEXT_PUBLIC_API_KEY || process.env.NEXT_PUBLIC_OPENAI_API_KEY
   if (!key) {
     return {
       output: `No API key configured. Prompt preview:\n\n${prompt}`,

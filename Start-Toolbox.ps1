@@ -24,9 +24,9 @@ $ProjectRoot = $PSScriptRoot
 function Test-IsEnvPlaceholder([string]$Value) {
     if ([string]::IsNullOrWhiteSpace($Value)) { return $false }
     $trimmed = $Value.Trim()
-    if ($trimmed -match '^\$\(\$[A-Za-z_][A-Za-z0-9_]*\)$') { return $true } # PowerShell: $($VAR)
-    if ($trimmed -match '^\$\{[A-Za-z_][A-Za-z0-9_]*\}$') { return $true } # Shell: ${VAR}
-    if ($trimmed -match '^\$[A-Za-z_][A-Za-z0-9_]*$') { return $true }      # Shell: $VAR
+    if ($trimmed -match '^\$\(\$(env:)?[A-Za-z_][A-Za-z0-9_]*\)$') { return $true } # PowerShell: $($VAR), $($env:VAR)
+    if ($trimmed -match '^\$\{(env:)?[A-Za-z_][A-Za-z0-9_]*\}$') { return $true } # Shell/PS: ${VAR}, ${env:VAR}
+    if ($trimmed -match '^\$(env:)?[A-Za-z_][A-Za-z0-9_]*$') { return $true }      # Shell/PS: $VAR, $env:VAR
     return $false
 }
 
@@ -35,11 +35,11 @@ function Resolve-EnvPlaceholder([string]$Value) {
     $trimmed = $Value.Trim()
 
     $name = $null
-    if ($trimmed -match '^\$\(\$(?<name>[A-Za-z_][A-Za-z0-9_]*)\)$') {
+    if ($trimmed -match '^\$\(\$(env:)?(?<name>[A-Za-z_][A-Za-z0-9_]*)\)$') {
         $name = $matches['name']
-    } elseif ($trimmed -match '^\$\{(?<name>[A-Za-z_][A-Za-z0-9_]*)\}$') {
+    } elseif ($trimmed -match '^\$\{(env:)?(?<name>[A-Za-z_][A-Za-z0-9_]*)\}$') {
         $name = $matches['name']
-    } elseif ($trimmed -match '^\$(?<name>[A-Za-z_][A-Za-z0-9_]*)$') {
+    } elseif ($trimmed -match '^\$(env:)?(?<name>[A-Za-z_][A-Za-z0-9_]*)$') {
         $name = $matches['name']
     }
 

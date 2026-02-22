@@ -23,10 +23,12 @@ describe('normalizeBrowserApiKey', () => {
 
   it('rejects shell placeholder ${VAR}', () => {
     expect(normalizeBrowserApiKey('${OPENAI_API_KEY}')).toBe('')
+    expect(normalizeBrowserApiKey('${env:OPENAI_API_KEY}')).toBe('')
   })
 
   it('rejects bare shell placeholder $VAR', () => {
     expect(normalizeBrowserApiKey('$OPENAI_API_KEY')).toBe('')
+    expect(normalizeBrowserApiKey('$env:OPENAI_API_KEY')).toBe('')
   })
 
   it('rejects the docs example value', () => {
@@ -81,8 +83,8 @@ describe('getBrowserApiKeyFromEnv', () => {
   })
 
   it('returns empty string when both keys are placeholders', () => {
-    process.env.NEXT_PUBLIC_API_KEY = '$($env:NEXT_PUBLIC_API_KEY)'
-    process.env.NEXT_PUBLIC_OPENAI_API_KEY = '${OPENAI_API_KEY}'
+    process.env.NEXT_PUBLIC_API_KEY = '$env:NEXT_PUBLIC_API_KEY'
+    process.env.NEXT_PUBLIC_OPENAI_API_KEY = '${env:OPENAI_API_KEY}'
     expect(getBrowserApiKeyFromEnv()).toBe('')
   })
 })

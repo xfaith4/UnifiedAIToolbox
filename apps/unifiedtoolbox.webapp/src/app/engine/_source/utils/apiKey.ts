@@ -1,9 +1,9 @@
 const EXAMPLE_PROJECT_KEY = 'sk-proj-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
 
 const PLACEHOLDER_PATTERNS = [
-  /^\$\(\$[A-Za-z_][A-Za-z0-9_]*\)$/, // PowerShell: $($VAR)
-  /^\$\{[A-Za-z_][A-Za-z0-9_]*\}$/, // Shell: ${VAR}
-  /^\$[A-Za-z_][A-Za-z0-9_]*$/, // Shell: $VAR
+  /^\$\(\$(?:env:)?[A-Za-z_][A-Za-z0-9_]*\)$/i, // PowerShell: $($VAR), $($env:VAR)
+  /^\$\{(?:env:)?[A-Za-z_][A-Za-z0-9_]*\}$/i, // Shell/PS: ${VAR}, ${env:VAR}
+  /^\$(?:env:)?[A-Za-z_][A-Za-z0-9_]*$/i, // Shell/PS: $VAR, $env:VAR
 ]
 
 const stripWrappingQuotes = (value: string): string => {

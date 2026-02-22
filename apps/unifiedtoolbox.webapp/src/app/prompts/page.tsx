@@ -547,7 +547,9 @@ function PromptEditor({
     [prompt.template]
   )
 
-  const aiAvailable = Boolean(getStoredApiKey() || process.env.NEXT_PUBLIC_OPENAI_API_KEY)
+  const aiAvailable = Boolean(
+    getStoredApiKey() || process.env.NEXT_PUBLIC_API_KEY || process.env.NEXT_PUBLIC_OPENAI_API_KEY
+  )
 
   useEffect(() => {
     if (!aiAvailable && refinerMode === 'ai') {
