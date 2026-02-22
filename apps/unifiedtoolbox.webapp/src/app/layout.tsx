@@ -4,12 +4,10 @@ import './globals.css'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import {
-  BarChart3,
   Settings,
   Workflow,
   BookOpen,
   Bot,
-  Users,
   Sparkles,
   Wrench,
   PlayCircle,
@@ -17,6 +15,7 @@ import {
   TrendingUp,
   Home,
   HelpCircle,
+  MessageSquare,
   type LucideIcon,
 } from 'lucide-react'
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
@@ -48,7 +47,10 @@ type NavSection = { title: string; isSettings?: boolean; items: NavItem[] }
 const navSections: NavSection[] = [
   {
     title: NAV_LABELS.sections.home,
-    items: [{ href: ROUTES.home, label: NAV_LABELS.items.home, icon: Home }],
+    items: [
+      { href: ROUTES.home, label: NAV_LABELS.items.home, icon: Home },
+      { href: ROUTES.concierge, label: NAV_LABELS.items.concierge, icon: MessageSquare },
+    ],
   },
   {
     title: NAV_LABELS.sections.build,
