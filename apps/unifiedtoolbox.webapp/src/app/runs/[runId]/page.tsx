@@ -321,8 +321,8 @@ export default function RepoRunPage({ params }: { params: { runId: string } }) {
             <div className="text-xs text-slate-400">{report?.repo?.url || 'Repo unavailable'}</div>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs">
-            <Link className="rounded border border-slate-700 px-2 py-1 hover:bg-slate-800/60" href="/github">
-              Back to GitHub
+            <Link className="rounded border border-slate-700 px-2 py-1 hover:bg-slate-800/60" href="/engine">
+              Back to App Factory
             </Link>
             {runId && ORCHESTRATOR_API_BASE && (
               <a

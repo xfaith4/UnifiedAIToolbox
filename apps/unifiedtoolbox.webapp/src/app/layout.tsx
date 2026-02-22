@@ -6,7 +6,6 @@ import { usePathname, useSearchParams } from 'next/navigation'
 import {
   BarChart3,
   Settings,
-  Github,
   Workflow,
   BookOpen,
   Bot,
@@ -37,7 +36,6 @@ const navSections: NavSection[] = [
       { href: '/orchestrator', label: 'Orchestrator', icon: Users },
       { href: '/milestones', label: 'Milestones', icon: BarChart3 },
       { href: '/engine', label: 'App Factory', icon: Workflow },
-      { href: '/github', label: 'GitHub', icon: Github },
     ],
   },
   {

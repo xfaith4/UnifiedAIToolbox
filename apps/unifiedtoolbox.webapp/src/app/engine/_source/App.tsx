@@ -25,6 +25,11 @@ import { useRunStatus } from './hooks/useRunStatus';
 import { getBrowserApiKeyFromEnv } from './utils/apiKey';
 import type { Task, Artifact, RunMode } from './types';
 import type { EnginePipelinePayload } from '@/lib/app-factory/pipeline/pipelineStatus';
+import { getGithubStatus, listAccessibleRepos } from '@/lib/services/github';
+import { startRepoOrchestration, ORCHESTRATOR_API_BASE } from '@/lib/services/orchestratorApi';
+import type { GitHubRepo } from '@/lib/types/github';
+import type { RepoOrchestrationEvent, RepoOrchestrationResult } from '@/lib/types/orchestrator';
+import GitHubRepoPanel from './components/GitHubRepoPanel';
 
 const App: React.FC = () => {
   const {
@@ -45,14 +50,17 @@ const App: React.FC = () => {
   const jobTypeConfig = jobTypesData?.job_types?.[jobType] ?? null
   const isJobTypesHydrating = jobTypesLoading && !jobTypesData
   const isMaintenance = jobType === 'maintain_existing_app'
+  const isGithubRepo = jobType === 'github_repo'
   const jobTypeOptions = useMemo(
-    () =>
-      jobTypesData
+    () => [
+      ...(jobTypesData
         ? Object.values(jobTypesData.job_types).map((entry) => ({ id: entry.id, label: entry.label || entry.id }))
         : [
             { id: 'build_new_app', label: 'Create New' },
             { id: 'maintain_existing_app', label: 'Maintain Existing' },
-          ],
+          ]),
+      { id: 'github_repo', label: 'GitHub Repo' },
+    ],
     [jobTypesData]
   )
 
@@ -66,6 +74,23 @@ const App: React.FC = () => {
   const [maintenanceCanceling, setMaintenanceCanceling] = useState(false)
   const { status: maintenanceStatus, error: maintenanceStatusError, loading: maintenanceStatusLoading } = useRunStatus(maintenanceRunId, { enabled: isMaintenance })
   const maintenanceError = maintenanceStartError || maintenanceStatusError
+
+  // GitHub Repo Orchestration state
+  const [githubEnvReady, setGithubEnvReady] = useState(false)
+  const [githubRepos, setGithubRepos] = useState<GitHubRepo[]>([])
+  const [githubReposLoading, setGithubReposLoading] = useState(false)
+  const [selectedGithubRepo, setSelectedGithubRepo] = useState<GitHubRepo | null>(null)
+  const [githubBranch, setGithubBranch] = useState('')
+  const [githubIntegrationBranch, setGithubIntegrationBranch] = useState('')
+  const [githubEvents, setGithubEvents] = useState<RepoOrchestrationEvent[]>([])
+  const [githubRunning, setGithubRunning] = useState(false)
+  const [githubResult, setGithubResult] = useState<RepoOrchestrationResult | null>(null)
+  const [githubReportMd, setGithubReportMd] = useState('')
+  const [githubCancelFn, setGithubCancelFn] = useState<(() => void) | null>(null)
+  const [githubError, setGithubError] = useState<string | null>(null)
+  const [githubRunId, setGithubRunId] = useState<string | null>(null)
+  const [githubRunDir, setGithubRunDir] = useState<string | null>(null)
+  const [githubLogsDir, setGithubLogsDir] = useState<string | null>(null)
 
   // Modal and Panel States
   const [showExport, setShowExport] = useState(false);
@@ -126,6 +151,24 @@ const App: React.FC = () => {
     if (!state) return
     setMaintenanceRunning(state === 'queued' || state === 'running')
   }, [isMaintenance, maintenanceStatus?.status])
+
+  useEffect(() => {
+    if (!isGithubRepo) return
+    let cancelled = false
+    setGithubReposLoading(true)
+    void Promise.all([
+      getGithubStatus().then((s) => { if (!cancelled) setGithubEnvReady(Boolean(s?.authenticated)) }).catch(() => {}),
+      listAccessibleRepos(undefined, { includeAppfactory: true })
+        .then((repos) => {
+          if (!cancelled)
+            setGithubRepos(
+              [...repos].sort((a, b) => Number(Boolean(b.appfactory?.known)) - Number(Boolean(a.appfactory?.known)))
+            )
+        })
+        .catch(() => {}),
+    ]).finally(() => { if (!cancelled) setGithubReposLoading(false) })
+    return () => { cancelled = true }
+  }, [isGithubRepo])
 
   const displayedSession = useMemo(() => {
     if (activeView === 'live') return liveSession;
@@ -216,6 +259,60 @@ const App: React.FC = () => {
     }
   }
 
+  const startGithubRepoRun = async (goal: string) => {
+    if (!selectedGithubRepo) { setGithubError('Select a repository first.'); return }
+    if (!goal.trim()) { setGithubError('Enter an instruction/goal.'); return }
+    const repoUrl = `https://github.com/${selectedGithubRepo.full_name}.git`
+    const branchValue = githubBranch.trim() || selectedGithubRepo.default_branch || 'main'
+    const integBranch = githubIntegrationBranch.trim() || `${branchValue}-orchestration`
+    setGithubRunning(true)
+    setGithubEvents([])
+    setGithubResult(null)
+    setGithubReportMd('')
+    setGithubError(null)
+    setGithubRunId(null)
+    setGithubRunDir(null)
+    setGithubLogsDir(null)
+    try {
+      const { cancel } = await startRepoOrchestration(
+        { repo: repoUrl, goal: goal.trim(), options: { branch: branchValue, integration_branch: integBranch } },
+        async (event) => {
+          setGithubEvents((prev) => [...prev, event])
+          if (event.result) {
+            const result = event.result as RepoOrchestrationResult
+            setGithubResult(result)
+            const rid = (result.runId ?? (result as Record<string, unknown>)['run_id']) as string | undefined
+            if (rid) setGithubRunId(rid)
+            const extra = result as Record<string, unknown>
+            if (extra['run_dir']) setGithubRunDir(String(extra['run_dir']))
+            if (extra['logs_dir']) setGithubLogsDir(String(extra['logs_dir']))
+            if (rid && ORCHESTRATOR_API_BASE) {
+              const idx = Array.isArray((result as Record<string, unknown>)['artifacts_index'])
+                ? ((result as Record<string, unknown>)['artifacts_index'] as Record<string, unknown>[])
+                : []
+              const mdItem = idx.find((a) => a['fileName'] === 'REPORT.md')
+              if (mdItem?.['artifactId']) {
+                const r = await fetch(
+                  `${ORCHESTRATOR_API_BASE}/orchestrate/repo/${encodeURIComponent(rid)}/artifacts/${encodeURIComponent(String(mdItem['artifactId']))}`
+                )
+                if (r.ok) setGithubReportMd(await r.text())
+              }
+            }
+          }
+          if (event.type === 'error' && event.message) setGithubError(String(event.message))
+          if (event.final || event.type === 'error') {
+            setGithubRunning(false)
+            setGithubCancelFn(null)
+          }
+        }
+      )
+      setGithubCancelFn(() => cancel)
+    } catch (err) {
+      setGithubError(err instanceof Error ? err.message : 'Failed to start repo orchestration.')
+      setGithubRunning(false)
+    }
+  }
+
   const handleGoalSubmit = (
     goal: string,
     fileContent: string | null,
@@ -225,6 +322,10 @@ const App: React.FC = () => {
   ) => {
     if (activeView !== 'live') {
       setActiveView('live');
+    }
+    if (isGithubRepo) {
+      void startGithubRepoRun(goal)
+      return
     }
     if (isMaintenance) {
       void startMaintenanceRun({ ...(requestPayload || {}), job_type: jobType, goal })
@@ -352,15 +453,36 @@ const App: React.FC = () => {
           <>
             <GoalInput
               onGoalSubmit={handleGoalSubmit}
-              isOrchestrating={isMaintenance ? maintenanceRunning : isOrchestrating}
-              onCancelOrchestration={isMaintenance ? cancelMaintenanceRun : cancelOrchestration}
+              isOrchestrating={isGithubRepo ? githubRunning : isMaintenance ? maintenanceRunning : isOrchestrating}
+              onCancelOrchestration={isGithubRepo ? (githubCancelFn ?? (() => {})) : isMaintenance ? cancelMaintenanceRun : cancelOrchestration}
               jobType={jobType}
               jobTypeConfig={jobTypeConfig}
               jobTypeOptions={jobTypeOptions}
               onJobTypeChange={setJobType}
             />
             <JobTypeOverviewPanel jobType={jobType} config={jobTypeConfig} />
-            {isMaintenance ? (
+            {isGithubRepo ? (
+              <GitHubRepoPanel
+                envReady={githubEnvReady}
+                repos={githubRepos}
+                reposLoading={githubReposLoading}
+                selectedRepo={selectedGithubRepo}
+                onSelectRepo={setSelectedGithubRepo}
+                branch={githubBranch}
+                onBranchChange={setGithubBranch}
+                integrationBranch={githubIntegrationBranch}
+                onIntegrationBranchChange={setGithubIntegrationBranch}
+                events={githubEvents}
+                running={githubRunning}
+                result={githubResult}
+                reportMd={githubReportMd}
+                cancelFn={githubCancelFn}
+                error={githubError}
+                runId={githubRunId}
+                runDir={githubRunDir}
+                logsDir={githubLogsDir}
+              />
+            ) : isMaintenance ? (
               <MaintenanceRunPanel
                 runId={maintenanceRunId}
                 status={maintenanceStatus}
@@ -385,6 +507,7 @@ const App: React.FC = () => {
                 />
               </>
             )}
+            {!isGithubRepo && (
             <div
               className={`flex min-h-[28rem] ${
                 viewMode === 'graph'
@@ -422,6 +545,7 @@ const App: React.FC = () => {
                 onShowDefinitions={() => setShowDefinitions(true)}
               />
             </div>
+            )}
           </>
         )}
       </main>
