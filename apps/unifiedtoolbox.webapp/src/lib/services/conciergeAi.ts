@@ -35,7 +35,7 @@ When you are ready to generate the proposal, output it as a \`\`\`json code bloc
   "recommended": {
     "prompts": [],
     "agents": ["Supervisor", "Engineer", "Critic"],
-    "tools": []
+    "tools": ["read_file", "write_file"]
   },
   "approvals": {
     "required": ["Human review before any file writes"]
@@ -66,6 +66,10 @@ run_recipe rules (always populate — never null):
 - agents: subset of recommended.agents that should be pre-selected (omit Historian, Commissioner unless genuinely needed)
 - jobType: "build_new_app" when creating something new; "maintain_existing_app" when improving an existing local codebase; omit the field entirely if neither applies clearly
 - goal: echo goal.summary verbatim
+
+tools rules (recommended.tools): List only MCP tool names agents will genuinely need.
+Common names: "read_file" (read source files), "write_file" (write/modify code), "fetch_url" (HTTP requests), "execute_command" (shell commands).
+Omit entirely if no external tools are needed. Each tool will require explicit user enablement before the run starts.
 
 Keep plan.steps to 3–7 items. Include at least one risk. Make acceptance_checks measurable.`
 

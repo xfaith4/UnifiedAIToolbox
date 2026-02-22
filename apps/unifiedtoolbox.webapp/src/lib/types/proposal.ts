@@ -1,3 +1,5 @@
+import type { ToolPermission } from '@/lib/types/toolPermission'
+
 /**
  * proposal.ts
  * Central, versioned schema for Concierge Proposals.
@@ -124,4 +126,6 @@ export interface DraftRunConfig {
   runStatus: 'pending' | 'running' | 'completed' | 'failed'
   /** ID of the OrchestrationRun started from this draft, once available. */
   activeRunId?: string
+  /** Per-tool permissions configured by the user before this run started. */
+  toolPermissions?: ToolPermission[]
 }

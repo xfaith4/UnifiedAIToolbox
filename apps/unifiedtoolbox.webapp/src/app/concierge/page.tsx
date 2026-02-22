@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import {
@@ -20,8 +20,12 @@ import {
   ArrowRight,
   Play,
   Radio,
+  Wrench,
+  Lock,
 } from 'lucide-react'
 import type { ChatMessage, Proposal, ProposalRisk } from '@/lib/types/proposal'
+import type { ToolPermission, ToolAuditEntry } from '@/lib/types/toolPermission'
+import { inferToolAccess, defaultToolPermission } from '@/lib/types/toolPermission'
 import { sendConciergeMessage } from '@/lib/services/conciergeAi'
 import {
   saveProposal,
@@ -32,6 +36,7 @@ import {
   getDraftRun,
   updateDraftRun,
 } from '@/lib/services/proposalStore'
+import { saveToolAudit } from '@/lib/services/toolPermissionStore'
 import {
   startOrchestratorRun,
   fetchOrchestrationRun,
@@ -92,6 +97,163 @@ function CollapsibleSection({
         {open ? <ChevronUp size={14} aria-hidden="true" /> : <ChevronDown size={14} aria-hidden="true" />}
       </button>
       {open && <div className="px-4 pb-4">{children}</div>}
+    </div>
+  )
+}
+
+// ── Tool enablement panel ─────────────────────────────────────────────────────
+function ToolEnablementPanel({
+  tools,
+  planStepTools,
+  value,
+  onChange,
+}: {
+  tools: string[]
+  planStepTools: Set<string>
+  value: ToolPermission[]
+  onChange: (perms: ToolPermission[]) => void
+}) {
+  const permMap = new Map(value.map((p) => [p.name, p]))
+
+  const update = (name: string, patch: Partial<ToolPermission>) => {
+    const current = permMap.get(name) ?? defaultToolPermission(name)
+    const next = value.map((p) =>
+      p.name === name ? { ...p, ...patch } : p
+    )
+    // If not in list yet, add
+    if (!permMap.has(name)) {
+      onChange([...value, { ...current, ...patch }])
+    } else {
+      onChange(next)
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-gray-700 bg-gray-800/50 overflow-hidden">
+      <div className="flex items-center gap-2 border-b border-gray-700 px-3 py-2">
+        <Wrench size={12} className="text-gray-400" aria-hidden="true" />
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+          Tools ({tools.length})
+        </span>
+        <span className="ml-auto text-[10px] text-gray-600">enable before running</span>
+      </div>
+      <div className="divide-y divide-gray-700/60">
+        {tools.map((name) => {
+          const perm = permMap.get(name) ?? defaultToolPermission(name)
+          const likelyWrite = inferToolAccess(name) === 'write'
+          const isWriteSelected = perm.access === 'write'
+          return (
+            <div
+              key={name}
+              className={`px-3 py-2.5 space-y-2 ${isWriteSelected ? 'bg-amber-950/10' : ''}`}
+            >
+              <div className="flex items-center gap-2">
+                {/* Enable toggle */}
+                <input
+                  type="checkbox"
+                  id={`tool-enable-${name}`}
+                  checked={perm.enabled}
+                  onChange={(e) => update(name, { enabled: e.target.checked })}
+                  className="accent-blue-500"
+                />
+                {/* Name + badges */}
+                <label
+                  htmlFor={`tool-enable-${name}`}
+                  className={`flex-1 text-xs font-mono cursor-pointer ${perm.enabled ? 'text-gray-100' : 'text-gray-500'}`}
+                >
+                  {name}
+                </label>
+                {planStepTools.has(name) && (
+                  <span className="rounded-full bg-blue-900/40 border border-blue-800 px-1.5 py-0.5 text-[10px] text-blue-300">
+                    plan
+                  </span>
+                )}
+                {likelyWrite && (
+                  <span className="text-[10px] text-amber-500" title="This tool may need write access">⚠</span>
+                )}
+                {/* Access selector */}
+                <select
+                  value={perm.access}
+                  onChange={(e) => update(name, { access: e.target.value as 'read' | 'write' })}
+                  disabled={!perm.enabled}
+                  className={`rounded-lg border px-1.5 py-0.5 text-[10px] font-medium bg-gray-900 transition-colors disabled:opacity-40 focus:outline-none ${
+                    isWriteSelected
+                      ? 'border-amber-700 text-amber-300'
+                      : 'border-gray-700 text-gray-300'
+                  }`}
+                >
+                  <option value="read">read</option>
+                  <option value="write">write</option>
+                </select>
+              </div>
+              {/* Path allowlist */}
+              {perm.enabled && (
+                <input
+                  type="text"
+                  placeholder="Path allowlist: e.g. src/**, tests/** (empty = unrestricted)"
+                  value={perm.pathAllowlist.join(', ')}
+                  onChange={(e) =>
+                    update(name, {
+                      pathAllowlist: e.target.value
+                        .split(',')
+                        .map((s) => s.trim())
+                        .filter(Boolean),
+                    })
+                  }
+                  className="w-full rounded-lg border border-gray-700 bg-gray-900 px-2 py-1 text-[11px] text-gray-300 placeholder-gray-600 focus:border-blue-600 focus:outline-none"
+                />
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ── Tool audit view (read-only, shown after run starts) ───────────────────────
+function ToolAuditView({ permissions }: { permissions: ToolPermission[] }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="rounded-xl border border-gray-700 bg-gray-800/50 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left"
+      >
+        <Lock size={12} className="text-gray-500" aria-hidden="true" />
+        <span className="flex-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+          Tool Audit — frozen at run start
+        </span>
+        {open ? <ChevronUp size={12} className="text-gray-600" /> : <ChevronDown size={12} className="text-gray-600" />}
+      </button>
+      {open && (
+        <div className="divide-y divide-gray-700/60 border-t border-gray-700">
+          {permissions.map((p) => (
+            <div key={p.name} className="flex items-center gap-2 px-3 py-2 text-xs">
+              {p.enabled
+                ? <CheckCircle2 size={11} className="shrink-0 text-emerald-500" aria-hidden="true" />
+                : <XCircle size={11} className="shrink-0 text-gray-600" aria-hidden="true" />
+              }
+              <span className={`flex-1 font-mono ${p.enabled ? 'text-gray-200' : 'text-gray-600'}`}>{p.name}</span>
+              {p.enabled && (
+                <>
+                  <span className={`rounded-full border px-1.5 py-0.5 text-[10px] ${
+                    p.access === 'write'
+                      ? 'border-amber-700 bg-amber-950/30 text-amber-300'
+                      : 'border-gray-700 bg-gray-800 text-gray-400'
+                  }`}>
+                    {p.access}
+                  </span>
+                  <span className="text-[10px] text-gray-600">
+                    {p.pathAllowlist.length ? p.pathAllowlist.join(', ') : 'unrestricted'}
+                  </span>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -194,6 +356,10 @@ function ProposalPanel({
   onStartRun,
   startRunLoading,
   startRunError,
+  allTools,
+  planStepTools,
+  toolPermissions,
+  onToolPermissionsChange,
 }: {
   proposal: Proposal
   onApprove: () => void
@@ -204,8 +370,11 @@ function ProposalPanel({
   onStartRun: () => void
   startRunLoading: boolean
   startRunError: string | null
+  allTools: string[]
+  planStepTools: Set<string>
+  toolPermissions: ToolPermission[]
+  onToolPermissionsChange: (p: ToolPermission[]) => void
 }) {
-  // Treat running/completed as a variant of "approved" for display purposes
   const isApproved = ['approved', 'running', 'completed'].includes(proposal.status)
   const isRejected = proposal.status === 'rejected'
   const isRunning = proposal.status === 'running'
@@ -285,6 +454,9 @@ function ProposalPanel({
                   <p className="text-xs text-gray-500">{step.description}</p>
                   {step.agent && (
                     <span className="mt-0.5 inline-block text-[10px] text-blue-400">→ {step.agent}</span>
+                  )}
+                  {step.tool && (
+                    <span className="mt-0.5 ml-1 inline-block text-[10px] text-purple-400">🔧 {step.tool}</span>
                   )}
                 </div>
               </li>
@@ -392,18 +564,33 @@ function ProposalPanel({
       {/* Approved footer */}
       {isApproved && (
         <div className="border-t border-gray-800 p-3 space-y-2">
-          {/* Pre-flight gate / run status — not shown for maintain_existing_app */}
+          {/* Tool enablement (before run) or audit view (after run) */}
           {!isMaintainJob && (
             <>
               {runId ? (
-                <RunStatusIndicator runId={runId} runStatus={runStatus} />
+                <>
+                  <RunStatusIndicator runId={runId} runStatus={runStatus} />
+                  {toolPermissions.length > 0 && (
+                    <ToolAuditView permissions={toolPermissions} />
+                  )}
+                </>
               ) : (
-                <PreflightGate
-                  approvals={proposal.approvals.required}
-                  onConfirm={onStartRun}
-                  loading={startRunLoading}
-                  error={startRunError}
-                />
+                <>
+                  {allTools.length > 0 && (
+                    <ToolEnablementPanel
+                      tools={allTools}
+                      planStepTools={planStepTools}
+                      value={toolPermissions}
+                      onChange={onToolPermissionsChange}
+                    />
+                  )}
+                  <PreflightGate
+                    approvals={proposal.approvals.required}
+                    onConfirm={onStartRun}
+                    loading={startRunLoading}
+                    error={startRunError}
+                  />
+                </>
               )}
             </>
           )}
@@ -439,7 +626,6 @@ function ProposalPanel({
 // ── Chat bubble ────────────────────────────────────────────────────────────────
 function ChatBubble({ message }: { message: ChatMessage }) {
   const isUser = message.role === 'user'
-  // Strip JSON code blocks from assistant messages for display
   const displayContent = isUser
     ? message.content
     : message.content.replace(/```json[\s\S]*?```/g, '*(Proposal generated — see panel →)*').trim()
@@ -482,8 +668,25 @@ export default function ConciergePage() {
   const [startRunError, setStartRunError] = useState<string | null>(null)
   const seenEventCount = useRef(0)
 
+  // Tool permission state
+  const [toolPermissions, setToolPermissions] = useState<ToolPermission[]>([])
+
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // Derived tool lists from current proposal
+  const allTools = useMemo(() => {
+    if (!proposal) return []
+    return Array.from(new Set([
+      ...(proposal.recommended.tools ?? []),
+      ...(proposal.plan.steps.map((s) => s.tool).filter(Boolean) as string[]),
+    ]))
+  }, [proposal])
+
+  const planStepTools = useMemo(
+    () => new Set(proposal?.plan.steps.map((s) => s.tool).filter(Boolean) as string[] ?? []),
+    [proposal]
+  )
 
   // Restore a saved proposal when navigating from the Runs page (?proposal=id)
   useEffect(() => {
@@ -506,6 +709,17 @@ export default function ConciergePage() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, loading])
 
+  // Init tool permissions when proposal changes
+  useEffect(() => {
+    if (!proposal) { setToolPermissions([]); return }
+    const draft = getDraftRun(proposal.id)
+    if (draft?.toolPermissions?.length) {
+      setToolPermissions(draft.toolPermissions)
+      return
+    }
+    setToolPermissions(allTools.map(defaultToolPermission))
+  }, [proposal?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Run polling ─────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!runId || !proposal?.id) return
@@ -520,7 +734,6 @@ export default function ConciergePage() {
         const run = await fetchOrchestrationRun(runId)
         if (cancelled) return
 
-        // Process new events since last poll
         const events = run.events ?? []
         const newEvents = events.slice(seenEventCount.current)
         seenEventCount.current += newEvents.length
@@ -540,7 +753,6 @@ export default function ConciergePage() {
           }
         }
 
-        // Update status & stop polling when terminal
         if (run.status) {
           setRunStatus(run.status)
           if (TERMINAL_RUN_STATUSES.has(run.status)) {
@@ -556,13 +768,12 @@ export default function ConciergePage() {
           }
         }
       } catch (e) {
-        // Silently ignore transient poll errors
         console.warn('[Concierge] Poll error:', e)
       }
     }
 
     intervalId = setInterval(poll, 3000)
-    void poll() // immediate first tick
+    void poll()
 
     return () => {
       cancelled = true
@@ -578,7 +789,6 @@ export default function ConciergePage() {
     setInput('')
     setError(null)
 
-    // Optimistically add user message
     const userMsg: ChatMessage = {
       id: `msg_${Date.now()}`,
       role: 'user',
@@ -638,6 +848,11 @@ export default function ConciergePage() {
     textareaRef.current?.focus()
   }
 
+  const handleToolPermissionsChange = (perms: ToolPermission[]) => {
+    setToolPermissions(perms)
+    if (proposal?.id) updateDraftRun(proposal.id, { toolPermissions: perms })
+  }
+
   const handleStartRun = async () => {
     if (!proposal) return
     const draft = getDraftRun(proposal.id)
@@ -649,20 +864,42 @@ export default function ConciergePage() {
     setStartRunError(null)
     try {
       const run = await startOrchestratorRun(draft)
-      updateDraftRun(draft.id, { activeRunId: run.id, runStatus: 'running' })
+
+      // Freeze tool audit
+      const now = new Date().toISOString()
+      const auditTools = toolPermissions.map((p) =>
+        p.enabled ? { ...p, enabledAt: now } : p
+      )
+      const audit: ToolAuditEntry = {
+        id: proposal.id,
+        proposalId: proposal.id,
+        runId: run.id,
+        startedAt: now,
+        tools: auditTools,
+      }
+      saveToolAudit(audit)
+      setToolPermissions(auditTools)
+
+      // Update draft + proposal status
+      updateDraftRun(draft.id, {
+        activeRunId: run.id,
+        runStatus: 'running',
+        toolPermissions: auditTools,
+      })
       const updated = updateProposalStatus(proposal.id, 'running')
       if (updated) setProposal(updated)
+
       seenEventCount.current = 0
       setRunId(run.id)
       setRunStatus(run.status ?? 'queued')
-      // Inject a narration message
+
       setMessages((prev) => [
         ...prev,
         {
           id: `run_start_${Date.now()}`,
           role: 'assistant' as const,
           content: `Run started (ID: \`${run.id.slice(0, 20)}\`). I'll narrate progress here as events arrive.`,
-          timestamp: new Date().toISOString(),
+          timestamp: now,
         },
       ])
     } catch (e) {
@@ -787,6 +1024,10 @@ export default function ConciergePage() {
             onStartRun={handleStartRun}
             startRunLoading={startRunLoading}
             startRunError={startRunError}
+            allTools={allTools}
+            planStepTools={planStepTools}
+            toolPermissions={toolPermissions}
+            onToolPermissionsChange={handleToolPermissionsChange}
           />
         ) : (
           <div className="flex h-full flex-col items-center justify-center rounded-2xl border border-dashed border-gray-800 bg-gray-900/40 px-6 text-center">
