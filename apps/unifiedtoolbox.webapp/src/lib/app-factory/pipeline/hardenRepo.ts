@@ -8,6 +8,7 @@ import { evaluateRepoContract, type RepoContractEvaluation } from '../contracts/
 import { runGates, writeSkippedGateReport, type GateReport } from '../gates/runGates'
 import { repairLoop } from '../repair/repairLoop'
 import { removeGitDir } from '../repair/patchApplier'
+import { runDeterministicRepair } from '../repair/deterministicRepair'
 import { writeAppFactoryMetadata } from '../provenance/writeRepoProvenance'
 import { ingestArtifacts, type AppFactoryArtifact as IngestArtifact } from './ingestArtifacts'
 import { writeRunDiagnosticsBundle } from '../diagnostics/writeRunDiagnosticsBundle'
@@ -168,10 +169,37 @@ export async function hardenRepo(options: {
     await emit({ phase: 'decision-lock', status: 'success', agent: 'Supervisor', message: 'Decision lock completed' })
   }
 
+  // Deterministic repair: attempt to fix common contract failures without an API key.
+  // Runs before the API-key gate so basic issues (e.g. malformed package.json) are
+  // resolved even when no OpenAI key is configured.
+  if (!contractEval.passed || normalization.violations.length > 0) {
+    const detRepairStart = new Date().toISOString()
+    const detResult = await runDeterministicRepair(repoDir, options.contract, contractEval)
+    if (detResult.fixed) {
+      await emit({ phase: 'repair', status: 'running', agent: 'Synthesizer', message: `Deterministic repair: ${detResult.notes.join('; ')}` })
+      normalization = await normalizeRepo(repoDir, options.contract)
+      contractEval = await evaluateRepoContract(repoDir, options.contract)
+      const canRunGatesNowDet = normalization.violations.length === 0 && contractEval.passed
+      gateReport = canRunGatesNowDet
+        ? await runGates(repoDir, options.contract, {
+            gateTimeoutSeconds: cfg.gateTimeoutSeconds,
+            bootTimeoutSeconds: cfg.bootTimeoutSeconds,
+            healthPollIntervalMs: cfg.healthPollIntervalMs,
+          })
+        : await writeSkippedGateReport(
+            repoDir,
+            normalization.violations.length > 0 ? 'Skipped: normalization violations present' : 'Skipped: contract failed'
+          )
+      timings.repair = { startedAt: detRepairStart, endedAt: new Date().toISOString() }
+      const detAllPassed = normalization.violations.length === 0 && contractEval.passed && gateReport.passed
+      await emit({ phase: 'repair', status: detAllPassed ? 'success' : 'running', agent: 'Synthesizer', message: detAllPassed ? 'Deterministic repair resolved all issues' : 'Deterministic repair applied; remaining issues may need LLM repair' })
+    }
+  }
+
   const parallelPassed = !parallelEnabled || Boolean(parallelPrepare?.passed)
   if (normalization.violations.length === 0 && contractEval.passed && gateReport.passed && parallelPassed) {
     await removeGitDir(repoDir)
-    await emit({ phase: 'run', status: 'failed', message: 'Hardening run failed before repair' })
+    await emit({ phase: 'run', status: 'success', message: 'Hardening run completed successfully' })
     await writeRunDiagnosticsBundle({
       repoDir,
       runId,

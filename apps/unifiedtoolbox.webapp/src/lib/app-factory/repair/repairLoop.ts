@@ -38,6 +38,7 @@ async function readLogTail(filePath: string, maxChars = 8000): Promise<string> {
 }
 
 async function renderFixerPrompt(input: {
+  repoDir: string
   contract: RepoContract
   normalization: NormalizeRepoResult
   contractEval: RepoContractEvaluation
@@ -59,7 +60,26 @@ async function renderFixerPrompt(input: {
   const firstFail = input.gateReport.steps.find((s) => s.status === 'failed' && s.result?.logPath)
   const failingLog = firstFail?.result?.logPath ? await readLogTail(firstFail.result.logPath) : '(no failing step log)'
 
-  const user = [
+  // Collect relative paths of files involved in contract failures so the LLM
+  // can see their current content and generate an accurate diff.
+  const failingRelPaths = new Set<string>()
+  for (const f of input.contractEval.failures) {
+    if (f.kind === 'invalid_root_package_json') failingRelPaths.add('package.json')
+    if (f.kind === 'forbidden_pattern') failingRelPaths.add(f.filePath)
+    if (failingRelPaths.size >= 3) break
+  }
+  const fileSnippets: string[] = []
+  for (const rel of failingRelPaths) {
+    try {
+      const content = await fs.readFile(path.join(input.repoDir, rel), 'utf8')
+      const truncated = content.length > 1500 ? content.slice(0, 1500) + '\n…(truncated)' : content
+      fileSnippets.push(`### ${rel}\n\`\`\`\n${truncated}\n\`\`\``)
+    } catch {
+      // file unreadable — skip
+    }
+  }
+
+  const userParts = [
     `Stack contract: ${input.contract.stackId}`,
     '',
     'Repo contract failures (JSON, truncated):',
@@ -76,11 +96,16 @@ async function renderFixerPrompt(input: {
     '',
     'Gate report excerpt:',
     `- report: ${path.basename(input.gateReport.reportPath)}`,
-    '',
-    'Task: Fix the repo so that it passes the repo contract and the gates.',
-  ].join('\n')
+  ]
 
-  return { system, user }
+  if (fileSnippets.length > 0) {
+    userParts.push('', 'Current content of failing files (for diff context):')
+    userParts.push(...fileSnippets)
+  }
+
+  userParts.push('', 'Task: Fix the repo so that it passes the repo contract and the gates.')
+
+  return { system, user: userParts.join('\n') }
 }
 
 export async function repairLoop(options: {
@@ -103,6 +128,7 @@ export async function repairLoop(options: {
 
   for (let cycle = 1; cycle <= options.config.maxRepairCycles; cycle++) {
     const prompt = await renderFixerPrompt({
+      repoDir: options.repoDir,
       contract: options.contract,
       normalization: options.normalization,
       contractEval: options.contractEval,
