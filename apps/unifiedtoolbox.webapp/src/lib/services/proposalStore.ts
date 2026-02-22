@@ -78,6 +78,15 @@ export function getDraftRun(id: string): DraftRunConfig | undefined {
   return listDraftRuns().find((d) => d.id === id)
 }
 
+export function updateDraftRun(id: string, updates: Partial<DraftRunConfig>): DraftRunConfig | undefined {
+  const drafts = listDraftRuns()
+  const draft = drafts.find((d) => d.id === id)
+  if (!draft) return undefined
+  const updated = { ...draft, ...updates }
+  save(DRAFT_RUNS_KEY, drafts.map((d) => (d.id === id ? updated : d)))
+  return updated
+}
+
 export function saveDraftRun(draft: DraftRunConfig): DraftRunConfig {
   const existing = listDraftRuns()
   const idx = existing.findIndex((d) => d.id === draft.id)

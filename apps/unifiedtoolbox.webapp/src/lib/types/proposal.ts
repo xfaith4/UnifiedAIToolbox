@@ -7,7 +7,7 @@
  * Phase 2: run_recipe will be fully populated and used to prefill Run pages.
  */
 
-export type ProposalStatus = 'draft' | 'approved' | 'rejected' | 'archived'
+export type ProposalStatus = 'draft' | 'approved' | 'rejected' | 'archived' | 'running' | 'completed'
 export type RiskLevel = 'low' | 'medium' | 'high'
 
 // ── Sub-objects ───────────────────────────────────────────────────────────────
@@ -120,6 +120,8 @@ export interface DraftRunConfig {
   promptId?: string
   /** Hint for App Factory job type selector. Undefined means use page default. */
   jobType?: 'build_new_app' | 'maintain_existing_app'
-  /** 'pending' until the user actually starts the run */
-  runStatus: 'pending'
+  /** Updated as the run progresses. */
+  runStatus: 'pending' | 'running' | 'completed' | 'failed'
+  /** ID of the OrchestrationRun started from this draft, once available. */
+  activeRunId?: string
 }

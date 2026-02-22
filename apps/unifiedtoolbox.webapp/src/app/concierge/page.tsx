@@ -18,6 +18,8 @@ import {
   Loader2,
   Sparkles,
   ArrowRight,
+  Play,
+  Radio,
 } from 'lucide-react'
 import type { ChatMessage, Proposal, ProposalRisk } from '@/lib/types/proposal'
 import { sendConciergeMessage } from '@/lib/services/conciergeAi'
@@ -27,7 +29,15 @@ import {
   createDraftRunFromProposal,
   listProposals,
   getProposal,
+  getDraftRun,
+  updateDraftRun,
 } from '@/lib/services/proposalStore'
+import {
+  startOrchestratorRun,
+  fetchOrchestrationRun,
+  narrateRunEvent,
+  TERMINAL_RUN_STATUSES,
+} from '@/lib/services/conciergeRunService'
 
 // ── Risk badge ────────────────────────────────────────────────────────────────
 function RiskBadge({ level }: { level: ProposalRisk['level'] }) {
@@ -86,20 +96,121 @@ function CollapsibleSection({
   )
 }
 
+// ── Pre-flight gate ────────────────────────────────────────────────────────────
+function PreflightGate({
+  approvals,
+  onConfirm,
+  loading,
+  error,
+}: {
+  approvals: string[]
+  onConfirm: () => void
+  loading: boolean
+  error: string | null
+}) {
+  const [checked, setChecked] = useState<boolean[]>(() => approvals.map(() => false))
+  const allChecked = approvals.length === 0 || checked.every(Boolean)
+
+  return (
+    <div className="rounded-xl border border-amber-800/40 bg-amber-950/20 p-3 space-y-2">
+      {approvals.length > 0 && (
+        <>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-400">
+            Confirm before running
+          </p>
+          <ul className="space-y-1.5">
+            {approvals.map((item, i) => (
+              <li key={i} className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  id={`approval-${i}`}
+                  checked={checked[i]}
+                  onChange={(e) => {
+                    const next = [...checked]
+                    next[i] = e.target.checked
+                    setChecked(next)
+                  }}
+                  className="mt-0.5 accent-amber-500"
+                />
+                <label htmlFor={`approval-${i}`} className="text-xs text-amber-200 cursor-pointer">
+                  {item}
+                </label>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {error && (
+        <p className="text-xs text-rose-400">{error}</p>
+      )}
+      <button
+        type="button"
+        onClick={onConfirm}
+        disabled={!allChecked || loading}
+        className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-500 transition-colors disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+      >
+        {loading
+          ? <><Loader2 size={12} className="animate-spin" aria-hidden="true" /> Starting…</>
+          : <><Play size={12} aria-hidden="true" /> Start Run</>
+        }
+      </button>
+    </div>
+  )
+}
+
+// ── Run status indicator ───────────────────────────────────────────────────────
+function RunStatusIndicator({ runId, runStatus }: { runId: string; runStatus: string | null }) {
+  const status = runStatus ?? 'queued'
+  const isTerminal = TERMINAL_RUN_STATUSES.has(status)
+  const isCompleted = status === 'completed'
+
+  const cls = isCompleted
+    ? 'border-emerald-700 bg-emerald-950/30 text-emerald-300'
+    : isTerminal
+      ? 'border-rose-700 bg-rose-950/30 text-rose-300'
+      : 'border-blue-800/60 bg-blue-950/20 text-blue-300'
+
+  return (
+    <div className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs ${cls}`}>
+      {!isTerminal && <Radio size={12} className="animate-pulse" aria-hidden="true" />}
+      {isCompleted && <CheckCircle2 size={12} aria-hidden="true" />}
+      {isTerminal && !isCompleted && <XCircle size={12} aria-hidden="true" />}
+      <span>
+        {!isTerminal ? `Running… (${status})` : isCompleted ? 'Run completed' : `Run ${status}`}
+      </span>
+      <span className="ml-auto font-mono text-[10px] opacity-50">{runId.slice(0, 14)}</span>
+    </div>
+  )
+}
+
 // ── Proposal panel ────────────────────────────────────────────────────────────
 function ProposalPanel({
   proposal,
   onApprove,
   onReject,
   onEdit,
+  runId,
+  runStatus,
+  onStartRun,
+  startRunLoading,
+  startRunError,
 }: {
   proposal: Proposal
   onApprove: () => void
   onReject: () => void
   onEdit: () => void
+  runId: string | null
+  runStatus: string | null
+  onStartRun: () => void
+  startRunLoading: boolean
+  startRunError: string | null
 }) {
-  const isApproved = proposal.status === 'approved'
+  // Treat running/completed as a variant of "approved" for display purposes
+  const isApproved = ['approved', 'running', 'completed'].includes(proposal.status)
   const isRejected = proposal.status === 'rejected'
+  const isRunning = proposal.status === 'running'
+  const isCompleted = proposal.status === 'completed'
+  const isMaintainJob = proposal.run_recipe?.jobType === 'maintain_existing_app'
 
   return (
     <div className="flex flex-col rounded-2xl border border-gray-700 bg-gray-900 overflow-hidden">
@@ -108,9 +219,19 @@ function ProposalPanel({
         <div className="flex items-center gap-2">
           <Sparkles size={15} className="text-blue-400" aria-hidden="true" />
           <span className="text-sm font-semibold text-white">Proposal</span>
-          {isApproved && (
+          {proposal.status === 'approved' && (
             <span className="rounded-full bg-emerald-900/50 border border-emerald-700 px-2 py-0.5 text-[11px] font-semibold text-emerald-300">
               Approved
+            </span>
+          )}
+          {isRunning && (
+            <span className="rounded-full bg-blue-900/50 border border-blue-700 px-2 py-0.5 text-[11px] font-semibold text-blue-300">
+              Running
+            </span>
+          )}
+          {isCompleted && (
+            <span className="rounded-full bg-emerald-900/50 border border-emerald-700 px-2 py-0.5 text-[11px] font-semibold text-emerald-300">
+              Completed
             </span>
           )}
           {isRejected && (
@@ -241,7 +362,7 @@ function ProposalPanel({
         )}
       </div>
 
-      {/* Action buttons */}
+      {/* Draft action buttons */}
       {!isApproved && !isRejected && (
         <div className="border-t border-gray-800 p-3 grid grid-cols-3 gap-2">
           <button
@@ -268,13 +389,30 @@ function ProposalPanel({
         </div>
       )}
 
-      {/* Approved — show open links */}
+      {/* Approved footer */}
       {isApproved && (
         <div className="border-t border-gray-800 p-3 space-y-2">
-          <p className="text-xs text-emerald-400 font-medium">
-            Draft saved. Choose where to run it:
-          </p>
-          <div className="flex flex-col gap-2">
+          {/* Pre-flight gate / run status — not shown for maintain_existing_app */}
+          {!isMaintainJob && (
+            <>
+              {runId ? (
+                <RunStatusIndicator runId={runId} runStatus={runStatus} />
+              ) : (
+                <PreflightGate
+                  approvals={proposal.approvals.required}
+                  onConfirm={onStartRun}
+                  loading={startRunLoading}
+                  error={startRunError}
+                />
+              )}
+            </>
+          )}
+
+          {/* Navigation links */}
+          <div className="flex flex-col gap-1.5">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-600">
+              {runId ? 'View in:' : 'Or open in:'}
+            </p>
             <Link
               href={`/orchestrator?draft=${proposal.id}`}
               className="flex items-center justify-between rounded-xl border border-gray-700 bg-gray-800 px-3 py-2 text-xs font-medium text-gray-200 hover:border-blue-700 hover:text-white transition-colors"
@@ -282,13 +420,15 @@ function ProposalPanel({
               Open in Playground
               <ArrowRight size={13} aria-hidden="true" />
             </Link>
-            <Link
-              href={`/engine?draft=${proposal.id}`}
-              className="flex items-center justify-between rounded-xl border border-gray-700 bg-gray-800 px-3 py-2 text-xs font-medium text-gray-200 hover:border-blue-700 hover:text-white transition-colors"
-            >
-              Open in App Factory
-              <ArrowRight size={13} aria-hidden="true" />
-            </Link>
+            {isMaintainJob && (
+              <Link
+                href={`/engine?draft=${proposal.id}`}
+                className="flex items-center justify-between rounded-xl border border-gray-700 bg-gray-800 px-3 py-2 text-xs font-medium text-gray-200 hover:border-blue-700 hover:text-white transition-colors"
+              >
+                Open in App Factory
+                <ArrowRight size={13} aria-hidden="true" />
+              </Link>
+            )}
           </div>
         </div>
       )}
@@ -334,6 +474,14 @@ export default function ConciergePage() {
   const [error, setError] = useState<string | null>(null)
   const [proposal, setProposal] = useState<Proposal | null>(null)
   const [draftCount, setDraftCount] = useState(0)
+
+  // Run state
+  const [runId, setRunId] = useState<string | null>(null)
+  const [runStatus, setRunStatus] = useState<string | null>(null)
+  const [startRunLoading, setStartRunLoading] = useState(false)
+  const [startRunError, setStartRunError] = useState<string | null>(null)
+  const seenEventCount = useRef(0)
+
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -357,6 +505,72 @@ export default function ConciergePage() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, loading])
+
+  // ── Run polling ─────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!runId || !proposal?.id) return
+
+    const proposalId = proposal.id
+    let cancelled = false
+    let intervalId: ReturnType<typeof setInterval>
+
+    const poll = async () => {
+      if (cancelled) return
+      try {
+        const run = await fetchOrchestrationRun(runId)
+        if (cancelled) return
+
+        // Process new events since last poll
+        const events = run.events ?? []
+        const newEvents = events.slice(seenEventCount.current)
+        seenEventCount.current += newEvents.length
+
+        for (const event of newEvents) {
+          const narration = narrateRunEvent(event)
+          if (narration) {
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: `run_ev_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+                role: 'assistant' as const,
+                content: narration,
+                timestamp: new Date().toISOString(),
+              },
+            ])
+          }
+        }
+
+        // Update status & stop polling when terminal
+        if (run.status) {
+          setRunStatus(run.status)
+          if (TERMINAL_RUN_STATUSES.has(run.status)) {
+            cancelled = true
+            clearInterval(intervalId)
+            if (run.status === 'completed') {
+              updateDraftRun(proposalId, { runStatus: 'completed' })
+              const updated = updateProposalStatus(proposalId, 'completed')
+              if (updated) setProposal(updated)
+            } else {
+              updateDraftRun(proposalId, { runStatus: 'failed' })
+            }
+          }
+        }
+      } catch (e) {
+        // Silently ignore transient poll errors
+        console.warn('[Concierge] Poll error:', e)
+      }
+    }
+
+    intervalId = setInterval(poll, 3000)
+    void poll() // immediate first tick
+
+    return () => {
+      cancelled = true
+      clearInterval(intervalId)
+    }
+  }, [runId, proposal?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Handlers ────────────────────────────────────────────────────────────────
 
   const handleSend = async () => {
     const text = input.trim()
@@ -422,6 +636,40 @@ export default function ConciergePage() {
   const handleEdit = () => {
     setInput(`Please revise the proposal — `)
     textareaRef.current?.focus()
+  }
+
+  const handleStartRun = async () => {
+    if (!proposal) return
+    const draft = getDraftRun(proposal.id)
+    if (!draft) {
+      setStartRunError('Draft config not found. Try re-approving the proposal.')
+      return
+    }
+    setStartRunLoading(true)
+    setStartRunError(null)
+    try {
+      const run = await startOrchestratorRun(draft)
+      updateDraftRun(draft.id, { activeRunId: run.id, runStatus: 'running' })
+      const updated = updateProposalStatus(proposal.id, 'running')
+      if (updated) setProposal(updated)
+      seenEventCount.current = 0
+      setRunId(run.id)
+      setRunStatus(run.status ?? 'queued')
+      // Inject a narration message
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `run_start_${Date.now()}`,
+          role: 'assistant' as const,
+          content: `Run started (ID: \`${run.id.slice(0, 20)}\`). I'll narrate progress here as events arrive.`,
+          timestamp: new Date().toISOString(),
+        },
+      ])
+    } catch (e) {
+      setStartRunError(String(e))
+    } finally {
+      setStartRunLoading(false)
+    }
   }
 
   return (
@@ -534,6 +782,11 @@ export default function ConciergePage() {
             onApprove={handleApprove}
             onReject={handleReject}
             onEdit={handleEdit}
+            runId={runId}
+            runStatus={runStatus}
+            onStartRun={handleStartRun}
+            startRunLoading={startRunLoading}
+            startRunError={startRunError}
           />
         ) : (
           <div className="flex h-full flex-col items-center justify-center rounded-2xl border border-dashed border-gray-800 bg-gray-900/40 px-6 text-center">

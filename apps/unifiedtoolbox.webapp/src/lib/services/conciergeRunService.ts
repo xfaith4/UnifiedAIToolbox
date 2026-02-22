@@ -1,0 +1,65 @@
+'use client'
+
+import type { DraftRunConfig } from '@/lib/types/proposal'
+import type { OrchestrationRun, OrchestrationRunEvent } from '@/lib/types/orchestrator'
+import { createNewRun, addLocalRun } from '@/lib/services/orchestratorStore'
+import { createOrchestrationRun, fetchOrchestrationRun } from '@/lib/services/orchestratorApi'
+
+// ── Terminal states ────────────────────────────────────────────────────────────
+
+export const TERMINAL_RUN_STATUSES = new Set(['completed', 'failed', 'cancelled', 'error'])
+
+// ── Run launch ────────────────────────────────────────────────────────────────
+
+/**
+ * Start an orchestrator run from a DraftRunConfig.
+ * Only multi-agent and codex-swarm modes are supported here;
+ * maintain_existing_app jobs must be launched from App Factory.
+ */
+export async function startOrchestratorRun(draft: DraftRunConfig): Promise<OrchestrationRun> {
+  if (draft.jobType === 'maintain_existing_app') {
+    throw new Error('This job type must be launched from App Factory (use the link below).')
+  }
+
+  const localRun = createNewRun(draft.goal, {
+    agents: draft.agents,
+    runMode: draft.mode as 'multi-agent' | 'codex-swarm',
+    promptId: draft.promptId ?? undefined,
+  })
+
+  addLocalRun(localRun)
+
+  const apiRun = await createOrchestrationRun(localRun)
+  return apiRun
+}
+
+// Re-export so page only needs one import point
+export { fetchOrchestrationRun }
+
+// ── Narration ─────────────────────────────────────────────────────────────────
+
+/**
+ * Convert a raw orchestration run event into a human-readable chat string.
+ * Returns null for events that should not produce a message.
+ */
+export function narrateRunEvent(event: OrchestrationRunEvent): string | null {
+  const { type, message } = event
+
+  if (type === 'status') {
+    switch (message.toLowerCase()) {
+      case 'queued':    return 'Run queued — waiting for an available worker...'
+      case 'running':   return 'Agents are now working on your goal.'
+      case 'completed': return 'Run completed successfully. Check the Playground for the full output.'
+      case 'failed':    return 'Run failed. Open the Playground to see the error log.'
+      case 'cancelled': return 'Run was cancelled.'
+      default:          return `Status update: ${message}`
+    }
+  }
+
+  if (type === 'warn')  return `⚠ ${message}`
+  if (type === 'error') return `Error during run: ${message}`
+  if (type === 'info')  return message || null
+
+  // Unknown event types: skip
+  return null
+}
