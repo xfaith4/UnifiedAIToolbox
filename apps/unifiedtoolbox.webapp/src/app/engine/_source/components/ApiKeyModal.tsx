@@ -14,22 +14,14 @@ const ApiKeyModal: React.FC = () => {
             </p>
             <div className="bg-gray-900 p-4 rounded-lg text-left space-y-4">
               <h3 className="font-semibold text-lg text-white">How to fix this:</h3>
-              <ol className="list-decimal list-inside text-gray-300 space-y-2">
-                <li>
-                  If you run the webapp directly, add your key to{" "}
-                  <code className="bg-gray-700 text-indigo-300 px-1.5 py-0.5 rounded">apps/unifiedtoolbox.webapp/.env.local</code>.
-                </li>
-                <li>
-                  If you start via <code className="bg-gray-700 text-indigo-300 px-1.5 py-0.5 rounded">Start-Toolbox.ps1</code>, add your key to{" "}
-                  <code className="bg-gray-700 text-indigo-300 px-1.5 py-0.5 rounded">.env</code> at the repo root.
-                </li>
-              </ol>
-              <p className="mb-2">Add your API key on a single line:</p>
-              <div className="bg-gray-900 p-2 rounded mb-4 font-mono text-xs overflow-x-auto">
-                <code>NEXT_PUBLIC_API_KEY=sk-proj-your...api...key...here</code>
+              <p className="text-gray-300">
+                Add your API key to <code className="bg-gray-700 text-indigo-300 px-1.5 py-0.5 rounded">.env</code> in the repo root:
+              </p>
+              <div className="bg-gray-900 p-2 rounded font-mono text-xs overflow-x-auto">
+                <code>OPENAI_API_KEY=sk-proj-your...api...key...here</code>
               </div>
               <p className="text-xs text-gray-400">
-                After updating the env file, restart the dev server (env vars are read at startup), then reload this page.
+                After updating <code className="bg-gray-600 text-indigo-300 px-1 py-0.5 rounded">.env</code>, restart the dev server, then reload this page.
               </p>
             </div>
           </div>

@@ -5,6 +5,16 @@ import { fileURLToPath } from 'node:url'
 
 const appRoot = path.dirname(fileURLToPath(import.meta.url))
 
+const resolvePlaceholder = (value: string): string => {
+  // Matches $($VAR), ${VAR}, $VAR — same patterns as Start-Toolbox.ps1
+  const match =
+    value.match(/^\$\(\$([A-Za-z_][A-Za-z0-9_]*)\)$/) ||
+    value.match(/^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/) ||
+    value.match(/^\$([A-Za-z_][A-Za-z0-9_]*)$/)
+  if (!match) return value
+  return process.env[match[1]] ?? value
+}
+
 const loadEnvFromRepoRoot = () => {
   const envPath = path.resolve(appRoot, '..', '..', '.env')
   if (!fs.existsSync(envPath)) return
@@ -31,7 +41,7 @@ const loadEnvFromRepoRoot = () => {
       value = value.replace(/\s+#.*$/, '').trimEnd()
     }
 
-    process.env[key] = value
+    process.env[key] = resolvePlaceholder(value)
   }
 }
 
