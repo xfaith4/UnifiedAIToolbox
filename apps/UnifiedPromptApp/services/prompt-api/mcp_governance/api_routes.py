@@ -10,9 +10,13 @@ Provides REST endpoints for:
 - Query audit logs
 """
 
+from collections import deque
 from datetime import datetime
-from typing import List, Optional
-from fastapi import APIRouter, HTTPException, Depends, Query
+import os
+import threading
+import time
+from typing import Deque, List, Optional, Set
+from fastapi import APIRouter, HTTPException, Depends, Query, Request
 from pydantic import BaseModel
 import logging
 import uuid
@@ -21,7 +25,7 @@ from .models import (
     Collection, CollectionCreate, CollectionUpdate,
     InstallRecord, InstallRecordCreate, InstallRecordUpdate, InstallStatus,
     Allowlist, AllowlistCreate, AllowlistUpdate, AllowlistScope,
-    AuditEvent, AuditEventQuery, AuditEventType
+    AuditEvent, AuditEventQuery, AuditEventType, AuditAnomaly
 )
 from . import storage
 from . import registry_sync
@@ -38,6 +42,63 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# In-memory MCP-specific rate limiter state (user/IP + path).
+_MCP_RATE_BUCKETS: dict[str, Deque[float]] = {}
+_MCP_RATE_LOCK = threading.Lock()
+
+
+def _is_truthy(value: Optional[str]) -> bool:
+    if value is None:
+        return False
+    return value.strip().lower() in {"1", "true", "yes", "on", "y"}
+
+
+def _env_int(name: str, default: int, minimum: int = 1) -> int:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        return max(minimum, int(raw))
+    except ValueError:
+        return default
+
+
+def _rbac_enabled() -> bool:
+    return _is_truthy(os.environ.get("MCP_GOVERNANCE_RBAC_ENABLED", "true"))
+
+
+def _role_name(current_user: Optional["User"]) -> Optional[str]:
+    if not current_user:
+        return None
+    role = getattr(current_user, "role", None)
+    if role is None:
+        return None
+    return role.value if hasattr(role, "value") else str(role)
+
+
+def _require_roles(
+    current_user: Optional["User"],
+    allowed_roles: Set[str],
+    operation: str
+) -> None:
+    if not AUTH_AVAILABLE or not _rbac_enabled():
+        return
+    if current_user is None:
+        raise HTTPException(status_code=401, detail=f"Authentication required for {operation}")
+    role = _role_name(current_user)
+    if role not in allowed_roles:
+        raise HTTPException(status_code=403, detail=f"Insufficient role for {operation}")
+
+
+def _rate_limit_key(request: Request, current_user: Optional["User"]) -> str:
+    if current_user:
+        principal = f"user:{current_user.username}"
+    else:
+        client_host = request.client.host if request.client else "unknown"
+        principal = f"ip:{client_host}"
+    return f"{principal}:{request.url.path}"
+
+
 # Create router
 router = APIRouter(prefix="/api/mcp", tags=["mcp-governance"])
 
@@ -51,15 +112,53 @@ def get_user_id(current_user: Optional['User'] = None) -> str:
 
 
 # Dependency for optional authentication
-async def optional_current_user():
-    """Get current user if auth is available, otherwise return None."""
-    if AUTH_AVAILABLE:
-        try:
-            from auth import get_current_user
-            return await get_current_user()
-        except:
-            return None
-    return None
+if AUTH_AVAILABLE:
+    async def optional_current_user(current_user: Optional['User'] = Depends(get_current_user)):
+        """Get current user (or None) when auth is enabled."""
+        return current_user
+else:
+    async def optional_current_user():
+        """Get current user if auth is available, otherwise return None."""
+        return None
+
+
+async def enforce_mcp_rate_limit(
+    request: Request,
+    current_user: Optional["User"] = Depends(optional_current_user)
+):
+    """
+    Enforce per-user (or per-client IP fallback) MCP API rate limiting.
+
+    Defaults to 10 requests / 1 second window to match security roadmap targets.
+    """
+    window_seconds = _env_int("MCP_GOVERNANCE_RATE_LIMIT_WINDOW_SECONDS", default=1)
+    request_limit = _env_int("MCP_GOVERNANCE_RATE_LIMIT_REQUESTS", default=10)
+    now = time.monotonic()
+    key = _rate_limit_key(request, current_user)
+
+    with _MCP_RATE_LOCK:
+        bucket = _MCP_RATE_BUCKETS.setdefault(key, deque())
+        while bucket and now - bucket[0] > window_seconds:
+            bucket.popleft()
+
+        if len(bucket) >= request_limit:
+            raise HTTPException(
+                status_code=429,
+                detail=(
+                    f"MCP rate limit exceeded: {request_limit} requests "
+                    f"per {window_seconds} second(s)"
+                )
+            )
+
+        bucket.append(now)
+
+
+async def require_admin_user(
+    current_user: Optional["User"] = Depends(optional_current_user)
+) -> Optional["User"]:
+    """Require admin role for MCP admin operations when RBAC is enabled."""
+    _require_roles(current_user, {"admin"}, "MCP admin operation")
+    return current_user
 
 
 # ============================================================================
@@ -93,7 +192,11 @@ class RegistrySyncResponse(BaseModel):
 
 
 @router.post("/registry/sync", response_model=RegistrySyncResponse)
-async def sync_registry(request: RegistrySyncRequest):
+async def sync_registry(
+    request: RegistrySyncRequest,
+    _: Optional["User"] = Depends(require_admin_user),
+    __: None = Depends(enforce_mcp_rate_limit)
+):
     """
     Sync/refresh MCP server registry from external sources.
     
@@ -154,7 +257,9 @@ async def sync_registry(request: RegistrySyncRequest):
 
 
 @router.get("/registry/sources", response_model=List[RegistrySource])
-async def list_registry_sources():
+async def list_registry_sources(
+    _: None = Depends(enforce_mcp_rate_limit)
+):
     """
     List configured registry sources.
     
@@ -187,7 +292,11 @@ async def list_registry_sources():
 
 
 @router.post("/registry/sources", response_model=RegistrySource, status_code=201)
-async def add_registry_source(source: RegistrySource):
+async def add_registry_source(
+    source: RegistrySource,
+    _: Optional["User"] = Depends(require_admin_user),
+    __: None = Depends(enforce_mcp_rate_limit)
+):
     """
     Add a new registry source.
     
@@ -267,7 +376,10 @@ class ServerSearchResponse(BaseModel):
 
 
 @router.post("/servers/search", response_model=ServerSearchResponse)
-async def search_servers(query: ServerSearchQuery):
+async def search_servers(
+    query: ServerSearchQuery,
+    _: None = Depends(enforce_mcp_rate_limit)
+):
     """
     Search and browse available MCP servers.
     
@@ -314,7 +426,10 @@ async def search_servers(query: ServerSearchQuery):
 
 
 @router.get("/servers/{server_id}")
-async def get_server(server_id: str):
+async def get_server(
+    server_id: str,
+    _: None = Depends(enforce_mcp_rate_limit)
+):
     """
     Get details of a specific MCP server.
     
@@ -346,7 +461,8 @@ async def get_server(server_id: str):
 async def list_collections(
     tag: Optional[str] = Query(None, description="Filter by tag"),
     limit: int = Query(50, ge=1, le=200),
-    offset: int = Query(0, ge=0)
+    offset: int = Query(0, ge=0),
+    _: None = Depends(enforce_mcp_rate_limit)
 ):
     """
     List all collections.
@@ -370,7 +486,8 @@ async def list_collections(
 @router.post("/collections", response_model=Collection, status_code=201)
 async def create_collection(
     collection: CollectionCreate,
-    current_user: Optional['User'] = Depends(optional_current_user)
+    current_user: Optional['User'] = Depends(require_admin_user),
+    _: None = Depends(enforce_mcp_rate_limit)
 ):
     """
     Create a new collection.
@@ -392,7 +509,10 @@ async def create_collection(
 
 
 @router.get("/collections/{collection_id}", response_model=Collection)
-async def get_collection(collection_id: str):
+async def get_collection(
+    collection_id: str,
+    _: None = Depends(enforce_mcp_rate_limit)
+):
     """Get a specific collection by ID."""
     collection = storage.get_collection(collection_id)
     if not collection:
@@ -401,7 +521,12 @@ async def get_collection(collection_id: str):
 
 
 @router.put("/collections/{collection_id}", response_model=Collection)
-async def update_collection(collection_id: str, update: CollectionUpdate):
+async def update_collection(
+    collection_id: str,
+    update: CollectionUpdate,
+    _: Optional["User"] = Depends(require_admin_user),
+    __: None = Depends(enforce_mcp_rate_limit)
+):
     """
     Update an existing collection.
     
@@ -427,7 +552,11 @@ async def update_collection(collection_id: str, update: CollectionUpdate):
 
 
 @router.delete("/collections/{collection_id}", status_code=204)
-async def delete_collection(collection_id: str):
+async def delete_collection(
+    collection_id: str,
+    _: Optional["User"] = Depends(require_admin_user),
+    __: None = Depends(enforce_mcp_rate_limit)
+):
     """
     Delete a collection.
     
@@ -447,7 +576,8 @@ async def delete_collection(collection_id: str):
 async def list_install_records(
     status: Optional[InstallStatus] = Query(None, description="Filter by status"),
     limit: int = Query(50, ge=1, le=200),
-    offset: int = Query(0, ge=0)
+    offset: int = Query(0, ge=0),
+    _: None = Depends(enforce_mcp_rate_limit)
 ):
     """
     List all install records.
@@ -470,7 +600,8 @@ async def list_install_records(
 @router.post("/installs", response_model=InstallRecord, status_code=201)
 async def create_install_record(
     record: InstallRecordCreate,
-    current_user: Optional['User'] = Depends(optional_current_user)
+    current_user: Optional['User'] = Depends(require_admin_user),
+    _: None = Depends(enforce_mcp_rate_limit)
 ):
     """
     Create a new install record (install MCP server).
@@ -492,7 +623,10 @@ async def create_install_record(
 
 
 @router.get("/installs/{install_id}", response_model=InstallRecord)
-async def get_install_record(install_id: str):
+async def get_install_record(
+    install_id: str,
+    _: None = Depends(enforce_mcp_rate_limit)
+):
     """Get a specific install record by ID."""
     record = storage.get_install_record(install_id)
     if not record:
@@ -501,7 +635,12 @@ async def get_install_record(install_id: str):
 
 
 @router.put("/installs/{install_id}", response_model=InstallRecord)
-async def update_install_record(install_id: str, update: InstallRecordUpdate):
+async def update_install_record(
+    install_id: str,
+    update: InstallRecordUpdate,
+    _: Optional["User"] = Depends(require_admin_user),
+    __: None = Depends(enforce_mcp_rate_limit)
+):
     """
     Update an install record.
     
@@ -532,7 +671,11 @@ async def update_install_record(install_id: str, update: InstallRecordUpdate):
 
 
 @router.post("/installs/{install_id}/enable", response_model=InstallRecord)
-async def enable_install(install_id: str):
+async def enable_install(
+    install_id: str,
+    _: Optional["User"] = Depends(require_admin_user),
+    __: None = Depends(enforce_mcp_rate_limit)
+):
     """
     Enable an installed MCP server.
     
@@ -549,7 +692,11 @@ async def enable_install(install_id: str):
 
 
 @router.post("/installs/{install_id}/disable", response_model=InstallRecord)
-async def disable_install(install_id: str):
+async def disable_install(
+    install_id: str,
+    _: Optional["User"] = Depends(require_admin_user),
+    __: None = Depends(enforce_mcp_rate_limit)
+):
     """
     Disable an installed MCP server.
     
@@ -575,7 +722,8 @@ async def list_allowlists(
     scope: Optional[AllowlistScope] = Query(None, description="Filter by scope"),
     scope_id: Optional[str] = Query(None, description="Filter by scope ID"),
     limit: int = Query(50, ge=1, le=200),
-    offset: int = Query(0, ge=0)
+    offset: int = Query(0, ge=0),
+    _: None = Depends(enforce_mcp_rate_limit)
 ):
     """
     List all allowlists.
@@ -603,7 +751,8 @@ async def list_allowlists(
 @router.post("/allowlists", response_model=Allowlist, status_code=201)
 async def create_allowlist(
     allowlist: AllowlistCreate,
-    current_user: Optional['User'] = Depends(optional_current_user)
+    current_user: Optional['User'] = Depends(require_admin_user),
+    _: None = Depends(enforce_mcp_rate_limit)
 ):
     """
     Create a new allowlist.
@@ -611,7 +760,13 @@ async def create_allowlist(
     Binds a set of allowed MCP servers/tools to a specific scope
     (run, job, user, or global).
     """
-    new_allowlist = Allowlist(
+    new_allowlist = _build_allowlist(allowlist, get_user_id(current_user))
+    return storage.save_allowlist(new_allowlist)
+
+
+def _build_allowlist(allowlist: AllowlistCreate, created_by: str) -> Allowlist:
+    """Construct an allowlist model for both create and bind workflows."""
+    return Allowlist(
         allowlist_id=str(uuid.uuid4()),
         scope=allowlist.scope,
         scope_id=allowlist.scope_id,
@@ -620,16 +775,17 @@ async def create_allowlist(
         allowed_tools=allowlist.allowed_tools,
         denied_servers=allowlist.denied_servers,
         denied_tools=allowlist.denied_tools,
-        created_by=get_user_id(current_user),
+        created_by=created_by,
         created_at=datetime.utcnow(),
         expires_at=allowlist.expires_at
     )
-    
-    return storage.save_allowlist(new_allowlist)
 
 
 @router.get("/allowlists/{allowlist_id}", response_model=Allowlist)
-async def get_allowlist(allowlist_id: str):
+async def get_allowlist(
+    allowlist_id: str,
+    _: None = Depends(enforce_mcp_rate_limit)
+):
     """Get a specific allowlist by ID."""
     allowlist = storage.get_allowlist(allowlist_id)
     if not allowlist:
@@ -638,7 +794,12 @@ async def get_allowlist(allowlist_id: str):
 
 
 @router.put("/allowlists/{allowlist_id}", response_model=Allowlist)
-async def update_allowlist(allowlist_id: str, update: AllowlistUpdate):
+async def update_allowlist(
+    allowlist_id: str,
+    update: AllowlistUpdate,
+    _: Optional["User"] = Depends(require_admin_user),
+    __: None = Depends(enforce_mcp_rate_limit)
+):
     """
     Update an existing allowlist.
     
@@ -668,7 +829,11 @@ async def update_allowlist(allowlist_id: str, update: AllowlistUpdate):
 
 
 @router.delete("/allowlists/{allowlist_id}", status_code=204)
-async def delete_allowlist(allowlist_id: str):
+async def delete_allowlist(
+    allowlist_id: str,
+    _: Optional["User"] = Depends(require_admin_user),
+    __: None = Depends(enforce_mcp_rate_limit)
+):
     """
     Delete an allowlist.
     
@@ -684,7 +849,9 @@ async def delete_allowlist(allowlist_id: str):
 async def bind_allowlist_to_scope(
     scope: AllowlistScope,
     scope_id: str,
-    allowlist_config: AllowlistCreate
+    allowlist_config: AllowlistCreate,
+    current_user: Optional['User'] = Depends(require_admin_user),
+    _: None = Depends(enforce_mcp_rate_limit)
 ):
     """
     Convenience endpoint to create and bind an allowlist in one step.
@@ -693,7 +860,8 @@ async def bind_allowlist_to_scope(
     """
     allowlist_config.scope = scope
     allowlist_config.scope_id = scope_id
-    return await create_allowlist(allowlist_config)
+    allowlist = _build_allowlist(allowlist_config, get_user_id(current_user))
+    return storage.save_allowlist(allowlist)
 
 
 # ============================================================================
@@ -701,7 +869,10 @@ async def bind_allowlist_to_scope(
 # ============================================================================
 
 @router.post("/audit/query", response_model=List[AuditEvent])
-async def query_audit_logs(query: AuditEventQuery):
+async def query_audit_logs(
+    query: AuditEventQuery,
+    _: None = Depends(enforce_mcp_rate_limit)
+):
     """
     Query audit logs.
     
@@ -744,7 +915,10 @@ async def query_audit_logs(query: AuditEventQuery):
 
 
 @router.get("/audit/events/{event_id}", response_model=AuditEvent)
-async def get_audit_event(event_id: str):
+async def get_audit_event(
+    event_id: str,
+    _: None = Depends(enforce_mcp_rate_limit)
+):
     """Get a specific audit event by ID."""
     event_data = storage.get_audit_event_by_id(event_id)
     if not event_data:
@@ -776,7 +950,8 @@ async def get_audit_summary(
     start_time: Optional[datetime] = Query(None),
     end_time: Optional[datetime] = Query(None),
     run_id: Optional[str] = Query(None),
-    user_id: Optional[str] = Query(None)
+    user_id: Optional[str] = Query(None),
+    _: None = Depends(enforce_mcp_rate_limit)
 ):
     """
     Get summary statistics for audit logs.
@@ -793,6 +968,34 @@ async def get_audit_summary(
     return AuditSummary(**summary_data)
 
 
+@router.get("/audit/anomalies", response_model=List[AuditAnomaly])
+async def get_audit_anomalies(
+    start_time: Optional[datetime] = Query(None),
+    end_time: Optional[datetime] = Query(None),
+    window_minutes: int = Query(60, ge=1, le=1440),
+    min_events_for_spike: int = Query(20, ge=1, le=10000),
+    deny_ratio_threshold: float = Query(0.4, ge=0.0, le=1.0),
+    repeated_deny_threshold: int = Query(5, ge=1, le=1000),
+    limit: int = Query(50, ge=1, le=500),
+    _: None = Depends(enforce_mcp_rate_limit)
+):
+    """
+    Detect anomalies in MCP audit logs.
+
+    Uses rule-based detection over policy denies and signature verification.
+    """
+    anomalies = storage.get_audit_anomalies(
+        start_time=start_time,
+        end_time=end_time,
+        window_minutes=window_minutes,
+        min_events_for_spike=min_events_for_spike,
+        deny_ratio_threshold=deny_ratio_threshold,
+        repeated_deny_threshold=repeated_deny_threshold,
+        limit=limit
+    )
+    return [AuditAnomaly(**anomaly) for anomaly in anomalies]
+
+
 # ============================================================================
 # HEALTH CHECK
 # ============================================================================
@@ -806,7 +1009,9 @@ class HealthCheck(BaseModel):
 
 
 @router.get("/health", response_model=HealthCheck)
-async def health_check():
+async def health_check(
+    _: None = Depends(enforce_mcp_rate_limit)
+):
     """
     Health check endpoint for MCP governance system.
     

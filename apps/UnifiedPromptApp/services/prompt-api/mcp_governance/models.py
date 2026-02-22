@@ -282,6 +282,10 @@ class AuditEvent(BaseModel):
     # Additional context
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional event metadata")
     tags: List[str] = Field(default_factory=list, description="Tags for filtering/search")
+    signature: Optional[str] = Field(None, description="HMAC signature for event integrity")
+    signature_algorithm: Optional[str] = Field(None, description="Signature algorithm")
+    signature_key_id: Optional[str] = Field(None, description="Signing key identifier")
+    signature_valid: Optional[bool] = Field(None, description="Whether signature validation succeeded")
 
 
 class AuditEventQuery(BaseModel):
@@ -297,3 +301,28 @@ class AuditEventQuery(BaseModel):
     end_time: Optional[datetime] = Field(None, description="Events before this time")
     limit: int = Field(default=100, ge=1, le=1000, description="Maximum results")
     offset: int = Field(default=0, ge=0, description="Offset for pagination")
+
+
+# ============================================================================
+# AUDIT ANOMALIES
+# ============================================================================
+
+class AuditAnomalySeverity(str, Enum):
+    """Anomaly severity classification."""
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+
+class AuditAnomaly(BaseModel):
+    """Detected anomaly from audit event analysis."""
+    anomaly_id: str = Field(..., description="Unique anomaly identifier")
+    anomaly_type: str = Field(..., description="Anomaly type key")
+    severity: AuditAnomalySeverity = Field(..., description="Severity level")
+    summary: str = Field(..., description="Human-readable anomaly summary")
+    detected_at: datetime = Field(default_factory=datetime.utcnow, description="Detection timestamp")
+    count: int = Field(..., ge=1, description="Number of events supporting this anomaly")
+    window_start: datetime = Field(..., description="Window start for anomaly calculation")
+    window_end: datetime = Field(..., description="Window end for anomaly calculation")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Anomaly metadata")

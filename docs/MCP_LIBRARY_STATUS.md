@@ -1,7 +1,7 @@
 # MCP Library - Quick Status Checklist
 
-**Last Updated**: 2026-02-04
-**Overall Completion**: 95% ✅
+**Last Updated**: 2026-02-21
+**Overall Completion**: 97% ✅
 
 ---
 
@@ -51,6 +51,7 @@
 - [x] POST `/api/mcp/audit/query` - Query events ⭐ NEW
 - [x] GET `/api/mcp/audit/events/{id}` - Get event ⭐ NEW
 - [x] GET `/api/mcp/audit/summary` - Get summary ⭐ NEW
+- [x] GET `/api/mcp/audit/anomalies` - Detect anomalies ⭐ NEW
 
 ### API Endpoints - Registry (Phase 1 Completed)
 
@@ -236,13 +237,13 @@
 - ✅ Scope-based access
 - ✅ User tracking
 
-### Recommended (Future)
+### Security Enhancements (Implemented 2026-02-21)
 
-- [ ] Rate limiting
-- [ ] RBAC for admin ops
-- [ ] Log signing
-- [ ] Log rotation
-- [ ] Anomaly detection
+- [x] Rate limiting (10 req/sec default for MCP API)
+- [x] RBAC for admin ops
+- [x] Log signing
+- [x] Log rotation
+- [x] Anomaly detection
 
 ---
 

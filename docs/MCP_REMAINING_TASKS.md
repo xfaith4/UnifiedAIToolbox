@@ -1,7 +1,7 @@
 # MCP Library - Remaining Tasks
 
-**Date**: 2026-02-04
-**Status**: Phases 1-3 Complete (95% Done)
+**Date**: 2026-02-21
+**Status**: Phases 1-3 Complete + Security Hardening (98% Done)
 **Owner**: Platform Team
 
 ---
@@ -70,6 +70,7 @@ All essential features are now functional. The remaining work is optional enhanc
 **Estimated Effort**: 5-7 days
 
 #### 4.1 Runtime Enforcement Middleware
+
 **Status**: Not started
 **Files to Create**: `apps/UnifiedPromptApp/services/prompt-api/orchestration_mcp_middleware.py`
 
@@ -97,6 +98,7 @@ All essential features are now functional. The remaining work is optional enhanc
 - `.env` - Add `MCP_ENFORCEMENT_ENABLED=true`
 
 #### 4.2 Allowlist Auto-Creation
+
 **Status**: Not started
 **Files to Modify**: Orchestrator run creation workflow
 
@@ -116,6 +118,7 @@ All essential features are now functional. The remaining work is optional enhanc
    - Show real-time enforcement status
 
 #### 4.3 Audit Log Viewer UI (Optional)
+
 **Status**: Not started
 **New Component**: `apps/unifiedtoolbox.webapp/src/app/mcp-library/audit.tsx`
 
@@ -146,6 +149,7 @@ All essential features are now functional. The remaining work is optional enhanc
 - GET `/api/mcp/audit/events/{id}` - Already implemented
 
 #### 4.4 Policy Violation Dashboard
+
 **Status**: Not started
 **New Endpoint**: `/api/mcp/violations`
 
@@ -166,18 +170,18 @@ All essential features are now functional. The remaining work is optional enhanc
 
 ---
 
-## 🔐 Security Enhancements (Future)
+## 🔐 Security Enhancements (Implemented 2026-02-21)
 
 **Priority**: Medium
 **Estimated Effort**: 3-5 days
 
 ### Tasks
 
-- [ ] **Rate Limiting** - Add rate limits to API endpoints (10 req/sec per user)
-- [ ] **RBAC** - Implement role-based access control for admin operations
-- [ ] **Log Signing** - Cryptographically sign audit logs for integrity
-- [ ] **Log Rotation** - Implement automatic log rotation (daily/weekly)
-- [ ] **Anomaly Detection** - ML-based detection of unusual policy violations
+- [x] **Rate Limiting** - Added MCP-specific rate limits (10 req/sec default per user/IP+path)
+- [x] **RBAC** - Added role-based access control for admin operations
+- [x] **Log Signing** - Added HMAC signatures for audit event integrity
+- [x] **Log Rotation** - Added automatic rotation (size/daily) with retention policy
+- [x] **Anomaly Detection** - Added rule-based anomaly detection API for unusual policy violations
 - [ ] **Security Audit** - External review of policy engine logic
 
 **Impact**: Production-grade security posture
@@ -199,6 +203,7 @@ All essential features are now functional. The remaining work is optional enhanc
 ### Optimization Opportunities
 
 #### 1. Audit Log Storage Migration
+
 **Task**: Migrate from JSONL to SQLite
 
 - **Benefits**: 10x faster queries, better filtering, indexing
@@ -206,6 +211,7 @@ All essential features are now functional. The remaining work is optional enhanc
 - **Indexes**: run_id, server_id, timestamp, event_type
 
 #### 2. Server Search Optimization
+
 **Task**: Add in-memory indexes
 
 - **Benefits**: Sub-millisecond search for common queries
@@ -213,6 +219,7 @@ All essential features are now functional. The remaining work is optional enhanc
 - **Cache**: Store in Redis or in-memory LRU cache
 
 #### 3. Policy Evaluation Caching
+
 **Task**: Cache allowlist lookups per run
 
 - **Benefits**: Avoid repeated storage reads
@@ -224,6 +231,7 @@ All essential features are now functional. The remaining work is optional enhanc
 ## 🧪 Testing Requirements
 
 ### Integration Tests (To Add)
+
 **Priority**: Medium
 **Estimated Effort**: 2-3 days
 
@@ -245,6 +253,7 @@ All essential features are now functional. The remaining work is optional enhanc
    - Login → Create collection → Verify created_by field
 
 ### UI Tests (To Add)
+
 **Priority**: Low
 **Estimated Effort**: 2 days
 
@@ -350,6 +359,7 @@ All essential features are now functional. The remaining work is optional enhanc
 4. Security Enhancements (if handling sensitive data)
 
 ### If Time-Constrained
+
 **Recommendation**: Deploy now with current features. All essential functionality is complete and production-ready. Advanced features can be added incrementally based on actual usage patterns.
 
 ---

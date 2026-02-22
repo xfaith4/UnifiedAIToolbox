@@ -28,9 +28,15 @@ Usage:
 """
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
+import hashlib
+import hmac
+import json
 import logging
+import os
+import pathlib
+import threading
 import uuid
 
 from .policy_engine import (
@@ -117,10 +123,83 @@ class JsonlAuditLogger(AuditLogger):
         Args:
             log_dir: Directory to store audit log files
         """
-        import os
         self.log_dir = log_dir
         os.makedirs(log_dir, exist_ok=True)
         self.log_file = os.path.join(log_dir, "mcp_audit.jsonl")
+        self._io_lock = threading.Lock()
+        self._signature_algorithm = "hmac-sha256"
+        self._signing_key_id = os.environ.get("MCP_AUDIT_SIGNING_KEY_ID", "default")
+        signing_key = os.environ.get("MCP_AUDIT_SIGNING_KEY", "").strip()
+        if not signing_key:
+            signing_key = os.environ.get("PROMPT_API_ADMIN_TOKEN", "").strip()
+        if not signing_key:
+            signing_key = "mcp-dev-signing-key"
+        self._signing_key = signing_key.encode("utf-8")
+        self._rotate_max_bytes = self._env_int("MCP_AUDIT_ROTATE_MAX_BYTES", 10 * 1024 * 1024)
+        self._rotate_keep_files = self._env_int("MCP_AUDIT_ROTATE_KEEP_FILES", 14)
+        self._rotate_daily = os.environ.get("MCP_AUDIT_ROTATE_DAILY", "true").strip().lower() in {"1", "true", "yes", "on", "y"}
+
+    @staticmethod
+    def _env_int(name: str, default: int) -> int:
+        raw = os.environ.get(name)
+        if raw is None:
+            return default
+        try:
+            return max(1, int(raw))
+        except ValueError:
+            return default
+
+    def _canonical_payload(self, event_dict: Dict[str, Any]) -> str:
+        payload = dict(event_dict)
+        payload.pop("signature", None)
+        payload.pop("signature_valid", None)
+        payload.pop("signature_algorithm", None)
+        payload.pop("signature_key_id", None)
+        return json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+
+    def _sign_event(self, event_dict: Dict[str, Any]) -> str:
+        payload = self._canonical_payload(event_dict)
+        return hmac.new(self._signing_key, payload.encode("utf-8"), hashlib.sha256).hexdigest()
+
+    def _verify_signature(self, event_dict: Dict[str, Any]) -> bool:
+        signature = event_dict.get("signature")
+        if not signature:
+            return False
+        expected = self._sign_event(event_dict)
+        return hmac.compare_digest(str(signature), expected)
+
+    def _cleanup_rotated_files(self) -> None:
+        rotated = sorted(
+            pathlib.Path(self.log_dir).glob("mcp_audit.*.jsonl"),
+            key=lambda p: p.stat().st_mtime if p.exists() else 0,
+            reverse=True,
+        )
+        for old in rotated[self._rotate_keep_files:]:
+            try:
+                old.unlink()
+            except OSError:
+                continue
+
+    def _rotate_if_needed(self) -> None:
+        log_path = pathlib.Path(self.log_file)
+        if not log_path.exists():
+            return
+
+        stat = log_path.stat()
+        rotate_for_size = stat.st_size >= self._rotate_max_bytes
+        rotate_for_day = False
+        if self._rotate_daily:
+            rotate_for_day = (
+                datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).date()
+                < datetime.now(timezone.utc).date()
+            )
+
+        if not (rotate_for_size or rotate_for_day):
+            return
+
+        rotated = pathlib.Path(self.log_dir) / f"mcp_audit.{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}.jsonl"
+        log_path.rename(rotated)
+        self._cleanup_rotated_files()
     
     def log_event(self, event: AuditEvent) -> None:
         """Log an audit event to JSONL file."""
@@ -130,10 +209,16 @@ class JsonlAuditLogger(AuditLogger):
             # Convert event to dict (handle datetime serialization)
             event_dict = event.model_dump()
             event_dict["timestamp"] = event.timestamp.isoformat()
+            event_dict["signature_algorithm"] = self._signature_algorithm
+            event_dict["signature_key_id"] = self._signing_key_id
+            event_dict.pop("signature_valid", None)
+            event_dict["signature"] = self._sign_event(event_dict)
             
             # Append to JSONL file
-            with open(self.log_file, "a") as f:
-                f.write(json.dumps(event_dict) + "\n")
+            with self._io_lock:
+                self._rotate_if_needed()
+                with open(self.log_file, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(event_dict) + "\n")
             
             logger.debug(f"Logged audit event: {event.event_type}")
         except Exception as e:
@@ -150,23 +235,32 @@ class JsonlAuditLogger(AuditLogger):
         import json
         
         events = []
-        
+        files = [pathlib.Path(self.log_file)] + sorted(
+            pathlib.Path(self.log_dir).glob("mcp_audit.*.jsonl"),
+            key=lambda p: p.stat().st_mtime if p.exists() else 0,
+            reverse=True
+        )
+
         try:
-            with open(self.log_file, "r") as f:
-                for line in f:
-                    if not line.strip():
-                        continue
-                    
-                    event_dict = json.loads(line)
-                    # Apply filters
-                    match = True
-                    for key, value in filters.items():
-                        if event_dict.get(key) != value:
-                            match = False
-                            break
-                    
-                    if match:
-                        events.append(event_dict)
+            for path in files:
+                if not path.exists():
+                    continue
+                with open(path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        if not line.strip():
+                            continue
+
+                        event_dict = json.loads(line)
+                        # Apply filters
+                        match = True
+                        for key, value in filters.items():
+                            if event_dict.get(key) != value:
+                                match = False
+                                break
+
+                        if match:
+                            event_dict["signature_valid"] = self._verify_signature(event_dict)
+                            events.append(event_dict)
         except FileNotFoundError:
             pass  # No events yet
         except Exception as e:

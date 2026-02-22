@@ -40,7 +40,7 @@ class OrchestrationMCPMiddleware:
         """Create middleware configured by environment variables and stored governance data."""
         enabled = os.getenv("MCP_ENFORCEMENT_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
 
-        installs = {record.server_id: record.dict() for record in storage.get_installs()}
+        installs = {record.server_id: record.dict() for record in storage.get_install_records()}
         allowlists = {allowlist.allowlist_id: allowlist.dict() for allowlist in storage.get_allowlists()}
         collections = {collection.collection_id: collection.dict() for collection in storage.get_collections()}
 

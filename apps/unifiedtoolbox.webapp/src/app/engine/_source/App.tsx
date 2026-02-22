@@ -22,6 +22,7 @@ import MaintenanceRunPanel from './components/MaintenanceRunPanel';
 import useOrchestrator from './hooks/useOrchestrator';
 import { useJobTypes } from './hooks/useJobTypes';
 import { useRunStatus } from './hooks/useRunStatus';
+import { getBrowserApiKeyFromEnv } from './utils/apiKey';
 import type { Task, Artifact, RunMode } from './types';
 import type { EnginePipelinePayload } from '@/lib/app-factory/pipeline/pipelineStatus';
 
@@ -96,9 +97,9 @@ const App: React.FC = () => {
   }, [isOrchestrating, liveSession?.startTime]);
 
   useEffect(() => {
-    // Check if the client-side API key is available.
+    // Check if the client-side API key is available and valid.
     // In Next.js, only NEXT_PUBLIC_* vars are accessible in the browser bundle.
-    const browserApiKey = process.env.NEXT_PUBLIC_API_KEY || process.env.NEXT_PUBLIC_OPENAI_API_KEY;
+    const browserApiKey = getBrowserApiKeyFromEnv();
     if (!browserApiKey) {
       setIsApiKeyMissing(true);
     }
@@ -261,7 +262,7 @@ const App: React.FC = () => {
       } as EnginePipelinePayload)
 
       try {
-        const apiKey = process.env.NEXT_PUBLIC_API_KEY || process.env.NEXT_PUBLIC_OPENAI_API_KEY || ''
+        const apiKey = getBrowserApiKeyFromEnv()
         const res = await fetch('/api/app-factory/validate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

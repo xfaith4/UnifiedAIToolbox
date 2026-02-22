@@ -3,6 +3,7 @@ import type { Session, Task, Artifact, RunMode } from '../types'
 import { ArtifactType, TaskStatus } from '../types'
 import type { EnginePipelinePayload } from '@/lib/app-factory/pipeline/pipelineStatus'
 import { buildEnginePipelinePayload } from '@/lib/app-factory/pipeline/pipelineStatus'
+import { getBrowserApiKeyFromEnv } from '../utils/apiKey'
 
 function makeInitialPipeline(hardeningEnabled: boolean): EnginePipelinePayload {
   const base = buildEnginePipelinePayload({
@@ -133,7 +134,7 @@ const MAX_LOCAL_CACHE_ITEMS = 15
 const MAX_LOCAL_GOAL_CHARS = 2000
 const HISTORY_API_ENDPOINT = '/api/engine/history'
 
-const getBrowserApiKey = () => process.env.NEXT_PUBLIC_API_KEY || process.env.NEXT_PUBLIC_OPENAI_API_KEY || ''
+const getBrowserApiKey = () => getBrowserApiKeyFromEnv()
 
 const calculateCost = (model: keyof typeof PRICING, inputTokens: number, outputTokens: number, images: number = 0): number => {
   if (model === 'dall-e-3') return images * PRICING[model].perImage

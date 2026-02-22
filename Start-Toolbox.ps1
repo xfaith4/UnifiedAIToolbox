@@ -21,6 +21,34 @@ param(
 $ErrorActionPreference = "Stop"
 $ProjectRoot = $PSScriptRoot
 
+function Test-IsEnvPlaceholder([string]$Value) {
+    if ([string]::IsNullOrWhiteSpace($Value)) { return $false }
+    $trimmed = $Value.Trim()
+    if ($trimmed -match '^\$\(\$[A-Za-z_][A-Za-z0-9_]*\)$') { return $true } # PowerShell: $($VAR)
+    if ($trimmed -match '^\$\{[A-Za-z_][A-Za-z0-9_]*\}$') { return $true } # Shell: ${VAR}
+    if ($trimmed -match '^\$[A-Za-z_][A-Za-z0-9_]*$') { return $true }      # Shell: $VAR
+    return $false
+}
+
+function Resolve-EnvPlaceholder([string]$Value) {
+    if ([string]::IsNullOrWhiteSpace($Value)) { return $Value }
+    $trimmed = $Value.Trim()
+
+    $name = $null
+    if ($trimmed -match '^\$\(\$(?<name>[A-Za-z_][A-Za-z0-9_]*)\)$') {
+        $name = $matches['name']
+    } elseif ($trimmed -match '^\$\{(?<name>[A-Za-z_][A-Za-z0-9_]*)\}$') {
+        $name = $matches['name']
+    } elseif ($trimmed -match '^\$(?<name>[A-Za-z_][A-Za-z0-9_]*)$') {
+        $name = $matches['name']
+    }
+
+    if (-not $name) { return $trimmed }
+    $resolved = (Get-Item "Env:$name" -ErrorAction SilentlyContinue).Value
+    if ([string]::IsNullOrWhiteSpace($resolved)) { return $trimmed }
+    return $resolved
+}
+
 Write-Host "UnifiedAIToolbox Launcher" -ForegroundColor Cyan
 Write-Host ""
 
@@ -47,14 +75,40 @@ Get-Content $envFile | ForEach-Object {
             $value = ($value -replace '\s+#.*$', '').Trim()
         }
 
+        $value = Resolve-EnvPlaceholder $value
         [Environment]::SetEnvironmentVariable($key, $value, "Process")
     }
 }
 
+# If the browser key is missing/placeholder, reuse OPENAI_API_KEY for local runs.
+$browserKeyInvalid = [string]::IsNullOrWhiteSpace($env:NEXT_PUBLIC_API_KEY) -or (Test-IsEnvPlaceholder $env:NEXT_PUBLIC_API_KEY)
+$openAiKeyUsable = -not [string]::IsNullOrWhiteSpace($env:OPENAI_API_KEY) -and -not (Test-IsEnvPlaceholder $env:OPENAI_API_KEY)
+if ($browserKeyInvalid -and $openAiKeyUsable) {
+    [Environment]::SetEnvironmentVariable("NEXT_PUBLIC_API_KEY", $env:OPENAI_API_KEY, "Process")
+    $env:NEXT_PUBLIC_API_KEY = $env:OPENAI_API_KEY
+}
+if (([string]::IsNullOrWhiteSpace($env:NEXT_PUBLIC_OPENAI_API_KEY) -or (Test-IsEnvPlaceholder $env:NEXT_PUBLIC_OPENAI_API_KEY)) -and -not [string]::IsNullOrWhiteSpace($env:NEXT_PUBLIC_API_KEY)) {
+    [Environment]::SetEnvironmentVariable("NEXT_PUBLIC_OPENAI_API_KEY", $env:NEXT_PUBLIC_API_KEY, "Process")
+    $env:NEXT_PUBLIC_OPENAI_API_KEY = $env:NEXT_PUBLIC_API_KEY
+}
+
 # Check for OpenAI API key
-if ([string]::IsNullOrEmpty($env:OPENAI_API_KEY) -or $env:OPENAI_API_KEY -eq "sk-proj-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx") {
+if (
+    [string]::IsNullOrEmpty($env:OPENAI_API_KEY) -or
+    (Test-IsEnvPlaceholder $env:OPENAI_API_KEY) -or
+    $env:OPENAI_API_KEY -eq "sk-proj-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+) {
     Write-Host "ERROR: OPENAI_API_KEY not set in .env" -ForegroundColor Red
-    Write-Host "   Please edit .env and add your OpenAI API key" -ForegroundColor Red
+    Write-Host "   Please edit .env and add a real OpenAI API key (not a placeholder like `$(`$OPENAI_API_KEY))." -ForegroundColor Red
+    exit 1
+}
+if (
+    [string]::IsNullOrEmpty($env:NEXT_PUBLIC_API_KEY) -or
+    (Test-IsEnvPlaceholder $env:NEXT_PUBLIC_API_KEY) -or
+    $env:NEXT_PUBLIC_API_KEY -eq "sk-proj-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+) {
+    Write-Host "ERROR: NEXT_PUBLIC_API_KEY is missing or unresolved." -ForegroundColor Red
+    Write-Host "   Set NEXT_PUBLIC_API_KEY to a real key in .env (or set OPENAI_API_KEY and rerun)." -ForegroundColor Red
     exit 1
 }
 

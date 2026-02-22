@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import type { Task, Artifact, RunMode } from '../types';
 import { CloseIcon, DownloadIcon, PaperclipIcon, LoadingIcon } from './icons';
+import { getBrowserApiKeyFromEnv } from '../utils/apiKey';
 import type { EnginePipelinePayload, PipelineStage } from '@/lib/app-factory/pipeline/pipelineStatus'
 import type { RunArtifact } from '@/lib/app-factory/runs/types'
 
@@ -100,7 +101,7 @@ const ExportModal: React.FC<ExportModalProps> = ({
       ),
     })
 
-    const apiKey = process.env.NEXT_PUBLIC_API_KEY || process.env.NEXT_PUBLIC_OPENAI_API_KEY || ''
+    const apiKey = getBrowserApiKeyFromEnv()
     const res = await fetch('/api/app-factory/validate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -159,7 +160,7 @@ const ExportModal: React.FC<ExportModalProps> = ({
   }
 
   const downloadLegacy = async () => {
-    const apiKey = process.env.NEXT_PUBLIC_API_KEY || process.env.NEXT_PUBLIC_OPENAI_API_KEY || ''
+    const apiKey = getBrowserApiKeyFromEnv()
     const res = await fetch('/api/app-factory/export', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
