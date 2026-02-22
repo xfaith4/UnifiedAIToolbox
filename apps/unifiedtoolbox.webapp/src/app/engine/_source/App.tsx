@@ -1,5 +1,7 @@
 // Fix: Import 'useEffect' from 'react'.
 import React, { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { getDraftRun } from '@/lib/services/proposalStore';
 
 import Header from './components/Header';
 import GoalInput from './components/GoalInput';
@@ -32,6 +34,8 @@ import type { RepoOrchestrationEvent, RepoOrchestrationResult } from '@/lib/type
 import GitHubRepoPanel from './components/GitHubRepoPanel';
 
 const App: React.FC = () => {
+  const searchParams = useSearchParams();
+
   const {
     session: liveSession,
     history,
@@ -101,6 +105,20 @@ const App: React.FC = () => {
   const [isApiKeyMissing, setIsApiKeyMissing] = useState(false);
   const [viewFile, setViewFile] = useState<{ runId: string; relPath: string; scope?: 'repo' | 'run' } | null>(null);
   const [autoValidatedSessionId, setAutoValidatedSessionId] = useState<string | null>(null);
+
+  // Draft prefill from Concierge (?draft=<proposalId>)
+  const [draftGoal, setDraftGoal] = useState<string | undefined>(undefined);
+  const [draftProposalId, setDraftProposalId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const draftId = searchParams.get('draft');
+    if (!draftId) return;
+    const draft = getDraftRun(draftId);
+    if (!draft) return;
+    setDraftGoal(draft.goal);
+    setDraftProposalId(draft.proposalId);
+    if (draft.jobType) setJobType(draft.jobType);
+  }, [searchParams]);
 
   useEffect(() => {
     if (!jobTypesData?.job_types) return
@@ -459,6 +477,29 @@ const App: React.FC = () => {
           </section>
         ) : (
           <>
+            {draftProposalId && (
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-blue-800/60 bg-blue-950/40 px-4 py-3 text-sm text-blue-200">
+                <div className="flex items-center gap-2">
+                  <svg className="h-4 w-4 shrink-0 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                  </svg>
+                  <span>
+                    Prefilled from Concierge proposal.{' '}
+                    <a href={`/concierge?proposal=${draftProposalId}`} className="underline hover:text-blue-100">
+                      View proposal →
+                    </a>
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDraftProposalId(null)}
+                  className="shrink-0 text-blue-400 hover:text-blue-200"
+                  aria-label="Dismiss"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
             <GoalInput
               onGoalSubmit={handleGoalSubmit}
               isOrchestrating={isGithubRepo ? githubRunning : isMaintenance ? maintenanceRunning : isOrchestrating}
@@ -467,6 +508,7 @@ const App: React.FC = () => {
               jobTypeConfig={jobTypeConfig}
               jobTypeOptions={jobTypeOptions}
               onJobTypeChange={setJobType}
+              seedGoal={draftGoal}
             />
             <JobTypeOverviewPanel jobType={jobType} config={jobTypeConfig} />
             {isGithubRepo ? (

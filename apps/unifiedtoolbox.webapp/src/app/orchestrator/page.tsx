@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useSearchParams } from 'next/navigation'
 import type { AgentInstruction } from '@/lib/types/agents'
 import type { PromptItem } from '@/lib/types/prompts'
 import type {
@@ -12,6 +13,7 @@ import type {
   RepoOrchestrationResult,
 } from '@/lib/types/orchestrator'
 import { fetchAgentLibrary } from '@/lib/services/agentStore'
+import { getDraftRun } from '@/lib/services/proposalStore'
 import { fetchPromptLibrary } from '@/lib/services/promptStore'
 import { getChatCompletion } from '@/lib/services/ai'
 import { calculateCost } from '@/lib/config/modelPricing'
@@ -105,6 +107,8 @@ const SWARM_COST_MODELS = ['gpt-4o-mini', 'gpt-4-turbo', 'claude-3.5-sonnet'] as
 const SWARM_LAUNCH_NOTE = 'Launching swarm via scripts/swarms…'
 
 export default function OrchestratorPage() {
+  const searchParams = useSearchParams()
+
   // Libraries
   const [agents, setAgents] = useState<AgentInstruction[]>([])
   const [orchestratorAgents, setOrchestratorAgents] = useState<OrchestratorAgent[]>(DEFAULT_ORCHESTRATOR_AGENTS)
@@ -123,6 +127,9 @@ export default function OrchestratorPage() {
     model: '',
   })
   const [selectedAgents, setSelectedAgents] = useState<string[]>([])
+
+  // Draft prefill — set when navigating from an approved Concierge proposal
+  const [draftProposalId, setDraftProposalId] = useState<string | null>(null)
 
   // Run state
   const [runs, setRuns] = useState<OrchestrationRun[]>([])
@@ -219,6 +226,22 @@ export default function OrchestratorPage() {
     }, 5000)
     return () => clearInterval(interval)
   }, [apiConnected, fetchOrchestrationRuns, listLocalRuns])
+
+  // Prefill from Concierge draft (?draft=<proposalId>)
+  useEffect(() => {
+    const draftId = searchParams.get('draft')
+    if (!draftId) return
+    const draft = getDraftRun(draftId)
+    if (!draft) return
+    setForm((prev) => ({
+      ...prev,
+      goal: draft.goal,
+      runMode: (draft.mode as OrchestrationForm['runMode']) ?? 'multi-agent',
+      promptId: draft.promptId ?? prev.promptId,
+    }))
+    setSelectedAgents(draft.agents)
+    setDraftProposalId(draft.proposalId)
+  }, [searchParams])
 
   // Memoized selections
   const selectedAgent = useMemo(
@@ -717,6 +740,31 @@ export default function OrchestratorPage() {
           {legacyMode ? 'Multi-Agent Mode' : 'Classic Mode'}
         </button>
       </div>
+
+      {/* Concierge draft banner */}
+      {draftProposalId && (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-blue-800/60 bg-blue-950/40 px-4 py-3 text-sm text-blue-200">
+          <div className="flex items-center gap-2">
+            <svg className="h-4 w-4 shrink-0 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
+            <span>
+              Prefilled from Concierge proposal.{' '}
+              <a href={`/concierge?proposal=${draftProposalId}`} className="underline hover:text-blue-100">
+                View proposal →
+              </a>
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setDraftProposalId(null)}
+            className="shrink-0 text-blue-400 hover:text-blue-200"
+            aria-label="Dismiss"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {ORCHESTRATOR_API_USING_DEFAULT_BASE && (
         <div className="rounded-lg border border-amber-700 bg-amber-900/20 px-4 py-3 text-sm text-amber-300">

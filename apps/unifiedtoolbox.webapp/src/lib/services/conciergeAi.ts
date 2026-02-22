@@ -52,9 +52,20 @@ When you are ready to generate the proposal, output it as a \`\`\`json code bloc
     "cost": "~$0.05",
     "tokens": 5000
   },
-  "run_recipe": null
+  "run_recipe": {
+    "goal": "Same as goal.summary — used to prefill run pages",
+    "mode": "multi-agent",
+    "agents": ["Supervisor", "Engineer", "Critic"],
+    "jobType": "build_new_app"
+  }
 }
 \`\`\`
+
+run_recipe rules (always populate — never null):
+- mode: "multi-agent" for most tasks; "codex-swarm" only for tasks needing parallel independent perspectives (research, large refactors, design reviews)
+- agents: subset of recommended.agents that should be pre-selected (omit Historian, Commissioner unless genuinely needed)
+- jobType: "build_new_app" when creating something new; "maintain_existing_app" when improving an existing local codebase; omit the field entirely if neither applies clearly
+- goal: echo goal.summary verbatim
 
 Keep plan.steps to 3–7 items. Include at least one risk. Make acceptance_checks measurable.`
 
@@ -266,7 +277,12 @@ function buildDemoReply(userMessage: string, history: ChatMessage[]): ConciergeR
       { level: 'medium', description: 'Demo mode: AI suggestions not verified against real codebase.' },
     ],
     estimate: { time: '~5 minutes', cost: '~$0.05', tokens: 5000 },
-    run_recipe: null,
+    run_recipe: {
+      goal: goalSummary.slice(0, 120),
+      mode: 'multi-agent',
+      agents: ['Supervisor', 'Researcher', 'Engineer', 'Critic'],
+      jobType: 'build_new_app',
+    },
   }
 
   const proposal = hydrateProposal(demoPartial, [

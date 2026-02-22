@@ -97,10 +97,11 @@ export function createDraftRunFromProposal(proposal: Proposal): DraftRunConfig {
     id: proposal.id,
     proposalId: proposal.id,
     createdAt: new Date().toISOString(),
-    goal: proposal.goal.summary,
+    goal: proposal.run_recipe?.goal ?? proposal.goal.summary,
     mode: proposal.run_recipe?.mode ?? 'multi-agent',
     agents: proposal.run_recipe?.agents ?? proposal.recommended.agents,
     promptId: proposal.run_recipe?.promptId,
+    jobType: proposal.run_recipe?.jobType,
     runStatus: 'pending',
   }
   return saveDraftRun(draft)

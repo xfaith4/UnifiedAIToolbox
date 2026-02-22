@@ -37,14 +37,20 @@ export interface ProposalEstimate {
 }
 
 /**
- * RunRecipe — Phase 1: stored but not yet used for prefill.
- * Phase 2 will expand this and wire it to Playground + App Factory.
+ * RunRecipe — Phase 2: populated by the AI and used to prefill Playground + App Factory.
+ * - mode: maps to Orchestrator runMode / App Factory "GitHub Repo" is not supported here
+ * - jobType: maps to App Factory job type selector ('build_new_app' | 'maintain_existing_app')
+ * - agents: agent names to pre-select on the Orchestrator page
+ * - goal: echoes the goal summary (useful for prefill consistency)
+ * - promptId: optional prompt from the Prompt Library to pre-select
  */
 export interface ProposalRunRecipe {
   mode?: 'multi-agent' | 'codex-swarm'
   goal?: string
   agents?: string[]
   promptId?: string
+  /** App Factory job type hint. 'github_repo' is excluded (no Concierge support in Phase 2). */
+  jobType?: 'build_new_app' | 'maintain_existing_app'
 }
 
 // ── Chat message ──────────────────────────────────────────────────────────────
@@ -112,6 +118,8 @@ export interface DraftRunConfig {
   mode: 'multi-agent' | 'codex-swarm'
   agents: string[]
   promptId?: string
+  /** Hint for App Factory job type selector. Undefined means use page default. */
+  jobType?: 'build_new_app' | 'maintain_existing_app'
   /** 'pending' until the user actually starts the run */
   runStatus: 'pending'
 }
