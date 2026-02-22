@@ -91,6 +91,7 @@ const App: React.FC = () => {
   const [githubRunId, setGithubRunId] = useState<string | null>(null)
   const [githubRunDir, setGithubRunDir] = useState<string | null>(null)
   const [githubLogsDir, setGithubLogsDir] = useState<string | null>(null)
+  const [githubSeedGoal, setGithubSeedGoal] = useState<string | undefined>(undefined)
 
   // Modal and Panel States
   const [showExport, setShowExport] = useState(false);
@@ -460,6 +461,7 @@ const App: React.FC = () => {
               jobTypeConfig={jobTypeConfig}
               jobTypeOptions={jobTypeOptions}
               onJobTypeChange={setJobType}
+              seedGoal={isGithubRepo ? githubSeedGoal : undefined}
             />
             <JobTypeOverviewPanel jobType={jobType} config={jobTypeConfig} />
             {isGithubRepo ? (
@@ -482,6 +484,7 @@ const App: React.FC = () => {
                 runId={githubRunId}
                 runDir={githubRunDir}
                 logsDir={githubLogsDir}
+                onPromptSelected={setGithubSeedGoal}
               />
             ) : isMaintenance ? (
               <MaintenanceRunPanel

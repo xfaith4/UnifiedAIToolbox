@@ -1,7 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react'
+'use client'
+
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import Link from 'next/link'
 import { ORCHESTRATOR_API_BASE } from '@/lib/services/orchestratorApi'
 import { renderMarkdown } from '@/lib/artifacts/viewerUtils'
+import { fetchPromptLibrary } from '@/lib/services/promptStore'
+import type { PromptItem } from '@/lib/types/prompts'
 import type { GitHubRepo } from '@/lib/types/github'
 import type { RepoOrchestrationEvent, RepoOrchestrationResult } from '@/lib/types/orchestrator'
 
@@ -24,26 +28,315 @@ interface GitHubRepoPanelProps {
   runId: string | null
   runDir: string | null
   logsDir: string | null
+  onPromptSelected: (template: string) => void
 }
 
+// ── Event type styles (for raw log fallback) ─────────────────────────────────
 const EVENT_TYPE_STYLES: Record<string, string> = {
-  error: 'bg-rose-900/60 text-rose-200 border-rose-700',
-  complete: 'bg-emerald-900/60 text-emerald-200 border-emerald-700',
-  task_progress: 'bg-blue-900/60 text-blue-200 border-blue-800',
+  error:          'bg-rose-900/60 text-rose-200 border-rose-700',
+  complete:       'bg-emerald-900/60 text-emerald-200 border-emerald-700',
+  task_progress:  'bg-blue-900/60 text-blue-200 border-blue-800',
   clone_progress: 'bg-slate-800/80 text-slate-300 border-slate-700',
-  codex_summary: 'bg-violet-900/60 text-violet-200 border-violet-700',
-  merged: 'bg-emerald-900/60 text-emerald-200 border-emerald-700',
+  codex_summary:  'bg-violet-900/60 text-violet-200 border-violet-700',
+  merged:         'bg-emerald-900/60 text-emerald-200 border-emerald-700',
   tasks_complete: 'bg-emerald-900/40 text-emerald-300 border-emerald-800',
 }
 
 const OUTCOME_STYLES: Record<string, string> = {
-  changes_applied: 'border-emerald-600 text-emerald-300 bg-emerald-900/30',
-  no_changes: 'border-slate-600 text-slate-300 bg-slate-800/40',
+  changes_applied:      'border-emerald-600 text-emerald-300 bg-emerald-900/30',
+  no_changes:           'border-slate-600 text-slate-300 bg-slate-800/40',
   no_changes_by_design: 'border-slate-600 text-slate-300 bg-slate-800/40',
-  blocked: 'border-amber-600 text-amber-300 bg-amber-900/30',
-  failed: 'border-rose-600 text-rose-300 bg-rose-900/30',
+  blocked:              'border-amber-600 text-amber-300 bg-amber-900/30',
+  failed:               'border-rose-600 text-rose-300 bg-rose-900/30',
 }
 
+// ── Run Cards ─────────────────────────────────────────────────────────────────
+type Phase = 'setup' | 'plan' | 'implement' | 'review' | 'ship'
+type CardStatus = 'queued' | 'running' | 'done' | 'error'
+
+const PHASE_ORDER: Phase[] = ['setup', 'plan', 'implement', 'review', 'ship']
+
+interface PhaseMeta {
+  label: string
+  accent: string
+  dimText: string
+  borderColor: string
+}
+
+const PHASE_META: Record<Phase, PhaseMeta> = {
+  setup:     { label: 'Setup & Clone',  accent: 'text-blue-300',    dimText: 'text-blue-500',    borderColor: 'border-blue-900' },
+  plan:      { label: 'Planning',       accent: 'text-violet-300',  dimText: 'text-violet-500',  borderColor: 'border-violet-900' },
+  implement: { label: 'Implement',      accent: 'text-amber-300',   dimText: 'text-amber-600',   borderColor: 'border-amber-900' },
+  review:    { label: 'Review',         accent: 'text-purple-300',  dimText: 'text-purple-500',  borderColor: 'border-purple-900' },
+  ship:      { label: 'Ship',           accent: 'text-emerald-300', dimText: 'text-emerald-600', borderColor: 'border-emerald-900' },
+}
+
+// Map event.type → Phase
+const EVENT_PHASE_MAP: Partial<Record<string, Phase>> = {
+  clone_progress: 'setup',
+  start:          'setup',
+  cloning:        'setup',
+  plan:           'plan',
+  planning:       'plan',
+  plan_progress:  'plan',
+  task_progress:  'implement',
+  codex_run:      'implement',
+  agent_work:     'implement',
+  codex_summary:  'review',
+  tasks_complete: 'review',
+  merged:         'ship',
+  complete:       'ship',
+  pr_created:     'ship',
+}
+
+function classifyPhase(event: RepoOrchestrationEvent): Phase {
+  return EVENT_PHASE_MAP[event.type ?? ''] ?? 'implement'
+}
+
+function buildCards(
+  events: RepoOrchestrationEvent[],
+  running: boolean
+): Array<{ phase: Phase; status: CardStatus; events: RepoOrchestrationEvent[] }> {
+  const grouped: Record<Phase, RepoOrchestrationEvent[]> = {
+    setup: [], plan: [], implement: [], review: [], ship: [],
+  }
+  for (const ev of events) {
+    if (ev.type === 'error') continue
+    grouped[classifyPhase(ev)].push(ev)
+  }
+
+  const isFinal = events.some(e => e.final || e.type === 'complete' || e.type === 'merged')
+
+  // Last phase index that has any events
+  let activeIdx = -1
+  for (let i = PHASE_ORDER.length - 1; i >= 0; i--) {
+    if (grouped[PHASE_ORDER[i]].length > 0) { activeIdx = i; break }
+  }
+
+  return PHASE_ORDER.map((phase, idx) => {
+    const phaseEvts = grouped[phase]
+    let status: CardStatus
+    if (phaseEvts.length === 0) {
+      status = 'queued'
+    } else if (idx === activeIdx && running && !isFinal) {
+      status = 'running'
+    } else {
+      status = 'done'
+    }
+    return { phase, status, events: phaseEvts }
+  })
+}
+
+function StatusDot({ status }: { status: CardStatus }) {
+  if (status === 'queued') {
+    return <span className="h-3 w-3 rounded-full border-2 border-slate-600 bg-transparent flex-shrink-0" />
+  }
+  if (status === 'running') {
+    return (
+      <span className="relative flex h-3 w-3 flex-shrink-0">
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75" />
+        <span className="relative h-3 w-3 rounded-full bg-blue-400" />
+      </span>
+    )
+  }
+  if (status === 'done') {
+    return (
+      <span className="flex h-3 w-3 flex-shrink-0 items-center justify-center rounded-full bg-emerald-500 text-[8px] font-bold text-white">
+        ✓
+      </span>
+    )
+  }
+  return (
+    <span className="flex h-3 w-3 flex-shrink-0 items-center justify-center rounded-full bg-rose-500 text-[8px] font-bold text-white">
+      ✕
+    </span>
+  )
+}
+
+function RunCards({
+  events,
+  running,
+  cancelFn,
+}: {
+  events: RepoOrchestrationEvent[]
+  running: boolean
+  cancelFn: (() => void) | null
+}) {
+  const cards = useMemo(() => buildCards(events, running), [events, running])
+  const [expanded, setExpanded] = useState<Set<Phase>>(new Set())
+  const [showRaw, setShowRaw] = useState(false)
+  const rawEndRef = useRef<HTMLDivElement>(null)
+  const activePhaseRef = useRef<HTMLDivElement>(null)
+
+  // Auto-expand running phase
+  useEffect(() => {
+    const runningCard = cards.find(c => c.status === 'running')
+    if (runningCard) {
+      setExpanded(prev => {
+        if (prev.has(runningCard.phase)) return prev
+        return new Set([...prev, runningCard.phase])
+      })
+    }
+  }, [cards])
+
+  // Auto-scroll active phase into view
+  useEffect(() => {
+    activePhaseRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [cards])
+
+  // Auto-scroll raw log
+  useEffect(() => {
+    if (showRaw) rawEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [events.length, showRaw])
+
+  const errorEvents = events.filter(e => e.type === 'error')
+
+  return (
+    <div className="space-y-2">
+      {/* Header row */}
+      <div className="flex items-center justify-between">
+        <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+          Run Progress {running && <span className="ml-1 inline-block h-2 w-2 animate-pulse rounded-full bg-blue-400" />}
+        </div>
+        {running && cancelFn && (
+          <button
+            className="text-xs text-slate-500 underline hover:text-slate-300"
+            onClick={cancelFn}
+          >
+            Cancel run
+          </button>
+        )}
+      </div>
+
+      {/* Phase cards */}
+      <div className="rounded-xl border border-slate-800 bg-slate-950/40">
+        {cards.map((card, idx) => {
+          const meta = PHASE_META[card.phase]
+          const isLast = idx === cards.length - 1
+          const isExpanded = expanded.has(card.phase) || card.status === 'running'
+          const hasEvents = card.events.length > 0
+          const canToggle = hasEvents && card.status !== 'running'
+          const isActive = card.status === 'running'
+
+          return (
+            <div
+              key={card.phase}
+              ref={isActive ? activePhaseRef : undefined}
+              className={`relative ${!isLast ? 'border-b border-slate-800/60' : ''}`}
+            >
+              {/* Vertical connector through dot */}
+              {!isLast && (
+                <div className="absolute left-[1.3rem] top-8 bottom-0 w-px bg-slate-800" />
+              )}
+
+              {/* Card header */}
+              <button
+                className={`relative flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors
+                  ${canToggle ? 'cursor-pointer hover:bg-slate-800/25' : 'cursor-default'}
+                  ${isActive ? 'bg-slate-800/20' : ''}`}
+                onClick={() => {
+                  if (!canToggle) return
+                  setExpanded(prev => {
+                    const next = new Set(prev)
+                    if (next.has(card.phase)) next.delete(card.phase)
+                    else next.add(card.phase)
+                    return next
+                  })
+                }}
+                disabled={!canToggle}
+              >
+                <div className="relative z-10">
+                  <StatusDot status={card.status} />
+                </div>
+
+                <span className={`flex-1 text-sm font-medium
+                  ${card.status === 'queued' ? 'text-slate-500' : meta.accent}`}>
+                  {meta.label}
+                </span>
+
+                <div className="flex items-center gap-2 ml-auto">
+                  {card.status === 'running' && (
+                    <span className="text-[11px] text-blue-400 animate-pulse">running…</span>
+                  )}
+                  {card.status === 'done' && (
+                    <span className={`text-[11px] ${meta.dimText}`}>
+                      {card.events.length} event{card.events.length !== 1 ? 's' : ''}
+                    </span>
+                  )}
+                  {card.status === 'queued' && (
+                    <span className="text-[11px] text-slate-600">queued</span>
+                  )}
+                  {canToggle && (
+                    <span className="text-[10px] text-slate-600 select-none">
+                      {isExpanded ? '▲' : '▼'}
+                    </span>
+                  )}
+                </div>
+              </button>
+
+              {/* Expanded event list */}
+              {isExpanded && hasEvents && (
+                <div className="mx-4 mb-2.5 ml-12 max-h-44 overflow-y-auto rounded-lg border border-slate-800/50 bg-slate-900/50 p-1.5 space-y-0.5">
+                  {card.events.map((ev, i) => {
+                    const msg = ev.message ?? ev.log_line ?? ''
+                    return (
+                      <div key={i} className="flex items-start gap-2 rounded px-1.5 py-0.5 text-xs hover:bg-slate-800/30">
+                        <span className={`shrink-0 font-mono text-[10px] ${meta.dimText} mt-px`}>
+                          {ev.type}
+                        </span>
+                        {msg && <span className="text-slate-300 break-all leading-relaxed">{msg}</span>}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Error events */}
+      {errorEvents.length > 0 && (
+        <div className="rounded-xl border border-rose-800/50 bg-rose-950/30 p-3 space-y-1">
+          <div className="text-xs font-semibold text-rose-400 uppercase tracking-wide">Errors</div>
+          {errorEvents.map((ev, i) => (
+            <div key={i} className="text-xs text-rose-200 break-all leading-relaxed">
+              {ev.message ?? ev.log_line ?? JSON.stringify(ev)}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Raw events toggle */}
+      <div>
+        <button
+          className="text-[11px] text-slate-600 hover:text-slate-400 underline transition-colors"
+          onClick={() => setShowRaw(v => !v)}
+        >
+          {showRaw ? 'Hide raw events' : `Show raw events (${events.length})`}
+        </button>
+        {showRaw && (
+          <div className="mt-1.5 max-h-44 overflow-y-auto rounded-xl border border-slate-800 bg-slate-950/50 p-2 space-y-1">
+            {events.map((ev, i) => {
+              const evType = ev.type ?? 'event'
+              const msg = ev.message ?? ev.log_line ?? ''
+              const style = EVENT_TYPE_STYLES[evType] ?? 'bg-slate-800/60 text-slate-300 border-slate-700'
+              return (
+                <div key={i} className={`flex items-start gap-2 rounded border px-2 py-1 text-xs ${style}`}>
+                  <span className="shrink-0 font-mono font-semibold">{evType}</span>
+                  {msg && <span className="break-all">{msg}</span>}
+                </div>
+              )
+            })}
+            <div ref={rawEndRef} />
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Open path helper ──────────────────────────────────────────────────────────
 async function openPath(absPath: string | null | undefined): Promise<void> {
   if (!absPath) return
   try {
@@ -57,6 +350,7 @@ async function openPath(absPath: string | null | undefined): Promise<void> {
   }
 }
 
+// ── Main component ────────────────────────────────────────────────────────────
 export default function GitHubRepoPanel({
   envReady,
   repos,
@@ -76,14 +370,24 @@ export default function GitHubRepoPanel({
   runId,
   runDir,
   logsDir,
+  onPromptSelected,
 }: GitHubRepoPanelProps) {
   const [repoFilter, setRepoFilter] = useState('')
-  const eventsEndRef = useRef<HTMLDivElement>(null)
+  const [prompts, setPrompts] = useState<PromptItem[]>([])
+  const [promptFilter, setPromptFilter] = useState('')
 
-  // Auto-scroll event log to bottom
+  // Load prompt library from localStorage on mount
   useEffect(() => {
-    eventsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [events.length])
+    void fetchPromptLibrary().then(setPrompts)
+  }, [])
+
+  const filteredPrompts = promptFilter.trim()
+    ? prompts.filter(
+        (p) =>
+          p.title.toLowerCase().includes(promptFilter.trim().toLowerCase()) ||
+          (p.category ?? '').toLowerCase().includes(promptFilter.trim().toLowerCase())
+      )
+    : prompts
 
   const filteredRepos = repoFilter.trim()
     ? repos.filter((r) => r.full_name.toLowerCase().includes(repoFilter.trim().toLowerCase()))
@@ -97,6 +401,43 @@ export default function GitHubRepoPanel({
   return (
     <div className="border-b border-gray-700 bg-gray-900/40">
       <div className="max-w-6xl mx-auto px-4 py-4 space-y-4">
+
+        {/* Prompt library picker */}
+        {prompts.length > 0 && (
+          <div className="rounded-lg border border-slate-700/60 bg-slate-800/20 px-3 py-2.5 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                Instruction — load from Prompt Library
+              </label>
+              <span className="text-[11px] text-slate-500">{prompts.length} prompts</span>
+            </div>
+            <div className="flex gap-2">
+              <input
+                className="flex-1 rounded border border-slate-700 bg-slate-800/60 px-2 py-1 text-xs text-slate-100 placeholder-slate-500 focus:border-blue-500 focus:outline-none"
+                placeholder="Filter by title or category…"
+                value={promptFilter}
+                onChange={(e) => setPromptFilter(e.target.value)}
+                disabled={running}
+              />
+            </div>
+            <select
+              className="w-full rounded border border-slate-700 bg-slate-800/80 px-2 py-1.5 text-sm text-slate-100 focus:border-blue-500 focus:outline-none"
+              value=""
+              onChange={(e) => {
+                const p = prompts.find((p) => p.id === e.target.value)
+                if (p) { onPromptSelected(p.template); setPromptFilter('') }
+              }}
+              disabled={running}
+            >
+              <option value="">— select a prompt to load as instruction —</option>
+              {filteredPrompts.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.title}{p.category ? ` · ${p.category}` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {/* Loading state */}
         {reposLoading && (
@@ -182,35 +523,9 @@ export default function GitHubRepoPanel({
           </div>
         )}
 
-        {/* Live event log */}
+        {/* Run Cards — live phase timeline */}
         {events.length > 0 && (
-          <div className="space-y-1">
-            <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-              Live Events {running && <span className="ml-1 inline-block h-2 w-2 animate-pulse rounded-full bg-blue-400" />}
-            </div>
-            <div className="max-h-52 overflow-y-auto rounded-xl border border-slate-800 bg-slate-950/50 p-2 space-y-1">
-              {events.map((ev, i) => {
-                const evType = ev.type ?? 'event'
-                const msg = ev.message ?? ev.log_line ?? ''
-                const style = EVENT_TYPE_STYLES[evType] ?? 'bg-slate-800/60 text-slate-300 border-slate-700'
-                return (
-                  <div key={i} className={`flex items-start gap-2 rounded border px-2 py-1 text-xs ${style}`}>
-                    <span className="shrink-0 font-mono font-semibold">{evType}</span>
-                    {msg && <span className="break-all">{msg}</span>}
-                  </div>
-                )
-              })}
-              <div ref={eventsEndRef} />
-            </div>
-            {running && cancelFn && (
-              <button
-                className="text-xs text-slate-400 underline hover:text-slate-200"
-                onClick={cancelFn}
-              >
-                Cancel run
-              </button>
-            )}
-          </div>
+          <RunCards events={events} running={running} cancelFn={cancelFn} />
         )}
 
         {/* Result */}

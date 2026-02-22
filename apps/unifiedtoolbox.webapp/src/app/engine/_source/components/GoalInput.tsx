@@ -16,9 +16,10 @@ interface GoalInputProps {
   jobTypeConfig?: JobTypeSummary | null;
   jobTypeOptions: Array<{ id: string; label: string }>;
   onJobTypeChange: (jobType: string) => void;
+  seedGoal?: string;
 }
 
-const GoalInput: React.FC<GoalInputProps> = ({ onGoalSubmit, isOrchestrating, onCancelOrchestration, jobType, jobTypeConfig, jobTypeOptions, onJobTypeChange }) => {
+const GoalInput: React.FC<GoalInputProps> = ({ onGoalSubmit, isOrchestrating, onCancelOrchestration, jobType, jobTypeConfig, jobTypeOptions, onJobTypeChange, seedGoal }) => {
   const [wizardEnabled, setWizardEnabled] = useState(false)
   const [runMode, setRunMode] = useState<RunMode>('build')
   const [goal, setGoal] = useState('');
@@ -105,6 +106,10 @@ const GoalInput: React.FC<GoalInputProps> = ({ onGoalSubmit, isOrchestrating, on
   useEffect(() => {
     setRequestValues({})
   }, [jobType])
+
+  useEffect(() => {
+    if (seedGoal !== undefined && seedGoal !== '') setGoal(seedGoal)
+  }, [seedGoal])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -242,7 +247,7 @@ const GoalInput: React.FC<GoalInputProps> = ({ onGoalSubmit, isOrchestrating, on
             ))}
           </div>
         </div>
-        <div className="flex items-center justify-between gap-3 text-xs">
+        {jobType !== 'github_repo' && jobType !== 'maintain_existing_app' && <div className="flex items-center justify-between gap-3 text-xs">
           <div className="text-gray-400">Run type:</div>
           <div className="flex items-center gap-2">
             <button
@@ -272,7 +277,7 @@ const GoalInput: React.FC<GoalInputProps> = ({ onGoalSubmit, isOrchestrating, on
               Build Run
             </button>
           </div>
-        </div>
+        </div>}
         {requiredFields.length > 0 && (
           <div className="rounded-lg border border-gray-700 bg-gray-900/40 p-3">
             <div className="text-xs font-semibold text-gray-300">Required inputs</div>
@@ -314,7 +319,7 @@ const GoalInput: React.FC<GoalInputProps> = ({ onGoalSubmit, isOrchestrating, on
               type="text"
               value={goal}
               onChange={(e) => setGoal(e.target.value)}
-              placeholder="Enter your high-level goal, e.g., 'Summarize the provided document'"
+              placeholder={jobType === 'github_repo' ? "Instruction for the agent, e.g., 'Audit the repo for potential errors and create a PR with corrective changes'" : "Enter your high-level goal, e.g., 'Summarize the provided document'"}
               className="flex-1 px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
               disabled={isOrchestrating}
             />
