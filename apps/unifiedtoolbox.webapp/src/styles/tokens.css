@@ -1,11 +1,11 @@
 :root {
-  /* Neutral surfaces (mapped to existing Tailwind slate palette usage) */
-  --utb-bg: theme(colors.slate.950);
-  --utb-surface: theme(colors.slate.900);
-  --utb-surface-2: theme(colors.slate.800);
-  --utb-border: theme(colors.slate.800);
-  --utb-text: theme(colors.slate.100);
-  --utb-text-muted: theme(colors.slate.400);
+  /* Neutral surfaces (mapped to existing Tailwind gray palette usage) */
+  --utb-bg: theme(colors.gray.950);
+  --utb-surface: theme(colors.gray.900);
+  --utb-surface-2: theme(colors.gray.800);
+  --utb-border: theme(colors.gray.800);
+  --utb-text: theme(colors.gray.100);
+  --utb-text-muted: theme(colors.gray.400);
 
   /* Accent (mapped to current blue/purple usage) */
   --utb-accent: theme(colors.blue.500);

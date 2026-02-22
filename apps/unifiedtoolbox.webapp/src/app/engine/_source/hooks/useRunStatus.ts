@@ -6,6 +6,8 @@ type UseRunStatusOptions = {
   pollIntervalMs?: number
 }
 
+const TERMINAL_STATES = new Set<string>(['failed', 'completed', 'cancelled', 'error'])
+
 export function useRunStatus(runId: string | null, options: UseRunStatusOptions = {}) {
   const { enabled = true, pollIntervalMs = 1500 } = options
   const [status, setStatus] = useState<RunStatusResponse | null>(null)
@@ -13,6 +15,8 @@ export function useRunStatus(runId: string | null, options: UseRunStatusOptions 
   const [loading, setLoading] = useState(false)
   const lastEventTsRef = useRef<string | null>(null)
   const seenEventKeysRef = useRef<Set<string>>(new Set())
+  // Shared flag so both effects stop work once a terminal state is detected
+  const isTerminalRef = useRef(false)
 
   useEffect(() => {
     if (!enabled || !runId) {
@@ -21,9 +25,11 @@ export function useRunStatus(runId: string | null, options: UseRunStatusOptions 
       setLoading(false)
       lastEventTsRef.current = null
       seenEventKeysRef.current.clear()
+      isTerminalRef.current = false
       return
     }
 
+    isTerminalRef.current = false
     let cancelled = false
     let timer: NodeJS.Timeout | null = null
 
@@ -64,6 +70,10 @@ export function useRunStatus(runId: string | null, options: UseRunStatusOptions 
       timer = setTimeout(async () => {
         const state = await fetchStatus()
         if (cancelled) return
+        if (state && TERMINAL_STATES.has(state)) {
+          isTerminalRef.current = true
+          return
+        }
         const nextDelay =
           state === 'queued' || state === 'running' || !state
             ? pollIntervalMs
@@ -74,6 +84,10 @@ export function useRunStatus(runId: string | null, options: UseRunStatusOptions 
 
     void fetchStatus().then((state) => {
       if (cancelled) return
+      if (state && TERMINAL_STATES.has(state)) {
+        isTerminalRef.current = true
+        return
+      }
       const delay = state === 'queued' || state === 'running' || !state ? pollIntervalMs : 5000
       scheduleNext(delay)
     })
@@ -92,7 +106,7 @@ export function useRunStatus(runId: string | null, options: UseRunStatusOptions 
     let disposed = false
 
     const connect = () => {
-      if (disposed) return
+      if (disposed || isTerminalRef.current) return
       const since = lastEventTsRef.current ? `?since=${encodeURIComponent(lastEventTsRef.current)}` : ''
       source = new EventSource(`/api/app-factory/runs/${encodeURIComponent(runId)}/events${since}`)
 
@@ -116,7 +130,7 @@ export function useRunStatus(runId: string | null, options: UseRunStatusOptions 
       source.onerror = () => {
         if (source) source.close()
         source = null
-        if (!disposed) {
+        if (!disposed && !isTerminalRef.current) {
           window.setTimeout(connect, 1200)
         }
       }

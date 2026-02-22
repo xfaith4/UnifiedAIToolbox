@@ -548,7 +548,7 @@ const MaintenanceRunPanel: React.FC<Props> = ({ runId, status, loading, error, o
             <span className="text-[11px] text-gray-500 font-mono">run: {runId}</span>
           </div>
           <div className="flex items-center gap-3">
-            {loading && <div className="text-xs text-gray-400">Refreshing...</div>}
+            {loading && !isTerminal && <div className="text-xs text-gray-400">Refreshing...</div>}
             {status?.artifacts?.length ? (
               <a
                 href={`/api/app-factory/runs/${encodeURIComponent(runId)}/export?scope=artifacts`}
