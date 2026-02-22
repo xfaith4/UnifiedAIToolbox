@@ -38,6 +38,13 @@ export interface ProposalEstimate {
   tokens?: number
 }
 
+/** AI's self-assessed confidence in the generated proposal. */
+export interface ProposalConfidence {
+  level: 'low' | 'medium' | 'high'
+  /** One-sentence explanation of why the AI is or isn't confident. */
+  reasoning: string
+}
+
 /**
  * RunRecipe — Phase 2: populated by the AI and used to prefill Playground + App Factory.
  * - mode: maps to Orchestrator runMode / App Factory "GitHub Repo" is not supported here
@@ -98,6 +105,12 @@ export interface Proposal {
   }
 
   acceptance_checks: string[]
+
+  /** Assumptions the AI made while generating this proposal. */
+  assumptions?: string[]
+
+  /** AI's self-assessed confidence in this proposal. */
+  confidence?: ProposalConfidence
 
   risks: ProposalRisk[]
 

@@ -45,8 +45,8 @@ const STEPS: TourStep[] = [
     iconColor: 'text-amber-400',
   },
   {
-    title: 'Configure — set API keys',
-    body: 'Settings holds your OpenAI key and other preferences. Keys are stored locally in your browser only.',
+    title: 'Configure — API keys & Concierge Mode',
+    body: 'Settings holds your OpenAI key (required for real AI proposals) and your Concierge Mode — choose Guided, Confident, or Hands-off to control how the AI guides you. Everything stays local in your browser.',
     icon: Settings,
     iconColor: 'text-gray-400',
   },

@@ -26,7 +26,10 @@ import {
 import type { ChatMessage, Proposal, ProposalRisk } from '@/lib/types/proposal'
 import type { ToolPermission, ToolAuditEntry } from '@/lib/types/toolPermission'
 import { inferToolAccess, defaultToolPermission } from '@/lib/types/toolPermission'
+import type { ConciergeMode } from '@/lib/types/conciergePreferences'
+import { CONCIERGE_MODES } from '@/lib/types/conciergePreferences'
 import { sendConciergeMessage } from '@/lib/services/conciergeAi'
+import { getConciergeMode, setConciergeMode } from '@/lib/services/userPreferencesStore'
 import {
   saveProposal,
   updateProposalStatus,
@@ -408,6 +411,15 @@ function ProposalPanel({
               Rejected
             </span>
           )}
+          {proposal.confidence && (
+            <span
+              className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${CONFIDENCE_COLORS[proposal.confidence.level]}`}
+              title={proposal.confidence.reasoning}
+            >
+              {proposal.confidence.level === 'high' ? '↑' : proposal.confidence.level === 'low' ? '↓' : '~'}{' '}
+              {proposal.confidence.level} confidence
+            </span>
+          )}
         </div>
         <span className="text-[10px] font-mono text-gray-600">{proposal.id.slice(0, 20)}</span>
       </div>
@@ -496,6 +508,20 @@ function ProposalPanel({
                 <li key={i} className="flex items-start gap-2 text-xs text-gray-300">
                   <CheckCircle2 size={12} className="mt-0.5 shrink-0 text-emerald-500" aria-hidden="true" />
                   {check}
+                </li>
+              ))}
+            </ul>
+          </CollapsibleSection>
+        )}
+
+        {/* Assumptions */}
+        {(proposal.assumptions ?? []).length > 0 && (
+          <CollapsibleSection title={`Assumptions (${proposal.assumptions!.length})`} defaultOpen>
+            <ul className="space-y-1">
+              {proposal.assumptions!.map((a, i) => (
+                <li key={i} className="flex items-start gap-2 text-xs text-gray-300">
+                  <span className="mt-0.5 shrink-0 text-amber-400">⚠</span>
+                  {a}
                 </li>
               ))}
             </ul>
@@ -623,6 +649,47 @@ function ProposalPanel({
   )
 }
 
+// ── Confidence colors ──────────────────────────────────────────────────────────
+const CONFIDENCE_COLORS = {
+  high: 'bg-emerald-900/50 text-emerald-300 border-emerald-700',
+  medium: 'bg-blue-900/50 text-blue-300 border-blue-700',
+  low: 'bg-amber-900/50 text-amber-300 border-amber-700',
+} as const
+
+// ── Mode selector ──────────────────────────────────────────────────────────────
+function ModeSelector({
+  value,
+  onChange,
+}: {
+  value: ConciergeMode
+  onChange: (m: ConciergeMode) => void
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-600 shrink-0">
+        Mode
+      </span>
+      <div className="flex items-center gap-0.5 rounded-xl border border-gray-800 bg-gray-900 p-0.5">
+        {CONCIERGE_MODES.map((m) => (
+          <button
+            key={m.value}
+            type="button"
+            title={m.description}
+            onClick={() => onChange(m.value)}
+            className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ${
+              value === m.value
+                ? 'bg-blue-600 text-white'
+                : 'text-gray-400 hover:text-gray-200'
+            }`}
+          >
+            {m.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ── Chat bubble ────────────────────────────────────────────────────────────────
 function ChatBubble({ message }: { message: ChatMessage }) {
   const isUser = message.role === 'user'
@@ -667,6 +734,9 @@ export default function ConciergePage() {
   const [startRunLoading, setStartRunLoading] = useState(false)
   const [startRunError, setStartRunError] = useState<string | null>(null)
   const seenEventCount = useRef(0)
+
+  // Mode preference
+  const [mode, setMode] = useState<ConciergeMode>(() => getConciergeMode())
 
   // Tool permission state
   const [toolPermissions, setToolPermissions] = useState<ToolPermission[]>([])
@@ -799,7 +869,7 @@ export default function ConciergePage() {
     setLoading(true)
 
     try {
-      const result = await sendConciergeMessage(messages, text)
+      const result = await sendConciergeMessage(messages, text, undefined, mode)
 
       const assistantMsg: ChatMessage = {
         id: `msg_${Date.now() + 1}`,
@@ -819,6 +889,11 @@ export default function ConciergePage() {
       setLoading(false)
       setTimeout(() => textareaRef.current?.focus(), 50)
     }
+  }
+
+  const handleModeChange = (m: ConciergeMode) => {
+    setMode(m)
+    setConciergeMode(m)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -985,7 +1060,8 @@ export default function ConciergePage() {
         </div>
 
         {/* Input */}
-        <div className="border-t border-gray-800 p-3">
+        <div className="border-t border-gray-800 p-3 space-y-2">
+          <ModeSelector value={mode} onChange={handleModeChange} />
           <div className="flex items-end gap-2">
             <textarea
               ref={textareaRef}

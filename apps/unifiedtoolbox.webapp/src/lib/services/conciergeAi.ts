@@ -1,6 +1,7 @@
 'use client'
 
 import type { ChatMessage, Proposal, ProposalPlanStep, ProposalRisk } from '@/lib/types/proposal'
+import type { ConciergeMode } from '@/lib/types/conciergePreferences'
 import { generateProposalId } from '@/lib/services/proposalStore'
 
 // ── System prompt ─────────────────────────────────────────────────────────────
@@ -44,6 +45,13 @@ When you are ready to generate the proposal, output it as a \`\`\`json code bloc
     "Build passes with exit code 0",
     "No high-severity findings"
   ],
+  "assumptions": [
+    "Assumption you made about the goal, repo, or constraints"
+  ],
+  "confidence": {
+    "level": "medium",
+    "reasoning": "Why you are or aren't confident in this proposal"
+  },
   "risks": [
     { "level": "low", "description": "Risk description" }
   ],
@@ -71,7 +79,23 @@ tools rules (recommended.tools): List only MCP tool names agents will genuinely 
 Common names: "read_file" (read source files), "write_file" (write/modify code), "fetch_url" (HTTP requests), "execute_command" (shell commands).
 Omit entirely if no external tools are needed. Each tool will require explicit user enablement before the run starts.
 
+assumptions rules: List every non-trivial assumption you made (repo tech stack, budget, deployment target, environment, etc.). Use an empty array [] only if the goal is completely self-contained with no ambiguity.
+
+confidence rules:
+- level: "high" if goal and context are unambiguous; "medium" if one or two unknowns exist; "low" if critical information is missing.
+- reasoning: One sentence explaining the confidence level.
+
 Keep plan.steps to 3–7 items. Include at least one risk. Make acceptance_checks measurable.`
+
+// ── Mode-specific system prompt suffix ───────────────────────────────────────
+
+const MODE_SYSTEM_SUFFIX: Record<ConciergeMode, string> = {
+  guided:
+    '\n\nUser preference — GUIDED mode: Before generating a proposal, ask 2–3 targeted clarifying questions (target repo? constraints? deliverable format? risk tolerance?). Do NOT generate a proposal until you have asked at least one round of clarifying questions. Surface all assumptions you made in the `assumptions` array. Be thorough about risks.',
+  confident: '', // no change — default behaviour
+  'hands-off':
+    '\n\nUser preference — HANDS-OFF mode: Generate a complete proposal immediately on the first user message without asking any clarifying questions. Be direct and efficient. List every assumption you made in the `assumptions` array — this is especially important since you are not asking for clarification.',
+}
 
 // ── JSON extraction ───────────────────────────────────────────────────────────
 
@@ -155,6 +179,8 @@ export function hydrateProposal(
       required: partial.approvals?.required ?? [],
     },
     acceptance_checks: partial.acceptance_checks ?? [],
+    assumptions: partial.assumptions ?? [],
+    confidence: partial.confidence ?? undefined,
     risks,
     estimate: {
       time: partial.estimate?.time,
@@ -180,7 +206,8 @@ export interface ConciergeReply {
 export async function sendConciergeMessage(
   history: ChatMessage[],
   userMessage: string,
-  apiKey?: string
+  apiKey?: string,
+  mode: ConciergeMode = 'confident'
 ): Promise<ConciergeReply> {
   const key = apiKey || (typeof window !== 'undefined' ? localStorage.getItem('ai-toolbox-api-key') ?? '' : '')
 
@@ -194,13 +221,13 @@ export async function sendConciergeMessage(
 
   // Demo mode when no key
   if (!key) {
-    const demoReply = buildDemoReply(userMessage, updatedHistory)
-    return demoReply
+    return buildDemoReply(userMessage, updatedHistory, mode)
   }
 
-  // Build messages for OpenAI
+  // Build messages for OpenAI — inject mode suffix into system prompt
+  const systemContent = SYSTEM_PROMPT + (MODE_SYSTEM_SUFFIX[mode] ?? '')
   const messages = [
-    { role: 'system' as const, content: SYSTEM_PROMPT },
+    { role: 'system' as const, content: systemContent },
     ...updatedHistory.map((m) => ({
       role: m.role as 'user' | 'assistant',
       content: m.content,
@@ -246,21 +273,32 @@ export async function sendConciergeMessage(
 
 // ── Demo mode (no API key) ────────────────────────────────────────────────────
 
-function buildDemoReply(userMessage: string, history: ChatMessage[]): ConciergeReply {
+function buildDemoReply(
+  userMessage: string,
+  history: ChatMessage[],
+  mode: ConciergeMode = 'confident'
+): ConciergeReply {
   const isFirstMessage = history.filter((m) => m.role === 'user').length === 1
+  // Hands-off: propose immediately; Guided/Confident: ask on turn 1
+  const shouldPropose = mode === 'hands-off' || !isFirstMessage
 
-  if (isFirstMessage) {
+  if (!shouldPropose) {
+    const guidedExtra =
+      mode === 'guided'
+        ? `\n\n3. Are there any constraints I should know about (budget, timeline, tech stack)?`
+        : ''
     return {
       message:
         `Got it! To give you a solid Proposal, let me ask a couple of things:\n\n` +
         `1. Is there a specific repository or codebase to work with, or is this a standalone task?\n` +
-        `2. What does "done" look like — what's the concrete deliverable?\n\n` +
-        `*(Demo mode — add an OpenAI API key in Settings to use the real Concierge.)*`,
+        `2. What does "done" look like — what's the concrete deliverable?` +
+        guidedExtra +
+        `\n\n*(Demo mode — add an OpenAI API key in Settings to use the real Concierge.)*`,
       proposal: null,
     }
   }
 
-  // On second turn, generate a demo proposal
+  // Generate a demo proposal
   const goalSummary = history.find((m) => m.role === 'user')?.content ?? userMessage
   const demoPartial: Partial<Proposal> = {
     goal: { summary: goalSummary.slice(0, 120), context: 'Demo proposal — no API key configured.' },
@@ -276,6 +314,15 @@ function buildDemoReply(userMessage: string, history: ChatMessage[]): ConciergeR
     recommended: { prompts: [], agents: ['Supervisor', 'Researcher', 'Engineer', 'Critic', 'Synthesizer'], tools: [] },
     approvals: { required: ['Human review before file writes'] },
     acceptance_checks: ['No test failures', 'Code passes linting'],
+    assumptions: [
+      'Repository is TypeScript-based',
+      'Standard npm/Node.js setup assumed',
+      'No strict token-budget constraints',
+    ],
+    confidence: {
+      level: 'medium',
+      reasoning: 'Goal is clear, but codebase scope and deployment context are unknown (demo mode).',
+    },
     risks: [
       { level: 'low', description: 'Scope may expand if codebase is larger than expected.' },
       { level: 'medium', description: 'Demo mode: AI suggestions not verified against real codebase.' },
