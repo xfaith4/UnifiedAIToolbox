@@ -4,8 +4,6 @@ import React, { useState, useEffect, useRef, useMemo } from 'react'
 import Link from 'next/link'
 import { ORCHESTRATOR_API_BASE } from '@/lib/services/orchestratorApi'
 import { renderMarkdown } from '@/lib/artifacts/viewerUtils'
-import { fetchPromptLibrary } from '@/lib/services/promptStore'
-import type { PromptItem } from '@/lib/types/prompts'
 import type { GitHubRepo } from '@/lib/types/github'
 import type { RepoOrchestrationEvent, RepoOrchestrationResult } from '@/lib/types/orchestrator'
 
@@ -28,7 +26,6 @@ interface GitHubRepoPanelProps {
   runId: string | null
   runDir: string | null
   logsDir: string | null
-  onPromptSelected: (template: string) => void
 }
 
 // ── Event type styles (for raw log fallback) ─────────────────────────────────
@@ -106,6 +103,7 @@ function buildCards(
   }
 
   const isFinal = events.some(e => e.final || e.type === 'complete' || e.type === 'merged')
+  const hasError = events.some(e => e.type === 'error')
 
   // Last phase index that has any events
   let activeIdx = -1
@@ -120,11 +118,25 @@ function buildCards(
       status = 'queued'
     } else if (idx === activeIdx && running && !isFinal) {
       status = 'running'
+    } else if (idx === activeIdx && hasError && !isFinal) {
+      // Error cut the run short — mark the last active phase as errored
+      status = 'error'
     } else {
       status = 'done'
     }
     return { phase, status, events: phaseEvts }
   })
+}
+
+function formatEventTs(ev: RepoOrchestrationEvent): string | null {
+  const raw = (ev as Record<string, unknown>)['ts'] ?? (ev as Record<string, unknown>)['timestamp']
+  if (!raw || typeof raw !== 'string') return null
+  try {
+    const d = new Date(raw)
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  } catch {
+    return null
+  }
 }
 
 function StatusDot({ status }: { status: CardStatus }) {
@@ -157,39 +169,53 @@ function RunCards({
   events,
   running,
   cancelFn,
+  prUrl,
 }: {
   events: RepoOrchestrationEvent[]
   running: boolean
   cancelFn: (() => void) | null
+  prUrl?: string
 }) {
   const cards = useMemo(() => buildCards(events, running), [events, running])
   const [expanded, setExpanded] = useState<Set<Phase>>(new Set())
   const [showRaw, setShowRaw] = useState(false)
   const rawEndRef = useRef<HTMLDivElement>(null)
   const activePhaseRef = useRef<HTMLDivElement>(null)
+  const prevRunningRef = useRef(running)
+  const prevActivePhasRef = useRef<Phase | null>(null)
 
-  // Auto-expand running phase
+  // Auto-expand running phase (only when the active phase changes)
   useEffect(() => {
     const runningCard = cards.find(c => c.status === 'running')
-    if (runningCard) {
-      setExpanded(prev => {
-        if (prev.has(runningCard.phase)) return prev
-        return new Set([...prev, runningCard.phase])
+    const activePhase = runningCard?.phase ?? null
+    if (activePhase && activePhase !== prevActivePhasRef.current) {
+      prevActivePhasRef.current = activePhase
+      setExpanded(prev => new Set([...prev, activePhase]))
+      // Scroll the newly-active card into view
+      requestAnimationFrame(() => {
+        activePhaseRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
       })
     }
   }, [cards])
 
-  // Auto-scroll active phase into view
+  // When run transitions from running → done, auto-expand the last card with events
   useEffect(() => {
-    activePhaseRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-  }, [cards])
+    if (prevRunningRef.current && !running) {
+      const lastWithEvents = [...cards].reverse().find(c => c.events.length > 0)
+      if (lastWithEvents) {
+        setExpanded(prev => new Set([...prev, lastWithEvents.phase]))
+      }
+    }
+    prevRunningRef.current = running
+  }, [running, cards])
 
-  // Auto-scroll raw log
+  // Auto-scroll raw log to bottom as new events arrive
   useEffect(() => {
     if (showRaw) rawEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [events.length, showRaw])
 
   const errorEvents = events.filter(e => e.type === 'error')
+  const hasAnyEvents = events.length > 0
 
   return (
     <div className="space-y-2">
@@ -208,92 +234,144 @@ function RunCards({
         )}
       </div>
 
+      {/* Waiting placeholder — shown only before first event arrives */}
+      {running && !hasAnyEvents && (
+        <div className="flex items-center gap-2.5 rounded-xl border border-slate-800 bg-slate-950/40 px-4 py-3">
+          <span className="h-3 w-3 animate-spin rounded-full border-2 border-blue-400 border-t-transparent flex-shrink-0" />
+          <span className="text-sm text-slate-400">Waiting for agent response…</span>
+        </div>
+      )}
+
       {/* Phase cards */}
-      <div className="rounded-xl border border-slate-800 bg-slate-950/40">
-        {cards.map((card, idx) => {
-          const meta = PHASE_META[card.phase]
-          const isLast = idx === cards.length - 1
-          const isExpanded = expanded.has(card.phase) || card.status === 'running'
-          const hasEvents = card.events.length > 0
-          const canToggle = hasEvents && card.status !== 'running'
-          const isActive = card.status === 'running'
+      {hasAnyEvents && (
+        <div className="rounded-xl border border-slate-800 bg-slate-950/40">
+          {cards.map((card, idx) => {
+            const meta = PHASE_META[card.phase]
+            const isLast = idx === cards.length - 1
+            const isExpanded = expanded.has(card.phase) || card.status === 'running'
+            const hasEvents = card.events.length > 0
+            const canToggle = hasEvents && card.status !== 'running'
+            const isActive = card.status === 'running'
+            const lastEvMsg = hasEvents && !isExpanded
+              ? (card.events[card.events.length - 1].message ?? card.events[card.events.length - 1].log_line ?? null)
+              : null
 
-          return (
-            <div
-              key={card.phase}
-              ref={isActive ? activePhaseRef : undefined}
-              className={`relative ${!isLast ? 'border-b border-slate-800/60' : ''}`}
-            >
-              {/* Vertical connector through dot */}
-              {!isLast && (
-                <div className="absolute left-[1.3rem] top-8 bottom-0 w-px bg-slate-800" />
-              )}
-
-              {/* Card header */}
-              <button
-                className={`relative flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors
-                  ${canToggle ? 'cursor-pointer hover:bg-slate-800/25' : 'cursor-default'}
-                  ${isActive ? 'bg-slate-800/20' : ''}`}
-                onClick={() => {
-                  if (!canToggle) return
-                  setExpanded(prev => {
-                    const next = new Set(prev)
-                    if (next.has(card.phase)) next.delete(card.phase)
-                    else next.add(card.phase)
-                    return next
-                  })
-                }}
-                disabled={!canToggle}
+            return (
+              <div
+                key={card.phase}
+                ref={isActive ? activePhaseRef : undefined}
+                className={`relative ${!isLast ? 'border-b border-slate-800/60' : ''}`}
               >
-                <div className="relative z-10">
-                  <StatusDot status={card.status} />
-                </div>
+                {/* Vertical connector line through dot column */}
+                {!isLast && (
+                  <div className="absolute left-[1.3rem] top-8 bottom-0 w-px bg-slate-800" />
+                )}
 
-                <span className={`flex-1 text-sm font-medium
-                  ${card.status === 'queued' ? 'text-slate-500' : meta.accent}`}>
-                  {meta.label}
-                </span>
+                {/* Card header */}
+                <button
+                  className={`relative flex w-full items-start gap-3 px-4 py-2.5 text-left transition-colors
+                    ${canToggle ? 'cursor-pointer hover:bg-slate-800/25' : 'cursor-default'}
+                    ${isActive ? 'bg-slate-800/20' : ''}
+                    ${card.status === 'error' ? 'bg-rose-950/20' : ''}`}
+                  onClick={() => {
+                    if (!canToggle) return
+                    setExpanded(prev => {
+                      const next = new Set(prev)
+                      if (next.has(card.phase)) next.delete(card.phase)
+                      else next.add(card.phase)
+                      return next
+                    })
+                  }}
+                  disabled={!canToggle}
+                >
+                  <div className="relative z-10 mt-0.5">
+                    <StatusDot status={card.status} />
+                  </div>
 
-                <div className="flex items-center gap-2 ml-auto">
-                  {card.status === 'running' && (
-                    <span className="text-[11px] text-blue-400 animate-pulse">running…</span>
-                  )}
-                  {card.status === 'done' && (
-                    <span className={`text-[11px] ${meta.dimText}`}>
-                      {card.events.length} event{card.events.length !== 1 ? 's' : ''}
+                  {/* Label + last-event preview */}
+                  <div className="flex-1 min-w-0">
+                    <span className={`text-sm font-medium
+                      ${card.status === 'queued' ? 'text-slate-500'
+                        : card.status === 'error' ? 'text-rose-300'
+                        : meta.accent}`}>
+                      {meta.label}
                     </span>
-                  )}
-                  {card.status === 'queued' && (
-                    <span className="text-[11px] text-slate-600">queued</span>
-                  )}
-                  {canToggle && (
-                    <span className="text-[10px] text-slate-600 select-none">
-                      {isExpanded ? '▲' : '▼'}
-                    </span>
-                  )}
-                </div>
-              </button>
+                    {/* Last-event preview (collapsed done/error cards) */}
+                    {lastEvMsg && (
+                      <p className="mt-0.5 truncate text-[11px] text-slate-500 leading-tight">
+                        {lastEvMsg}
+                      </p>
+                    )}
+                    {/* PR link directly in Ship card */}
+                    {card.phase === 'ship' && card.status === 'done' && prUrl && (
+                      <a
+                        href={prUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-0.5 inline-block text-[11px] text-emerald-400 underline hover:text-emerald-300"
+                        onClick={e => e.stopPropagation()}
+                      >
+                        View PR →
+                      </a>
+                    )}
+                  </div>
 
-              {/* Expanded event list */}
-              {isExpanded && hasEvents && (
-                <div className="mx-4 mb-2.5 ml-12 max-h-44 overflow-y-auto rounded-lg border border-slate-800/50 bg-slate-900/50 p-1.5 space-y-0.5">
-                  {card.events.map((ev, i) => {
-                    const msg = ev.message ?? ev.log_line ?? ''
-                    return (
-                      <div key={i} className="flex items-start gap-2 rounded px-1.5 py-0.5 text-xs hover:bg-slate-800/30">
-                        <span className={`shrink-0 font-mono text-[10px] ${meta.dimText} mt-px`}>
-                          {ev.type}
-                        </span>
-                        {msg && <span className="text-slate-300 break-all leading-relaxed">{msg}</span>}
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-          )
-        })}
-      </div>
+                  <div className="flex items-center gap-2 ml-2 flex-shrink-0">
+                    {card.status === 'running' && (
+                      <span className="text-[11px] text-blue-400 animate-pulse">running…</span>
+                    )}
+                    {card.status === 'done' && (
+                      <span className={`text-[11px] ${meta.dimText}`}>
+                        {card.events.length} event{card.events.length !== 1 ? 's' : ''}
+                      </span>
+                    )}
+                    {card.status === 'error' && (
+                      <span className="text-[11px] text-rose-500">failed</span>
+                    )}
+                    {card.status === 'queued' && (
+                      <span className="text-[11px] text-slate-600">queued</span>
+                    )}
+                    {canToggle && (
+                      <span className="text-[10px] text-slate-600 select-none">
+                        {isExpanded ? '▲' : '▼'}
+                      </span>
+                    )}
+                  </div>
+                </button>
+
+                {/* Expanded event list */}
+                {isExpanded && hasEvents && (
+                  <div className="mx-4 mb-2.5 ml-12 max-h-52 overflow-y-auto rounded-lg border border-slate-800/50 bg-slate-900/50 p-1.5 space-y-0.5">
+                    {card.events.map((ev, i) => {
+                      const msg = ev.message ?? ev.log_line ?? ''
+                      const ts = formatEventTs(ev)
+                      const taskId = ev.task_id
+                      return (
+                        <div key={i} className="flex items-start gap-2 rounded px-1.5 py-0.5 text-xs hover:bg-slate-800/30">
+                          {ts && (
+                            <span className="shrink-0 font-mono text-[10px] text-slate-600 mt-px tabular-nums">
+                              {ts}
+                            </span>
+                          )}
+                          <span className={`shrink-0 font-mono text-[10px] ${meta.dimText} mt-px`}>
+                            {ev.type}
+                          </span>
+                          {taskId && (
+                            <span className="shrink-0 font-mono text-[10px] text-slate-600 mt-px">
+                              #{String(taskId).slice(0, 8)}
+                            </span>
+                          )}
+                          {msg && <span className="text-slate-300 break-all leading-relaxed">{msg}</span>}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       {/* Error events */}
       {errorEvents.length > 0 && (
@@ -308,30 +386,32 @@ function RunCards({
       )}
 
       {/* Raw events toggle */}
-      <div>
-        <button
-          className="text-[11px] text-slate-600 hover:text-slate-400 underline transition-colors"
-          onClick={() => setShowRaw(v => !v)}
-        >
-          {showRaw ? 'Hide raw events' : `Show raw events (${events.length})`}
-        </button>
-        {showRaw && (
-          <div className="mt-1.5 max-h-44 overflow-y-auto rounded-xl border border-slate-800 bg-slate-950/50 p-2 space-y-1">
-            {events.map((ev, i) => {
-              const evType = ev.type ?? 'event'
-              const msg = ev.message ?? ev.log_line ?? ''
-              const style = EVENT_TYPE_STYLES[evType] ?? 'bg-slate-800/60 text-slate-300 border-slate-700'
-              return (
-                <div key={i} className={`flex items-start gap-2 rounded border px-2 py-1 text-xs ${style}`}>
-                  <span className="shrink-0 font-mono font-semibold">{evType}</span>
-                  {msg && <span className="break-all">{msg}</span>}
-                </div>
-              )
-            })}
-            <div ref={rawEndRef} />
-          </div>
-        )}
-      </div>
+      {hasAnyEvents && (
+        <div>
+          <button
+            className="text-[11px] text-slate-600 hover:text-slate-400 underline transition-colors"
+            onClick={() => setShowRaw(v => !v)}
+          >
+            {showRaw ? 'Hide raw events' : `Show raw events (${events.length})`}
+          </button>
+          {showRaw && (
+            <div className="mt-1.5 max-h-44 overflow-y-auto rounded-xl border border-slate-800 bg-slate-950/50 p-2 space-y-1">
+              {events.map((ev, i) => {
+                const evType = ev.type ?? 'event'
+                const msg = ev.message ?? ev.log_line ?? ''
+                const style = EVENT_TYPE_STYLES[evType] ?? 'bg-slate-800/60 text-slate-300 border-slate-700'
+                return (
+                  <div key={i} className={`flex items-start gap-2 rounded border px-2 py-1 text-xs ${style}`}>
+                    <span className="shrink-0 font-mono font-semibold">{evType}</span>
+                    {msg && <span className="break-all">{msg}</span>}
+                  </div>
+                )
+              })}
+              <div ref={rawEndRef} />
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -370,24 +450,8 @@ export default function GitHubRepoPanel({
   runId,
   runDir,
   logsDir,
-  onPromptSelected,
 }: GitHubRepoPanelProps) {
   const [repoFilter, setRepoFilter] = useState('')
-  const [prompts, setPrompts] = useState<PromptItem[]>([])
-  const [promptFilter, setPromptFilter] = useState('')
-
-  // Load prompt library from localStorage on mount
-  useEffect(() => {
-    void fetchPromptLibrary().then(setPrompts)
-  }, [])
-
-  const filteredPrompts = promptFilter.trim()
-    ? prompts.filter(
-        (p) =>
-          p.title.toLowerCase().includes(promptFilter.trim().toLowerCase()) ||
-          (p.category ?? '').toLowerCase().includes(promptFilter.trim().toLowerCase())
-      )
-    : prompts
 
   const filteredRepos = repoFilter.trim()
     ? repos.filter((r) => r.full_name.toLowerCase().includes(repoFilter.trim().toLowerCase()))
@@ -401,43 +465,6 @@ export default function GitHubRepoPanel({
   return (
     <div className="border-b border-gray-700 bg-gray-900/40">
       <div className="max-w-6xl mx-auto px-4 py-4 space-y-4">
-
-        {/* Prompt library picker */}
-        {prompts.length > 0 && (
-          <div className="rounded-lg border border-slate-700/60 bg-slate-800/20 px-3 py-2.5 space-y-1.5">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                Instruction — load from Prompt Library
-              </label>
-              <span className="text-[11px] text-slate-500">{prompts.length} prompts</span>
-            </div>
-            <div className="flex gap-2">
-              <input
-                className="flex-1 rounded border border-slate-700 bg-slate-800/60 px-2 py-1 text-xs text-slate-100 placeholder-slate-500 focus:border-blue-500 focus:outline-none"
-                placeholder="Filter by title or category…"
-                value={promptFilter}
-                onChange={(e) => setPromptFilter(e.target.value)}
-                disabled={running}
-              />
-            </div>
-            <select
-              className="w-full rounded border border-slate-700 bg-slate-800/80 px-2 py-1.5 text-sm text-slate-100 focus:border-blue-500 focus:outline-none"
-              value=""
-              onChange={(e) => {
-                const p = prompts.find((p) => p.id === e.target.value)
-                if (p) { onPromptSelected(p.template); setPromptFilter('') }
-              }}
-              disabled={running}
-            >
-              <option value="">— select a prompt to load as instruction —</option>
-              {filteredPrompts.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.title}{p.category ? ` · ${p.category}` : ''}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
 
         {/* Loading state */}
         {reposLoading && (

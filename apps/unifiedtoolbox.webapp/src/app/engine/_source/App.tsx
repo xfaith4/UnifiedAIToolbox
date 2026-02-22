@@ -91,7 +91,6 @@ const App: React.FC = () => {
   const [githubRunId, setGithubRunId] = useState<string | null>(null)
   const [githubRunDir, setGithubRunDir] = useState<string | null>(null)
   const [githubLogsDir, setGithubLogsDir] = useState<string | null>(null)
-  const [githubSeedGoal, setGithubSeedGoal] = useState<string | undefined>(undefined)
 
   // Modal and Panel States
   const [showExport, setShowExport] = useState(false);
@@ -259,6 +258,13 @@ const App: React.FC = () => {
     } finally {
       setMaintenanceCanceling(false)
     }
+  }
+
+  // Clears a stale / not-found run from local state without hitting the cancel API
+  const clearMaintenanceRun = () => {
+    setMaintenanceRunId(null)
+    setMaintenanceStartError(null)
+    setMaintenanceRunning(false)
   }
 
   const startGithubRepoRun = async (goal: string) => {
@@ -461,7 +467,6 @@ const App: React.FC = () => {
               jobTypeConfig={jobTypeConfig}
               jobTypeOptions={jobTypeOptions}
               onJobTypeChange={setJobType}
-              seedGoal={isGithubRepo ? githubSeedGoal : undefined}
             />
             <JobTypeOverviewPanel jobType={jobType} config={jobTypeConfig} />
             {isGithubRepo ? (
@@ -484,7 +489,6 @@ const App: React.FC = () => {
                 runId={githubRunId}
                 runDir={githubRunDir}
                 logsDir={githubLogsDir}
-                onPromptSelected={setGithubSeedGoal}
               />
             ) : isMaintenance ? (
               <MaintenanceRunPanel
@@ -497,6 +501,7 @@ const App: React.FC = () => {
                   setViewFile({ runId: maintenanceRunId, relPath, scope: 'run' })
                 }}
                 onCancel={cancelMaintenanceRun}
+                onClearRun={clearMaintenanceRun}
               />
             ) : (
               <>

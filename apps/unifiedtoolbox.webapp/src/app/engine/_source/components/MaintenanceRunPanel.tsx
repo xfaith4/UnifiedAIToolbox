@@ -28,6 +28,7 @@ type Props = {
   error?: string | null
   onOpenArtifact?: (path: string) => void
   onCancel?: () => void
+  onClearRun?: () => void
 }
 
 type TimelineRenderRow =
@@ -221,7 +222,13 @@ function findIndexForOffset(offsets: number[], target: number): number {
   return answer
 }
 
-const MaintenanceRunPanel: React.FC<Props> = ({ runId, status, loading, error, onOpenArtifact, onCancel }) => {
+const MaintenanceRunPanel: React.FC<Props> = ({ runId, status, loading, error, onOpenArtifact, onCancel, onClearRun }) => {
+  // A run is "terminal" (done or unreachable) when it isn't actively queued/running
+  const isTerminal = !!(
+    error ||
+    (status && status.status !== 'queued' && status.status !== 'running')
+  )
+  const isNotFound = !!(error && /not found/i.test(error))
   const timelineViewportRef = useRef<HTMLDivElement | null>(null)
 
   const [selectedPhaseId, setSelectedPhaseId] = useState<TimelinePhaseId | null>(null)
@@ -560,12 +567,32 @@ const MaintenanceRunPanel: React.FC<Props> = ({ runId, status, loading, error, o
                 Cancel run
               </button>
             ) : null}
+            {onClearRun && isTerminal ? (
+              <button
+                type="button"
+                className={`rounded border border-indigo-600 bg-indigo-900/40 px-2 py-1 text-[11px] text-indigo-100 hover:bg-indigo-900/60 ${FOCUS_RING}`}
+                onClick={onClearRun}
+              >
+                Start New Run
+              </button>
+            ) : null}
           </div>
         </div>
 
         {error && (
-          <div className="rounded border border-rose-800 bg-rose-900/30 px-3 py-2 text-xs text-rose-100">
-            {error}
+          <div className={`rounded border px-3 py-2 text-xs ${isNotFound ? 'border-amber-700/70 bg-amber-950/30 text-amber-100' : 'border-rose-800 bg-rose-900/30 text-rose-100'}`}>
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <span>{error}</span>
+              {isNotFound && onClearRun && (
+                <button
+                  type="button"
+                  className={`rounded border border-amber-600 bg-amber-900/50 px-2.5 py-1 text-[11px] text-amber-100 hover:bg-amber-800/60 whitespace-nowrap ${FOCUS_RING}`}
+                  onClick={onClearRun}
+                >
+                  Dismiss &amp; Start New Run
+                </button>
+              )}
+            </div>
           </div>
         )}
 

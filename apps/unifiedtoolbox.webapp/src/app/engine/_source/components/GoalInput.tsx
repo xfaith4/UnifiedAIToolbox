@@ -5,8 +5,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { RunIcon, LoadingIcon, UploadIcon, CloseIcon, StopIcon } from './icons';
 import RequirementsWizard from './RequirementsWizard';
+import PromptPicker from './PromptPicker';
 import type { Artifact, RunMode } from '../types';
 import type { JobTypeSummary, JobTypeField } from '../hooks/useJobTypes'
+import { fetchPromptLibrary } from '@/lib/services/promptStore'
+import type { PromptItem } from '@/lib/types/prompts'
 
 interface GoalInputProps {
   onGoalSubmit: (goal: string, fileContent: string | null, seedArtifacts: Artifact[] | undefined, runMode: RunMode, requestPayload?: Record<string, any>) => void;
@@ -26,6 +29,8 @@ const GoalInput: React.FC<GoalInputProps> = ({ onGoalSubmit, isOrchestrating, on
   const [file, setFile] = useState<File | null>(null);
   const [requestValues, setRequestValues] = useState<Record<string, string>>({})
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [prompts, setPrompts] = useState<PromptItem[]>([])
+  const [showPromptPicker, setShowPromptPicker] = useState(false)
 
   const useWizard = wizardEnabled && jobType === 'build_new_app'
 
@@ -110,6 +115,10 @@ const GoalInput: React.FC<GoalInputProps> = ({ onGoalSubmit, isOrchestrating, on
   useEffect(() => {
     if (seedGoal !== undefined && seedGoal !== '') setGoal(seedGoal)
   }, [seedGoal])
+
+  useEffect(() => {
+    void fetchPromptLibrary().then(setPrompts)
+  }, [])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -314,6 +323,18 @@ const GoalInput: React.FC<GoalInputProps> = ({ onGoalSubmit, isOrchestrating, on
             </div>
           </div>
         )}
+        {/* Prompt library picker */}
+        {showPromptPicker && prompts.length > 0 && (
+          <PromptPicker
+            prompts={prompts}
+            disabled={isOrchestrating}
+            onUse={(resolved) => {
+              setGoal(resolved)
+              setShowPromptPicker(false)
+            }}
+          />
+        )}
+
         <div className="flex gap-3">
             <input
               type="text"
@@ -353,9 +374,23 @@ const GoalInput: React.FC<GoalInputProps> = ({ onGoalSubmit, isOrchestrating, on
         <div className="flex items-center gap-4 text-sm">
             <span className="text-gray-400">Optional:</span>
             <div className="flex items-center gap-2">
-                <button 
-                    type="button" 
-                    onClick={() => fileInputRef.current?.click()} 
+                {prompts.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowPromptPicker(v => !v)}
+                    disabled={isOrchestrating}
+                    className={`flex items-center gap-2 px-3 py-1.5 text-sm rounded-md border transition-colors disabled:opacity-50 ${
+                      showPromptPicker
+                        ? 'bg-blue-900/30 border-blue-700 text-blue-200'
+                        : 'bg-gray-700 border-gray-600 hover:bg-gray-600 text-gray-200'
+                    }`}
+                  >
+                    📚 {showPromptPicker ? 'Hide Library' : 'Load from Library'}
+                  </button>
+                )}
+                <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
                     className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-md bg-gray-700 hover:bg-gray-600 transition-colors disabled:opacity-50"
                     disabled={isOrchestrating}
                 >
