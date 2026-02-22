@@ -42,6 +42,19 @@ export default function GitHubPage() {
   const [repoRunsLoading, setRepoRunsLoading] = useState(false)
 
   const toFileUrl = (path: string) => `file:///${path.replace(/\\/g, '/')}`
+  const openPath = async (absPath: string | undefined) => {
+    if (!absPath) return
+    try {
+      await fetch('/api/open-path', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: absPath }),
+      })
+    } catch {
+      // Fallback: copy path to clipboard so the user can open it manually
+      await copyText(absPath)
+    }
+  }
   const joinPath = (base: string, segment: string) => {
     const separator = base.includes('\\') ? '\\' : '/'
     if (base.endsWith(separator)) return `${base}${segment}`
@@ -497,7 +510,7 @@ export default function GitHubPage() {
             )}
             {orchError && <span className="text-sm text-rose-400">{orchError}</span>}
             {!uiV2 && logsDir && (
-              <a className="text-sm text-blue-200 underline" href={toFileUrl(logsDir)} target="_blank" rel="noreferrer">
+              <a className="text-sm text-blue-200 underline" href={toFileUrl(logsDir)} target="_blank" rel="noreferrer" onClick={(e) => { e.preventDefault(); void openPath(logsDir) }}>
                 Open Logs Folder
               </a>
             )}
@@ -626,6 +639,7 @@ export default function GitHubPage() {
                         href={toFileUrl(runDir)}
                         target="_blank"
                         rel="noreferrer"
+                        onClick={(e) => { e.preventDefault(); void openPath(runDir) }}
                       >
                         Open Run Folder
                       </a>
@@ -636,6 +650,7 @@ export default function GitHubPage() {
                         href={toFileUrl(logsDir)}
                         target="_blank"
                         rel="noreferrer"
+                        onClick={(e) => { e.preventDefault(); void openPath(logsDir) }}
                       >
                         Open Logs Folder
                       </a>
@@ -646,6 +661,7 @@ export default function GitHubPage() {
                         href={toFileUrl(gateLogsDir)}
                         target="_blank"
                         rel="noreferrer"
+                        onClick={(e) => { e.preventDefault(); void openPath(gateLogsDir) }}
                       >
                         Open Gate Logs
                       </a>
@@ -694,6 +710,7 @@ export default function GitHubPage() {
                         href={toFileUrl(runDir)}
                         target="_blank"
                         rel="noreferrer"
+                        onClick={(e) => { e.preventDefault(); void openPath(runDir) }}
                       >
                         Open Run Folder
                       </a>
@@ -704,6 +721,7 @@ export default function GitHubPage() {
                         href={toFileUrl(logsDir)}
                         target="_blank"
                         rel="noreferrer"
+                        onClick={(e) => { e.preventDefault(); void openPath(logsDir) }}
                       >
                         Open Logs Folder
                       </a>
@@ -714,6 +732,7 @@ export default function GitHubPage() {
                         href={toFileUrl(gateLogsDir)}
                         target="_blank"
                         rel="noreferrer"
+                        onClick={(e) => { e.preventDefault(); void openPath(gateLogsDir) }}
                       >
                         Open Gate Logs
                       </a>
@@ -743,6 +762,7 @@ export default function GitHubPage() {
                                 href={toFileUrl(artifact.filePath)}
                                 target="_blank"
                                 rel="noreferrer"
+                                onClick={(e) => { e.preventDefault(); void openPath(artifact.filePath) }}
                               >
                                 Open file
                               </a>
@@ -767,7 +787,7 @@ export default function GitHubPage() {
                   </ul>
                 )}
                 {logsDir && (
-                  <a className="text-xs text-rose-200 underline" href={toFileUrl(logsDir)} target="_blank" rel="noreferrer">
+                  <a className="text-xs text-rose-200 underline" href={toFileUrl(logsDir)} target="_blank" rel="noreferrer" onClick={(e) => { e.preventDefault(); void openPath(logsDir) }}>
                     Open logs folder
                   </a>
                 )}

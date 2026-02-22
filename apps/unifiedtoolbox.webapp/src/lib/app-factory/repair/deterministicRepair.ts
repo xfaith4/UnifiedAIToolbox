@@ -2,6 +2,7 @@ import { promises as fs } from 'fs'
 import path from 'path'
 import type { RepoContract } from '../contracts/RepoContract'
 import type { RepoContractEvaluation } from '../contracts/evaluateRepoContract'
+import { assembleRepo } from '../assemble/assembleRepo'
 
 export type DeterministicRepairResult = {
   fixed: boolean
@@ -60,7 +61,9 @@ export async function runDeterministicRepair(
  * Tries in order:
  *   1. Strip markdown code fences
  *   2. Extract first {...} block
- *   3. Write a minimal stub derived from the contract
+ *   3. Delete the broken file and re-run assembleRepo — lets the assembler
+ *      regenerate the full canonical package.json (with correct deps/scripts
+ *      for the stack). All other already-present files are skipped by ensureFile.
  */
 async function tryFixPackageJsonParse(repoDir: string, contract: RepoContract): Promise<boolean> {
   const pkgPath = path.join(repoDir, 'package.json')
@@ -68,8 +71,8 @@ async function tryFixPackageJsonParse(repoDir: string, contract: RepoContract): 
   try {
     raw = await fs.readFile(pkgPath, 'utf8')
   } catch {
-    // File missing — write a minimal one
-    await fs.writeFile(pkgPath, JSON.stringify(buildMinimalPackageJson(contract), null, 2) + '\n', 'utf8')
+    // File missing — re-assemble to create the canonical version
+    await assembleRepo(repoDir, contract)
     return true
   }
 
@@ -101,8 +104,12 @@ async function tryFixPackageJsonParse(repoDir: string, contract: RepoContract): 
     } catch {}
   }
 
-  // Strategy 3: write a minimal valid stub derived from the contract
-  await fs.writeFile(pkgPath, JSON.stringify(buildMinimalPackageJson(contract), null, 2) + '\n', 'utf8')
+  // Strategy 3: delete the unrecoverable file and re-assemble.
+  // assembleRepo uses ensureFile internally, so it only creates package.json
+  // (with the full stack-canonical deps/scripts) and skips all other files
+  // that are already present from the LLM artifacts.
+  await fs.rm(pkgPath, { force: true })
+  await assembleRepo(repoDir, contract)
   return true
 }
 
@@ -139,7 +146,14 @@ async function tryPatchPackageJsonFields(repoDir: string, contract: RepoContract
     Object.keys(existingScripts as object).length === 0
 
   if (scriptsInvalid) {
-    pkg.scripts = buildMinimalPackageJson(contract).scripts
+    // Derive scripts from the contract commands rather than hardcoding
+    const scripts: Record<string, string> = {}
+    if (contract.buildCommand) scripts.build = contract.buildCommand.replace(/^(?:npm|pnpm|yarn)\s+run\s+/, '')
+    if (contract.typecheckCommand) scripts.typecheck = contract.typecheckCommand.replace(/^(?:npm|pnpm|yarn)\s+run\s+/, '')
+    if (contract.lintCommand) scripts.lint = contract.lintCommand.replace(/^(?:npm|pnpm|yarn)\s+run\s+/, '')
+    if (contract.testCommand) scripts.test = contract.testCommand.replace(/^(?:npm|pnpm|yarn)\s+run\s+/, '')
+    if (Object.keys(scripts).length === 0) scripts.build = 'next build'
+    pkg.scripts = scripts
     changed = true
   }
 
@@ -147,24 +161,4 @@ async function tryPatchPackageJsonFields(repoDir: string, contract: RepoContract
     await fs.writeFile(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf8')
   }
   return changed
-}
-
-function buildMinimalPackageJson(contract: RepoContract): {
-  name: string
-  version: string
-  private: boolean
-  scripts: Record<string, string>
-} {
-  return {
-    name: (contract.stackId || 'app').replace(/[^a-z0-9-]/g, '-').toLowerCase(),
-    version: '0.1.0',
-    private: true,
-    scripts: {
-      dev: 'next dev',
-      build: 'next build',
-      start: 'next start',
-      lint: 'next lint',
-      typecheck: 'tsc --noEmit',
-    },
-  }
 }
