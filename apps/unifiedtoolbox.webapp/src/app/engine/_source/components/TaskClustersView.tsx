@@ -114,7 +114,7 @@ const TaskClustersView: React.FC<Props> = ({ tasks, selectedTaskId, onSelectTask
   }
 
   return (
-    <div className="w-full h-full overflow-y-auto p-4">
+    <div className="w-full p-4">
       <div className="flex items-center justify-between gap-3 mb-3">
         <div className="text-sm text-gray-400">
           Clusters: <span className="text-gray-200 font-semibold">{clusters.length}</span> · Tasks:{' '}

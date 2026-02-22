@@ -84,7 +84,8 @@ const ExportModal: React.FC<ExportModalProps> = ({
 
   if (!isOpen) return null;
 
-  const validateHardening = async (): Promise<EnginePipelinePayload | null> => {
+  const validateHardening = async (options?: { repairMode?: boolean }): Promise<EnginePipelinePayload | null> => {
+    const repairMode = Boolean(options?.repairMode)
     if (runMode === 'design') {
       setLastValidationError('Design Run selected: acceptance checks are skipped. Switch to Build Run to validate a runnable repo.')
       return null
@@ -107,7 +108,7 @@ const ExportModal: React.FC<ExportModalProps> = ({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         stackId: 'node-next-app-npm',
-        runLabel: 'ui-validate',
+        runLabel: repairMode ? 'ui-repair' : 'ui-validate',
         sessionId,
         artifacts: sessionId
           ? []
@@ -119,6 +120,7 @@ const ExportModal: React.FC<ExportModalProps> = ({
         config: {
           apiKey: apiKey || undefined,
           runMode,
+          maxRepairCycles: repairMode ? 6 : undefined,
         },
       }),
     })
@@ -127,10 +129,13 @@ const ExportModal: React.FC<ExportModalProps> = ({
     if (json?.pipeline) setPipeline(json.pipeline as EnginePipelinePayload)
 
     if (!res.ok) {
+      const blockers = Array.isArray(json?.blockers) ? (json.blockers as ExportBlocker[]) : []
+      setExportBlockers(blockers)
       const detail = json ? JSON.stringify(json, null, 2) : `HTTP ${res.status}`
       setLastValidationError(detail)
       return null
     }
+    setExportBlockers([])
     return (json?.pipeline as EnginePipelinePayload) || null
   }
 
@@ -213,14 +218,30 @@ const ExportModal: React.FC<ExportModalProps> = ({
       if (!pipeline.hardeningEnabled) return
       await validateHardening()
     } catch (error) {
-      console.error("Failed to generate zip file:", error);
+      console.error("Validation failed:", error);
       if (!lastValidationError) {
-        alert("An error occurred while creating the zip file. Please check the console.")
+        alert("An error occurred while validating artifacts. Please check the console.")
       }
     } finally {
       setIsZipping(false);
     }
   };
+
+  const handleRepairRun = async () => {
+    if (isZipping) return
+    setIsZipping(true)
+    try {
+      if (!pipeline.hardeningEnabled) return
+      await validateHardening({ repairMode: true })
+    } catch (error) {
+      console.error('Repair run failed:', error)
+      if (!lastValidationError) {
+        alert('An error occurred while running repair. Please check the console.')
+      }
+    } finally {
+      setIsZipping(false)
+    }
+  }
 
   const handleDownloadZip = async () => {
     if (isZipping) return
@@ -246,9 +267,18 @@ const ExportModal: React.FC<ExportModalProps> = ({
           }
         }
         
-        // Try to download from run if available, otherwise fall back to legacy
+        // Prefer run export when available; fall back to session artifacts if run export fails.
         if (pipeline.runId) {
-          await downloadFromRun(pipeline.runId)
+          try {
+            await downloadFromRun(pipeline.runId)
+          } catch (runExportError) {
+            console.warn('Run-based export failed; falling back to session artifacts export.', runExportError)
+            setLastValidationError(
+              `Run export failed for ${pipeline.runId}. Falling back to session artifacts export.\n` +
+              `${runExportError instanceof Error ? runExportError.message : String(runExportError)}`
+            )
+            await downloadLegacy()
+          }
         } else {
           await downloadLegacy()
         }
@@ -357,6 +387,21 @@ const ExportModal: React.FC<ExportModalProps> = ({
                   </>
                 ) : (
                   'Run acceptance checks'
+                )}
+              </button>
+              <button
+                onClick={handleRepairRun}
+                disabled={isZipping || displayArtifacts.length === 0 || useRunArtifactsExport || runMode === 'design'}
+                className="px-4 py-2 bg-amber-700 hover:bg-amber-600 text-white font-semibold rounded-lg flex items-center transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                title="Run another validation cycle with extended repair attempts using the same generated artifacts."
+              >
+                {isZipping ? (
+                  <>
+                    <LoadingIcon className="w-5 h-5 mr-2 animate-spin" />
+                    Repairing…
+                  </>
+                ) : (
+                  'Run repair pass'
                 )}
               </button>
               <button

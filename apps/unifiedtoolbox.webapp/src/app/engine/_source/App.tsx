@@ -158,6 +158,12 @@ const App: React.FC = () => {
 
   const tasks = displayedSession?.tasks || [];
   const selectedTask = useMemo(() => tasks.find(t => t.id === selectedTaskId) || null, [tasks, selectedTaskId]);
+  const graphPaneHeightPx = useMemo(() => {
+    // Let graph runs breathe as task count grows while keeping a sane upper bound.
+    const taskCount = Math.max(tasks.length, 1)
+    const estimated = 480 + taskCount * 20
+    return Math.max(560, Math.min(1200, estimated))
+  }, [tasks.length])
 
   const startMaintenanceRun = async (requestPayload?: Record<string, any>) => {
     setMaintenanceStartError(null)
@@ -209,13 +215,6 @@ const App: React.FC = () => {
       setMaintenanceCanceling(false)
     }
   }
-
-  useEffect(() => {
-    // Auto-default to clusters when task count gets large (graph becomes noisy).
-    if (tasks.length > 18 && viewMode !== 'clusters') {
-      setViewMode('clusters');
-    }
-  }, [tasks.length, viewMode]);
 
   const handleGoalSubmit = (
     goal: string,
@@ -340,7 +339,7 @@ const App: React.FC = () => {
         elapsedTime={isOrchestrating ? elapsedTime : null}
         jobTypeLabel={jobTypeConfig?.label || jobType}
       />
-      <main className={`flex-1 min-h-0 flex flex-col ${isMaintenance ? 'overflow-y-auto' : 'overflow-hidden'}`}>
+      <main className="flex-1 min-h-0 flex flex-col overflow-y-auto overflow-x-hidden">
         {isJobTypesHydrating ? (
           <section className="px-4 py-6 border-b border-gray-700 bg-gray-900/30">
             <div className="max-w-6xl mx-auto">
@@ -386,7 +385,14 @@ const App: React.FC = () => {
                 />
               </>
             )}
-            <div className="flex-1 min-h-0 flex overflow-hidden">
+            <div
+              className={`flex min-h-[28rem] ${
+                viewMode === 'graph'
+                  ? 'overflow-hidden'
+                  : 'h-auto overflow-visible'
+              }`}
+              style={viewMode === 'graph' ? { height: `${graphPaneHeightPx}px` } : undefined}
+            >
               <div className="flex-1 min-h-0 flex flex-col min-w-0">
                 <RunMonitorPanel
                   tasks={tasks}
@@ -394,7 +400,7 @@ const App: React.FC = () => {
                   viewMode={viewMode}
                   onChangeViewMode={setViewMode}
                 />
-                <div className="flex-1 min-h-0">
+                <div className={viewMode === 'graph' ? 'flex-1 min-h-0' : 'min-h-[16rem]'}>
                   {viewMode === 'graph' ? (
                     <TaskGraph
                       tasks={tasks}
