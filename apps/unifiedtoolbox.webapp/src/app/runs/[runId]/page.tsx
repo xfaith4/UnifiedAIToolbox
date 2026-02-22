@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { use, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { ORCHESTRATOR_API_BASE } from '@/lib/services/orchestratorApi'
 import type { RepoOrchestrationReport } from '@/lib/types/orchestrator'
@@ -108,8 +108,9 @@ const JsonNode = ({
   )
 }
 
-export default function RepoRunPage({ params }: { params: { runId: string } }) {
-  const runId = safeDecode(params.runId)
+export default function RepoRunPage({ params }: { params: Promise<{ runId: string }> }) {
+  const { runId: rawRunId } = use(params)
+  const runId = safeDecode(rawRunId)
 
   const [artifacts, setArtifacts] = useState<ArtifactItem[]>([])
   const [report, setReport] = useState<RepoOrchestrationReport | null>(null)

@@ -104,6 +104,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (!jobTypesData?.job_types) return
+    if (jobType === 'github_repo') return // static UI-only option, not in server config
     if (jobTypesData.job_types[jobType]) return
     const firstJobType = Object.keys(jobTypesData.job_types)[0]
     if (firstJobType) setJobType(firstJobType)

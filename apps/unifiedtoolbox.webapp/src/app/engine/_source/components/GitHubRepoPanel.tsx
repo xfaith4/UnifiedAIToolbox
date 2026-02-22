@@ -98,6 +98,14 @@ export default function GitHubRepoPanel({
     <div className="border-b border-gray-700 bg-gray-900/40">
       <div className="max-w-6xl mx-auto px-4 py-4 space-y-4">
 
+        {/* Loading state */}
+        {reposLoading && (
+          <div className="flex items-center gap-3 rounded-lg border border-slate-700/60 bg-slate-800/30 px-4 py-3">
+            <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />
+            <span className="text-sm text-slate-300">Connecting to GitHub — loading repositories…</span>
+          </div>
+        )}
+
         {/* Token / env status */}
         {!envReady && !reposLoading && repos.length === 0 && (
           <div className="rounded-lg border border-amber-700/60 bg-amber-900/20 px-3 py-2 text-sm text-amber-200">
@@ -105,10 +113,13 @@ export default function GitHubRepoPanel({
           </div>
         )}
 
-        {/* Repo selector */}
+        {/* Repo selector — shown once repos are loaded */}
+        {!reposLoading && repos.length > 0 && (
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1">
-            <label className="text-xs text-slate-400 uppercase tracking-wide">Repository</label>
+            <label className="text-xs text-slate-400 uppercase tracking-wide">
+              Repository <span className="normal-case text-slate-500">({repos.length} available)</span>
+            </label>
             <input
               className="w-full rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-1.5 text-sm text-slate-100 placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               placeholder="Filter repos…"
@@ -116,10 +127,7 @@ export default function GitHubRepoPanel({
               onChange={(e) => setRepoFilter(e.target.value)}
               disabled={running}
             />
-            {reposLoading ? (
-              <div className="text-xs text-slate-500">Loading repositories…</div>
-            ) : (
-              <select
+            <select
                 className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-1.5 text-sm text-slate-100 focus:border-blue-500 focus:outline-none"
                 value={selectedRepo?.full_name ?? ''}
                 onChange={(e) => {
@@ -140,7 +148,6 @@ export default function GitHubRepoPanel({
                   </option>
                 ))}
               </select>
-            )}
           </div>
 
           <div className="space-y-2">
@@ -166,6 +173,7 @@ export default function GitHubRepoPanel({
             </div>
           </div>
         </div>
+        )}
 
         {/* Error */}
         {error && (
