@@ -136,7 +136,7 @@ export default function DashboardPage() {
     <div className="space-y-8">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-semibold">AI Orchestration Dashboard</h1>
+        <h1 className="text-2xl font-semibold">Home</h1>
         <p className="text-sm text-slate-400 mt-1">
           Real-time metrics for your AI orchestration platform
         </p>

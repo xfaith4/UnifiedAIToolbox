@@ -14,6 +14,7 @@ export default defineConfig({
       'src/app/milestones/__tests__/**/*.{test,spec}.{ts,tsx}',
       'src/app/engine/_source/**/__tests__/**/*.{test,spec}.{ts,tsx}',
       'src/lib/app-factory/**/__tests__/**/*.{test,spec}.{ts,tsx}',
+      'src/lib/nav/__tests__/**/*.{test,spec}.{ts,tsx}',
     ],
     alias: {
       'server-only': path.resolve(__dirname, './vitest-mocks/server-only.ts'),
