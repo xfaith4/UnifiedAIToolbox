@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import {
   Send,
   Bot,
@@ -25,6 +26,7 @@ import {
   updateProposalStatus,
   createDraftRunFromProposal,
   listProposals,
+  getProposal,
 } from '@/lib/services/proposalStore'
 
 // ── Risk badge ────────────────────────────────────────────────────────────────
@@ -325,6 +327,7 @@ function ChatBubble({ message }: { message: ChatMessage }) {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function ConciergePage() {
+  const searchParams = useSearchParams()
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -333,6 +336,17 @@ export default function ConciergePage() {
   const [draftCount, setDraftCount] = useState(0)
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // Restore a saved proposal when navigating from the Runs page (?proposal=id)
+  useEffect(() => {
+    const proposalId = searchParams.get('proposal')
+    if (!proposalId) return
+    const saved = getProposal(proposalId)
+    if (saved) {
+      setProposal(saved)
+      setMessages(saved.conversation)
+    }
+  }, [searchParams])
 
   // Load draft count for footer callout
   useEffect(() => {
