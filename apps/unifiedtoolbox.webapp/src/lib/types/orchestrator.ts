@@ -1,6 +1,20 @@
 import type { AgentInstruction } from './agents'
 import type { PromptItem } from './prompts'
 
+// ── Phase 3: Checkpoint types ─────────────────────────────────────────────────
+
+export interface CheckpointRecord {
+  id: string                   // "{agent}:{question[:40]}"
+  agent: string
+  question: string
+  options: string[]
+  defaultOption: string
+  requestedAt: string
+  response: string | null      // null = not yet answered
+  respondedAt: string | null
+  resolvedBy: 'human' | 'timeout' | null
+}
+
 // ── Phase 1: Verification / Sandbox types ─────────────────────────────────────
 
 export type VerificationResult = 'passed' | 'failed' | 'deferred'

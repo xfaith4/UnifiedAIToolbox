@@ -2706,6 +2706,12 @@ class OrchestrationRequest(BaseModel):
     acceptance_checks: List[str] = Field(default_factory=list)  # Phase 1: Verifier
 
 
+class CheckpointResponseRequest(BaseModel):
+    """Phase 3: Payload for responding to a mid-run human checkpoint."""
+    response: str                        # selected option or free-text answer
+    agent: Optional[str] = None          # which agent requested the checkpoint (for validation)
+
+
 def _create_run_allowlist_if_requested(run_id: str, req: OrchestrationRequest) -> Optional[str]:
     """Create a run-scoped MCP allowlist if requested by run creation payload."""
     if not MCP_ENFORCEMENT_IMPORTS_AVAILABLE or not mcp_storage:
@@ -2857,6 +2863,7 @@ def orchestrate_run(
         "acceptance_checks": req.acceptance_checks,
         "verification_status": "pending" if req.acceptance_checks else None,
         "loop_iteration": 0,
+        "checkpoints": [],       # Phase 3: mid-run human decision log
     }
     path = BRIDGE_RUN_DIR / f"{run_id}.json"
     path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
@@ -3046,6 +3053,85 @@ def orchestrate_run(
                 warned_agents: set = set()
                 checked_agents: set = set()  # agents whose .txt output has been inspected
 
+                # ── Phase 3: Checkpoint state ──────────────────────────────────
+                CHECKPOINT_TIMEOUT_S = 300          # 5 minutes before auto-resolve
+                checkpoint_pending_path = out_dir / "checkpoint_pending.json"
+                checkpoint_response_path = out_dir / "checkpoint_response.json"
+                active_checkpoint_key: Optional[str] = None  # "{agent}:{question[:40]}"
+                checkpoint_started_at: Optional[float] = None
+
+                def _write_checkpoint_pending(agent_name: str, question: str, options: list, default_opt: str) -> None:
+                    """Write checkpoint_pending.json so agents and the UI know to pause."""
+                    nonlocal active_checkpoint_key, checkpoint_started_at
+                    key = f"{agent_name}:{question[:40]}"
+                    active_checkpoint_key = key
+                    checkpoint_started_at = time.time()
+                    record = {
+                        "run_id": run_id,
+                        "agent": agent_name,
+                        "question": question,
+                        "options": options,
+                        "default_option": default_opt,
+                        "requested_at": now_iso(),
+                        "timeout_s": CHECKPOINT_TIMEOUT_S,
+                    }
+                    try:
+                        checkpoint_pending_path.write_text(json.dumps(record, indent=2), encoding="utf-8")
+                    except Exception as _e:
+                        print(f"[overseer] checkpoint_pending write failed: {_e}", file=sys.stderr)
+                    # Update manifest: status → awaiting_input, append to checkpoints[]
+                    def _apply(d):
+                        d["status"] = "awaiting_input"
+                        d.setdefault("checkpoints", []).append({
+                            "id": key,
+                            "agent": agent_name,
+                            "question": question,
+                            "options": options,
+                            "default_option": default_opt,
+                            "requested_at": record["requested_at"],
+                            "response": None,
+                            "responded_at": None,
+                            "resolved_by": None,
+                        })
+                        d.setdefault("events", []).append({
+                            "ts": now_iso(),
+                            "type": "checkpoint:pending",
+                            "message": f"[{agent_name}] {question}",
+                        })
+                        return d
+                    _update_manifest(_apply)
+
+                def _resolve_checkpoint(response: str, resolved_by: str) -> None:
+                    """Resolve active checkpoint — write response file and update manifest."""
+                    nonlocal active_checkpoint_key, checkpoint_started_at
+                    key = active_checkpoint_key
+                    active_checkpoint_key = None
+                    checkpoint_started_at = None
+                    try:
+                        checkpoint_response_path.write_text(
+                            json.dumps({"response": response, "resolved_by": resolved_by, "resolved_at": now_iso()}, indent=2),
+                            encoding="utf-8",
+                        )
+                    except Exception as _e:
+                        print(f"[overseer] checkpoint_response write failed: {_e}", file=sys.stderr)
+                    def _apply(d):
+                        d["status"] = "running"
+                        for cp in d.get("checkpoints", []):
+                            if cp.get("id") == key and cp.get("response") is None:
+                                cp["response"] = response
+                                cp["responded_at"] = now_iso()
+                                cp["resolved_by"] = resolved_by
+                                break
+                        ev_type = "checkpoint:timed_out" if resolved_by == "timeout" else "checkpoint:resolved"
+                        d.setdefault("events", []).append({
+                            "ts": now_iso(),
+                            "type": ev_type,
+                            "message": f"Checkpoint resolved by {resolved_by}: {response!r}",
+                        })
+                        return d
+                    _update_manifest(_apply)
+                # ── End Phase 3 checkpoint state ──────────────────────────────
+
                 def _build_error_directive(agent_name: str, error_msgs: list) -> str:
                     """Produce a root-cause + remediation directive for an agent error."""
                     for err in error_msgs:
@@ -3171,6 +3257,53 @@ def orchestrate_run(
                         if rec.get("status") == "complete" and name not in checked_agents:
                             checked_agents.add(name)
                             _analyze_agent_output(name)
+
+                    # ── Phase 3: Checkpoint detection ─────────────────────────────
+                    if active_checkpoint_key is None:
+                        # Look for any agent that has requested a checkpoint
+                        for name, rec in agent_latest.items():
+                            if rec.get("checkpoint") is True and rec.get("status") != "complete":
+                                question = rec.get("question", "Agent requires a decision to continue.")
+                                options = rec.get("options") or ["Continue", "Abort"]
+                                default_opt = rec.get("default") or options[0]
+                                _write_checkpoint_pending(name, question, options, default_opt)
+                                _append_events([{
+                                    "ts": now_iso(),
+                                    "type": "checkpoint:pending",
+                                    "message": f"[{name}] waiting for human input: {question[:120]}",
+                                }])
+                                break
+                    else:
+                        # Checkpoint is active — check for response or timeout
+                        if checkpoint_response_path.exists():
+                            try:
+                                resp_data = json.loads(checkpoint_response_path.read_text(encoding="utf-8"))
+                                response_val = resp_data.get("response", "")
+                                resolved_by = resp_data.get("resolved_by", "human")
+                                _resolve_checkpoint(response_val, resolved_by)
+                                _append_events([{
+                                    "ts": now_iso(),
+                                    "type": "checkpoint:resolved",
+                                    "message": f"Human response received: {response_val!r}",
+                                }])
+                            except Exception as _cpe:
+                                print(f"[overseer] checkpoint response read error: {_cpe}", file=sys.stderr)
+                        elif checkpoint_started_at is not None:
+                            elapsed = time.time() - checkpoint_started_at
+                            if elapsed >= CHECKPOINT_TIMEOUT_S:
+                                # Load default from pending file and auto-resolve
+                                try:
+                                    pending_data = json.loads(checkpoint_pending_path.read_text(encoding="utf-8"))
+                                    default_val = pending_data.get("default_option", "Continue")
+                                except Exception:
+                                    default_val = "Continue"
+                                _resolve_checkpoint(default_val, "timeout")
+                                _append_events([{
+                                    "ts": now_iso(),
+                                    "type": "checkpoint:timed_out",
+                                    "message": f"Checkpoint timed out after {CHECKPOINT_TIMEOUT_S}s. Auto-resolved: {default_val!r}",
+                                }])
+                    # ── End Phase 3 checkpoint detection ──────────────────────────
 
                 # ── Final sweep (runs after subprocess exits) ──────────────────
                 try:
@@ -3961,6 +4094,68 @@ def get_orchestration_run(run_id: str):
         raise HTTPException(status_code=500, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to read run: {exc}")
+
+
+@app.post("/orchestrate/run/{run_id}/checkpoint")
+def respond_to_checkpoint(run_id: str, body: CheckpointResponseRequest):
+    """
+    Phase 3: Submit a human response to a mid-run checkpoint.
+    Writes checkpoint_response.json to the run_dir so the Overseer
+    can detect it and resolve the checkpoint.
+    """
+    run_path = BRIDGE_RUN_DIR / f"{run_id}.json"
+    if not run_path.exists():
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    try:
+        manifest = safe_json_load(run_path, default={}, context=f"checkpoint_respond:{run_id}")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to read run manifest: {exc}")
+
+    run_dir = manifest.get("run_dir")
+    if not run_dir:
+        raise HTTPException(status_code=400, detail="Run has no run_dir in manifest")
+
+    out_dir = pathlib.Path(run_dir)
+    checkpoint_pending_path = out_dir / "checkpoint_pending.json"
+    checkpoint_response_path = out_dir / "checkpoint_response.json"
+
+    if not checkpoint_pending_path.exists():
+        raise HTTPException(status_code=409, detail="No active checkpoint pending for this run")
+    if checkpoint_response_path.exists():
+        raise HTTPException(status_code=409, detail="Checkpoint already responded to")
+
+    # Validate agent if provided
+    if body.agent:
+        try:
+            pending = json.loads(checkpoint_pending_path.read_text(encoding="utf-8"))
+            if pending.get("agent") != body.agent:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Checkpoint is from agent '{pending.get('agent')}', not '{body.agent}'",
+                )
+        except HTTPException:
+            raise
+        except Exception:
+            pass  # ignore parse errors here; Overseer is authoritative
+
+    # Write response file — Overseer will pick this up within 3s
+    response_payload = {
+        "response": body.response,
+        "resolved_by": "human",
+        "resolved_at": now_iso(),
+    }
+    try:
+        checkpoint_response_path.write_text(json.dumps(response_payload, indent=2), encoding="utf-8")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to write checkpoint response: {exc}")
+
+    return {
+        "status": "accepted",
+        "run_id": run_id,
+        "response": body.response,
+        "message": "Checkpoint response queued. Run will resume within a few seconds.",
+    }
 
 
 @app.get("/orchestrate/run/{run_id}/log")
