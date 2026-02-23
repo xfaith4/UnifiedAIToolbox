@@ -330,13 +330,16 @@ function RunStatusIndicator({ runId, runStatus }: { runId: string; runStatus: st
   const isCompleted = status === 'completed'
 
   const cls = isCompleted
-    ? 'border-emerald-700 bg-emerald-950/30 text-emerald-300'
+    ? 'border-emerald-700 bg-emerald-950/30 text-emerald-300 hover:bg-emerald-950/50'
     : isTerminal
-      ? 'border-rose-700 bg-rose-950/30 text-rose-300'
-      : 'border-blue-800/60 bg-blue-950/20 text-blue-300'
+      ? 'border-rose-700 bg-rose-950/30 text-rose-300 hover:bg-rose-950/50'
+      : 'border-blue-800/60 bg-blue-950/20 text-blue-300 hover:bg-blue-950/40'
 
   return (
-    <div className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs ${cls}`}>
+    <Link
+      href={`/runs/${encodeURIComponent(runId)}`}
+      className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs transition-colors ${cls}`}
+    >
       {!isTerminal && <Radio size={12} className="animate-pulse" aria-hidden="true" />}
       {isCompleted && <CheckCircle2 size={12} aria-hidden="true" />}
       {isTerminal && !isCompleted && <XCircle size={12} aria-hidden="true" />}
@@ -344,7 +347,8 @@ function RunStatusIndicator({ runId, runStatus }: { runId: string; runStatus: st
         {!isTerminal ? `Running… (${status})` : isCompleted ? 'Run completed' : `Run ${status}`}
       </span>
       <span className="ml-auto font-mono text-[10px] opacity-50">{runId.slice(0, 14)}</span>
-    </div>
+      <ArrowRight size={11} className="opacity-50" aria-hidden="true" />
+    </Link>
   )
 }
 
@@ -626,6 +630,15 @@ function ProposalPanel({
             <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-600">
               {runId ? 'View in:' : 'Or open in:'}
             </p>
+            {runId && (
+              <Link
+                href={`/runs/${encodeURIComponent(runId)}`}
+                className="flex items-center justify-between rounded-xl border border-blue-800 bg-blue-950/30 px-3 py-2 text-xs font-medium text-blue-200 hover:border-blue-600 hover:text-white transition-colors"
+              >
+                View Run Details
+                <ArrowRight size={13} aria-hidden="true" />
+              </Link>
+            )}
             <Link
               href={`/orchestrator?draft=${proposal.id}`}
               className="flex items-center justify-between rounded-xl border border-gray-700 bg-gray-800 px-3 py-2 text-xs font-medium text-gray-200 hover:border-blue-700 hover:text-white transition-colors"
@@ -973,7 +986,7 @@ export default function ConciergePage() {
         {
           id: `run_start_${Date.now()}`,
           role: 'assistant' as const,
-          content: `Run started (ID: \`${run.id.slice(0, 20)}\`). I'll narrate progress here as events arrive.`,
+          content: `Run started (ID: \`${(run.id ?? '').slice(0, 20)}\`). I'll narrate progress here as events arrive.`,
           timestamp: now,
         },
       ])
