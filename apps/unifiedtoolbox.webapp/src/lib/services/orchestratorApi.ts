@@ -197,6 +197,8 @@ function normalizeApiRun(raw: Record<string, unknown>): OrchestrationRun {
     datasetName: raw.dataset_name ? String(raw.dataset_name) : undefined,
     notes: raw.notes ? String(raw.notes) : undefined,
     output: raw.output ? String(raw.output) : undefined,
+    runDir: raw.run_dir ? String(raw.run_dir) : undefined,
+    errorDetail: raw.error_detail ? String(raw.error_detail) : undefined,
     tokens: raw.tokens as OrchestrationRun['tokens'],
   }
 }

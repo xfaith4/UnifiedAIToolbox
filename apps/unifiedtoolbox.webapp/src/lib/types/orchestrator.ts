@@ -42,8 +42,10 @@ export interface OrchestrationRun {
   // Execution context
   model?: string
   repoRoot?: string
+  runDir?: string
   notes?: string
-  
+  errorDetail?: string
+
   // Output
   output?: string
   tokens?: {

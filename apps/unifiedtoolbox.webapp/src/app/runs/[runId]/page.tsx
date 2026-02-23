@@ -331,12 +331,21 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
 
   // ── Orchestrator run fallback view ────────────────────────────────────────────
   if (!loading && orchRun) {
-    const isRunning = orchRun.status && !['completed', 'failed', 'cancelled', 'error'].includes(orchRun.status)
+    const isError = orchRun.status?.startsWith('error') || orchRun.status === 'failed'
+    const isRunning = orchRun.status && !['completed', 'failed', 'cancelled'].includes(orchRun.status) && !isError
     const statusCls = orchRun.status === 'completed'
       ? 'border-emerald-700 bg-emerald-900/30 text-emerald-100'
-      : orchRun.status === 'failed' || orchRun.status === 'error'
+      : isError
         ? 'border-rose-700 bg-rose-900/30 text-rose-100'
         : 'border-blue-700 bg-blue-900/30 text-blue-100'
+
+    // Separate agent activity events from run lifecycle events
+    const agentEvents = (orchRun.events ?? []).filter((ev) => ev.type.startsWith('agent:'))
+    const lifecycleEvents = (orchRun.events ?? []).filter((ev) => !ev.type.startsWith('agent:') && ev.type !== 'debug')
+
+    const synthesisHtml = orchRun.runDir
+      ? toFileUrl(`${orchRun.runDir.replace(/\\/g, '/')}/Final_Synthesis.html`)
+      : null
 
     return (
       <main className="max-w-4xl space-y-6">
@@ -349,10 +358,29 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
         <div className={`flex flex-wrap items-center gap-3 rounded-2xl border p-4 ${statusCls}`}>
           <span className="text-sm font-semibold capitalize">{orchRun.status ?? 'unknown'}</span>
           {isRunning && <span className="h-2 w-2 rounded-full bg-blue-400 animate-pulse" />}
-          <span className="ml-auto font-mono text-xs opacity-60">{orchRun.id}</span>
+          <div className="ml-auto flex items-center gap-2">
+            {synthesisHtml && (
+              <a
+                href={synthesisHtml}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded border border-current px-2 py-1 text-xs opacity-80 hover:opacity-100"
+              >
+                View Output →
+              </a>
+            )}
+            <span className="font-mono text-xs opacity-50">{orchRun.id.slice(0, 20)}</span>
+          </div>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
+        {isError && orchRun.errorDetail && (
+          <div className="rounded-2xl border border-rose-800 bg-rose-950/30 p-4 text-xs text-rose-200 space-y-1">
+            <div className="font-semibold text-rose-100">Error detail</div>
+            <pre className="whitespace-pre-wrap break-all opacity-80">{orchRun.errorDetail}</pre>
+          </div>
+        )}
+
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {orchRun.startedAt && (
             <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-3 text-xs text-slate-300">
               <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Started</div>
@@ -365,24 +393,42 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
               {new Date(orchRun.completedAt).toLocaleString()}
             </div>
           )}
-          {orchRun.agents && orchRun.agents.length > 0 && (
-            <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-3 text-xs text-slate-300">
-              <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Agents</div>
-              {orchRun.agents.join(', ')}
-            </div>
-          )}
           {orchRun.runMode && (
             <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-3 text-xs text-slate-300">
               <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Mode</div>
               {orchRun.runMode}
             </div>
           )}
+          {orchRun.model && (
+            <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-3 text-xs text-slate-300">
+              <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Model</div>
+              {orchRun.model}
+            </div>
+          )}
         </div>
 
-        {orchRun.events && orchRun.events.length > 0 && (
+        {agentEvents.length > 0 && (
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">Agent Activity</div>
+            <div className="space-y-1.5">
+              {agentEvents.map((ev, idx) => (
+                <div key={idx} className="flex items-center gap-3 text-xs">
+                  <span className={`shrink-0 rounded-full w-2 h-2 ${ev.message === 'complete' ? 'bg-emerald-400' : 'bg-blue-400 animate-pulse'}`} />
+                  <span className="font-medium text-slate-200">{ev.type.replace('agent:', '')}</span>
+                  <span className={`rounded px-1.5 py-0.5 ${ev.message === 'complete' ? 'bg-emerald-900/50 text-emerald-300' : 'bg-blue-900/50 text-blue-300'}`}>
+                    {ev.message}
+                  </span>
+                  <span className="ml-auto text-slate-600">{new Date(ev.timestamp).toLocaleTimeString()}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {lifecycleEvents.length > 0 && (
           <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4 space-y-2">
-            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">Events</div>
-            {orchRun.events.map((ev, idx) => (
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">Timeline</div>
+            {lifecycleEvents.map((ev, idx) => (
               <div key={idx} className="flex items-start gap-3 text-xs">
                 <span className={`shrink-0 rounded px-1.5 py-0.5 font-mono ${
                   ev.type === 'error' ? 'bg-rose-900/60 text-rose-200'
@@ -390,7 +436,7 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
                   : ev.type === 'status' ? 'bg-blue-900/60 text-blue-200'
                   : 'bg-slate-800 text-slate-400'
                 }`}>{ev.type}</span>
-                <span className="text-slate-300">{ev.message}</span>
+                <span className="text-slate-300 break-all">{ev.message.length > 200 ? ev.message.slice(0, 200) + '…' : ev.message}</span>
                 <span className="ml-auto shrink-0 text-slate-600">{new Date(ev.timestamp).toLocaleTimeString()}</span>
               </div>
             ))}
@@ -399,7 +445,7 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
 
         {orchLog && (
           <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
-            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">Log</div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">Log (tail)</div>
             <pre className="max-h-96 overflow-auto whitespace-pre-wrap text-xs text-slate-300">{orchLog}</pre>
           </div>
         )}
