@@ -66,7 +66,7 @@ function executeCommand(
     maxBuffer: MAX_COMMAND_OUTPUT_BYTES * 2,
   })
 
-  const timedOut = result.signal === 'SIGTERM' && result.status == null
+  const timedOut = result.signal === 'SIGTERM'
   const exitCode = result.status ?? (timedOut ? -1 : -2)
   const stdout = truncate(result.stdout ?? '', MAX_COMMAND_OUTPUT_BYTES)
   const stderr = truncate(result.stderr ?? '', MAX_COMMAND_OUTPUT_BYTES)

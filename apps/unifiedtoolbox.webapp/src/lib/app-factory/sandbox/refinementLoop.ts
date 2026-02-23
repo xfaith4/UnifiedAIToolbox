@@ -102,8 +102,12 @@ export async function runRefinementLoop(opts: RefinementLoopOptions): Promise<Re
     { maxIterations },
   )
 
+  if (!lastReport) {
+    throw new Error('Refinement loop completed without producing a sandbox report')
+  }
+
   return {
-    finalReport: lastReport!,
+    finalReport: lastReport,
     iterations: maxIterations,
     exitReason: 'max_iterations',
   }
