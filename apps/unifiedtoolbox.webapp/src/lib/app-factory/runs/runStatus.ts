@@ -396,6 +396,16 @@ export async function loadRunStatus(runId: string, options: RunStatusOptions = {
     progress = Math.round(((stageIndex + 1) / stageCount) * 100)
   }
 
+  // Phase 1 — read sandbox_report.json if present
+  const sandboxReportJson = await readJsonIfExists(path.join(runDir, 'sandbox_report.json')) as Record<string, unknown> | null
+
+  // Read acceptance_checks from request.json for display
+  let acceptanceChecks: string[] | undefined
+  const requestJson = await readJsonIfExists(path.join(runDir, 'request.json')) as Record<string, unknown> | null
+  if (Array.isArray(requestJson?.acceptance_checks)) {
+    acceptanceChecks = (requestJson.acceptance_checks as unknown[]).map(String)
+  }
+
   return {
     runId,
     jobType: jobType ? String(jobType) : undefined,
@@ -414,5 +424,9 @@ export async function loadRunStatus(runId: string, options: RunStatusOptions = {
     links,
     errors: Array.isArray(runStateJson?.errors) ? runStateJson.errors : undefined,
     warnings: Array.isArray(runStateJson?.warnings) ? runStateJson.warnings : undefined,
+    acceptanceChecks,
+    verificationStatus: sandboxReportJson?.verificationStatus as RunStatusResponse['verificationStatus'] | undefined,
+    loopIteration: typeof sandboxReportJson?.loopIteration === 'number' ? sandboxReportJson.loopIteration : undefined,
+    sandboxReport: sandboxReportJson ? sandboxReportJson as RunStatusResponse['sandboxReport'] : undefined,
   }
 }

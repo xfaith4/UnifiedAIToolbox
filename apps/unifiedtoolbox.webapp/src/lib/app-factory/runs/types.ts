@@ -47,4 +47,23 @@ export type RunStatusResponse = {
   links?: { pr_url?: string; repo_url?: string }
   errors?: string[]
   warnings?: string[]
+  // Phase 1 — Verification fields
+  acceptanceChecks?: string[]
+  verificationStatus?: 'passed' | 'failed' | 'partial' | 'deferred' | 'pending'
+  loopIteration?: number
+  sandboxReport?: {
+    generatedAt: string
+    verificationStatus: 'passed' | 'failed' | 'partial' | 'deferred' | 'pending'
+    loopIteration: number
+    checks: Array<{
+      check: string
+      evaluator: string
+      result: 'passed' | 'failed' | 'deferred'
+      details: string
+      data?: Record<string, unknown>
+    }>
+    passedCount: number
+    failedCount: number
+    deferredCount: number
+  }
 }
