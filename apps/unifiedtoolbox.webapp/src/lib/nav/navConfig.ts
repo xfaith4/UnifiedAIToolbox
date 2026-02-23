@@ -7,12 +7,13 @@
 // ── Canonical routes (what the sidebar links to) ────────────────────────────
 export const ROUTES = {
   home: '/dashboard',          // canonical; /home redirects here
+  concierge: '/concierge',     // new Phase 1 — Concierge chat + Proposal
   prompts: '/prompts',
   agents: '/agents',
   tooling: '/mcp-library',     // canonical; sidebar label = "Tooling"
   playground: '/orchestrator', // canonical; /playground redirects here
   appFactory: '/engine',
-  runs: '/runs',               // new Runs list page
+  runs: '/runs',               // Runs list page
   reports: '/milestones',      // canonical; /reports redirects here
   settings: '/settings',
   help: '/help',               // global docs hub
@@ -41,6 +42,7 @@ export const NAV_LABELS = {
   // item labels
   items: {
     home: 'Home',
+    concierge: 'Concierge',      // Phase 1 — chat-first front door
     promptLibrary: 'Prompt Library',
     agentLibrary: 'Agent Library',
     tooling: 'Tooling',          // was "MCP Library"
@@ -55,6 +57,7 @@ export const NAV_LABELS = {
 // ── Page titles (used in <h1> inside each page) ──────────────────────────────
 export const PAGE_TITLES = {
   home: 'Home',
+  concierge: 'Concierge',
   prompts: 'Prompt Library',
   agents: 'Agent Library',
   tooling: 'Tooling (MCP)',

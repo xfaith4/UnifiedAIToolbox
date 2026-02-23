@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import { X, BookOpen, Lightbulb, Rocket, Wrench, HelpCircle } from 'lucide-react'
+import { X, BookOpen, Lightbulb, Rocket, Wrench, HelpCircle, Sliders } from 'lucide-react'
 
 interface DocsHubProps {
   open: boolean
@@ -167,6 +167,38 @@ export function DocsHub({ open, onClose }: DocsHubProps) {
                 <span>Review trends and gates in <strong className="text-white">Observe → Reports</strong>.</span>
               </li>
             </ol>
+          </Section>
+
+          {/* Concierge Modes */}
+          <Section icon={Sliders} title="Concierge Modes">
+            <div className="space-y-2 text-sm text-gray-300">
+              <p className="text-xs text-gray-400 mb-2">
+                Choose how the AI guides you when creating a proposal.
+              </p>
+              <details className="rounded-xl border border-gray-700 bg-gray-800/50 px-3 py-2">
+                <summary className="cursor-pointer font-medium text-gray-200 hover:text-white">
+                  Guided / Confident / Hands-off
+                </summary>
+                <div className="mt-2 space-y-2">
+                  <p className="text-xs text-gray-400">
+                    <strong className="text-gray-200">Guided</strong> — asks 2–3 clarifying questions
+                    before proposing. Best for complex or ambiguous tasks.
+                  </p>
+                  <p className="text-xs text-gray-400">
+                    <strong className="text-gray-200">Confident</strong> — one clarifying turn then
+                    a proposal. The balanced default.
+                  </p>
+                  <p className="text-xs text-gray-400">
+                    <strong className="text-gray-200">Hands-off</strong> — generates a proposal on
+                    the first message. Best for experienced users with clear goals.
+                  </p>
+                  <p className="mt-1 text-[11px] text-gray-500">
+                    Change mode in <strong className="text-gray-400">Settings → Concierge Mode</strong>,
+                    or use the toggle above the Concierge chat input.
+                  </p>
+                </div>
+              </details>
+            </div>
           </Section>
 
           {/* Troubleshooting */}
