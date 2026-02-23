@@ -5,7 +5,15 @@
       "Bash(git add:*)",
       "Bash(git push:*)",
       "Bash(gh auth status:*)",
-      "Bash(git pull:*)"
+      "Bash(git pull:*)",
+      "Bash(git commit:*)",
+      "Bash(gh pr create:*)",
+      "Bash(cmd /c:*)",
+      "Bash(winpty gh --version)",
+      "Read(//c/Program Files/**)",
+      "Read(//g/Development/99_Clones/UnifiedAIToolbox-1/**)",
+      "Bash(npx --no-workspaces tsc:*)",
+      "Bash(\"g:/Development/99_Clones/UnifiedAIToolbox-1/apps/unifiedtoolbox.webapp/node_modules/.bin/tsc\" --noEmit --project \"g:/Development/99_Clones/UnifiedAIToolbox-1/apps/unifiedtoolbox.webapp/tsconfig.json\")"
     ]
   }
 }

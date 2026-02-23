@@ -1,6 +1,43 @@
 import type { AgentInstruction } from './agents'
 import type { PromptItem } from './prompts'
 
+// ── Phase 3: Checkpoint types ─────────────────────────────────────────────────
+
+export interface CheckpointRecord {
+  id: string                   // "{agent}:{question[:40]}"
+  agent: string
+  question: string
+  options: string[]
+  defaultOption: string
+  requestedAt: string
+  response: string | null      // null = not yet answered
+  respondedAt: string | null
+  resolvedBy: 'human' | 'timeout' | null
+}
+
+// ── Phase 1: Verification / Sandbox types ─────────────────────────────────────
+
+export type VerificationResult = 'passed' | 'failed' | 'deferred'
+export type VerificationStatus = 'passed' | 'failed' | 'partial' | 'deferred' | 'pending'
+
+export interface SandboxCheck {
+  check: string              // original acceptance check string from the proposal
+  evaluator: string          // which evaluator ran (e.g. "commissioner_score")
+  result: VerificationResult
+  details: string            // human-readable explanation
+  data?: Record<string, unknown> // raw data used for evaluation
+}
+
+export interface SandboxReport {
+  generatedAt: string
+  verificationStatus: VerificationStatus
+  loopIteration: number
+  checks: SandboxCheck[]
+  passedCount: number
+  failedCount: number
+  deferredCount: number
+}
+
 /**
  * Event in an orchestration run's timeline
  */
@@ -42,8 +79,16 @@ export interface OrchestrationRun {
   // Execution context
   model?: string
   repoRoot?: string
+  runDir?: string
   notes?: string
-  
+  errorDetail?: string
+
+  // Phase 1 — Verification
+  acceptanceChecks?: string[]
+  verificationStatus?: VerificationStatus
+  loopIteration?: number
+  sandboxReport?: SandboxReport
+
   // Output
   output?: string
   tokens?: {

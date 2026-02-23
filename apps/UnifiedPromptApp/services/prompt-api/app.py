@@ -257,6 +257,7 @@ def _get_execution_token() -> Optional[str]:
 BRIDGE_DIR = settings.bridge_dir
 BRIDGE_RUN_DIR = BRIDGE_DIR / "runs"
 BRIDGE_RUN_DIR.mkdir(parents=True, exist_ok=True)
+KNOWLEDGE_DB_PATH = BRIDGE_DIR / "knowledge_base.json"  # Phase 2: Agent Knowledge Base
 PS_REFINER = BRIDGE_DIR / "OpenAI_Refiner.ps1"
 # Prefer in-repo orchestrator; fallback to external path or env override
 def _resolve_env_path(env_key: str, default_path: pathlib.Path) -> pathlib.Path:
@@ -2702,6 +2703,13 @@ class OrchestrationRequest(BaseModel):
     max_iterations: Optional[int] = None
     mcp_allowed_servers: List[str] = Field(default_factory=list)
     mcp_allowed_collections: List[str] = Field(default_factory=list)
+    acceptance_checks: List[str] = Field(default_factory=list)  # Phase 1: Verifier
+
+
+class CheckpointResponseRequest(BaseModel):
+    """Phase 3: Payload for responding to a mid-run human checkpoint."""
+    response: str                        # selected option or free-text answer
+    agent: Optional[str] = None          # which agent requested the checkpoint (for validation)
 
 
 def _create_run_allowlist_if_requested(run_id: str, req: OrchestrationRequest) -> Optional[str]:
@@ -2852,6 +2860,10 @@ def orchestrate_run(
             {"ts": now_iso(), "type": "status", "message": "queued"},
         ],
         "scratchpad": [],
+        "acceptance_checks": req.acceptance_checks,
+        "verification_status": "pending" if req.acceptance_checks else None,
+        "loop_iteration": 0,
+        "checkpoints": [],       # Phase 3: mid-run human decision log
     }
     path = BRIDGE_RUN_DIR / f"{run_id}.json"
     path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
@@ -2993,8 +3005,404 @@ def orchestrate_run(
             poller = threading.Thread(target=_poll_status, daemon=True)
             poller.start()
 
+            # ── Overseer ──────────────────────────────────────────────────────
+            # Monitors orchestration health independently of the goal.
+            # Emits overseer:* events to the manifest and writes overseer_advisory.json.
+            # Never surfaces findings to the end user — advises Commissioner only.
+            AGENT_STUCK_WARN_S = 60
+            AGENT_STUCK_CRITICAL_S = 180
+            advisory_path = out_dir / "overseer_advisory.json"
+
+            def _oversee():
+                advisory = {
+                    "run_id": run_id,
+                    "generated_at": now_iso(),
+                    "observations": [],
+                    "commissioner_directives": [],
+                }
+
+                def _save_advisory():
+                    try:
+                        advisory_path.write_text(json.dumps(advisory, indent=2), encoding="utf-8")
+                    except Exception as _e:
+                        print(f"[overseer] advisory write failed: {_e}", file=sys.stderr)
+
+                def _observe(severity, agent, finding, duration_s, directive):
+                    ts = now_iso()
+                    obs = {"ts": ts, "severity": severity, "finding": finding}
+                    if agent:
+                        obs["agent"] = agent
+                    if duration_s is not None:
+                        obs["duration_s"] = round(duration_s, 1)
+                    if directive:
+                        obs["suggested_directive"] = directive
+                    advisory["observations"].append(obs)
+                    if directive:
+                        advisory["commissioner_directives"].append({"ts": ts, "directive": directive})
+                    _save_advisory()
+                    msg = f"[{agent}] {finding}" if agent else finding
+                    if duration_s is not None:
+                        msg += f" ({duration_s:.0f}s)"
+                    if directive:
+                        msg += f" — {directive}"
+                    _append_events([{"ts": ts, "type": f"overseer:{severity}", "message": msg}])
+
+                _append_events([{"ts": now_iso(), "type": "overseer:info", "message": "Overseer monitoring started"}])
+
+                agent_working_since: Dict[str, float] = {}
+                warned_agents: set = set()
+                checked_agents: set = set()  # agents whose .txt output has been inspected
+
+                # ── Phase 3: Checkpoint state ──────────────────────────────────
+                CHECKPOINT_TIMEOUT_S = 300          # 5 minutes before auto-resolve
+                checkpoint_pending_path = out_dir / "checkpoint_pending.json"
+                checkpoint_response_path = out_dir / "checkpoint_response.json"
+                active_checkpoint_key: Optional[str] = None  # "{agent}:{question[:40]}"
+                checkpoint_started_at: Optional[float] = None
+
+                def _write_checkpoint_pending(agent_name: str, question: str, options: list, default_opt: str) -> None:
+                    """Write checkpoint_pending.json so agents and the UI know to pause."""
+                    nonlocal active_checkpoint_key, checkpoint_started_at
+                    key = f"{agent_name}:{question[:40]}"
+                    active_checkpoint_key = key
+                    checkpoint_started_at = time.time()
+                    record = {
+                        "run_id": run_id,
+                        "agent": agent_name,
+                        "question": question,
+                        "options": options,
+                        "default_option": default_opt,
+                        "requested_at": now_iso(),
+                        "timeout_s": CHECKPOINT_TIMEOUT_S,
+                    }
+                    try:
+                        checkpoint_pending_path.write_text(json.dumps(record, indent=2), encoding="utf-8")
+                    except Exception as _e:
+                        print(f"[overseer] checkpoint_pending write failed: {_e}", file=sys.stderr)
+                    # Update manifest: status → awaiting_input, append to checkpoints[]
+                    def _apply(d):
+                        d["status"] = "awaiting_input"
+                        d.setdefault("checkpoints", []).append({
+                            "id": key,
+                            "agent": agent_name,
+                            "question": question,
+                            "options": options,
+                            "default_option": default_opt,
+                            "requested_at": record["requested_at"],
+                            "response": None,
+                            "responded_at": None,
+                            "resolved_by": None,
+                        })
+                        d.setdefault("events", []).append({
+                            "ts": now_iso(),
+                            "type": "checkpoint:pending",
+                            "message": f"[{agent_name}] {question}",
+                        })
+                        return d
+                    _update_manifest(_apply)
+
+                def _resolve_checkpoint(response: str, resolved_by: str) -> None:
+                    """Resolve active checkpoint — write response file and update manifest."""
+                    nonlocal active_checkpoint_key, checkpoint_started_at
+                    key = active_checkpoint_key
+                    active_checkpoint_key = None
+                    checkpoint_started_at = None
+                    try:
+                        checkpoint_response_path.write_text(
+                            json.dumps({"response": response, "resolved_by": resolved_by, "resolved_at": now_iso()}, indent=2),
+                            encoding="utf-8",
+                        )
+                    except Exception as _e:
+                        print(f"[overseer] checkpoint_response write failed: {_e}", file=sys.stderr)
+                    def _apply(d):
+                        d["status"] = "running"
+                        for cp in d.get("checkpoints", []):
+                            if cp.get("id") == key and cp.get("response") is None:
+                                cp["response"] = response
+                                cp["responded_at"] = now_iso()
+                                cp["resolved_by"] = resolved_by
+                                break
+                        ev_type = "checkpoint:timed_out" if resolved_by == "timeout" else "checkpoint:resolved"
+                        d.setdefault("events", []).append({
+                            "ts": now_iso(),
+                            "type": ev_type,
+                            "message": f"Checkpoint resolved by {resolved_by}: {response!r}",
+                        })
+                        return d
+                    _update_manifest(_apply)
+                # ── End Phase 3 checkpoint state ──────────────────────────────
+
+                def _build_error_directive(agent_name: str, error_msgs: list) -> str:
+                    """Produce a root-cause + remediation directive for an agent error."""
+                    for err in error_msgs:
+                        err_str = str(err)
+                        # Schema validation failure (ReviewGate pattern)
+                        if "output_schema" in err_str or "Required properties" in err_str:
+                            m = re.search(r'Required properties \["([^"]+)"\]', err_str)
+                            missing = f'"{m.group(1)}"' if m else "a required field"
+                            return (
+                                f"{agent_name} failed schema validation: an upstream agent returned JSON "
+                                f"that is missing the required property {missing}. "
+                                f"Root cause: the agent feeding {agent_name} did not include a top-level "
+                                f"{missing} key in its response. "
+                                f"Remediation: inspect the output_schema for {agent_name} and ensure all "
+                                f"upstream agents include {missing}. Consider adding explicit output "
+                                f"validation to the upstream agent's prompt."
+                            )
+                    error_summary = "; ".join(str(e) for e in error_msgs)
+                    return (
+                        f"{agent_name} produced an error-status output. "
+                        f"Error: {error_summary}. "
+                        f"Remediation: review {agent_name}'s prompt template and expected input format. "
+                        f"Verify that the model response conforms to the output_schema."
+                    )
+
+                def _analyze_agent_output(agent_name: str) -> None:
+                    """Read the agent's .txt output file; emit an observation if it contains errors."""
+                    agent_file = out_dir / f"{agent_name}.txt"
+                    if not agent_file.exists():
+                        return
+                    try:
+                        content = agent_file.read_text(encoding="utf-8")
+                        # Agents prefix their output with a status line (e.g. "✅ OpenAI call succeeded.")
+                        # Skip to the first JSON object.
+                        idx = content.find('{')
+                        if idx == -1:
+                            return
+                        try:
+                            output_json = json.loads(content[idx:])
+                        except json.JSONDecodeError:
+                            return
+                        status = output_json.get("status", "")
+                        errors = output_json.get("errors", [])
+                        has_error = status == "error" or (isinstance(errors, list) and len(errors) > 0)
+                        if not has_error:
+                            return
+                        error_msgs = errors if isinstance(errors, list) else []
+                        error_summary = (
+                            "; ".join(str(e) for e in error_msgs) if error_msgs else f"status={status!r}"
+                        )
+                        directive = _build_error_directive(agent_name, error_msgs)
+                        _observe(
+                            severity="warn",
+                            agent=agent_name,
+                            finding=f"agent_output_error: {error_summary}",
+                            duration_s=None,
+                            directive=directive,
+                        )
+                    except Exception as _e:
+                        print(f"[overseer] Output check failed for {agent_name}: {_e}", file=sys.stderr)
+
+                while not stop_event.is_set():
+                    stop_event.wait(3.0)
+                    if stop_event.is_set():
+                        break
+
+                    # Read latest agent statuses from agent_status.json
+                    if not status_file.exists():
+                        continue
+                    try:
+                        lines = status_file.read_text(encoding="utf-8").splitlines()
+                    except Exception:
+                        continue
+
+                    agent_latest: Dict[str, Dict[str, Any]] = {}
+                    for line in lines:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            rec = json.loads(line)
+                            name = rec.get("agent")
+                            if name:
+                                agent_latest[name] = rec
+                        except json.JSONDecodeError:
+                            continue
+
+                    now_ts = time.time()
+                    for name, rec in agent_latest.items():
+                        agent_status_val = rec.get("status", "")
+                        if agent_status_val == "working":
+                            if name not in agent_working_since:
+                                agent_working_since[name] = now_ts
+                            duration = now_ts - agent_working_since[name]
+                            if duration >= AGENT_STUCK_CRITICAL_S and f"{name}:critical" not in warned_agents:
+                                warned_agents.add(f"{name}:critical")
+                                _observe(
+                                    severity="critical",
+                                    agent=name,
+                                    finding="stuck_working_critical",
+                                    duration_s=duration,
+                                    directive=(
+                                        f"{name} has been working for {duration:.0f}s with no status change. "
+                                        f"Commissioner should consider synthesizing from available partial output "
+                                        f"or reducing scope and retrying."
+                                    ),
+                                )
+                            elif duration >= AGENT_STUCK_WARN_S and f"{name}:warn" not in warned_agents:
+                                warned_agents.add(f"{name}:warn")
+                                _observe(
+                                    severity="warn",
+                                    agent=name,
+                                    finding="stuck_working",
+                                    duration_s=duration,
+                                    directive=None,
+                                )
+                        else:
+                            agent_working_since.pop(name, None)
+
+                    # ── Agent output error check ──────────────────────────────────
+                    # Inspect newly completed agents' .txt files for error status.
+                    for name, rec in agent_latest.items():
+                        if rec.get("status") == "complete" and name not in checked_agents:
+                            checked_agents.add(name)
+                            _analyze_agent_output(name)
+
+                    # ── Phase 3: Checkpoint detection ─────────────────────────────
+                    if active_checkpoint_key is None:
+                        # Look for any agent that has requested a checkpoint
+                        for name, rec in agent_latest.items():
+                            if rec.get("checkpoint") is True and rec.get("status") != "complete":
+                                question = rec.get("question", "Agent requires a decision to continue.")
+                                options = rec.get("options") or ["Continue", "Abort"]
+                                default_opt = rec.get("default") or options[0]
+                                _write_checkpoint_pending(name, question, options, default_opt)
+                                _append_events([{
+                                    "ts": now_iso(),
+                                    "type": "checkpoint:pending",
+                                    "message": f"[{name}] waiting for human input: {question[:120]}",
+                                }])
+                                break
+                    else:
+                        # Checkpoint is active — check for response or timeout
+                        if checkpoint_response_path.exists():
+                            try:
+                                resp_data = json.loads(checkpoint_response_path.read_text(encoding="utf-8"))
+                                response_val = resp_data.get("response", "")
+                                resolved_by = resp_data.get("resolved_by", "human")
+                                _resolve_checkpoint(response_val, resolved_by)
+                                _append_events([{
+                                    "ts": now_iso(),
+                                    "type": "checkpoint:resolved",
+                                    "message": f"Human response received: {response_val!r}",
+                                }])
+                            except Exception as _cpe:
+                                print(f"[overseer] checkpoint response read error: {_cpe}", file=sys.stderr)
+                        elif checkpoint_started_at is not None:
+                            elapsed = time.time() - checkpoint_started_at
+                            if elapsed >= CHECKPOINT_TIMEOUT_S:
+                                # Load default from pending file and auto-resolve
+                                try:
+                                    pending_data = json.loads(checkpoint_pending_path.read_text(encoding="utf-8"))
+                                    default_val = pending_data.get("default_option", "Continue")
+                                except Exception:
+                                    default_val = "Continue"
+                                _resolve_checkpoint(default_val, "timeout")
+                                _append_events([{
+                                    "ts": now_iso(),
+                                    "type": "checkpoint:timed_out",
+                                    "message": f"Checkpoint timed out after {CHECKPOINT_TIMEOUT_S}s. Auto-resolved: {default_val!r}",
+                                }])
+                    # ── End Phase 3 checkpoint detection ──────────────────────────
+
+                # ── Final sweep (runs after subprocess exits) ──────────────────
+                try:
+                    run_data = safe_json_load(path, default={}, context=f"overseer_final:{run_id}")
+                    final_status = run_data.get("status", "")
+                    scratchpad = run_data.get("scratchpad", [])
+
+                    # Build agent completion map from scratchpad
+                    agent_completions: Dict[str, str] = {}
+                    for entry in scratchpad:
+                        a = entry.get("agent")
+                        s = entry.get("status")
+                        if a and s:
+                            agent_completions[a] = s
+                    all_agents_complete = bool(agent_completions) and all(
+                        v == "complete" for v in agent_completions.values()
+                    )
+                    synthesis_present = (
+                        (out_dir / "Final_Synthesis.html").exists()
+                        or (out_dir / "Final_Synthesis.txt").exists()
+                    )
+
+                    # ── Final output error sweep ──────────────────────────────────
+                    # Catch any agents that completed too quickly to be seen during polling.
+                    SKIP_FINAL_SWEEP = {"Final_Synthesis"}
+                    for agent_file in sorted(out_dir.glob("*.txt")):
+                        name = agent_file.stem
+                        if name not in checked_agents and name not in SKIP_FINAL_SWEEP:
+                            checked_agents.add(name)
+                            _analyze_agent_output(name)
+
+                    # STATUS RECLASSIFICATION
+                    # A CalledProcessError after all agents complete and synthesis exists
+                    # means the PowerShell wrapper exited non-zero for a non-critical reason
+                    # (e.g. stdout/stderr flush, non-fatal post-run hook).
+                    # Reclassify so the UI shows results rather than a red error state.
+                    if (
+                        final_status.startswith("error:CalledProcessError")
+                        and all_agents_complete
+                        and synthesis_present
+                    ):
+                        _append_events([{
+                            "ts": now_iso(),
+                            "type": "overseer:action",
+                            "message": (
+                                "Status reclassified from error:CalledProcessError → completed_with_errors. "
+                                "All agents completed and synthesis output is present; "
+                                "PowerShell exit code is non-critical."
+                            ),
+                        }])
+                        _update_manifest(lambda d: {
+                            **d,
+                            "status": "completed_with_errors",
+                            "overseer_reclassified": True,
+                            "overseer_original_status": final_status,
+                        })
+
+                    obs_count = len(advisory["observations"])
+                    directives_count = len(advisory.get("commissioner_directives", []))
+                    summary = (
+                        f"Overseer monitoring ended. "
+                        f"{obs_count} observation(s), {directives_count} directive(s). "
+                        f"All agents complete: {all_agents_complete}. "
+                        f"Synthesis present: {synthesis_present}."
+                    )
+                    _append_events([{"ts": now_iso(), "type": "overseer:info", "message": summary}])
+
+                    advisory["completed_at"] = now_iso()
+                    advisory["agent_completions"] = agent_completions
+                    advisory["all_agents_complete"] = all_agents_complete
+                    advisory["synthesis_present"] = synthesis_present
+                    advisory["final_status"] = final_status
+                    _save_advisory()
+                except Exception as _e:
+                    print(f"[overseer] Final sweep error: {_e}", file=sys.stderr)
+
+            overseer = threading.Thread(target=_oversee, daemon=True)
+            overseer.start()
+            # ── End Overseer ──────────────────────────────────────────────────
+
             if not ps_exe:
                 raise RuntimeError("PowerShell executable not found (pwsh or powershell)")
+
+            # ── Phase 2: Knowledge context injection ──────────────────────────
+            # Query similar past runs and prepend [KNOWLEDGE CONTEXT] to -Instruction
+            # so orchestration agents can learn from historical results.
+            knowledge_ctx = ""
+            if goal_text:
+                try:
+                    knowledge_ctx = build_knowledge_context(goal_text)
+                    if knowledge_ctx:
+                        _append_events([{
+                            "ts": now_iso(),
+                            "type": "info",
+                            "message": "Knowledge context injected from similar past runs.",
+                        }])
+                except Exception as _kce:
+                    print(f"[knowledge] Context build error: {_kce}", file=sys.stderr)
+            # ── End Phase 2 Knowledge context injection ───────────────────────
 
             data["events"].append({"ts": now_iso(), "type": "info", "message": f"Executing {ps1.name}"})
             path.write_text(json.dumps(data, indent=2), encoding="utf-8")
@@ -3016,8 +3424,9 @@ def orchestrate_run(
                     "-Model", manifest.get("model") or DEFAULT_MODEL,
                 ]
                 notes = manifest.get("notes")
-                if notes:
-                    args += ["-Instruction", notes]
+                instruction_parts = [p for p in [knowledge_ctx, notes] if p]
+                if instruction_parts:
+                    args += ["-Instruction", "\n\n".join(instruction_parts)]
                 args += [
                     "-OutputDir", str(out_dir),
                 ]
@@ -3033,7 +3442,206 @@ def orchestrate_run(
 
             stop_event.set()
             poller.join(timeout=2.0)
+            overseer.join(timeout=6.0)  # slightly longer — overseer does a final manifest sweep
             processed_status = _ingest_status_file(status_file, processed_status)
+
+            # ── Phase 1 Verifier ──────────────────────────────────────────────
+            # Evaluates each acceptance check from the proposal against the
+            # run_dir output files. Runs after Overseer so reclassifications
+            # are already applied. Writes sandbox_report.json.
+            def _verify():
+                checks_to_run = req.acceptance_checks
+                if not checks_to_run:
+                    return
+
+                sandbox_report_path = out_dir / "sandbox_report.json"
+
+                def _parse_agent_json(agent_name: str) -> Optional[Dict[str, Any]]:
+                    agent_file = out_dir / f"{agent_name}.txt"
+                    if not agent_file.exists():
+                        return None
+                    try:
+                        content = agent_file.read_text(encoding="utf-8")
+                        idx = content.find('{')
+                        return json.loads(content[idx:]) if idx != -1 else None
+                    except Exception:
+                        return None
+
+                def _eval_commissioner_score():
+                    d = _parse_agent_json("Commissioner")
+                    if d is None:
+                        return "deferred", "Commissioner output not found", {}
+                    score = d.get("value_score")
+                    rec = d.get("recommendation", "")
+                    if score is None:
+                        return "deferred", "value_score not found in Commissioner output", {}
+                    passed = int(score) >= 7
+                    return (
+                        "passed" if passed else "failed",
+                        f"Commissioner score: {score}/10, recommendation: {rec}",
+                        {"value_score": score, "recommendation": rec},
+                    )
+
+                def _eval_critic_blockers():
+                    d = _parse_agent_json("Critic")
+                    if d is None:
+                        return "deferred", "Critic output not found", {}
+                    blockers = d.get("blockers", [])
+                    if isinstance(blockers, list) and len(blockers) > 0:
+                        return (
+                            "failed",
+                            f"{len(blockers)} blocker(s): {'; '.join(str(b) for b in blockers[:3])}",
+                            {"blockers": blockers},
+                        )
+                    return "passed", "No blockers found in Critic output", {"blockers": []}
+
+                def _eval_reviewgate():
+                    d = _parse_agent_json("ReviewGate")
+                    if d is None:
+                        return "deferred", "ReviewGate output not found", {}
+                    status = d.get("status", "")
+                    errors = d.get("errors", [])
+                    if status == "error" or (isinstance(errors, list) and len(errors) > 0):
+                        return (
+                            "failed",
+                            f"ReviewGate status: {status!r}. Errors: {'; '.join(str(e) for e in errors[:2])}",
+                            {"status": status, "errors": errors},
+                        )
+                    return "passed", f"ReviewGate passed (status: {status or 'ok'})", {"status": status}
+
+                def _eval_agent_completion():
+                    if not status_file.exists():
+                        return "deferred", "agent_status.json not found", {}
+                    try:
+                        lines = status_file.read_text(encoding="utf-8").splitlines()
+                        agent_latest: Dict[str, str] = {}
+                        for line in lines:
+                            line = line.strip()
+                            if not line:
+                                continue
+                            try:
+                                rec = json.loads(line)
+                                name = rec.get("agent")
+                                if name:
+                                    agent_latest[name] = rec.get("status", "unknown")
+                            except json.JSONDecodeError:
+                                continue
+                        incomplete = [n for n, s in agent_latest.items() if s != "complete"]
+                        if incomplete:
+                            return (
+                                "failed",
+                                f"Agents not complete: {', '.join(incomplete)}",
+                                {"incomplete": incomplete, "all": agent_latest},
+                            )
+                        return "passed", f"All {len(agent_latest)} agents completed", {"agents": agent_latest}
+                    except Exception as _e:
+                        return "deferred", f"Error reading agent_status.json: {_e}", {}
+
+                def _eval_synthesis_present():
+                    if (out_dir / "Final_Synthesis.html").exists():
+                        return "passed", "Final_Synthesis.html is present", {"file": "Final_Synthesis.html"}
+                    if (out_dir / "Final_Synthesis.txt").exists():
+                        return "passed", "Final_Synthesis.txt is present", {"file": "Final_Synthesis.txt"}
+                    return "failed", "No Final_Synthesis output found in run directory", {}
+
+                EVALUATOR_MAP = {
+                    "commissioner_score": _eval_commissioner_score,
+                    "critic_blockers": _eval_critic_blockers,
+                    "reviewgate_status": _eval_reviewgate,
+                    "agent_completion": _eval_agent_completion,
+                    "synthesis_present": _eval_synthesis_present,
+                }
+
+                def _pick_evaluator(check_text: str) -> str:
+                    text = check_text.lower()
+                    if any(k in text for k in ("commissioner", "value score", "score ≥", "score >=")):
+                        return "commissioner_score"
+                    if any(k in text for k in ("blocker", "high-severity", "high severity", "critical finding")):
+                        return "critic_blockers"
+                    if any(k in text for k in ("review gate", "reviewgate", "schema", "output schema")):
+                        return "reviewgate_status"
+                    if any(k in text for k in ("all agent", "agents complete", "agent completion")):
+                        return "agent_completion"
+                    if any(k in text for k in ("synthesis", "output present", "deliverable", "final output")):
+                        return "synthesis_present"
+                    return "deferred_code_execution"  # needs Phase 4
+
+                results = []
+                for check_text in checks_to_run:
+                    evaluator_key = _pick_evaluator(check_text)
+                    evaluator_fn = EVALUATOR_MAP.get(evaluator_key)
+                    if evaluator_fn is None:
+                        results.append({
+                            "check": check_text,
+                            "evaluator": evaluator_key,
+                            "result": "deferred",
+                            "details": "Requires code execution — deferred to Phase 4 (Artifact Pipeline).",
+                            "data": {},
+                        })
+                        continue
+                    try:
+                        v_result, v_details, v_data = evaluator_fn()
+                    except Exception as _e:
+                        v_result, v_details, v_data = "deferred", f"Evaluator error: {_e}", {}
+                    results.append({
+                        "check": check_text,
+                        "evaluator": evaluator_key,
+                        "result": v_result,
+                        "details": v_details,
+                        "data": v_data,
+                    })
+
+                n_passed  = sum(1 for r in results if r["result"] == "passed")
+                n_failed  = sum(1 for r in results if r["result"] == "failed")
+                n_deferred = sum(1 for r in results if r["result"] == "deferred")
+
+                if n_failed > 0:
+                    v_status = "failed"
+                elif n_passed > 0 and n_deferred == 0:
+                    v_status = "passed"
+                elif n_passed > 0:
+                    v_status = "partial"
+                else:
+                    v_status = "deferred"
+
+                sandbox_report = {
+                    "generated_at": now_iso(),
+                    "verification_status": v_status,
+                    "loop_iteration": 0,
+                    "checks": results,
+                    "passed_count": n_passed,
+                    "failed_count": n_failed,
+                    "deferred_count": n_deferred,
+                }
+                try:
+                    sandbox_report_path.write_text(json.dumps(sandbox_report, indent=2), encoding="utf-8")
+                except Exception as _e:
+                    print(f"[verifier] Failed to write sandbox_report.json: {_e}", file=sys.stderr)
+
+                _append_events([{
+                    "ts": now_iso(),
+                    "type": f"verify:{v_status}",
+                    "message": (
+                        f"Verification {v_status}: {n_passed} passed, {n_failed} failed, "
+                        f"{n_deferred} deferred out of {len(results)} check(s)."
+                    ),
+                }])
+                _update_manifest(lambda d: {
+                    **d,
+                    "verification_status": v_status,
+                    "sandbox_report": sandbox_report,
+                })
+
+            _verify()
+            # ── End Phase 1 Verifier ──────────────────────────────────────────
+
+            # ── Phase 2: Knowledge ingestion ──────────────────────────────────
+            # Runs after _verify() so sandbox_report data is in the manifest.
+            try:
+                ingest_run_knowledge(run_id, out_dir, path)
+            except Exception as _ke:
+                print(f"[knowledge] Post-run ingestion error: {_ke}", file=sys.stderr)
+            # ── End Phase 2 Knowledge ingestion ──────────────────────────────
 
             # Try to populate final_synthesis from various sources
             final_synthesis_text = None
@@ -3220,6 +3828,239 @@ def process_orchestrator_tasks(
     return process_orchestrator_queue(limit=limit, run_mode=run_mode)
 
 
+# ── Phase 2: Agent Knowledge Base ────────────────────────────────────────────
+
+_knowledge_lock = threading.Lock()
+
+
+def _kb_tokenize(text: str) -> List[str]:
+    """Return meaningful lowercase tokens (length > 3) from text."""
+    return [t for t in re.split(r"\W+", text.lower()) if len(t) > 3]
+
+
+def _kb_similarity(a: List[str], b: List[str]) -> float:
+    """Jaccard-like overlap: shared tokens / max(|A|, |B|)."""
+    if not a or not b:
+        return 0.0
+    sa, sb = set(a), set(b)
+    return len(sa & sb) / max(len(sa), len(sb))
+
+
+def _kb_load() -> List[Dict[str, Any]]:
+    """Load all knowledge entries from disk (thread-safe read)."""
+    with _knowledge_lock:
+        if not KNOWLEDGE_DB_PATH.exists():
+            return []
+        try:
+            return json.loads(KNOWLEDGE_DB_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            return []
+
+
+def _kb_save(entries: List[Dict[str, Any]]) -> None:
+    """Atomically overwrite the knowledge base file (thread-safe)."""
+    tmp = KNOWLEDGE_DB_PATH.with_suffix(".tmp")
+    with _knowledge_lock:
+        try:
+            tmp.write_text(json.dumps(entries, indent=2), encoding="utf-8")
+            tmp.replace(KNOWLEDGE_DB_PATH)
+        except Exception as _e:
+            print(f"[knowledge] Save failed: {_e}", file=sys.stderr)
+            if tmp.exists():
+                tmp.unlink(missing_ok=True)
+
+
+def _kb_parse_agent_json(out_dir: pathlib.Path, agent_name: str) -> Optional[Dict[str, Any]]:
+    f = out_dir / f"{agent_name}.txt"
+    if not f.exists():
+        return None
+    try:
+        content = f.read_text(encoding="utf-8")
+        idx = content.find("{")
+        return json.loads(content[idx:]) if idx != -1 else None
+    except Exception:
+        return None
+
+
+def ingest_run_knowledge(run_id: str, out_dir: pathlib.Path, manifest_path: pathlib.Path) -> None:
+    """
+    Extract structured learning from a completed run and append it to the knowledge base.
+    Called after _verify() so verification results are available in the manifest.
+    """
+    try:
+        manifest = safe_json_load(manifest_path, default={}, context=f"knowledge_ingest:{run_id}")
+        goal = manifest.get("goal") or ""
+        if not goal:
+            return  # goal-less runs (prompt-id only) aren't useful for knowledge
+
+        comm = _kb_parse_agent_json(out_dir, "Commissioner")
+        critic = _kb_parse_agent_json(out_dir, "Critic")
+        researcher = _kb_parse_agent_json(out_dir, "Researcher")
+
+        entry: Dict[str, Any] = {
+            "run_id": run_id,
+            "ingested_at": now_iso(),
+            "goal": goal,
+            "goal_tokens": _kb_tokenize(goal),
+            "status": manifest.get("status", "unknown"),
+            "verification_status": manifest.get("verification_status"),
+            "agents": manifest.get("agents", []),
+            "model": manifest.get("model", ""),
+            "synthesis_present": (
+                (out_dir / "Final_Synthesis.html").exists()
+                or (out_dir / "Final_Synthesis.txt").exists()
+            ),
+            # Commissioner
+            "commissioner_score": comm.get("value_score") if comm else None,
+            "commissioner_recommendation": comm.get("recommendation") if comm else None,
+            "commissioner_rationale": comm.get("rationale", "") if comm else "",
+            "commissioner_improvements": comm.get("improvements", []) if comm else [],
+            # Critic
+            "critic_blockers": critic.get("blockers", []) if critic else [],
+            "critic_ratings": critic.get("ratings", {}) if critic else {},
+            # Researcher
+            "researcher_facts": researcher.get("facts", [])[:5] if researcher else [],  # top 5
+            # Overseer
+            "overseer_warnings": [
+                ev["message"]
+                for ev in manifest.get("events", [])
+                if ev.get("type", "").startswith("overseer:warn")
+                or ev.get("type", "").startswith("overseer:critical")
+            ],
+            # Acceptance check summary
+            "acceptance_checks_summary": {
+                "passed": manifest.get("sandbox_report", {}).get("passed_count", 0),
+                "failed": manifest.get("sandbox_report", {}).get("failed_count", 0),
+                "deferred": manifest.get("sandbox_report", {}).get("deferred_count", 0),
+            } if manifest.get("sandbox_report") else None,
+        }
+
+        entries = _kb_load()
+        # Replace if this run is already indexed (re-run after retry)
+        entries = [e for e in entries if e.get("run_id") != run_id]
+        entries.insert(0, entry)
+        _kb_save(entries)
+        print(f"[knowledge] Ingested run {run_id} (score={entry['commissioner_score']})", file=sys.stderr)
+    except Exception as _e:
+        print(f"[knowledge] Ingestion failed for {run_id}: {_e}", file=sys.stderr)
+
+
+def query_knowledge_similar(goal: str, limit: int = 4) -> List[Dict[str, Any]]:
+    """Return up to `limit` knowledge entries with goals most similar to `goal`."""
+    tokens = _kb_tokenize(goal)
+    if not tokens:
+        return []
+    entries = _kb_load()
+    scored = [
+        (e, _kb_similarity(tokens, e.get("goal_tokens") or _kb_tokenize(e.get("goal", ""))))
+        for e in entries
+    ]
+    return [
+        {**e, "_similarity": round(s, 3)}
+        for e, s in sorted(scored, key=lambda x: -x[1])
+        if s >= 0.2
+    ][:limit]
+
+
+def build_knowledge_context(goal: str) -> str:
+    """
+    Build a [KNOWLEDGE CONTEXT] block to prepend to the -Instruction parameter
+    so orchestration agents can learn from past runs.
+    Returns empty string if no relevant history exists.
+    """
+    similar = query_knowledge_similar(goal, limit=3)
+    if not similar:
+        return ""
+
+    lines = [
+        "[KNOWLEDGE CONTEXT FROM SIMILAR PAST RUNS]",
+        "The following historical runs are relevant to your goal.",
+        "Apply these learnings to improve output quality.",
+        "",
+    ]
+    for i, e in enumerate(similar, 1):
+        pct = round(e["_similarity"] * 100)
+        lines.append(f"Run {i} ({pct}% match): \"{e['goal'][:120]}\"")
+        score = e.get("commissioner_score")
+        rec = e.get("commissioner_recommendation", "")
+        if score is not None:
+            lines.append(f"  Commissioner: {score}/10 ({rec})")
+        rationale = e.get("commissioner_rationale", "")
+        if rationale:
+            lines.append(f"  Rationale: {rationale[:200]}")
+        blockers = e.get("critic_blockers", [])
+        if blockers:
+            lines.append(f"  Critic blockers: {'; '.join(str(b) for b in blockers[:2])}")
+        improvements = e.get("commissioner_improvements", [])
+        if improvements:
+            lines.append(f"  Required improvements: {'; '.join(str(v) for v in improvements[:2])}")
+        warnings = e.get("overseer_warnings", [])
+        if warnings:
+            lines.append(f"  Overseer warnings: {warnings[0][:150]}")
+        lines.append("")
+    lines.append("[END KNOWLEDGE CONTEXT — address the patterns above in this run]")
+    return "\n".join(lines)
+
+
+def get_run_dna() -> List[Dict[str, Any]]:
+    """
+    Aggregate knowledge base entries into performance stats per agent configuration.
+    Returns list of { agent_config, avg_score, run_count, goal_examples }.
+    """
+    entries = _kb_load()
+    buckets: Dict[str, Dict[str, Any]] = {}
+    for e in entries:
+        score = e.get("commissioner_score")
+        if score is None:
+            continue
+        config_key = "|".join(sorted(e.get("agents") or []))
+        if not config_key:
+            continue
+        if config_key not in buckets:
+            buckets[config_key] = {
+                "agent_config": sorted(e.get("agents") or []),
+                "scores": [],
+                "goal_examples": [],
+            }
+        buckets[config_key]["scores"].append(int(score))
+        if len(buckets[config_key]["goal_examples"]) < 3:
+            buckets[config_key]["goal_examples"].append(e["goal"][:80])
+
+    dna = []
+    for key, b in buckets.items():
+        scores = b["scores"]
+        dna.append({
+            "agent_config": b["agent_config"],
+            "agent_config_key": key,
+            "run_count": len(scores),
+            "avg_score": round(sum(scores) / len(scores), 1),
+            "max_score": max(scores),
+            "min_score": min(scores),
+            "goal_examples": b["goal_examples"],
+        })
+    return sorted(dna, key=lambda x: -x["avg_score"])
+
+
+# ── Knowledge API endpoints ───────────────────────────────────────────────────
+
+@app.get("/knowledge/entries")
+def list_knowledge_entries(limit: int = 50):
+    """Return the most recent knowledge entries."""
+    return {"entries": _kb_load()[:limit], "total": len(_kb_load())}
+
+
+@app.get("/knowledge/similar")
+def knowledge_similar(goal: str, limit: int = 4):
+    """Return knowledge entries with goals similar to the query."""
+    return {"entries": query_knowledge_similar(goal, limit)}
+
+
+@app.get("/knowledge/run-dna")
+def knowledge_run_dna():
+    """Return aggregated performance stats per agent configuration."""
+    return {"dna": get_run_dna()}
+
+
 @app.get("/orchestrate/runs")
 def list_orchestration_runs():
     runs = []
@@ -3253,6 +4094,68 @@ def get_orchestration_run(run_id: str):
         raise HTTPException(status_code=500, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to read run: {exc}")
+
+
+@app.post("/orchestrate/run/{run_id}/checkpoint")
+def respond_to_checkpoint(run_id: str, body: CheckpointResponseRequest):
+    """
+    Phase 3: Submit a human response to a mid-run checkpoint.
+    Writes checkpoint_response.json to the run_dir so the Overseer
+    can detect it and resolve the checkpoint.
+    """
+    run_path = BRIDGE_RUN_DIR / f"{run_id}.json"
+    if not run_path.exists():
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    try:
+        manifest = safe_json_load(run_path, default={}, context=f"checkpoint_respond:{run_id}")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to read run manifest: {exc}")
+
+    run_dir = manifest.get("run_dir")
+    if not run_dir:
+        raise HTTPException(status_code=400, detail="Run has no run_dir in manifest")
+
+    out_dir = pathlib.Path(run_dir)
+    checkpoint_pending_path = out_dir / "checkpoint_pending.json"
+    checkpoint_response_path = out_dir / "checkpoint_response.json"
+
+    if not checkpoint_pending_path.exists():
+        raise HTTPException(status_code=409, detail="No active checkpoint pending for this run")
+    if checkpoint_response_path.exists():
+        raise HTTPException(status_code=409, detail="Checkpoint already responded to")
+
+    # Validate agent if provided
+    if body.agent:
+        try:
+            pending = json.loads(checkpoint_pending_path.read_text(encoding="utf-8"))
+            if pending.get("agent") != body.agent:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Checkpoint is from agent '{pending.get('agent')}', not '{body.agent}'",
+                )
+        except HTTPException:
+            raise
+        except Exception:
+            pass  # ignore parse errors here; Overseer is authoritative
+
+    # Write response file — Overseer will pick this up within 3s
+    response_payload = {
+        "response": body.response,
+        "resolved_by": "human",
+        "resolved_at": now_iso(),
+    }
+    try:
+        checkpoint_response_path.write_text(json.dumps(response_payload, indent=2), encoding="utf-8")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to write checkpoint response: {exc}")
+
+    return {
+        "status": "accepted",
+        "run_id": run_id,
+        "response": body.response,
+        "message": "Checkpoint response queued. Run will resume within a few seconds.",
+    }
 
 
 @app.get("/orchestrate/run/{run_id}/log")

@@ -141,4 +141,6 @@ export interface DraftRunConfig {
   activeRunId?: string
   /** Per-tool permissions configured by the user before this run started. */
   toolPermissions?: ToolPermission[]
+  /** Acceptance checks from the Proposal — evaluated by the post-run Verifier (Phase 1). */
+  acceptanceChecks?: string[]
 }

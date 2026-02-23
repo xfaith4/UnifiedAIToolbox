@@ -2,8 +2,8 @@
 
 import { use, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { ORCHESTRATOR_API_BASE } from '@/lib/services/orchestratorApi'
-import type { RepoOrchestrationReport } from '@/lib/types/orchestrator'
+import { ORCHESTRATOR_API_BASE, fetchOrchestrationRun, fetchOrchestrationRunLog } from '@/lib/services/orchestratorApi'
+import type { OrchestrationRun, RepoOrchestrationReport } from '@/lib/types/orchestrator'
 import { nodeMatchesFilter, renderMarkdown } from '@/lib/artifacts/viewerUtils'
 
 type ArtifactItem = {
@@ -120,6 +120,9 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
   const [patchDiff, setPatchDiff] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // Fallback: orchestrator (non-repo) run
+  const [orchRun, setOrchRun] = useState<OrchestrationRun | null>(null)
+  const [orchLog, setOrchLog] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<TabKey>('report')
   const [reportFilter, setReportFilter] = useState('')
   const [findingsFilter, setFindingsFilter] = useState('')
@@ -159,6 +162,8 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
       setPatchDiff('')
       setArtifacts([])
       setActiveTab('report')
+      setOrchRun(null)
+      setOrchLog(null)
 
       if (!ORCHESTRATOR_API_BASE) {
         setError('Orchestrator API base is not configured.')
@@ -171,6 +176,24 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
           `${ORCHESTRATOR_API_BASE}/orchestrate/repo/${encodeURIComponent(runId)}/artifacts`
         )
         if (!listRes.ok) {
+          // 404 → this is an orchestrator run, not a repo run — load it via the other endpoint
+          if (listRes.status === 404) {
+            try {
+              const [run, logResult] = await Promise.allSettled([
+                fetchOrchestrationRun(runId),
+                fetchOrchestrationRunLog(runId),
+              ])
+              if (!cancelled) {
+                if (run.status === 'fulfilled') setOrchRun(run.value)
+                if (logResult.status === 'fulfilled') setOrchLog(logResult.value.log)
+                if (run.status === 'rejected') setError('Run not found.')
+              }
+            } catch {
+              if (!cancelled) setError('Run not found.')
+            }
+            if (!cancelled) setLoading(false)
+            return
+          }
           const text = await listRes.text().catch(() => '')
           throw new Error(text || `Failed to load artifacts (${listRes.status})`)
         }
@@ -303,6 +326,222 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
           </a>
         )}
       </div>
+    )
+  }
+
+  // ── Orchestrator run fallback view ────────────────────────────────────────────
+  if (!loading && orchRun) {
+    const isError = orchRun.status?.startsWith('error') || orchRun.status === 'failed'
+    const isRunning = orchRun.status && !['completed', 'failed', 'cancelled'].includes(orchRun.status) && !isError
+    const statusCls = orchRun.status === 'completed'
+      ? 'border-emerald-700 bg-emerald-900/30 text-emerald-100'
+      : isError
+        ? 'border-rose-700 bg-rose-900/30 text-rose-100'
+        : 'border-blue-700 bg-blue-900/30 text-blue-100'
+
+    // Separate agent activity events from run lifecycle events
+    const agentEvents = (orchRun.events ?? []).filter((ev) => ev.type.startsWith('agent:'))
+    const overseerEvents = (orchRun.events ?? []).filter((ev) => ev.type.startsWith('overseer:'))
+    const lifecycleEvents = (orchRun.events ?? []).filter(
+      (ev) => !ev.type.startsWith('agent:') && !ev.type.startsWith('overseer:') && ev.type !== 'debug'
+    )
+
+    const synthesisHtml = orchRun.runDir
+      ? toFileUrl(`${orchRun.runDir.replace(/\\/g, '/')}/Final_Synthesis.html`)
+      : null
+
+    return (
+      <main className="max-w-4xl space-y-6">
+        <div>
+          <Link href="/runs" className="text-xs text-slate-400 hover:text-slate-200">← Back to Runs</Link>
+          <h1 className="mt-2 text-2xl font-semibold">Run Detail</h1>
+          {orchRun.goal && <p className="mt-1 text-sm text-slate-400">{orchRun.goal}</p>}
+        </div>
+
+        <div className={`flex flex-wrap items-center gap-3 rounded-2xl border p-4 ${statusCls}`}>
+          <span className="text-sm font-semibold capitalize">{orchRun.status ?? 'unknown'}</span>
+          {isRunning && <span className="h-2 w-2 rounded-full bg-blue-400 animate-pulse" />}
+          <div className="ml-auto flex items-center gap-2">
+            {synthesisHtml && (
+              <a
+                href={synthesisHtml}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded border border-current px-2 py-1 text-xs opacity-80 hover:opacity-100"
+              >
+                View Output →
+              </a>
+            )}
+            <span className="font-mono text-xs opacity-50">{orchRun.id.slice(0, 20)}</span>
+          </div>
+        </div>
+
+        {isError && orchRun.errorDetail && (
+          <div className="rounded-2xl border border-rose-800 bg-rose-950/30 p-4 text-xs text-rose-200 space-y-1">
+            <div className="font-semibold text-rose-100">Error detail</div>
+            <pre className="whitespace-pre-wrap break-all opacity-80">{orchRun.errorDetail}</pre>
+          </div>
+        )}
+
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {orchRun.startedAt && (
+            <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-3 text-xs text-slate-300">
+              <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Started</div>
+              {new Date(orchRun.startedAt).toLocaleString()}
+            </div>
+          )}
+          {orchRun.completedAt && (
+            <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-3 text-xs text-slate-300">
+              <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Completed</div>
+              {new Date(orchRun.completedAt).toLocaleString()}
+            </div>
+          )}
+          {orchRun.runMode && (
+            <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-3 text-xs text-slate-300">
+              <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Mode</div>
+              {orchRun.runMode}
+            </div>
+          )}
+          {orchRun.model && (
+            <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-3 text-xs text-slate-300">
+              <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Model</div>
+              {orchRun.model}
+            </div>
+          )}
+        </div>
+
+        {/* ── Phase 1 Verification ── */}
+        {orchRun.sandboxReport && (
+          <div className="rounded-2xl border border-slate-700 bg-slate-900/50 p-4 space-y-3">
+            <div className="flex items-center gap-3">
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Verification</div>
+              {(() => {
+                const vs = orchRun.sandboxReport?.verificationStatus
+                const cls = vs === 'passed'
+                  ? 'bg-emerald-900/60 text-emerald-300 border-emerald-700'
+                  : vs === 'failed'
+                    ? 'bg-rose-900/60 text-rose-300 border-rose-700'
+                    : vs === 'partial'
+                      ? 'bg-amber-900/60 text-amber-300 border-amber-700'
+                      : 'bg-slate-800 text-slate-400 border-slate-700'
+                return (
+                  <span className={`rounded border px-2 py-0.5 text-[11px] font-medium ${cls}`}>
+                    {vs ?? 'pending'}
+                  </span>
+                )
+              })()}
+              <span className="ml-auto text-[11px] text-slate-600">
+                {orchRun.sandboxReport.passedCount} passed ·{' '}
+                {orchRun.sandboxReport.failedCount} failed ·{' '}
+                {orchRun.sandboxReport.deferredCount} deferred
+              </span>
+            </div>
+            <div className="space-y-2">
+              {orchRun.sandboxReport.checks.map((check, idx) => {
+                const res = check.result
+                const rowCls = res === 'passed'
+                  ? 'border-emerald-900/50 bg-emerald-950/20'
+                  : res === 'failed'
+                    ? 'border-rose-900/50 bg-rose-950/20'
+                    : 'border-slate-800 bg-slate-900/30'
+                const badgeCls = res === 'passed'
+                  ? 'bg-emerald-900/60 text-emerald-300'
+                  : res === 'failed'
+                    ? 'bg-rose-900/60 text-rose-300'
+                    : 'bg-slate-800 text-slate-400'
+                return (
+                  <div key={idx} className={`rounded-xl border px-3 py-2 text-xs ${rowCls}`}>
+                    <div className="flex items-start gap-2">
+                      <span className={`shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px] ${badgeCls}`}>
+                        {res}
+                      </span>
+                      <span className="text-slate-200 font-medium">{check.check}</span>
+                    </div>
+                    <p className="mt-1 text-slate-400 pl-10">{check.details}</p>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {agentEvents.length > 0 && (
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">Agent Activity</div>
+            <div className="space-y-1.5">
+              {agentEvents.map((ev, idx) => (
+                <div key={idx} className="flex items-center gap-3 text-xs">
+                  <span className={`shrink-0 rounded-full w-2 h-2 ${ev.message === 'complete' ? 'bg-emerald-400' : 'bg-blue-400 animate-pulse'}`} />
+                  <span className="font-medium text-slate-200">{ev.type.replace('agent:', '')}</span>
+                  <span className={`rounded px-1.5 py-0.5 ${ev.message === 'complete' ? 'bg-emerald-900/50 text-emerald-300' : 'bg-blue-900/50 text-blue-300'}`}>
+                    {ev.message}
+                  </span>
+                  <span className="ml-auto text-slate-600">{new Date(ev.timestamp).toLocaleTimeString()}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {overseerEvents.length > 0 && (
+          <div className="rounded-2xl border border-purple-900/50 bg-purple-950/20 p-4 space-y-2">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="text-xs font-semibold uppercase tracking-wide text-purple-400">Overseer Log</div>
+              <span className="rounded-full bg-purple-900/50 border border-purple-800 px-2 py-0.5 text-[10px] text-purple-300">internal · not shown to user</span>
+            </div>
+            {overseerEvents.map((ev, idx) => {
+              const subtype = ev.type.replace('overseer:', '')
+              const badgeCls = subtype === 'critical'
+                ? 'bg-rose-900/60 text-rose-200'
+                : subtype === 'warn'
+                  ? 'bg-amber-900/60 text-amber-200'
+                  : subtype === 'action'
+                    ? 'bg-purple-800/60 text-purple-200'
+                    : 'bg-purple-900/40 text-purple-300'
+              return (
+                <div key={idx} className="flex items-start gap-3 text-xs">
+                  <span className={`shrink-0 rounded px-1.5 py-0.5 font-mono ${badgeCls}`}>{subtype}</span>
+                  <span className="text-purple-200/80 break-all">{ev.message}</span>
+                  <span className="ml-auto shrink-0 text-purple-900">{new Date(ev.timestamp).toLocaleTimeString()}</span>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {lifecycleEvents.length > 0 && (
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4 space-y-2">
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">Timeline</div>
+            {lifecycleEvents.map((ev, idx) => (
+              <div key={idx} className="flex items-start gap-3 text-xs">
+                <span className={`shrink-0 rounded px-1.5 py-0.5 font-mono ${
+                  ev.type === 'error' ? 'bg-rose-900/60 text-rose-200'
+                  : ev.type === 'warn' ? 'bg-amber-900/60 text-amber-200'
+                  : ev.type === 'status' ? 'bg-blue-900/60 text-blue-200'
+                  : ev.type.startsWith('verify:') ? 'bg-teal-900/60 text-teal-200'
+                  : 'bg-slate-800 text-slate-400'
+                }`}>{ev.type}</span>
+                <span className="text-slate-300 break-all">{ev.message.length > 200 ? ev.message.slice(0, 200) + '…' : ev.message}</span>
+                <span className="ml-auto shrink-0 text-slate-600">{new Date(ev.timestamp).toLocaleTimeString()}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {orchLog && (
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">Log (tail)</div>
+            <pre className="max-h-96 overflow-auto whitespace-pre-wrap text-xs text-slate-300">{orchLog}</pre>
+          </div>
+        )}
+
+        {orchRun.output && (
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">Output</div>
+            <pre className="max-h-96 overflow-auto whitespace-pre-wrap text-xs text-slate-300">{orchRun.output}</pre>
+          </div>
+        )}
+      </main>
     )
   }
 

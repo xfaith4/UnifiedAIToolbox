@@ -833,8 +833,8 @@ export default function OrchestratorPage() {
 
       {runningRuns.length > 0 && (
         <div className="space-y-3">
-          {runningRuns.slice(0, 3).map((run) => (
-            <AgentActivityTally key={run.id} run={run} title="Live Agent Tally" />
+          {runningRuns.slice(0, 3).map((run, idx) => (
+            <AgentActivityTally key={run.id ?? idx} run={run} title="Live Agent Tally" />
           ))}
         </div>
       )}

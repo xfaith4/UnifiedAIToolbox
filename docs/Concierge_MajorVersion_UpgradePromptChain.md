@@ -4,6 +4,7 @@ Meta-goal
 Deliver the Concierge Orchestration evolution in separate PRs for clean reviews, while keeping the full roadmap in view so earlier decisions don’t paint us into a corner.
 
 Rules
+
 - Create ONE PR per phase. Do not mix phases.
 - Each phase must end with:
   1) Passing build
@@ -25,11 +26,14 @@ Stage 5: Modes + personalization
 ========================================================
 PHASE 0 PR: IA FOUNDATION (Stage 0)
 ========================================================
+
 Objective
 Implement the workflow-based navigation and global documentation surfacing that makes the product’s purpose obvious even without the concierge.
 
 Required changes
+
 1) Sidebar IA (labels + grouping)
+
 - Rename “Dashboard” → “Home” (or “Overview” — pick one and apply consistently)
 - Libraries remain:
   - Prompt Library
@@ -43,7 +47,8 @@ Required changes
   - Rename “Milestones” → “Reports”
 - Settings stays at bottom
 
-2) Routing strategy
+1) Routing strategy
+
 - Keep old routes working.
 - Add canonical routes + redirects:
   - /home (or /overview) → existing dashboard route
@@ -52,7 +57,8 @@ Required changes
   - /runs → new Runs page
 - Update sidebar links to canonical routes.
 
-3) Global Docs & Concepts hub
+1) Global Docs & Concepts hub
+
 - Add a global Help entry accessible from any page (top-right or sidebar footer).
 - It opens a Docs hub modal or page that consolidates:
   - What this does
@@ -61,7 +67,8 @@ Required changes
   - Troubleshooting
 - Unify any existing “Help & Concepts” in App Factory to route to the same hub.
 
-4) First-launch tour
+1) First-launch tour
+
 - Lightweight 5–7 step guided tour:
   - Explains the Home → Build → Run → Observe → Configure workflow
   - Highlights sidebar sections in order
@@ -69,15 +76,18 @@ Required changes
 - Persist completion flag in localStorage (or existing prefs if present).
 
 Deliverables
+
 - PR with nav changes, routes/redirects, docs hub, first-launch tour, and a short markdown doc describing the new IA.
 
 Acceptance criteria
+
 - User can infer the workflow from the sidebar.
 - Help is accessible everywhere.
 - Tour appears once and can be disabled permanently.
 - No backend changes.
 
 STOP AFTER PHASE 0:
+
 - Commit changes on a dedicated branch.
 - Open PR #1: “IA foundation: workflow nav + docs hub + first-launch tour”
 - Include QA checklist in PR description (routes, redirects, docs accessible, tour shows once).
@@ -85,17 +95,21 @@ STOP AFTER PHASE 0:
 ========================================================
 PHASE 1 PR: CONCIERGE (PROPOSAL-ONLY) (Stage 1)
 ========================================================
+
 Objective
 Add Concierge as a chat-first front door that produces a Proposal artifact, but does not execute runs.
 
 Required changes
+
 1) New “Concierge” (or “Assistant”) page
+
 - Add a chat UI for goal intake.
 - Keep it simple: conversation history + input + send.
 
-2) Proposal artifact schema (central, versioned)
+1) Proposal artifact schema (central, versioned)
 Create a centrally defined Proposal schema/type with a proposal_version.
 Minimum fields:
+
 - goal.summary
 - inputs (repo/files/constraints)
 - plan.steps[]
@@ -108,7 +122,8 @@ Minimum fields:
 - estimate (time/cost rough is fine)
 - run_recipe (optional, can be empty in Phase 1)
 
-3) Proposal rendering + actions
+1) Proposal rendering + actions
+
 - Render Proposal as readable sections.
 - Buttons: Approve / Edit / Reject
 - Approve:
@@ -119,17 +134,20 @@ Minimum fields:
 - Reject:
   - Archives/discards proposal.
 
-4) Persistence
+1) Persistence
+
 - Persist proposals/drafts in whatever run storage pattern exists.
 - If no server persistence exists, store locally (localStorage) under a stable key.
 - Surface saved proposals in Runs/History (or the new Runs page as “Drafts”).
 
 Constraints
+
 - No orchestration execution changes.
 - No MCP tool enabling yet.
 - Keep UI consistent with theme and components.
 
 STOP AFTER PHASE 1:
+
 - Commit changes.
 - Open PR #2: “Concierge: chat + proposal artifact + approve/edit/reject (no execution)”
 - Include QA checklist: proposal generated, saved, visible in Runs, approve opens prefilled Run pages.
@@ -137,55 +155,67 @@ STOP AFTER PHASE 1:
 ========================================================
 PHASE 2 PR: PROPOSAL → RUN RECIPE (Stage 2)
 ========================================================
+
 Objective
 Approved proposals produce a deterministic Run Recipe that maps cleanly to existing orchestration config, and can prefill both Playground and App Factory.
 
 Required changes
+
 - Define RunRecipe type/version and mapping logic from Proposal.
 - Ensure “Open in Playground” and “Open in App Factory” prefill reliably.
 - Save Proposal + Recipe together in Runs/History.
 
 STOP AFTER PHASE 2:
+
 - PR #3.
 
 ========================================================
 PHASE 3 PR: EXECUTE + NARRATE (Stage 3)
 ========================================================
+
 Objective
 Allow “Start Run” from an approved proposal/recipe. Concierge narrates run event stream in chat.
 
 Required changes
+
 - Start run via existing backend endpoints.
 - Subscribe to existing SSE run event stream; narrate events in human language.
 - Add explicit approval pauses for high-risk steps (repo write/export/tool enable). If backend can’t pause, split execution into stages client-side.
 
 STOP AFTER PHASE 3:
+
 - PR #4.
 
 ========================================================
 PHASE 4 PR: TOOL ENABLEMENT + LEAST PRIVILEGE + AUDIT (Stage 4)
 ========================================================
+
 Objective
 Concierge can recommend tooling, but enabling/installing requires explicit approval and is logged.
 
 Required changes
+
 - Tool enablement workflow with scopes (read/write, path allowlist).
 - Tool audit view per run.
 
 STOP AFTER PHASE 4:
+
 - PR #5.
 
 ========================================================
 PHASE 5 PR: MODES + PERSONALIZATION (Stage 5)
 ========================================================
+
 Objective
 Add Guided/Confident/Hands-off modes, store preference per user, and include Assumptions & Confidence in proposals.
 
 STOP AFTER PHASE 5:
+
 - PR #6.
 
 Now begin with PHASE 0 only. Do not implement future phases yet.
 Proceed step-by-step:
+
 1) Locate nav + routing + layout components
 2) Implement IA renames/regrouping + canonical routes + redirects
 3) Implement global docs hub and unify existing help links

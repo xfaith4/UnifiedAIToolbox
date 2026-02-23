@@ -112,6 +112,7 @@ export function createDraftRunFromProposal(proposal: Proposal): DraftRunConfig {
     promptId: proposal.run_recipe?.promptId,
     jobType: proposal.run_recipe?.jobType,
     runStatus: 'pending',
+    acceptanceChecks: proposal.acceptance_checks?.length ? proposal.acceptance_checks : undefined,
   }
   return saveDraftRun(draft)
 }
