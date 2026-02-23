@@ -2,8 +2,8 @@
 
 import { use, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { ORCHESTRATOR_API_BASE } from '@/lib/services/orchestratorApi'
-import type { RepoOrchestrationReport } from '@/lib/types/orchestrator'
+import { ORCHESTRATOR_API_BASE, fetchOrchestrationRun, fetchOrchestrationRunLog } from '@/lib/services/orchestratorApi'
+import type { OrchestrationRun, RepoOrchestrationReport } from '@/lib/types/orchestrator'
 import { nodeMatchesFilter, renderMarkdown } from '@/lib/artifacts/viewerUtils'
 
 type ArtifactItem = {
@@ -120,6 +120,9 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
   const [patchDiff, setPatchDiff] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // Fallback: orchestrator (non-repo) run
+  const [orchRun, setOrchRun] = useState<OrchestrationRun | null>(null)
+  const [orchLog, setOrchLog] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<TabKey>('report')
   const [reportFilter, setReportFilter] = useState('')
   const [findingsFilter, setFindingsFilter] = useState('')
@@ -159,6 +162,8 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
       setPatchDiff('')
       setArtifacts([])
       setActiveTab('report')
+      setOrchRun(null)
+      setOrchLog(null)
 
       if (!ORCHESTRATOR_API_BASE) {
         setError('Orchestrator API base is not configured.')
@@ -171,6 +176,24 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
           `${ORCHESTRATOR_API_BASE}/orchestrate/repo/${encodeURIComponent(runId)}/artifacts`
         )
         if (!listRes.ok) {
+          // 404 → this is an orchestrator run, not a repo run — load it via the other endpoint
+          if (listRes.status === 404) {
+            try {
+              const [run, logResult] = await Promise.allSettled([
+                fetchOrchestrationRun(runId),
+                fetchOrchestrationRunLog(runId),
+              ])
+              if (!cancelled) {
+                if (run.status === 'fulfilled') setOrchRun(run.value)
+                if (logResult.status === 'fulfilled') setOrchLog(logResult.value.log)
+                if (run.status === 'rejected') setError('Run not found.')
+              }
+            } catch {
+              if (!cancelled) setError('Run not found.')
+            }
+            if (!cancelled) setLoading(false)
+            return
+          }
           const text = await listRes.text().catch(() => '')
           throw new Error(text || `Failed to load artifacts (${listRes.status})`)
         }
@@ -303,6 +326,91 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
           </a>
         )}
       </div>
+    )
+  }
+
+  // ── Orchestrator run fallback view ────────────────────────────────────────────
+  if (!loading && orchRun) {
+    const isRunning = orchRun.status && !['completed', 'failed', 'cancelled', 'error'].includes(orchRun.status)
+    const statusCls = orchRun.status === 'completed'
+      ? 'border-emerald-700 bg-emerald-900/30 text-emerald-100'
+      : orchRun.status === 'failed' || orchRun.status === 'error'
+        ? 'border-rose-700 bg-rose-900/30 text-rose-100'
+        : 'border-blue-700 bg-blue-900/30 text-blue-100'
+
+    return (
+      <main className="max-w-4xl space-y-6">
+        <div>
+          <Link href="/runs" className="text-xs text-slate-400 hover:text-slate-200">← Back to Runs</Link>
+          <h1 className="mt-2 text-2xl font-semibold">Run Detail</h1>
+          {orchRun.goal && <p className="mt-1 text-sm text-slate-400">{orchRun.goal}</p>}
+        </div>
+
+        <div className={`flex flex-wrap items-center gap-3 rounded-2xl border p-4 ${statusCls}`}>
+          <span className="text-sm font-semibold capitalize">{orchRun.status ?? 'unknown'}</span>
+          {isRunning && <span className="h-2 w-2 rounded-full bg-blue-400 animate-pulse" />}
+          <span className="ml-auto font-mono text-xs opacity-60">{orchRun.id}</span>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          {orchRun.startedAt && (
+            <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-3 text-xs text-slate-300">
+              <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Started</div>
+              {new Date(orchRun.startedAt).toLocaleString()}
+            </div>
+          )}
+          {orchRun.completedAt && (
+            <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-3 text-xs text-slate-300">
+              <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Completed</div>
+              {new Date(orchRun.completedAt).toLocaleString()}
+            </div>
+          )}
+          {orchRun.agents && orchRun.agents.length > 0 && (
+            <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-3 text-xs text-slate-300">
+              <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Agents</div>
+              {orchRun.agents.join(', ')}
+            </div>
+          )}
+          {orchRun.runMode && (
+            <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-3 text-xs text-slate-300">
+              <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Mode</div>
+              {orchRun.runMode}
+            </div>
+          )}
+        </div>
+
+        {orchRun.events && orchRun.events.length > 0 && (
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4 space-y-2">
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">Events</div>
+            {orchRun.events.map((ev, idx) => (
+              <div key={idx} className="flex items-start gap-3 text-xs">
+                <span className={`shrink-0 rounded px-1.5 py-0.5 font-mono ${
+                  ev.type === 'error' ? 'bg-rose-900/60 text-rose-200'
+                  : ev.type === 'warn' ? 'bg-amber-900/60 text-amber-200'
+                  : ev.type === 'status' ? 'bg-blue-900/60 text-blue-200'
+                  : 'bg-slate-800 text-slate-400'
+                }`}>{ev.type}</span>
+                <span className="text-slate-300">{ev.message}</span>
+                <span className="ml-auto shrink-0 text-slate-600">{new Date(ev.timestamp).toLocaleTimeString()}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {orchLog && (
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">Log</div>
+            <pre className="max-h-96 overflow-auto whitespace-pre-wrap text-xs text-slate-300">{orchLog}</pre>
+          </div>
+        )}
+
+        {orchRun.output && (
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">Output</div>
+            <pre className="max-h-96 overflow-auto whitespace-pre-wrap text-xs text-slate-300">{orchRun.output}</pre>
+          </div>
+        )}
+      </main>
     )
   }
 
