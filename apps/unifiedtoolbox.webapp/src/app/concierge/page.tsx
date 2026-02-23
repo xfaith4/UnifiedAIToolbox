@@ -22,6 +22,7 @@ import {
   Radio,
   Wrench,
   Lock,
+  ShieldCheck,
 } from 'lucide-react'
 import type { ChatMessage, Proposal, ProposalRisk } from '@/lib/types/proposal'
 import type { ToolPermission, ToolAuditEntry } from '@/lib/types/toolPermission'
@@ -331,16 +332,27 @@ function PreflightGate({
 }
 
 // ── Run status indicator ───────────────────────────────────────────────────────
-function RunStatusIndicator({ runId, runStatus }: { runId: string; runStatus: string | null }) {
+function RunStatusIndicator({
+  runId,
+  runStatus,
+  verificationStatus,
+}: {
+  runId: string
+  runStatus: string | null
+  verificationStatus?: string | null
+}) {
   const status = runStatus ?? 'queued'
   const isTerminal = TERMINAL_RUN_STATUSES.has(status)
   const isCompleted = status === 'completed'
+  const isVerified = isCompleted && verificationStatus === 'passed'
 
-  const cls = isCompleted
-    ? 'border-emerald-700 bg-emerald-950/30 text-emerald-300 hover:bg-emerald-950/50'
-    : isTerminal
-      ? 'border-rose-700 bg-rose-950/30 text-rose-300 hover:bg-rose-950/50'
-      : 'border-blue-800/60 bg-blue-950/20 text-blue-300 hover:bg-blue-950/40'
+  const cls = isVerified
+    ? 'border-emerald-600 bg-emerald-950/40 text-emerald-200 hover:bg-emerald-950/60'
+    : isCompleted
+      ? 'border-emerald-700 bg-emerald-950/30 text-emerald-300 hover:bg-emerald-950/50'
+      : isTerminal
+        ? 'border-rose-700 bg-rose-950/30 text-rose-300 hover:bg-rose-950/50'
+        : 'border-blue-800/60 bg-blue-950/20 text-blue-300 hover:bg-blue-950/40'
 
   return (
     <Link
@@ -348,10 +360,17 @@ function RunStatusIndicator({ runId, runStatus }: { runId: string; runStatus: st
       className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs transition-colors ${cls}`}
     >
       {!isTerminal && <Radio size={12} className="animate-pulse" aria-hidden="true" />}
-      {isCompleted && <CheckCircle2 size={12} aria-hidden="true" />}
+      {isVerified && <ShieldCheck size={12} aria-hidden="true" />}
+      {isCompleted && !isVerified && <CheckCircle2 size={12} aria-hidden="true" />}
       {isTerminal && !isCompleted && <XCircle size={12} aria-hidden="true" />}
       <span>
-        {!isTerminal ? `Running… (${status})` : isCompleted ? 'Run completed' : `Run ${status}`}
+        {!isTerminal
+          ? `Running… (${status})`
+          : isVerified
+            ? 'Run verified'
+            : isCompleted
+              ? 'Run completed'
+              : `Run ${status}`}
       </span>
       <span className="ml-auto font-mono text-[10px] opacity-50">{runId.slice(0, 14)}</span>
       <ArrowRight size={11} className="opacity-50" aria-hidden="true" />
@@ -367,6 +386,7 @@ function ProposalPanel({
   onEdit,
   runId,
   runStatus,
+  verificationStatus,
   onStartRun,
   startRunLoading,
   startRunError,
@@ -381,6 +401,7 @@ function ProposalPanel({
   onEdit: () => void
   runId: string | null
   runStatus: string | null
+  verificationStatus?: string | null
   onStartRun: () => void
   startRunLoading: boolean
   startRunError: string | null
@@ -606,7 +627,7 @@ function ProposalPanel({
             <>
               {runId ? (
                 <>
-                  <RunStatusIndicator runId={runId} runStatus={runStatus} />
+                  <RunStatusIndicator runId={runId} runStatus={runStatus} verificationStatus={verificationStatus} />
                   {toolPermissions.length > 0 && (
                     <ToolAuditView permissions={toolPermissions} />
                   )}
@@ -884,6 +905,7 @@ export default function ConciergePage() {
   // Run state
   const [runId, setRunId] = useState<string | null>(null)
   const [runStatus, setRunStatus] = useState<string | null>(null)
+  const [runVerificationStatus, setRunVerificationStatus] = useState<string | null>(null)
   const [startRunLoading, setStartRunLoading] = useState(false)
   const [startRunError, setStartRunError] = useState<string | null>(null)
   const seenEventCount = useRef(0)
@@ -994,6 +1016,9 @@ export default function ConciergePage() {
 
         if (run.status) {
           setRunStatus(run.status)
+          if (run.verificationStatus) {
+            setRunVerificationStatus(run.verificationStatus)
+          }
           if (TERMINAL_RUN_STATUSES.has(run.status)) {
             cancelled = true
             clearInterval(intervalId)
@@ -1284,6 +1309,7 @@ export default function ConciergePage() {
             onEdit={handleEdit}
             runId={runId}
             runStatus={runStatus}
+            verificationStatus={runVerificationStatus}
             onStartRun={handleStartRun}
             startRunLoading={startRunLoading}
             startRunError={startRunError}
