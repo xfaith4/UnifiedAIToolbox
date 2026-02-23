@@ -372,6 +372,12 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
                 View Output →
               </a>
             )}
+            <Link
+              href={`/runs/${encodeURIComponent(runId)}/swarm`}
+              className="rounded border border-current px-2 py-1 text-xs opacity-80 hover:opacity-100"
+            >
+              Swarm View
+            </Link>
             <span className="font-mono text-xs opacity-50">{orchRun.id.slice(0, 20)}</span>
           </div>
         </div>
@@ -563,6 +569,9 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <Link className="rounded border border-slate-700 px-2 py-1 hover:bg-slate-800/60" href="/engine">
               Back to App Factory
+            </Link>
+            <Link className="rounded border border-slate-700 px-2 py-1 hover:bg-slate-800/60" href={`/runs/${encodeURIComponent(runId)}/swarm`}>
+              Swarm View
             </Link>
             {runId && ORCHESTRATOR_API_BASE && (
               <a

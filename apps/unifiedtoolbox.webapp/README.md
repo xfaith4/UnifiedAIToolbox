@@ -74,6 +74,15 @@ The `/orchestrator` page provides:
 - **Real-time Monitoring**: View orchestration runs, logs, and status updates
 - **Agent Management**: Create ad-hoc agents or use predefined agent teams
 
+### Swarm View (Runs)
+
+`/runs/[runId]/swarm` provides a live orchestration graph for a single run.
+
+- It is fed by real App Factory run telemetry, not simulation.
+- Metadata is loaded from `GET /api/app-factory/runs/:runId/status`.
+- Event history + live updates come from `GET /api/app-factory/runs/:runId/events` (SSE `text/event-stream` with reconnect and `since` cursor support).
+- Open it from a run detail page using the `Swarm View` button.
+
 ### Architecture
 
 The webapp connects to the Prompt API backend for:
@@ -144,6 +153,15 @@ npm run test
 ```bash
 npm run lint
 ```
+
+### Swarm View Local Test
+
+1. Start the web app (`npm run dev`) and launch an App Factory run that emits run events.
+2. Open `/runs/<runId>/swarm`.
+3. Confirm:
+   - History is visible immediately (phase/task/gate/artifact nodes).
+   - New events append live in the graph and Activity Log.
+   - If the stream disconnects, status changes to reconnecting and then returns to open.
 
 ## Troubleshooting
 
