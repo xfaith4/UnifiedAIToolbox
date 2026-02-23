@@ -207,7 +207,9 @@ export async function sendConciergeMessage(
   history: ChatMessage[],
   userMessage: string,
   apiKey?: string,
-  mode: ConciergeMode = 'confident'
+  mode: ConciergeMode = 'confident',
+  /** Optional past-run context block to inject into the system prompt (Option A). */
+  runHistoryContext?: string,
 ): Promise<ConciergeReply> {
   const key = apiKey || (typeof window !== 'undefined' ? localStorage.getItem('ai-toolbox-api-key') ?? '' : '')
 
@@ -224,8 +226,9 @@ export async function sendConciergeMessage(
     return buildDemoReply(userMessage, updatedHistory, mode)
   }
 
-  // Build messages for OpenAI — inject mode suffix into system prompt
-  const systemContent = SYSTEM_PROMPT + (MODE_SYSTEM_SUFFIX[mode] ?? '')
+  // Build messages for OpenAI — inject mode suffix + past-run history into system prompt
+  const systemContent =
+    SYSTEM_PROMPT + (MODE_SYSTEM_SUFFIX[mode] ?? '') + (runHistoryContext ?? '')
   const messages = [
     { role: 'system' as const, content: systemContent },
     ...updatedHistory.map((m) => ({

@@ -25,6 +25,7 @@ export async function startOrchestratorRun(draft: DraftRunConfig): Promise<Orche
     agents: draft.agents,
     runMode: draft.mode as 'multi-agent' | 'codex-swarm',
     promptId: draft.promptId ?? undefined,
+    acceptanceChecks: draft.acceptanceChecks,
   })
 
   addLocalRun(localRun)

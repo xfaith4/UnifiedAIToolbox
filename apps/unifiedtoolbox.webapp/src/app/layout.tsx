@@ -16,6 +16,7 @@ import {
   Home,
   HelpCircle,
   MessageSquare,
+  Brain,
   type LucideIcon,
 } from 'lucide-react'
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
@@ -71,6 +72,7 @@ const navSections: NavSection[] = [
     title: NAV_LABELS.sections.observe,
     items: [
       { href: ROUTES.runs, label: NAV_LABELS.items.runs, icon: History },
+      { href: ROUTES.knowledge, label: NAV_LABELS.items.knowledge, icon: Brain },
       { href: ROUTES.reports, label: NAV_LABELS.items.reports, icon: TrendingUp },
     ],
   },

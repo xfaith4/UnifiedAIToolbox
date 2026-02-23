@@ -15,6 +15,7 @@ export const ROUTES = {
   appFactory: '/engine',
   runs: '/runs',               // Runs list page
   reports: '/milestones',      // canonical; /reports redirects here
+  knowledge: '/knowledge',     // Phase 2 — Agent Knowledge Base
   settings: '/settings',
   help: '/help',               // global docs hub
 } as const
@@ -49,6 +50,7 @@ export const NAV_LABELS = {
     playground: 'Playground',    // was "Orchestrator"
     appFactory: 'App Factory',
     runs: 'Runs',
+    knowledge: 'Knowledge',      // Phase 2 — Agent Knowledge Base
     reports: 'Reports',          // was "Milestones"
     settings: 'Settings',
   },
@@ -64,6 +66,7 @@ export const PAGE_TITLES = {
   playground: 'Playground',
   appFactory: 'App Factory',
   runs: 'Runs',
+  knowledge: 'Knowledge',
   reports: 'Reports',
   settings: 'Settings',
 } as const

@@ -72,10 +72,16 @@ export async function createOrchestrationRun(run: OrchestrationRun): Promise<Orc
   }
   
   try {
+    // Send snake_case keys for fields the API reads by name
     const res = await fetch(`${API_BASE}/orchestrate/run`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(run),
+      body: JSON.stringify({
+        ...run,
+        run_mode: run.runMode ?? 'default',
+        prompt_id: run.promptId ?? null,
+        acceptance_checks: run.acceptanceChecks ?? [],
+      }),
     })
     
     if (!res.ok) {
@@ -200,6 +206,12 @@ function normalizeApiRun(raw: Record<string, unknown>): OrchestrationRun {
     runDir: raw.run_dir ? String(raw.run_dir) : undefined,
     errorDetail: raw.error_detail ? String(raw.error_detail) : undefined,
     tokens: raw.tokens as OrchestrationRun['tokens'],
+    acceptanceChecks: Array.isArray(raw.acceptance_checks)
+      ? (raw.acceptance_checks as string[])
+      : undefined,
+    verificationStatus: raw.verification_status ? String(raw.verification_status) as OrchestrationRun['verificationStatus'] : undefined,
+    loopIteration: typeof raw.loop_iteration === 'number' ? raw.loop_iteration : undefined,
+    sandboxReport: raw.sandbox_report as OrchestrationRun['sandboxReport'] ?? undefined,
   }
 }
 

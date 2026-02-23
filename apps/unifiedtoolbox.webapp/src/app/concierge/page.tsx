@@ -27,7 +27,7 @@ import type { ChatMessage, Proposal, ProposalRisk } from '@/lib/types/proposal'
 import type { ToolPermission, ToolAuditEntry } from '@/lib/types/toolPermission'
 import { inferToolAccess, defaultToolPermission } from '@/lib/types/toolPermission'
 import type { ConciergeMode } from '@/lib/types/conciergePreferences'
-import { CONCIERGE_MODES } from '@/lib/types/conciergePreferences'
+import { CONCIERGE_MODES, DEFAULT_PREFERENCES } from '@/lib/types/conciergePreferences'
 import { sendConciergeMessage } from '@/lib/services/conciergeAi'
 import { getConciergeMode, setConciergeMode } from '@/lib/services/userPreferencesStore'
 import {
@@ -46,6 +46,13 @@ import {
   narrateRunEvent,
   TERMINAL_RUN_STATUSES,
 } from '@/lib/services/conciergeRunService'
+import { fetchOrchestrationRuns } from '@/lib/services/orchestratorApi'
+import type { OrchestrationRun } from '@/lib/types/orchestrator'
+import {
+  findSimilarRuns,
+  buildRunHistoryPrompt,
+  type PastRunInsight,
+} from '@/lib/services/runHistoryAnalyzer'
 
 // ── Risk badge ────────────────────────────────────────────────────────────────
 function RiskBadge({ level }: { level: ProposalRisk['level'] }) {
@@ -731,6 +738,139 @@ function ChatBubble({ message }: { message: ChatMessage }) {
   )
 }
 
+// ── Preflight card (Option B) ─────────────────────────────────────────────────
+/**
+ * Shown above the first AI reply when similar failed runs are found.
+ * Summarises Overseer findings so the user can refine their goal before launching.
+ */
+function PreflightCard({
+  insights,
+  onDismiss,
+}: {
+  insights: PastRunInsight[]
+  onDismiss: () => void
+}) {
+  const failures = insights.filter((r) => r.isFailure)
+  const anyAgentErrors = insights.some((r) => r.agentErrors.length > 0)
+  const anyOverseerWarnings = insights.some((r) => r.overseerWarnings.length > 0)
+
+  return (
+    <div className="rounded-xl border border-amber-800/60 bg-amber-950/30 p-3.5 text-xs">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <AlertTriangle size={13} className="shrink-0 text-amber-400 mt-px" aria-hidden="true" />
+          <span className="font-semibold text-amber-300">Run History Analysis</span>
+        </div>
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="text-amber-600 hover:text-amber-400 shrink-0 text-[10px] leading-none mt-0.5"
+          aria-label="Dismiss"
+        >
+          ✕
+        </button>
+      </div>
+
+      <p className="mt-2 text-amber-200/80 leading-relaxed">
+        Found <span className="font-medium text-amber-300">{insights.length} similar past run{insights.length !== 1 ? 's' : ''}</span>
+        {failures.length > 0 && (
+          <>, <span className="font-medium text-rose-400">{failures.length} of which failed</span></>
+        )}.
+        {' '}The Concierge has been briefed and will factor this into its advice.
+      </p>
+
+      {insights.slice(0, 2).map((r) => (
+        <div key={r.runId} className="mt-2.5 rounded-lg border border-amber-900/40 bg-amber-950/40 px-3 py-2 space-y-1">
+          <div className="flex items-center gap-2">
+            <span
+              className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                r.isFailure
+                  ? 'bg-rose-900/60 text-rose-300'
+                  : 'bg-emerald-900/60 text-emerald-300'
+              }`}
+            >
+              {r.status}
+            </span>
+            <span className="text-amber-400/70 truncate">{r.goal.slice(0, 80)}</span>
+          </div>
+          {r.agentErrors.slice(0, 1).map((msg, i) => (
+            <p key={i} className="text-amber-200/60 pl-0.5">
+              ⚠ Agent error: {msg.slice(0, 120)}
+            </p>
+          ))}
+          {r.runErrors.slice(0, 1).map((msg, i) => (
+            <p key={i} className="text-rose-300/60 pl-0.5">
+              ✖ {msg.slice(0, 120)}
+            </p>
+          ))}
+        </div>
+      ))}
+
+      {(anyAgentErrors || anyOverseerWarnings) && (
+        <p className="mt-2 text-amber-400/60 italic">
+          Overseer observations have been included in the Concierge&apos;s context.
+        </p>
+      )}
+    </div>
+  )
+}
+
+// ── Overseer history panel (Option C) ────────────────────────────────────────
+/**
+ * Shown in the proposal sidebar when there are Overseer findings from similar past runs.
+ * Gives the user visibility into what the Overseer detected and advised.
+ */
+function OverseerHistoryPanel({ insights }: { insights: PastRunInsight[] }) {
+  const relevant = insights.filter(
+    (r) => r.agentErrors.length > 0 || r.overseerWarnings.length > 0 || r.overseerActions.length > 0,
+  )
+  if (!relevant.length) return null
+
+  return (
+    <div className="rounded-xl border border-purple-800/50 bg-purple-950/20 p-3.5 text-xs space-y-2.5">
+      <div className="flex items-center gap-2">
+        <div className="h-1.5 w-1.5 rounded-full bg-purple-500" aria-hidden="true" />
+        <span className="font-semibold text-purple-300 tracking-wide uppercase text-[10px]">
+          Overseer History
+        </span>
+        <span className="ml-auto rounded px-1.5 py-0.5 bg-purple-900/50 text-purple-400 text-[10px]">
+          internal · not shown to users
+        </span>
+      </div>
+
+      {relevant.map((r) => (
+        <div key={r.runId} className="space-y-1">
+          <p className="text-purple-200/70 font-medium truncate">
+            Run: {r.goal.slice(0, 70)}
+          </p>
+          {r.agentErrors.map((msg, i) => (
+            <p key={`ae-${i}`} className="text-purple-300/60 pl-2 border-l border-purple-800/50">
+              {msg.slice(0, 150)}
+            </p>
+          ))}
+          {r.overseerWarnings
+            .filter((m) => !m.includes('agent_output_error'))
+            .slice(0, 2)
+            .map((msg, i) => (
+              <p key={`ow-${i}`} className="text-amber-300/50 pl-2 border-l border-amber-800/40">
+                {msg.slice(0, 150)}
+              </p>
+            ))}
+          {r.overseerActions.map((msg, i) => (
+            <p key={`oa-${i}`} className="text-blue-300/50 pl-2 border-l border-blue-800/40">
+              ↳ {msg.slice(0, 150)}
+            </p>
+          ))}
+        </div>
+      ))}
+
+      <p className="text-purple-400/50 italic text-[10px]">
+        Concierge has been briefed on these findings and will factor them into proposal generation.
+      </p>
+    </div>
+  )
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function ConciergePage() {
   const searchParams = useSearchParams()
@@ -748,8 +888,17 @@ export default function ConciergePage() {
   const [startRunError, setStartRunError] = useState<string | null>(null)
   const seenEventCount = useRef(0)
 
-  // Mode preference
-  const [mode, setMode] = useState<ConciergeMode>(() => getConciergeMode())
+  // Run history for self-healing loop (Options A / B / C)
+  const [allRuns, setAllRuns] = useState<OrchestrationRun[]>([])
+  const [preflight, setPreflight] = useState<PastRunInsight[]>([])
+  const [preflightDismissed, setPreflightDismissed] = useState(false)
+
+  // Mode preference — initialize with static default so SSR and first client render match,
+  // then sync from localStorage after mount to avoid hydration mismatch.
+  const [mode, setMode] = useState<ConciergeMode>(DEFAULT_PREFERENCES.conciergeMode)
+  useEffect(() => {
+    setMode(getConciergeMode())
+  }, [])
 
   // Tool permission state
   const [toolPermissions, setToolPermissions] = useState<ToolPermission[]>([])
@@ -781,6 +930,13 @@ export default function ConciergePage() {
       setMessages(saved.conversation)
     }
   }, [searchParams])
+
+  // Load all orchestration runs on mount — used for the self-healing loop (Options A/B/C)
+  useEffect(() => {
+    fetchOrchestrationRuns()
+      .then((runs) => setAllRuns(runs))
+      .catch(() => { /* API unavailable — graceful degradation, no history context */ })
+  }, [])
 
   // Load draft count for footer callout
   useEffect(() => {
@@ -881,8 +1037,22 @@ export default function ConciergePage() {
     setMessages((prev) => [...prev, userMsg])
     setLoading(true)
 
+    // ── Self-healing loop: preflight check on first user message ──────────────
+    // Find similar past runs and inject their Overseer findings into the AI
+    // system prompt so the Concierge can proactively guide the user (Options A/B).
+    let runHistoryContext: string | undefined
+    const isFirstMessage = messages.filter((m) => m.role === 'user').length === 0
+    if (isFirstMessage && allRuns.length > 0) {
+      const insights = findSimilarRuns(text, allRuns)
+      if (insights.length > 0) {
+        setPreflight(insights)
+        setPreflightDismissed(false)
+        runHistoryContext = buildRunHistoryPrompt(insights)
+      }
+    }
+
     try {
-      const result = await sendConciergeMessage(messages, text, undefined, mode)
+      const result = await sendConciergeMessage(messages, text, undefined, mode, runHistoryContext)
 
       const assistantMsg: ChatMessage = {
         id: `msg_${Date.now() + 1}`,
@@ -1022,6 +1192,10 @@ export default function ConciergePage() {
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+          {/* Option B — preflight card: shown after first send when similar past runs exist */}
+          {preflight.length > 0 && !preflightDismissed && messages.length > 0 && (
+            <PreflightCard insights={preflight} onDismiss={() => setPreflightDismissed(true)} />
+          )}
           {messages.length === 0 && (
             <div className="flex flex-col items-center justify-center h-full text-center pb-8">
               <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500/20 to-purple-600/20 border border-blue-800/40 mb-4">
@@ -1101,7 +1275,7 @@ export default function ConciergePage() {
       </div>
 
       {/* ── Proposal panel ── */}
-      <div className="w-full md:w-80 lg:w-96 flex flex-col min-h-0">
+      <div className="w-full md:w-80 lg:w-96 flex flex-col min-h-0 gap-3 overflow-y-auto">
         {proposal ? (
           <ProposalPanel
             proposal={proposal}
@@ -1125,6 +1299,10 @@ export default function ConciergePage() {
               Your Proposal will appear here once the Concierge has enough context to generate one.
             </p>
           </div>
+        )}
+        {/* Option C — Overseer history panel: visible when past-run Overseer data exists */}
+        {preflight.length > 0 && (
+          <OverseerHistoryPanel insights={preflight} />
         )}
       </div>
     </div>
