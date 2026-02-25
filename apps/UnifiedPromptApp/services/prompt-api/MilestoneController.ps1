@@ -256,6 +256,199 @@ function Get-AgentDefinition {
     return $script:AgentLibrary | Where-Object { $_.name -eq $AgentName } | Select-Object -First 1
 }
 
+function Remove-JsonCodeFences {
+    param([AllowNull()][string]$Text)
+
+    if ([string]::IsNullOrWhiteSpace($Text)) { return $Text }
+
+    $trimmed = $Text.Trim()
+    if ($trimmed -match '^\s*```(?:json)?') {
+        $trimmed = [regex]::Replace($trimmed, '^\s*```(?:json)?\s*', '', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+        $trimmed = [regex]::Replace($trimmed, '\s*```\s*$', '')
+    }
+    return $trimmed
+}
+
+function Get-FirstJsonObjectText {
+    param([AllowNull()][string]$Text)
+
+    if ([string]::IsNullOrWhiteSpace($Text)) { return $null }
+
+    $sanitized = Remove-JsonCodeFences -Text $Text
+    $start = $sanitized.IndexOf('{')
+    if ($start -lt 0) { return $null }
+
+    $segment = $sanitized.Substring($start)
+    $depth = 0
+    $inString = $false
+    $escape = $false
+
+    for ($i = 0; $i -lt $segment.Length; $i++) {
+        $ch = $segment[$i]
+
+        if ($escape) {
+            $escape = $false
+            continue
+        }
+
+        if ($ch -eq '\') {
+            if ($inString) { $escape = $true }
+            continue
+        }
+
+        if ($ch -eq '"') {
+            $inString = -not $inString
+            continue
+        }
+
+        if ($inString) { continue }
+
+        if ($ch -eq '{') {
+            $depth++
+            continue
+        }
+
+        if ($ch -eq '}') {
+            $depth--
+            if ($depth -eq 0) {
+                return $segment.Substring(0, $i + 1)
+            }
+        }
+    }
+
+    return $null
+}
+
+function Normalize-AgentContractObject {
+    param(
+        [Parameter(Mandatory = $true)][string]$AgentName,
+        [AllowNull()]$Object
+    )
+
+    if ($null -eq $Object) { return $Object }
+    if ($AgentName -ne "Critic") { return $Object }
+
+    $objProps = @($Object.PSObject.Properties.Name)
+    if ($objProps -notcontains "issues") { return $Object }
+
+    foreach ($issue in @($Object.issues)) {
+        if ($null -eq $issue) { continue }
+
+        $issueProps = @($issue.PSObject.Properties.Name)
+        if ($issueProps -contains "file") {
+            $fileValue = $issue.file
+            if ($null -eq $fileValue -or [string]::IsNullOrWhiteSpace([string]$fileValue)) {
+                $issue.file = "unknown"
+            }
+        }
+
+        if ($issueProps -contains "line") {
+            $lineNumber = 0.0
+            $lineValue = $issue.line
+            $isNumber = $false
+            if ($null -ne $lineValue) {
+                $isNumber = [double]::TryParse([string]$lineValue, [ref]$lineNumber)
+            }
+            if (-not $isNumber -or $lineNumber -lt 1) {
+                $issue.PSObject.Properties.Remove("line")
+            }
+            else {
+                $issue.line = [math]::Round($lineNumber, 0)
+            }
+        }
+    }
+
+    return $Object
+}
+
+function ConvertTo-NormalizedAgentJson {
+    param(
+        [Parameter(Mandatory = $true)]$RawOutput,
+        [Parameter(Mandatory = $true)][string]$AgentName,
+        [int]$Depth = 0
+    )
+
+    if ($Depth -gt 4) {
+        return @{ ok = $false; error = "Unable to normalize output after multiple parse attempts."; parsed = $null; json = $null }
+    }
+    if ($null -eq $RawOutput) {
+        return @{ ok = $false; error = "Output is null."; parsed = $null; json = $null }
+    }
+
+    if ($RawOutput -isnot [string]) {
+        $propNames = @($RawOutput.PSObject.Properties.Name)
+        if ($propNames -contains "choices" -and $RawOutput.choices -and $RawOutput.choices.Count -gt 0) {
+            $choice = $RawOutput.choices[0]
+            if ($choice.message -and $choice.message.content) {
+                return ConvertTo-NormalizedAgentJson -RawOutput ([string]$choice.message.content) -AgentName $AgentName -Depth ($Depth + 1)
+            }
+        }
+
+        $normalizedObject = Normalize-AgentContractObject -AgentName $AgentName -Object $RawOutput
+        return @{
+            ok = $true
+            error = $null
+            parsed = $normalizedObject
+            json = ($normalizedObject | ConvertTo-Json -Depth 80)
+        }
+    }
+
+    $text = [string]$RawOutput
+    if ([string]::IsNullOrWhiteSpace($text)) {
+        return @{ ok = $false; error = "Output is empty."; parsed = $null; json = $null }
+    }
+
+    $candidate = Remove-JsonCodeFences -Text $text
+    $parsed = $null
+
+    try {
+        $parsed = $candidate | ConvertFrom-Json -Depth 80 -ErrorAction Stop
+    }
+    catch {
+        $jsonObject = Get-FirstJsonObjectText -Text $candidate
+        if (-not $jsonObject) {
+            return @{
+                ok = $false
+                error = ("Output is not valid JSON: {0}" -f $_.Exception.Message)
+                parsed = $null
+                json = $null
+            }
+        }
+
+        try {
+            $parsed = $jsonObject | ConvertFrom-Json -Depth 80 -ErrorAction Stop
+        }
+        catch {
+            return @{
+                ok = $false
+                error = ("Output is not valid JSON after extraction: {0}" -f $_.Exception.Message)
+                parsed = $null
+                json = $null
+            }
+        }
+    }
+
+    if ($parsed -is [string]) {
+        return ConvertTo-NormalizedAgentJson -RawOutput $parsed -AgentName $AgentName -Depth ($Depth + 1)
+    }
+
+    $parsedProps = @($parsed.PSObject.Properties.Name)
+    if ($parsedProps -contains "choices" -and $parsed.choices -and $parsed.choices.Count -gt 0) {
+        $choice = $parsed.choices[0]
+        if ($choice.message -and $choice.message.content) {
+            return ConvertTo-NormalizedAgentJson -RawOutput ([string]$choice.message.content) -AgentName $AgentName -Depth ($Depth + 1)
+        }
+    }
+
+    $normalized = Normalize-AgentContractObject -AgentName $AgentName -Object $parsed
+    return @{
+        ok = $true
+        error = $null
+        parsed = $normalized
+        json = ($normalized | ConvertTo-Json -Depth 80)
+    }
+}
+
 function Assert-AgentOutputContract {
     param(
         [Parameter(Mandatory = $true)][string]$AgentName,
@@ -279,23 +472,22 @@ function Assert-AgentOutputContract {
         $schema = $null
     }
 
-    $parsed = $null
-    try {
-        $parsed = $RawOutput | ConvertFrom-Json -ErrorAction Stop
+    $normalized = ConvertTo-NormalizedAgentJson -RawOutput $RawOutput -AgentName $AgentName
+    if (-not $normalized.ok) {
+        $msg = $normalized.error
+        return @{ ok = $false; parsed = $null; normalized_json = $null; error = $msg; errors = @($msg); schema = $schema }
     }
-    catch {
-        $msg = "Output is not valid JSON: $($_.Exception.Message)"
-        return @{ ok = $false; parsed = $null; error = $msg; errors = @($msg); schema = $schema }
-    }
+
+    $parsed = $normalized.parsed
 
     if ($schema) {
         try {
             $schemaJson = $schema | ConvertTo-Json -Depth 60
-            $null = Test-Json -Json $RawOutput -Schema $schemaJson -ErrorAction Stop
+            $null = Test-Json -Json $normalized.json -Schema $schemaJson -ErrorAction Stop
         }
         catch {
             $msg = "Output does not match output_schema: $($_.Exception.Message)"
-            return @{ ok = $false; parsed = $parsed; error = $msg; errors = @($msg); schema = $schema }
+            return @{ ok = $false; parsed = $parsed; normalized_json = $normalized.json; error = $msg; errors = @($msg); schema = $schema }
         }
     }
 
@@ -310,11 +502,11 @@ function Assert-AgentOutputContract {
     foreach ($field in $required) {
         if (-not ($parsed.PSObject.Properties.Name -contains $field)) {
             $msg = "Missing required output field: $field"
-            return @{ ok = $false; parsed = $parsed; error = $msg; errors = @($msg); schema = $schema }
+            return @{ ok = $false; parsed = $parsed; normalized_json = $normalized.json; error = $msg; errors = @($msg); schema = $schema }
         }
     }
 
-    return @{ ok = $true; parsed = $parsed; error = $null; errors = @(); schema = $schema }
+    return @{ ok = $true; parsed = $parsed; normalized_json = $normalized.json; error = $null; errors = @(); schema = $schema }
 }
 
 function Write-ContractFailureArtifact {
@@ -761,13 +953,13 @@ $contractBlock
                 -Model $Model `
                 -SystemPrompt $systemPrompt `
                 -OriginalUserPrompt $userPrompt `
-                -InvalidOutput $content `
+                -InvalidOutput $(if ($contractCheck.normalized_json) { $contractCheck.normalized_json } else { $content }) `
                 -Schema $contractCheck.schema `
                 -ValidationErrors @($contractCheck.errors)
 
             if ($repairResult.ok) {
                 $repairSucceeded = $true
-                $content = $repairResult.output
+                $content = $(if ($repairResult.check.normalized_json) { $repairResult.check.normalized_json } else { $repairResult.output })
                 $contractCheck = $repairResult.check
                 $llmResult = @{
                     Output = $repairResult.output
@@ -807,6 +999,10 @@ $contractBlock
             Write-Log "Contract validation failed for ${agentName}. Artifact: $contractFailureArtifact" -Level "ERROR"
             throw "Contract validation failed for agent ${agentName}. See artifact: $contractFailureArtifact"
         }
+    }
+
+    if ($contractCheck.normalized_json) {
+        $content = $contractCheck.normalized_json
     }
 
     # Persist the milestone output to disk for inspection

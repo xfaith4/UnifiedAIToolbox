@@ -151,6 +151,156 @@ def safe_json_load(file_path: pathlib.Path, default: Any = None, context: str = 
             return default
         raise ValueError(error_msg)
 
+
+def _extract_first_json_object(text: str) -> Optional[str]:
+    """Return the first balanced JSON object found in text."""
+    if not text:
+        return None
+
+    start = text.find("{")
+    if start == -1:
+        return None
+
+    depth = 0
+    in_string = False
+    escape = False
+
+    for i in range(start, len(text)):
+        ch = text[i]
+
+        if escape:
+            escape = False
+            continue
+
+        if ch == "\\" and in_string:
+            escape = True
+            continue
+
+        if ch == '"':
+            in_string = not in_string
+            continue
+
+        if in_string:
+            continue
+
+        if ch == "{":
+            depth += 1
+            continue
+
+        if ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1]
+
+    return None
+
+
+def _coerce_agent_json_payload(payload: Any, depth: int = 0) -> Optional[Dict[str, Any]]:
+    """Normalize agent output from envelope/text/transcript into a JSON object."""
+    if depth > 4 or payload is None:
+        return None
+
+    if isinstance(payload, dict):
+        choices = payload.get("choices")
+        if isinstance(choices, list) and choices:
+            first = choices[0]
+            if isinstance(first, dict):
+                message = first.get("message", {})
+                if isinstance(message, dict):
+                    content = message.get("content")
+                    if isinstance(content, str):
+                        return _coerce_agent_json_payload(content, depth + 1)
+        return payload
+
+    if isinstance(payload, str):
+        text = payload.strip()
+        if not text:
+            return None
+
+        text = re.sub(r"^\s*```(?:json)?\s*", "", text, flags=re.IGNORECASE)
+        text = re.sub(r"\s*```\s*$", "", text)
+
+        try:
+            parsed = json.loads(text)
+            return _coerce_agent_json_payload(parsed, depth + 1)
+        except Exception:
+            pass
+
+        extracted = _extract_first_json_object(text)
+        if not extracted:
+            return None
+        try:
+            parsed = json.loads(extracted)
+            return _coerce_agent_json_payload(parsed, depth + 1)
+        except Exception:
+            return None
+
+    return None
+
+
+def _parse_agent_json_from_run_dir(out_dir: pathlib.Path, agent_name: str) -> Optional[Dict[str, Any]]:
+    """Load canonical JSON for an agent from raw response/artifact/transcript files."""
+    aliases = {
+        "ReviewGate": ["review_gate.json"],
+        "RepoContextBuilder": ["repo_context.json", "repo_context.discovery.json"],
+        "PRPublisher": ["pr.json"],
+    }
+
+    candidates: List[pathlib.Path] = [out_dir / f"{agent_name}_raw_response.json"]
+    for rel in aliases.get(agent_name, []):
+        candidates.append(out_dir / rel)
+    candidates.extend(
+        [
+            out_dir / f"{agent_name}.json",
+            out_dir / f"{agent_name}.txt",
+        ]
+    )
+
+    seen: set[pathlib.Path] = set()
+    for path in candidates:
+        if path in seen:
+            continue
+        seen.add(path)
+
+        if not path.exists():
+            continue
+
+        try:
+            text = path.read_text(encoding="utf-8")
+        except Exception:
+            continue
+
+        parsed = _coerce_agent_json_payload(text)
+        if isinstance(parsed, dict):
+            return parsed
+
+    return None
+
+
+def _derive_final_status(
+    manifest_status: str,
+    agent_completions: Dict[str, str],
+    all_agents_complete: bool,
+    synthesis_present: bool,
+) -> str:
+    """Derive run final status from manifest + observed completion state."""
+    status = (manifest_status or "").strip()
+
+    if status.startswith("error:CalledProcessError") and all_agents_complete and synthesis_present:
+        return "completed_with_errors"
+
+    any_agent_error = any(
+        str(v).lower().startswith("error") or str(v).lower() == "failed"
+        for v in agent_completions.values()
+    )
+    if any_agent_error:
+        return "failed"
+    if all_agents_complete:
+        return "completed"
+    if status in ("", "queued", "running", "starting"):
+        return "running"
+    return status
+
 # ----------------------------
 # Configuration
 # ----------------------------
@@ -3169,20 +3319,10 @@ def orchestrate_run(
                     )
 
                 def _analyze_agent_output(agent_name: str) -> None:
-                    """Read the agent's .txt output file; emit an observation if it contains errors."""
-                    agent_file = out_dir / f"{agent_name}.txt"
-                    if not agent_file.exists():
-                        return
+                    """Read canonical agent output; emit an observation if it contains errors."""
                     try:
-                        content = agent_file.read_text(encoding="utf-8")
-                        # Agents prefix their output with a status line (e.g. "✅ OpenAI call succeeded.")
-                        # Skip to the first JSON object.
-                        idx = content.find('{')
-                        if idx == -1:
-                            return
-                        try:
-                            output_json = json.loads(content[idx:])
-                        except json.JSONDecodeError:
+                        output_json = _parse_agent_json_from_run_dir(out_dir, agent_name)
+                        if not isinstance(output_json, dict):
                             return
                         status = output_json.get("status", "")
                         errors = output_json.get("errors", [])
@@ -3319,7 +3459,7 @@ def orchestrate_run(
                 # ── Final sweep (runs after subprocess exits) ──────────────────
                 try:
                     run_data = safe_json_load(path, default={}, context=f"overseer_final:{run_id}")
-                    final_status = run_data.get("status", "")
+                    final_status = str(run_data.get("status", "") or "")
                     scratchpad = run_data.get("scratchpad", [])
 
                     # Build agent completion map from scratchpad
@@ -3336,6 +3476,9 @@ def orchestrate_run(
                         (out_dir / "Final_Synthesis.html").exists()
                         or (out_dir / "Final_Synthesis.txt").exists()
                     )
+                    derived_final_status = _derive_final_status(
+                        final_status, agent_completions, all_agents_complete, synthesis_present
+                    )
 
                     # ── Final output error sweep ──────────────────────────────────
                     # Catch any agents that completed too quickly to be seen during polling.
@@ -3351,11 +3494,8 @@ def orchestrate_run(
                     # means the PowerShell wrapper exited non-zero for a non-critical reason
                     # (e.g. stdout/stderr flush, non-fatal post-run hook).
                     # Reclassify so the UI shows results rather than a red error state.
-                    if (
-                        final_status.startswith("error:CalledProcessError")
-                        and all_agents_complete
-                        and synthesis_present
-                    ):
+                    if derived_final_status == "completed_with_errors":
+                        derived_final_status = "completed_with_errors"
                         _append_events([{
                             "ts": now_iso(),
                             "type": "overseer:action",
@@ -3367,9 +3507,14 @@ def orchestrate_run(
                         }])
                         _update_manifest(lambda d: {
                             **d,
-                            "status": "completed_with_errors",
+                            "status": derived_final_status,
                             "overseer_reclassified": True,
                             "overseer_original_status": final_status,
+                        })
+                    elif derived_final_status != final_status:
+                        _update_manifest(lambda d: {
+                            **d,
+                            "status": derived_final_status,
                         })
 
                     obs_count = len(advisory["observations"])
@@ -3386,7 +3531,7 @@ def orchestrate_run(
                     advisory["agent_completions"] = agent_completions
                     advisory["all_agents_complete"] = all_agents_complete
                     advisory["synthesis_present"] = synthesis_present
-                    advisory["final_status"] = final_status
+                    advisory["final_status"] = derived_final_status
                     _save_advisory()
                 except Exception as _e:
                     print(f"[overseer] Final sweep error: {_e}", file=sys.stderr)
@@ -3468,15 +3613,7 @@ def orchestrate_run(
                 sandbox_report_path = out_dir / "sandbox_report.json"
 
                 def _parse_agent_json(agent_name: str) -> Optional[Dict[str, Any]]:
-                    agent_file = out_dir / f"{agent_name}.txt"
-                    if not agent_file.exists():
-                        return None
-                    try:
-                        content = agent_file.read_text(encoding="utf-8")
-                        idx = content.find('{')
-                        return json.loads(content[idx:]) if idx != -1 else None
-                    except Exception:
-                        return None
+                    return _parse_agent_json_from_run_dir(out_dir, agent_name)
 
                 def _eval_commissioner_score():
                     d = _parse_agent_json("Commissioner")
@@ -3899,15 +4036,7 @@ def _kb_save(entries: List[Dict[str, Any]]) -> None:
 
 
 def _kb_parse_agent_json(out_dir: pathlib.Path, agent_name: str) -> Optional[Dict[str, Any]]:
-    f = out_dir / f"{agent_name}.txt"
-    if not f.exists():
-        return None
-    try:
-        content = f.read_text(encoding="utf-8")
-        idx = content.find("{")
-        return json.loads(content[idx:]) if idx != -1 else None
-    except Exception:
-        return None
+    return _parse_agent_json_from_run_dir(out_dir, agent_name)
 
 
 def ingest_run_knowledge(run_id: str, out_dir: pathlib.Path, manifest_path: pathlib.Path) -> None:

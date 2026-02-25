@@ -124,6 +124,51 @@ Describe "Invoke-OrchestrationLlm - API Interaction" {
     }
 }
 
+Describe "Agent Output Normalization" {
+
+    It "Should extract JSON content from chat completion envelopes" {
+        $rawEnvelope = @{
+            id = "resp_123"
+            choices = @(
+                @{
+                    message = @{
+                        content = '{"status":"passed","errors":[],"warnings":[]}'
+                    }
+                }
+            )
+        }
+
+        $normalized = ConvertTo-NormalizedAgentJson -RawOutput ($rawEnvelope | ConvertTo-Json -Depth 20) -AgentName "ReviewGate"
+        $normalized.ok | Should -BeTrue
+        $normalized.parsed.status | Should -Be "passed"
+    }
+
+    It "Should normalize Critic null issue file fields" {
+        $criticRaw = @{
+            issues = @(
+                @{
+                    severity = "medium"
+                    category = "maintainability"
+                    description = "Issue missing file reference."
+                    file = $null
+                    line = $null
+                }
+            )
+            ratings = @{
+                completeness = 7
+                feasibility = 8
+                quality = 7
+            }
+            improvements = @("Add file references to issues.")
+        } | ConvertTo-Json -Depth 20
+
+        $normalized = ConvertTo-NormalizedAgentJson -RawOutput $criticRaw -AgentName "Critic"
+        $normalized.ok | Should -BeTrue
+        $normalized.parsed.issues[0].file | Should -Be "unknown"
+        @($normalized.parsed.issues[0].PSObject.Properties.Name) | Should -Not -Contain "line"
+    }
+}
+
 Describe "MilestoneController.ps1 - DryRun Mode with New Pipeline" {
     
     Context "DryRun Mode Should Use Old Behavior" {

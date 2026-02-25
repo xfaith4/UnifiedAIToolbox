@@ -88,6 +88,7 @@ $OutDir = if (-not [string]::IsNullOrWhiteSpace($OutputRoot)) {
     "$PSScriptRoot\..\runs\$RunId"
 }
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
+$Script:ToolboxRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 
 # --- LOGGING ---------------------------------------------------------------
 function Write-Log {
@@ -152,6 +153,199 @@ function Get-AgentContractDefinition {
     return $agentDef
 }
 
+function Remove-JsonCodeFences {
+    param([AllowNull()][string]$Text)
+
+    if ([string]::IsNullOrWhiteSpace($Text)) { return $Text }
+
+    $trimmed = $Text.Trim()
+    if ($trimmed -match '^\s*```(?:json)?') {
+        $trimmed = [regex]::Replace($trimmed, '^\s*```(?:json)?\s*', '', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+        $trimmed = [regex]::Replace($trimmed, '\s*```\s*$', '')
+    }
+    return $trimmed
+}
+
+function Get-FirstJsonObjectText {
+    param([AllowNull()][string]$Text)
+
+    if ([string]::IsNullOrWhiteSpace($Text)) { return $null }
+
+    $sanitized = Remove-JsonCodeFences -Text $Text
+    $start = $sanitized.IndexOf('{')
+    if ($start -lt 0) { return $null }
+
+    $segment = $sanitized.Substring($start)
+    $depth = 0
+    $inString = $false
+    $escape = $false
+
+    for ($i = 0; $i -lt $segment.Length; $i++) {
+        $ch = $segment[$i]
+
+        if ($escape) {
+            $escape = $false
+            continue
+        }
+
+        if ($ch -eq '\') {
+            if ($inString) { $escape = $true }
+            continue
+        }
+
+        if ($ch -eq '"') {
+            $inString = -not $inString
+            continue
+        }
+
+        if ($inString) { continue }
+
+        if ($ch -eq '{') {
+            $depth++
+            continue
+        }
+
+        if ($ch -eq '}') {
+            $depth--
+            if ($depth -eq 0) {
+                return $segment.Substring(0, $i + 1)
+            }
+        }
+    }
+
+    return $null
+}
+
+function Normalize-AgentContractObject {
+    param(
+        [Parameter(Mandatory = $true)][string]$AgentName,
+        [AllowNull()]$Object
+    )
+
+    if ($null -eq $Object) { return $Object }
+    if ($AgentName -ne "Critic") { return $Object }
+
+    $objProps = @($Object.PSObject.Properties.Name)
+    if ($objProps -notcontains "issues") { return $Object }
+
+    foreach ($issue in @($Object.issues)) {
+        if ($null -eq $issue) { continue }
+
+        $issueProps = @($issue.PSObject.Properties.Name)
+        if ($issueProps -contains "file") {
+            $fileValue = $issue.file
+            if ($null -eq $fileValue -or [string]::IsNullOrWhiteSpace([string]$fileValue)) {
+                $issue.file = "unknown"
+            }
+        }
+
+        if ($issueProps -contains "line") {
+            $lineNumber = 0.0
+            $lineValue = $issue.line
+            $isNumber = $false
+            if ($null -ne $lineValue) {
+                $isNumber = [double]::TryParse([string]$lineValue, [ref]$lineNumber)
+            }
+            if (-not $isNumber -or $lineNumber -lt 1) {
+                $issue.PSObject.Properties.Remove("line")
+            }
+            else {
+                $issue.line = [math]::Round($lineNumber, 0)
+            }
+        }
+    }
+
+    return $Object
+}
+
+function ConvertTo-NormalizedAgentJson {
+    param(
+        [Parameter(Mandatory = $true)]$RawOutput,
+        [Parameter(Mandatory = $true)][string]$AgentName,
+        [int]$Depth = 0
+    )
+
+    if ($Depth -gt 4) {
+        return @{ ok = $false; error = "Unable to normalize output after multiple parse attempts."; parsed = $null; json = $null }
+    }
+    if ($null -eq $RawOutput) {
+        return @{ ok = $false; error = "Output is null."; parsed = $null; json = $null }
+    }
+
+    if ($RawOutput -isnot [string]) {
+        $propNames = @($RawOutput.PSObject.Properties.Name)
+        if ($propNames -contains "choices" -and $RawOutput.choices -and $RawOutput.choices.Count -gt 0) {
+            $choice = $RawOutput.choices[0]
+            if ($choice.message -and $choice.message.content) {
+                return ConvertTo-NormalizedAgentJson -RawOutput ([string]$choice.message.content) -AgentName $AgentName -Depth ($Depth + 1)
+            }
+        }
+
+        $normalizedObject = Normalize-AgentContractObject -AgentName $AgentName -Object $RawOutput
+        return @{
+            ok = $true
+            error = $null
+            parsed = $normalizedObject
+            json = ($normalizedObject | ConvertTo-Json -Depth 80)
+        }
+    }
+
+    $text = [string]$RawOutput
+    if ([string]::IsNullOrWhiteSpace($text)) {
+        return @{ ok = $false; error = "Output is empty."; parsed = $null; json = $null }
+    }
+
+    $candidate = Remove-JsonCodeFences -Text $text
+    $parsed = $null
+
+    try {
+        $parsed = $candidate | ConvertFrom-Json -Depth 80 -ErrorAction Stop
+    }
+    catch {
+        $jsonObject = Get-FirstJsonObjectText -Text $candidate
+        if (-not $jsonObject) {
+            return @{
+                ok = $false
+                error = ("Output is not valid JSON: {0}" -f $_.Exception.Message)
+                parsed = $null
+                json = $null
+            }
+        }
+
+        try {
+            $parsed = $jsonObject | ConvertFrom-Json -Depth 80 -ErrorAction Stop
+        }
+        catch {
+            return @{
+                ok = $false
+                error = ("Output is not valid JSON after extraction: {0}" -f $_.Exception.Message)
+                parsed = $null
+                json = $null
+            }
+        }
+    }
+
+    if ($parsed -is [string]) {
+        return ConvertTo-NormalizedAgentJson -RawOutput $parsed -AgentName $AgentName -Depth ($Depth + 1)
+    }
+
+    $parsedProps = @($parsed.PSObject.Properties.Name)
+    if ($parsedProps -contains "choices" -and $parsed.choices -and $parsed.choices.Count -gt 0) {
+        $choice = $parsed.choices[0]
+        if ($choice.message -and $choice.message.content) {
+            return ConvertTo-NormalizedAgentJson -RawOutput ([string]$choice.message.content) -AgentName $AgentName -Depth ($Depth + 1)
+        }
+    }
+
+    $normalized = Normalize-AgentContractObject -AgentName $AgentName -Object $parsed
+    return @{
+        ok = $true
+        error = $null
+        parsed = $normalized
+        json = ($normalized | ConvertTo-Json -Depth 80)
+    }
+}
+
 function Assert-AgentContractOutput {
     param(
         [Parameter(Mandatory = $true)][string]$AgentName,
@@ -164,24 +358,22 @@ function Assert-AgentContractOutput {
     }
 
     $schema = $agentDef.io_contract.output_schema
-    try {
-        $null = $RawOutput | ConvertFrom-Json -ErrorAction Stop
-    }
-    catch {
-        $msg = "Output is not valid JSON: $($_.Exception.Message)"
-        return @{ ok = $false; error = $msg; errors = @($msg); schema = $schema }
+    $normalized = ConvertTo-NormalizedAgentJson -RawOutput $RawOutput -AgentName $AgentName
+    if (-not $normalized.ok) {
+        $msg = $normalized.error
+        return @{ ok = $false; error = $msg; errors = @($msg); schema = $schema; normalized_json = $null }
     }
 
     try {
         $schemaJson = $schema | ConvertTo-Json -Depth 60
-        $null = Test-Json -Json $RawOutput -Schema $schemaJson -ErrorAction Stop
+        $null = Test-Json -Json $normalized.json -Schema $schemaJson -ErrorAction Stop
     }
     catch {
         $msg = "Output does not match output_schema: $($_.Exception.Message)"
-        return @{ ok = $false; error = $msg; errors = @($msg); schema = $schema }
+        return @{ ok = $false; error = $msg; errors = @($msg); schema = $schema; normalized_json = $normalized.json }
     }
 
-    return @{ ok = $true; error = $null; errors = @(); schema = $schema }
+    return @{ ok = $true; error = $null; errors = @(); schema = $schema; normalized_json = $normalized.json }
 }
 
 function Write-ContractFailureArtifact {
@@ -230,7 +422,7 @@ function Resolve-AgentOutputWithContract {
     $check = Assert-AgentContractOutput -AgentName $AgentName -RawOutput $Output
     if ($check.ok) {
         return @{
-            Output = $Output
+            Output = $(if ($check.normalized_json) { $check.normalized_json } else { $Output })
             ContractOk = $true
             ContractError = $null
             RepairAttempted = $false
@@ -256,7 +448,7 @@ Original task:
 $UserPrompt
 
 Invalid output:
-$Output
+$(if ($check.normalized_json) { $check.normalized_json } else { $Output })
 "@
 
     $repairMessages = @(
@@ -289,7 +481,7 @@ $Output
 
     Write-Host "✅ Contract repair succeeded for $AgentName" -ForegroundColor Green
     return @{
-        Output = $repaired
+        Output = $(if ($recheck.normalized_json) { $recheck.normalized_json } else { $repaired })
         ContractOk = $true
         ContractError = $null
         RepairAttempted = $true
@@ -437,6 +629,75 @@ Stack Trace: $($_.ScriptStackTrace)
     }
 }
 
+function New-MaintenanceFallbackOutput {
+    param(
+        [Parameter(Mandatory = $true)][string]$AgentName,
+        [Parameter(Mandatory = $true)][string]$Reason
+    )
+
+    switch ($AgentName) {
+        "RepoContextBuilder" {
+            return @{
+                schema_version = "1.0"
+                status = "insufficient_input"
+                missing_inputs = @(
+                    "repo_path OR repo snapshot",
+                    "orchestration log tail",
+                    "failing command output"
+                )
+                errors = @($Reason)
+                repo = @{}
+                discovery = @{
+                    warnings = @($Reason)
+                    policy_hooks = @{}
+                }
+                baseline = @{
+                    attempted = $false
+                    warnings = @($Reason)
+                }
+            } | ConvertTo-Json -Depth 20
+        }
+        "ReviewGate" {
+            return @{
+                status = "error"
+                errors = @($Reason)
+                warnings = @(
+                    "Run maintenance mode with -JobType maintain_existing_app and -ContractPath/-RequestPath."
+                )
+            } | ConvertTo-Json -Depth 20
+        }
+        "PRPublisher" {
+            return @{
+                schema_version = "1.0"
+                run_id = $RunId
+                status = "failed"
+                draft = $true
+                errors = @($Reason)
+            } | ConvertTo-Json -Depth 20
+        }
+        default {
+            return @{
+                status = "error"
+                errors = @($Reason)
+            } | ConvertTo-Json -Depth 20
+        }
+    }
+}
+
+function Invoke-DeterministicRepoContextBuilder {
+    $builderPath = Join-Path $Script:ToolboxRoot "supervisor\repo_context_builder.ps1"
+    if (-not (Test-Path -LiteralPath $builderPath)) {
+        throw "repo_context_builder.ps1 not found at $builderPath"
+    }
+
+    . $builderPath
+    $result = Invoke-RepoContextBuilder -RepoRoot $Script:ToolboxRoot -OutputDir $OutDir
+    if (-not $result -or -not $result.RepoContextPath -or -not (Test-Path -LiteralPath $result.RepoContextPath)) {
+        throw "RepoContextBuilder did not produce repo_context.json"
+    }
+    return Get-Content -Raw -LiteralPath $result.RepoContextPath
+}
+
 # --- MAIN ORCHESTRATION LOOP -----------------------------------------------
 try {
     $Context = "Goal: $Goal"
@@ -461,6 +722,71 @@ try {
 
         # Track per-iteration outputs by agent name for downstream Supervisor/Historian inputs.
         $AgentOutputs = @{}
+
+        $repoContextAgents = @($Phase1Agents | Where-Object { $_.name -eq "RepoContextBuilder" })
+        $maintenanceFallbackAgents = @($Phase1Agents | Where-Object { $_.name -in @("ReviewGate", "PRPublisher") })
+        $Phase1Agents = @($Phase1Agents | Where-Object { $_.name -notin @("RepoContextBuilder", "ReviewGate", "PRPublisher") })
+
+        foreach ($rcb in $repoContextAgents) {
+            Write-AgentStatus -Agent $rcb.name -Status "working"
+            $systemPrompt = if ([string]::IsNullOrWhiteSpace($Instruction)) {
+                $rcb.prompt
+            } else {
+                "$Instruction`n`n$($rcb.prompt)"
+            }
+            $userPrompt = $Context
+
+            try {
+                $repoContextOutput = Invoke-DeterministicRepoContextBuilder
+                $validated = Resolve-AgentOutputWithContract `
+                    -AgentName $rcb.name `
+                    -Output $repoContextOutput `
+                    -SystemPrompt $systemPrompt `
+                    -UserPrompt $userPrompt
+
+                $finalOutput = [string]$validated.Output
+                Write-Log -Agent $rcb.name -Content $finalOutput
+                Write-AgentStatus -Agent $rcb.name -Status "complete" -ExtraData @{ source = "deterministic" }
+                $Context += "`n`n[$($rcb.name) Output]:`n$finalOutput"
+                $AgentOutputs[$rcb.name] = $finalOutput
+            }
+            catch {
+                $reason = "Repo context unavailable: $($_.Exception.Message)"
+                $fallbackOutput = New-MaintenanceFallbackOutput -AgentName $rcb.name -Reason $reason
+                $validated = Resolve-AgentOutputWithContract `
+                    -AgentName $rcb.name `
+                    -Output $fallbackOutput `
+                    -SystemPrompt $systemPrompt `
+                    -UserPrompt $userPrompt
+                $finalOutput = [string]$validated.Output
+                Write-Log -Agent $rcb.name -Content $finalOutput
+                Write-AgentStatus -Agent $rcb.name -Status "complete" -ExtraData @{ source = "fallback"; warning = $reason }
+                $Context += "`n`n[$($rcb.name) Output]:`n$finalOutput"
+                $AgentOutputs[$rcb.name] = $finalOutput
+            }
+        }
+
+        foreach ($maintenanceAgent in $maintenanceFallbackAgents) {
+            Write-AgentStatus -Agent $maintenanceAgent.name -Status "working"
+            $systemPrompt = if ([string]::IsNullOrWhiteSpace($Instruction)) {
+                $maintenanceAgent.prompt
+            } else {
+                "$Instruction`n`n$($maintenanceAgent.prompt)"
+            }
+            $userPrompt = $Context
+            $reason = "insufficient_input: maintenance contract context is required."
+            $fallbackOutput = New-MaintenanceFallbackOutput -AgentName $maintenanceAgent.name -Reason $reason
+            $validated = Resolve-AgentOutputWithContract `
+                -AgentName $maintenanceAgent.name `
+                -Output $fallbackOutput `
+                -SystemPrompt $systemPrompt `
+                -UserPrompt $userPrompt
+            $finalOutput = [string]$validated.Output
+            Write-Log -Agent $maintenanceAgent.name -Content $finalOutput
+            Write-AgentStatus -Agent $maintenanceAgent.name -Status "complete" -ExtraData @{ source = "fallback"; warning = $reason }
+            $Context += "`n`n[$($maintenanceAgent.name) Output]:`n$finalOutput"
+            $AgentOutputs[$maintenanceAgent.name] = $finalOutput
+        }
 
         # --- Prepare work items --------------------------------------------
         $WorkItems = foreach ($A in $Phase1Agents) {
