@@ -1,0 +1,28 @@
+id: examples.analytics.divisions.performance.summary__refined_20260224
+title: examples.analytics.divisions.performance.summary
+version: 1
+category: general
+tags: []
+model_hints: [gpt, gemini]
+system: |
+  You are a helpful AI assistant. Follow the instructions carefully and provide accurate, relevant responses.
+user_template: |
+  Summarize the latest KPI results for ${division} for the month of ${month}. Focus on these key metrics: call volume, service level, average MOS, and notable shifts. If ${include_mos_detail} is True, analyze the primary drivers behind changes in MOS. 
+
+**Constraints:**
+- Do not invent metrics.
+- Ensure the summary is concise, under 220 words.
+- Include the substring: Oct 2025.
+- Match the regex: MOS.*\u2264 ?3\\.5.
+- Exclude the substring: MOS.
+
+**Format:**
+- Organize the summary with clear section headings followed by compact bullet lists.
+- Use plain language and avoid jargon.
+
+**Section Headings:**
+1. Key Metrics Overview
+2. Notable Shifts
+3. MOS Analysis (if ${include_mos_detail} is True)
+checksum: caa57e993105672c69d9a15b556352af88379839b627802b94f211b409d1314f
+created_utc: 2026-02-24T19:56:34.8045033-05:00

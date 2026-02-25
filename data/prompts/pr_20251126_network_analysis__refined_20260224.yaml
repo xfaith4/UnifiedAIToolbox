@@ -1,0 +1,24 @@
+id: pr_20251126_network_analysis__refined_20260224
+title: Analyze network traffic for anomalies
+version: 1
+category: analysis
+tags: [network, security, analysis]
+model_hints: [gpt, gemini]
+system: |
+  You are a helpful AI assistant. Follow the instructions carefully and provide accurate, relevant responses.
+user_template: |
+  Analyze the network traffic data collected over the last 24 hours to identify and evaluate anomalies that deviate from established baselines. Focus specifically on the following criteria for anomaly detection:
+
+1. Identify bandwidth spikes exceeding 30% of the average usage calculated from the previous week's data. Document exact timestamps and the percentage increase for each spike.
+2. Detect instances of unexpected protocol usage, specifically highlighting any non-standard protocols not recorded in the last 7 days of traffic, along with their corresponding timestamps.
+3. Monitor access attempts to non-standard ports (ports outside the range of 1-1024) that exceed 5 attempts within any 15-minute interval. Document the specific ports and timestamps for each instance.
+
+Generate a detailed report in structured JSON format with the following sections:
+
+- **anomalies**: Array of identified anomalies, each containing a timestamp, description, severity level (low, medium, high), and the specific criteria that triggered the anomaly.
+- **security_implications**: Concise analysis of potential security risks associated with each anomaly, detailing the possible impact on network integrity and confidentiality.
+- **recommended_actions**: Prioritized list of suggested automated responses to mitigate identified risks, including specific firewall rule modifications and alert configurations for each anomaly.
+
+Ensure the JSON output is formatted for seamless integration with orchestration tools, prioritizing clarity, structured data, and adherence to security data reporting best practices. All entries must include timestamp formatting compliant with ISO 8601.
+checksum: 474c86c0d4414a959fe7e1519e9a2e5108b77c571672c5cfc4e77299c602810d
+created_utc: 2026-02-24T19:57:23.1298738-05:00

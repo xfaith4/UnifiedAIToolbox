@@ -1,0 +1,37 @@
+id: pr_20251126_api_docs__refined_20260224
+title: API Documentation Generator
+version: 1
+category: documentation
+tags: [api, documentation, openapi]
+model_hints: [gpt, gemini]
+system: |
+  You are a helpful AI assistant. Follow the instructions carefully and provide accurate, relevant responses.
+user_template: |
+  Generate comprehensive API documentation from the provided OpenAPI specification in JSON format. Structure the documentation as follows:
+
+1. **Overview**: Provide a concise introduction (max 150 words) that encapsulates the API's purpose, key features, and primary use cases.
+
+2. **Authentication**: Detail the authentication methods, including:
+   - Required tokens, keys, or OAuth flows
+   - Step-by-step instructions for obtaining and using these credentials with clear examples
+
+3. **Endpoint Descriptions**: For each API endpoint, include:
+   - Supported HTTP methods (GET, POST, PUT, DELETE, etc.)
+   - Complete URL paths
+   - JSON-formatted example request bodies
+   - JSON-formatted example response bodies
+   - List of possible HTTP status codes with brief descriptions
+
+4. **Error Codes**: Create a categorized list of potential error responses, including:
+   - Error codes
+   - Descriptive messages
+   - Recommendations for troubleshooting or resolution steps
+
+5. **Usage Guidelines**: Provide best practices for API usage, addressing:
+   - Rate limits and usage quotas
+   - Suggested caching strategies
+   - Versioning information and upgrade paths
+
+Use clear and accessible language suitable for developers and technical stakeholders, and format the output in Markdown for easy integration into documentation platforms. The entire documentation generation process must complete within 10 seconds.
+checksum: 4e15845ca2e93aba62ca4757bf36e8e8ce1930221bc7ab3d138505d5bf9f4665
+created_utc: 2026-02-24T19:56:51.2077251-05:00

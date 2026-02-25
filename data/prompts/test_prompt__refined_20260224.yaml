@@ -1,0 +1,12 @@
+id: test_prompt__refined_20260224
+title: Test
+version: 1
+category: general
+tags: []
+model_hints: [gpt, gemini]
+system: |
+  You are a helpful AI assistant. Follow the instructions carefully and provide accurate, relevant responses.
+user_template: |
+  "Develop a detailed report on the environmental impacts of urbanization, specifically examining air quality degradation, water resource depletion, and green space loss in five major global cities (choose from New York, Tokyo, London, Mumbai, and São Paulo) from 2013 to 2023. The report should consist of the following sections: 1) Introduction (300 words) that highlights the importance of addressing urbanization's environmental consequences; 2) Data Analysis (800 words) presenting relevant statistical data with graphs or tables; 3) Case Studies (600 words), providing in-depth examinations of three selected cities, including specific examples of the impacts mentioned; and 4) Conclusion (300 words) summarizing key findings, implications for policymakers, and potential solutions. Ensure the total word count does not exceed 2000 words and include citations from at least five reputable sources, such as peer-reviewed journals, government reports, or recognized environmental organizations."
+checksum: 6496340062ab227a266f43b90c10b3fb5b945f239acae61bbcab3c29d581a4ab
+created_utc: 2026-02-24T19:58:10.3152993-05:00

@@ -1,0 +1,22 @@
+id: pr_20251126_cloud_monitoring__refined_20260224
+title: Cloud Infrastructure Monitoring System
+version: 1
+category: monitoring
+tags: [cloud, monitoring, infrastructure, alerts]
+model_hints: [gpt, gemini]
+system: |
+  You are a helpful AI assistant. Follow the instructions carefully and provide accurate, relevant responses.
+user_template: |
+  Design a comprehensive monitoring system for cloud infrastructure that addresses the following key areas, incorporating actionable steps, relevant context, and clear constraints:
+
+1. **Security Best Practices**: Identify three specific strategies to safeguard data integrity and availability. Outline detailed procedures for identity and access management, implement encryption protocols, and ensure compliance with GDPR and HIPAA. Include a timeline (e.g., 3-month implementation, with quarterly reviews) and define key performance indicators (KPIs) to evaluate effectiveness, such as incident response time and number of compliance breaches.
+
+2. **Error Handling and Logging**: Develop a framework for error handling that automates the logging of critical system events. Specify five essential metrics for logging (e.g., error rates, response times, transaction failures) and ensure integration with centralized logging solutions like ELK Stack or Splunk for streamlined access. Define retention policies for logs (e.g., 90 days for operational logs, 1 year for compliance logs).
+
+3. **Performance Optimization**: Formulate three actionable strategies to enhance resource utilization and application responsiveness. Describe algorithms for adaptive load balancing and dynamic resource allocation based on real-time usage patterns, including specific thresholds (e.g., CPU utilization above 75%) for initiating scaling actions.
+
+4. **Monitoring and Alerting**: Create a monitoring system that provides real-time insights into five critical performance metrics (e.g., CPU usage, memory consumption, network latency) and security incidents. Define automated alerting mechanisms that trigger notifications within five minutes of detecting anomalies or breaches. Specify detailed escalation procedures for incident response, including clearly defined roles and responsibilities (e.g., on-call engineer, security team).
+
+Ensure all components are designed for seamless integration with existing cloud services and can be orchestrated using Terraform or Ansible, incorporating version control practices for infrastructure as code. Limit the scope to AWS and Azure environments for compatibility.
+checksum: fb35738eb7826e6ae4aab7cec0b838073dff8e9d80771c0bdf4abdb0cfa8d1e7
+created_utc: 2026-02-24T19:57:08.3722292-05:00

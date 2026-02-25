@@ -814,6 +814,7 @@ Stack Trace: $($_.ScriptStackTrace)
                 # --- Milestone Check ---------------------------------------
                 $Score = $null
                 $Recommendation = $null
+                $commission = $null
                 try {
                     $commission = $Output | ConvertFrom-Json -ErrorAction Stop
                     if ($null -ne $commission.value_score) { $Score = [int]$commission.value_score }
@@ -844,12 +845,39 @@ Stack Trace: $($_.ScriptStackTrace)
                     }
 
                     Write-Host "🔁 Commissioner conditional (value_score=$Score) — triggering refinement..." -ForegroundColor Yellow
-                    $RefineGoal = "Refine the previous design to improve value_score from $Score to ≥7. Address Commissioner feedback specifically."
-                    $Context += "`n[Refinement Triggered]: $RefineGoal"
+                    $feedbackLines = New-Object System.Collections.Generic.List[string]
+                    if ($null -ne $commission) {
+                        if ($commission.rationale) {
+                            $feedbackLines.Add("Rationale: $($commission.rationale)")
+                        }
+                        foreach ($condition in @($commission.conditions)) {
+                            if (-not [string]::IsNullOrWhiteSpace([string]$condition)) {
+                                $feedbackLines.Add("Condition: $condition")
+                            }
+                        }
+                        foreach ($improvement in @($commission.improvements)) {
+                            if (-not [string]::IsNullOrWhiteSpace([string]$improvement)) {
+                                $feedbackLines.Add("Improvement: $improvement")
+                            }
+                        }
+                    }
+
+                    $RefineDirective = "Refine the plan to raise commissioner value_score from $Score to >=7 while preserving the original goal and deliverables."
+                    if ($feedbackLines.Count -gt 0) {
+                        $RefineDirective += "`nCommissioner feedback:`n- " + (($feedbackLines.ToArray()) -join "`n- ")
+                    }
+
+                    $nextInstruction = if ([string]::IsNullOrWhiteSpace($Instruction)) {
+                        $RefineDirective
+                    } else {
+                        "$Instruction`n`n$RefineDirective"
+                    }
+
+                    $Context += "`n[Refinement Triggered]: $RefineDirective"
                     & $PSCommandPath `
-                        -Goal $RefineGoal `
+                        -Goal $Goal `
                         -Model $Model `
-                        -Instruction $Instruction `
+                        -Instruction $nextInstruction `
                         -MaxIterations $MaxIterations `
                         -AgentConfigPath $AgentConfigPath `
                         -CanonicalAgentLibraryPath $CanonicalAgentLibraryPath `

@@ -1,0 +1,18 @@
+id: pr_20251109_sample__refined_20260224
+title: Sample Division Performance (Genesys)
+version: 1
+category: general
+tags: [genesys, divisions, sample]
+model_hints: [gpt, gemini]
+system: |
+  You are a helpful AI assistant. Follow the instructions carefully and provide accurate, relevant responses.
+user_template: |
+  Analyze the performance of division ${{divisionId}} for the month of {month}. Focus on the following key performance indicators (KPIs): revenue, expenses, profit margin, and customer satisfaction score. For each KPI, provide the following: 
+
+1. Specific numerical data for the current month and the previous month.
+2. A brief analysis of trends, highlighting percentage changes and identifying significant variances (greater than 10%).
+3. Three actionable recommendations to enhance overall performance, grounded in current market conditions and internal capabilities.
+
+Structure the output with clear headings for each KPI and recommendations. Ensure that all data is relevant, concise, and formatted for easy automation integration, adhering to a maximum of 200 words per section.
+checksum: 2440d1d3ab948ed71026e131c17f5ea707ff3d29fbbe16f279deaf382bbf7d30
+created_utc: 2026-02-24T19:58:02.7382942-05:00

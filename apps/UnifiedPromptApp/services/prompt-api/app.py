@@ -2698,7 +2698,7 @@ class OrchestrationRequest(BaseModel):
     notes: Optional[str] = None
     goal: Optional[str] = None
     model: Optional[str] = None
-    run_mode: Optional[str] = "default"  # default | codex-swarm | swarms
+    run_mode: Optional[str] = "default"  # default | multi-agent | codex-swarm | swarms
     repo_root: Optional[str] = None
     max_iterations: Optional[int] = None
     mcp_allowed_servers: List[str] = Field(default_factory=list)
@@ -2710,6 +2710,15 @@ class CheckpointResponseRequest(BaseModel):
     """Phase 3: Payload for responding to a mid-run human checkpoint."""
     response: str                        # selected option or free-text answer
     agent: Optional[str] = None          # which agent requested the checkpoint (for validation)
+
+
+def _normalize_run_mode(run_mode: Optional[str]) -> str:
+    raw = (run_mode or "default").strip().lower()
+    if raw in {"default", "multi-agent", "multi_agent", "multiagent"}:
+        return "default"
+    if raw in {"codex-swarm", "codex_swarm", "codexswarm", "swarms", "swarm"}:
+        return "codex-swarm"
+    return raw or "default"
 
 
 def _create_run_allowlist_if_requested(run_id: str, req: OrchestrationRequest) -> Optional[str]:
@@ -2804,6 +2813,7 @@ def orchestrate_run(
     out_dir = BRIDGE_RUN_DIR / run_id
     log_path = BRIDGE_RUN_DIR / f"{run_id}.log"
     out_dir.mkdir(parents=True, exist_ok=True)
+    normalized_run_mode = _normalize_run_mode(req.run_mode)
 
     allowlist_id = _create_run_allowlist_if_requested(run_id, req)
     middleware = get_orchestration_mcp_middleware()
@@ -2824,7 +2834,7 @@ def orchestrate_run(
                 context_payload={
                     "prompt_id": req.prompt_id,
                     "model": req.model or DEFAULT_MODEL,
-                    "run_mode": req.run_mode or "default",
+                    "run_mode": normalized_run_mode,
                     "repo_root": req.repo_root or REPO_ROOT_DEFAULT,
                     "agents": req.agents or [],
                 },
@@ -2848,7 +2858,8 @@ def orchestrate_run(
         "status": "queued",
         "goal": req.goal,
         "model": req.model or DEFAULT_MODEL,
-        "run_mode": req.run_mode or "default",
+        "run_mode": normalized_run_mode,
+        "requested_run_mode": req.run_mode or "default",
         "mode": "simulated",
         "mcp_allowlist_id": allowlist_id,
         "mcp_allowed_servers": req.mcp_allowed_servers,
@@ -2962,8 +2973,8 @@ def orchestrate_run(
             repo_root = req.repo_root or REPO_ROOT_DEFAULT
             ps_exe = shutil.which("pwsh") or shutil.which("powershell")
 
-            # choose orchestrator script based on run_mode (default => unified orchestrator)
-            run_mode = (req.run_mode or "default").lower()
+            # choose orchestrator script based on normalized run_mode
+            run_mode = _normalize_run_mode(req.run_mode)
             ps1_candidate = pathlib.Path(CODEX_SWARM_PS1 if run_mode == "codex-swarm" else ORCH_PS1)
             data.setdefault("events", []).append({
                 "ts": now_iso(),
@@ -3407,7 +3418,7 @@ def orchestrate_run(
             data["events"].append({"ts": now_iso(), "type": "info", "message": f"Executing {ps1.name}"})
             path.write_text(json.dumps(data, indent=2), encoding="utf-8")
             args = [ps_exe, "-NoLogo", "-File", str(ps1)]
-            if run_mode in ("codex-swarm", "swarms"):
+            if run_mode == "codex-swarm":
                 args += [
                     "-RepoRoot",
                     repo_root,
@@ -3678,6 +3689,23 @@ def orchestrate_run(
                     _update_manifest(lambda d: {**d, "final_synthesis": final_synthesis_text})
                 except Exception as e:
                     print(f"[orchestrate] Failed to update manifest with final synthesis: {e}", file=sys.stderr)
+
+            # Materialize concrete app files from Engineer output when possible.
+            try:
+                generated_app_files = _materialize_engineer_artifacts(out_dir)
+            except Exception as e:
+                generated_app_files = []
+                print(f"[orchestrate] Failed to materialize Engineer artifacts: {e}", file=sys.stderr)
+            if generated_app_files:
+                _append_events([{
+                    "ts": now_iso(),
+                    "type": "artifact:generated_app",
+                    "message": f"Generated {len(generated_app_files)} app file(s) under generated_app/.",
+                }])
+                _update_manifest(lambda d: {
+                    **d,
+                    "generated_app_files": generated_app_files,
+                })
 
             data = safe_json_load(path, context=f"execute_complete:{run_id}")
             data["status"] = "completed"
@@ -4239,6 +4267,8 @@ class _HtmlTextExtractor(HTMLParser):
     def __init__(self) -> None:
         super().__init__()
         self.parts: List[str] = []
+        self._skip_tags = {"style", "script"}
+        self._skip_depth = 0
         self._block_tags = {
             "p",
             "div",
@@ -4260,24 +4290,46 @@ class _HtmlTextExtractor(HTMLParser):
         }
 
     def handle_starttag(self, tag, attrs):
+        if tag in self._skip_tags:
+            self._skip_depth += 1
+            return
+        if self._skip_depth:
+            return
         if tag in self._block_tags:
             self.parts.append("\n")
         if tag == "li":
             self.parts.append("- ")
 
     def handle_endtag(self, tag):
+        if tag in self._skip_tags:
+            if self._skip_depth > 0:
+                self._skip_depth -= 1
+            return
+        if self._skip_depth:
+            return
         if tag in self._block_tags:
             self.parts.append("\n")
 
     def handle_data(self, data):
+        if self._skip_depth:
+            return
         if data:
             self.parts.append(data)
 
     def text(self) -> str:
         raw = "".join(self.parts)
         lines = [line.rstrip() for line in raw.splitlines()]
-        cleaned = "\n".join([line for line in lines if line.strip() != ""])
-        return cleaned.strip()
+        normalized: List[str] = []
+        saw_blank = False
+        for line in lines:
+            if line.strip() == "":
+                if not saw_blank:
+                    normalized.append("")
+                saw_blank = True
+                continue
+            normalized.append(line.strip())
+            saw_blank = False
+        return "\n".join(normalized).strip()
 
 
 def _extract_section_lines(text: str, keywords: List[str]) -> List[str]:
@@ -4313,6 +4365,134 @@ def _build_report_from_html(html_text: str) -> Dict[str, Any]:
         "risks": _extract_section_lines(text, ["risk"]),
         "next_steps": _extract_section_lines(text, ["next step", "next steps"]),
     }
+
+
+_CODE_BLOCK_RE = re.compile(r"```([^\n`]*)\n(.*?)```", re.DOTALL)
+_INLINE_FILE_HINT_RE = re.compile(
+    r"(?:<!--|/\*+|//|#)\s*File:\s*([^>\n*]+?)(?:-->|(?:\*+/)|$)",
+    re.IGNORECASE,
+)
+_BACKTICK_FILE_RE = re.compile(r"`([^`\n]+?\.[A-Za-z0-9._-]+)`")
+
+
+def _load_agent_json_output(agent_file: pathlib.Path) -> Optional[Dict[str, Any]]:
+    if not agent_file.exists():
+        return None
+    try:
+        content = agent_file.read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        return None
+    idx = content.find("{")
+    if idx < 0:
+        return None
+    try:
+        payload = json.loads(content[idx:])
+    except Exception:
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _safe_generated_relpath(path_hint: str) -> Optional[pathlib.PurePosixPath]:
+    candidate = (path_hint or "").strip().strip("`'\"")
+    if not candidate:
+        return None
+    candidate = candidate.replace("\\", "/")
+    if candidate.lower().startswith("file:"):
+        candidate = candidate.split(":", 1)[1].strip()
+    if not candidate:
+        return None
+    path = pathlib.PurePosixPath(candidate)
+    if path.is_absolute():
+        return None
+    if any(part in ("", ".", "..") for part in path.parts):
+        return None
+    if path.parts and path.parts[0].endswith(":"):
+        return None
+    return path
+
+
+def _strip_file_header_line(code: str) -> str:
+    lines = code.splitlines()
+    if not lines:
+        return code
+    if _INLINE_FILE_HINT_RE.search(lines[0]):
+        return "\n".join(lines[1:]).lstrip("\n")
+    return code
+
+
+def _infer_filename(language: str, index: int) -> str:
+    lang = (language or "").strip().lower()
+    if "html" in lang:
+        return "index.html"
+    if "css" in lang:
+        return "styles.css"
+    if "javascript" in lang or lang == "js":
+        return "script.js"
+    if "typescript" in lang or lang == "ts":
+        return "script.ts"
+    return f"generated_{index + 1}.txt"
+
+
+def _extract_code_target(code: str, prelude: str, language: str, index: int, used: set[str]) -> pathlib.PurePosixPath:
+    hint = None
+    first_lines = code.splitlines()[:2]
+    for line in first_lines:
+        m = _INLINE_FILE_HINT_RE.search(line)
+        if m:
+            hint = m.group(1).strip()
+            break
+    if not hint:
+        prelude_match = _BACKTICK_FILE_RE.findall(prelude or "")
+        if prelude_match:
+            hint = prelude_match[-1]
+
+    rel = _safe_generated_relpath(hint) if hint else None
+    if rel is None:
+        rel = pathlib.PurePosixPath(_infer_filename(language, index))
+
+    base_name = rel.name
+    stem = pathlib.PurePosixPath(base_name).stem
+    suffix = pathlib.PurePosixPath(base_name).suffix
+    parent = rel.parent if str(rel.parent) != "." else pathlib.PurePosixPath()
+    candidate = rel
+    counter = 2
+    while str(candidate) in used:
+        candidate = parent / f"{stem}_{counter}{suffix}"
+        counter += 1
+    used.add(str(candidate))
+    return candidate
+
+
+def _materialize_engineer_artifacts(out_dir: pathlib.Path) -> List[str]:
+    engineer_payload = _load_agent_json_output(out_dir / "Engineer.txt")
+    if not engineer_payload:
+        return []
+    implementation = engineer_payload.get("implementation")
+    if not isinstance(implementation, str) or "```" not in implementation:
+        return []
+
+    generated_root = out_dir / "generated_app"
+    generated_root.mkdir(parents=True, exist_ok=True)
+
+    written: List[str] = []
+    used: set[str] = set()
+    for idx, match in enumerate(_CODE_BLOCK_RE.finditer(implementation)):
+        language = (match.group(1) or "").strip()
+        code = (match.group(2) or "").strip("\n")
+        if not code.strip():
+            continue
+        prelude = implementation[max(0, match.start() - 240):match.start()]
+        rel = _extract_code_target(code, prelude, language, idx, used)
+        target = (generated_root / pathlib.Path(rel.as_posix())).resolve()
+        try:
+            target.relative_to(generated_root.resolve())
+        except Exception:
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(_strip_file_header_line(code).rstrip() + "\n", encoding="utf-8")
+        written.append(str(target.relative_to(out_dir)))
+
+    return written
 
 
 def _report_md_from_json(report_json: Dict[str, Any]) -> str:

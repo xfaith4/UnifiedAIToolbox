@@ -38,6 +38,14 @@ param(
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
+function Get-OrchLastExitCode {
+    $lastExit = Get-Variable -Name LASTEXITCODE -Scope Global -ErrorAction SilentlyContinue
+    if ($null -eq $lastExit -or $null -eq $lastExit.Value) {
+        return 0
+    }
+    return [int]$lastExit.Value
+}
+
 $CommonModule = Join-Path $PSScriptRoot "..\modules\Orchestration.Common.psm1"
 if (-not (Test-Path -LiteralPath $CommonModule)) {
     throw "Shared orchestration module not found at $CommonModule"
@@ -156,8 +164,9 @@ if ($requestMode) {
 
     Write-Host "`nRunning maintenance orchestration..." -ForegroundColor Green
     & $milestoneScript @milestoneParams
-    if ($LASTEXITCODE -ne 0) {
-        throw "Maintenance orchestration failed with exit code $LASTEXITCODE"
+    $maintenanceExitCode = Get-OrchLastExitCode
+    if ($maintenanceExitCode -ne 0) {
+        throw "Maintenance orchestration failed with exit code $maintenanceExitCode"
     }
     Write-Host "`nUnified orchestration complete (maintenance mode)." -ForegroundColor Green
     return
@@ -179,8 +188,9 @@ if ($VerboseMode) {
 }
 
 & $pofScript @pofParams
-if ($LASTEXITCODE -ne 0) {
-    throw "POF orchestration failed with exit code $LASTEXITCODE"
+$pofExitCode = Get-OrchLastExitCode
+if ($pofExitCode -ne 0) {
+    throw "POF orchestration failed with exit code $pofExitCode"
 }
 
 $shouldRunCodex = $RunCodex -and (-not $SkipCodex)
@@ -232,8 +242,9 @@ Write-Host "`nLaunching Codex swarm..." -ForegroundColor Cyan
     -WorkDir $resolvedWorkDir `
     -UseWsl:$UseWslForCodex
 
-if ($LASTEXITCODE -ne 0) {
-    throw "Codex swarm execution failed with exit code $LASTEXITCODE"
+$codexExitCode = Get-OrchLastExitCode
+if ($codexExitCode -ne 0) {
+    throw "Codex swarm execution failed with exit code $codexExitCode"
 }
 
 Write-Host "`nUnified orchestration complete." -ForegroundColor Green

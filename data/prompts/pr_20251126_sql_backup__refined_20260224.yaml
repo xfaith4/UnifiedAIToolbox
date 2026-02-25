@@ -1,0 +1,37 @@
+id: pr_20251126_sql_backup__refined_20260224
+title: SQL Database Backup Script Generator
+version: 1
+category: automation
+tags: [sql, backup, powershell, database]
+model_hints: [gpt, gemini]
+system: |
+  You are a helpful AI assistant. Follow the instructions carefully and provide accurate, relevant responses.
+user_template: |
+  Develop a PowerShell script that fully automates the backup of all SQL Server databases on a specified instance, adhering to the following structured requirements:
+
+1. **Input Parameters**:
+   - `-InstanceName` (string, mandatory): Specify the SQL Server instance name for backup.
+   - `-BackupDirectory` (string, mandatory): Define the path where backup files will be stored.
+   - `-FileNamePrefix` (string, optional): Provide a prefix for backup file names for better organization.
+
+2. **Error Handling**:
+   - Implement thorough error handling that logs all issues in a specified log file, including a timestamp, error message, and contextual details (e.g., values of input parameters).
+
+3. **Disk Space Verification**:
+   - Before starting the backup, check that at least 1GB of free space is available in the backup directory. If there is insufficient space, log an error and exit the script gracefully.
+
+4. **Timestamped Backup Filenames**:
+   - Format backup filenames as `DatabaseName_Backup_YYYYMMDD_HHMMSS.bak` for easy identification and sorting.
+
+5. **Scheduled Execution Instructions**:
+   - Provide clear, step-by-step instructions for setting up the script in Windows Task Scheduler, detailing configuration for triggers (e.g., daily, weekly) and conditions (e.g., run only when idle).
+
+6. **Script Documentation**:
+   - Include detailed comments throughout the script to explain each section's function, the rationale for specific choices, error handling strategies, and practical usage examples.
+
+Ensure the script follows PowerShell best practices, including:
+- Use of `try-catch` blocks for error management.
+- Clear logging techniques for readability and utility.
+- Rigorous input validation for all parameters to prevent runtime errors from invalid data types or values.
+checksum: a32ebdd4a9d4f871fd9f6e969583e9c2235caa82bd48666f2c7c3190134cbd4c
+created_utc: 2026-02-24T19:57:41.8670181-05:00
