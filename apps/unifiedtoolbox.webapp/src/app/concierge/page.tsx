@@ -54,6 +54,14 @@ import {
   buildRunHistoryPrompt,
   type PastRunInsight,
 } from '@/lib/services/runHistoryAnalyzer'
+import {
+  saveRunContext,
+  listRecentRunContexts,
+  type RunContextEntry,
+  type RunContextStatus,
+} from '@/lib/services/runContextStore'
+import CurrentRunCard from '@/components/runs/CurrentRunCard'
+import LiveEventPanel from '@/components/runs/LiveEventPanel'
 
 // ── Risk badge ────────────────────────────────────────────────────────────────
 function RiskBadge({ level }: { level: ProposalRisk['level'] }) {
@@ -910,6 +918,10 @@ export default function ConciergePage() {
   const [startRunError, setStartRunError] = useState<string | null>(null)
   const seenEventCount = useRef(0)
 
+  // Persistent run context: last run card + live event panel
+  const [lastRunEntry, setLastRunEntry] = useState<RunContextEntry | null>(null)
+  const [showEventPanel, setShowEventPanel] = useState(false)
+
   // Run history for self-healing loop (Options A / B / C)
   const [allRuns, setAllRuns] = useState<OrchestrationRun[]>([])
   const [preflight, setPreflight] = useState<PastRunInsight[]>([])
@@ -920,6 +932,16 @@ export default function ConciergePage() {
   const [mode, setMode] = useState<ConciergeMode>(DEFAULT_PREFERENCES.conciergeMode)
   useEffect(() => {
     setMode(getConciergeMode())
+  }, [])
+
+  // Restore last run context on mount so the CurrentRunCard survives navigation.
+  // We only restore if the run is within the last 24 hours and there's no
+  // active in-page run already (runId would be set by the proposal param restore).
+  useEffect(() => {
+    const recent = listRecentRunContexts()
+    if (recent.length > 0) {
+      setLastRunEntry(recent[0])
+    }
   }, [])
 
   // Tool permission state
@@ -1176,6 +1198,17 @@ export default function ConciergePage() {
       setRunId(run.id)
       setRunStatus(run.status ?? 'queued')
 
+      // Persist run context to localStorage so the card survives navigation
+      const contextEntry = saveRunContext({
+        runId: run.id,
+        goal: draft.goal,
+        startedAt: now,
+        mode: draft.mode,
+        status: (run.status ?? 'queued') as RunContextStatus,
+        proposalId: proposal.id,
+      })
+      setLastRunEntry(contextEntry)
+
       setMessages((prev) => [
         ...prev,
         {
@@ -1196,6 +1229,18 @@ export default function ConciergePage() {
     <div className="flex h-[calc(100vh-5rem)] flex-col gap-4 md:flex-row">
       {/* ── Chat panel ── */}
       <div className="flex flex-1 flex-col rounded-2xl border border-gray-800 bg-gray-900 overflow-hidden min-h-0">
+        {/* Current / Last Run card — shown above the chat when a recent run exists */}
+        {lastRunEntry && (
+          <div className="shrink-0 border-b border-gray-800 p-3">
+            <CurrentRunCard
+              entry={lastRunEntry}
+              onViewEvents={() => setShowEventPanel((v) => !v)}
+              onStatusChange={(status) =>
+                setLastRunEntry((prev) => prev ? { ...prev, status } : prev)
+              }
+            />
+          </div>
+        )}
         {/* Header */}
         <div className="flex items-center gap-2.5 border-b border-gray-800 px-4 py-3">
           <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-purple-600">
@@ -1324,6 +1369,10 @@ export default function ConciergePage() {
             <p className="text-sm text-gray-600 leading-relaxed">
               Your Proposal will appear here once the Concierge has enough context to generate one.
             </p>
+            <p className="mt-3 text-[11px] text-gray-700 leading-relaxed">
+              Concierge creates proposals — runs are tracked in{' '}
+              <Link href="/runs" className="text-blue-500 hover:underline">Observe → Runs</Link>.
+            </p>
           </div>
         )}
         {/* Option C — Overseer history panel: visible when past-run Overseer data exists */}
@@ -1331,6 +1380,16 @@ export default function ConciergePage() {
           <OverseerHistoryPanel insights={preflight} />
         )}
       </div>
+
+      {/* ── Live Event Panel (docked right drawer) ── */}
+      {showEventPanel && lastRunEntry && (
+        <div className="w-full md:w-72 lg:w-80 flex-shrink-0 rounded-2xl border border-gray-800 overflow-hidden min-h-0">
+          <LiveEventPanel
+            runId={lastRunEntry.runId}
+            onClose={() => setShowEventPanel(false)}
+          />
+        </div>
+      )}
     </div>
   )
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
   fetchOrchestrationRuns,
@@ -13,23 +13,68 @@ import { getToolAudit } from '@/lib/services/toolPermissionStore'
 import type { OrchestrationRun, RepoOrchestrationRunSummary } from '@/lib/types/orchestrator'
 import type { Proposal } from '@/lib/types/proposal'
 import { PAGE_TITLES, ROUTES } from '@/lib/nav/navConfig'
-import { History, ExternalLink, RefreshCw, Info, MessageSquare, ArrowRight, Wrench } from 'lucide-react'
+import {
+  History,
+  ExternalLink,
+  RefreshCw,
+  Info,
+  MessageSquare,
+  ArrowRight,
+  Wrench,
+  Radio,
+} from 'lucide-react'
+
+// ── Status helpers ─────────────────────────────────────────────────────────────
+
+const STATUS_ACTIVE  = new Set(['running', 'in_progress'])
+const STATUS_QUEUED  = new Set(['queued', 'pending'])
+
+type FilterTab = 'all' | 'running' | 'queued' | 'gating' | 'complete' | 'failed'
+
+const FILTER_TABS: { id: FilterTab; label: string }[] = [
+  { id: 'all',      label: 'All' },
+  { id: 'running',  label: 'Running' },
+  { id: 'queued',   label: 'Queued' },
+  { id: 'gating',   label: 'Gating' },
+  { id: 'complete', label: 'Complete' },
+  { id: 'failed',   label: 'Failed' },
+]
+
+function matchesFilter(status: string | undefined, tab: FilterTab): boolean {
+  const s = (status ?? 'unknown').toLowerCase()
+  switch (tab) {
+    case 'all':      return true
+    case 'running':  return STATUS_ACTIVE.has(s)
+    case 'queued':   return STATUS_QUEUED.has(s)
+    case 'gating':   return s === 'gating' || s === 'awaiting_gate'
+    case 'complete': return s === 'completed' || s === 'success' || s === 'succeeded'
+    case 'failed':   return s === 'failed' || s === 'error'
+    default:         return true
+  }
+}
 
 // ── Status badge ─────────────────────────────────────────────────────────────
 function StatusBadge({ status }: { status?: string }) {
   const s = (status ?? 'unknown').toLowerCase()
   const colorMap: Record<string, string> = {
-    completed: 'bg-emerald-900/60 text-emerald-300 border-emerald-700',
-    success: 'bg-emerald-900/60 text-emerald-300 border-emerald-700',
-    running: 'bg-blue-900/60 text-blue-300 border-blue-700',
-    in_progress: 'bg-blue-900/60 text-blue-300 border-blue-700',
-    failed: 'bg-rose-900/60 text-rose-300 border-rose-700',
-    error: 'bg-rose-900/60 text-rose-300 border-rose-700',
-    cancelled: 'bg-gray-800 text-gray-400 border-gray-700',
+    completed:     'bg-emerald-900/60 text-emerald-300 border-emerald-700',
+    success:       'bg-emerald-900/60 text-emerald-300 border-emerald-700',
+    succeeded:     'bg-emerald-900/60 text-emerald-300 border-emerald-700',
+    running:       'bg-blue-900/60 text-blue-300 border-blue-700',
+    in_progress:   'bg-blue-900/60 text-blue-300 border-blue-700',
+    queued:        'bg-amber-900/60 text-amber-300 border-amber-700',
+    pending:       'bg-amber-900/60 text-amber-300 border-amber-700',
+    gating:        'bg-purple-900/60 text-purple-300 border-purple-700',
+    awaiting_gate: 'bg-purple-900/60 text-purple-300 border-purple-700',
+    failed:        'bg-rose-900/60 text-rose-300 border-rose-700',
+    error:         'bg-rose-900/60 text-rose-300 border-rose-700',
+    cancelled:     'bg-gray-800 text-gray-400 border-gray-700',
   }
   const cls = colorMap[s] ?? 'bg-gray-800 text-gray-400 border-gray-700'
+  const isLive = STATUS_ACTIVE.has(s)
   return (
-    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${cls}`}>
+    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${cls}`}>
+      {isLive && <Radio size={10} className="animate-pulse" aria-hidden="true" />}
       {status ?? 'unknown'}
     </span>
   )
@@ -94,7 +139,6 @@ function RunRow({
   )
 }
 
-// ── Page ──────────────────────────────────────────────────────────────────────
 // ── Draft proposal row ────────────────────────────────────────────────────────
 function DraftRow({ proposal }: { proposal: Proposal }) {
   const statusColor =
@@ -137,12 +181,17 @@ function DraftRow({ proposal }: { proposal: Proposal }) {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function RunsPage() {
-  const [apiRuns, setApiRuns] = useState<OrchestrationRun[]>([])
-  const [repoRuns, setRepoRuns] = useState<RepoOrchestrationRunSummary[]>([])
+  const [apiRuns, setApiRuns]     = useState<OrchestrationRun[]>([])
+  const [repoRuns, setRepoRuns]   = useState<RepoOrchestrationRunSummary[]>([])
   const [localRuns, setLocalRuns] = useState<OrchestrationRun[]>([])
-  const [drafts, setDrafts] = useState<Proposal[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [drafts, setDrafts]       = useState<Proposal[]>([])
+  const [loading, setLoading]     = useState(true)
+  const [error, setError]         = useState<string | null>(null)
+
+  // ── Filter + auto-refresh ──────────────────────────────────────────────────
+  const [activeFilter, setActiveFilter] = useState<FilterTab>('all')
+  const [autoRefresh, setAutoRefresh]   = useState(false)
+  const autoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const load = async () => {
     setLoading(true)
@@ -164,10 +213,41 @@ export default function RunsPage() {
   }
 
   useEffect(() => {
-    load()
+    void load()
   }, [])
 
-  const totalCount = apiRuns.length + repoRuns.length + localRuns.length + drafts.length
+  // Auto-refresh every 10s when enabled
+  useEffect(() => {
+    if (autoRefreshRef.current) {
+      clearInterval(autoRefreshRef.current)
+      autoRefreshRef.current = null
+    }
+    if (autoRefresh) {
+      autoRefreshRef.current = setInterval(() => void load(), 10_000)
+    }
+    return () => {
+      if (autoRefreshRef.current) clearInterval(autoRefreshRef.current)
+    }
+  }, [autoRefresh]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Filtered data ────────────────────────────────────────────────────────
+
+  const filteredApiRuns  = apiRuns.filter((r) => matchesFilter(r.status, activeFilter))
+  const filteredRepoRuns = repoRuns.filter((r) => matchesFilter(r.status, activeFilter))
+  const filteredLocal    = localRuns.filter((r) => matchesFilter(r.status, activeFilter))
+
+  function countForTab(tab: FilterTab): number {
+    if (tab === 'all') return apiRuns.length + repoRuns.length + localRuns.length + drafts.length
+    return (
+      apiRuns.filter((r) => matchesFilter(r.status, tab)).length +
+      repoRuns.filter((r) => matchesFilter(r.status, tab)).length +
+      localRuns.filter((r) => matchesFilter(r.status, tab)).length
+    )
+  }
+
+  const totalCount    = apiRuns.length + repoRuns.length + localRuns.length + drafts.length
+  const hasActiveRuns = apiRuns.some((r) => STATUS_ACTIVE.has((r.status ?? '').toLowerCase()))
+  const hasQueuedRuns = apiRuns.some((r) => STATUS_QUEUED.has((r.status ?? '').toLowerCase()))
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -184,15 +264,37 @@ export default function RunsPage() {
             </p>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={load}
-          disabled={loading}
-          className="flex items-center gap-1.5 rounded-xl border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-300 hover:text-white transition-colors disabled:opacity-50"
-        >
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} aria-hidden="true" />
-          Refresh
-        </button>
+
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Auto-refresh toggle */}
+          <label className="flex items-center gap-1.5 cursor-pointer select-none">
+            <div
+              role="switch"
+              aria-checked={autoRefresh}
+              onClick={() => setAutoRefresh((v) => !v)}
+              className={`relative h-5 w-9 rounded-full transition-colors cursor-pointer ${
+                autoRefresh ? 'bg-blue-600' : 'bg-gray-700'
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                  autoRefresh ? 'translate-x-4' : 'translate-x-0.5'
+                }`}
+              />
+            </div>
+            <span className="text-xs text-gray-400 whitespace-nowrap">Auto-refresh</span>
+          </label>
+
+          <button
+            type="button"
+            onClick={() => void load()}
+            disabled={loading}
+            className="flex items-center gap-1.5 rounded-xl border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-300 hover:text-white transition-colors disabled:opacity-50"
+          >
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} aria-hidden="true" />
+            Refresh
+          </button>
+        </div>
       </div>
 
       {/* Info callout */}
@@ -201,12 +303,68 @@ export default function RunsPage() {
         <span>
           Runs are the evidence trail of orchestration. Each entry records the goal, agents involved,
           token usage, and outcome. Use <strong>Reports</strong> for aggregate analytics.
+          {' '}
+          <Link href="/concierge" className="underline hover:text-blue-100">Concierge</Link>
+          {' '}creates proposals that turn into runs tracked here.
         </span>
       </div>
+
+      {/* Active / queued run callout */}
+      {(hasActiveRuns || hasQueuedRuns) && (
+        <div className="flex items-center gap-3 rounded-xl border border-emerald-900/50 bg-emerald-950/20 px-4 py-3 text-sm">
+          <Radio size={15} className="shrink-0 text-emerald-400 animate-pulse" aria-hidden="true" />
+          <span className="text-emerald-200">
+            {hasActiveRuns
+              ? 'An orchestration is currently running — refresh to see latest status.'
+              : 'A run is queued and waiting for a worker to pick it up. Agents will show 0 active until a worker starts.'}
+          </span>
+        </div>
+      )}
 
       {error && (
         <div className="rounded-xl border border-rose-800 bg-rose-950/30 px-4 py-3 text-sm text-rose-300">
           Could not connect to orchestrator API ({ORCHESTRATOR_API_BASE}). Showing locally-stored runs only.
+        </div>
+      )}
+
+      {/* ── Filter tabs ── */}
+      {!loading && totalCount > 0 && (
+        <div className="flex flex-wrap gap-1 rounded-xl border border-gray-800 bg-gray-900/60 p-1">
+          {FILTER_TABS.map((tab) => {
+            const count = countForTab(tab.id)
+            const isActive = activeFilter === tab.id
+            const isLiveTab    = tab.id === 'running' && hasActiveRuns
+            const isQueuedTab  = tab.id === 'queued'  && hasQueuedRuns
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveFilter(tab.id)}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                  isActive
+                    ? 'bg-blue-600 text-white'
+                    : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800'
+                }`}
+              >
+                {(isLiveTab || isQueuedTab) && (
+                  <span
+                    className={`h-1.5 w-1.5 rounded-full ${
+                      isLiveTab ? 'bg-blue-300 animate-pulse' : 'bg-amber-400'
+                    }`}
+                    aria-hidden="true"
+                  />
+                )}
+                {tab.label}
+                {count > 0 && (
+                  <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${
+                    isActive ? 'bg-blue-500/60 text-white' : 'bg-gray-800 text-gray-400'
+                  }`}>
+                    {count}
+                  </span>
+                )}
+              </button>
+            )
+          })}
         </div>
       )}
 
@@ -220,14 +378,32 @@ export default function RunsPage() {
       {!loading && totalCount === 0 && (
         <div className="rounded-2xl border border-gray-800 bg-gray-900/60 px-6 py-14 text-center">
           <History size={32} className="mx-auto mb-3 text-gray-600" />
-          <p className="text-gray-400">No runs yet. Use <Link href="/concierge" className="text-blue-400 underline">Concierge</Link> to plan your first run, or go straight to <Link href="/orchestrator" className="text-blue-400 underline">Playground</Link>.</p>
+          <p className="text-gray-400">
+            No runs yet. Use <Link href="/concierge" className="text-blue-400 underline">Concierge</Link> to
+            plan your first run, or go straight to <Link href="/orchestrator" className="text-blue-400 underline">Playground</Link>.
+          </p>
         </div>
       )}
 
-      {!loading && apiRuns.length > 0 && (
-        <SectionCard title={`Orchestrator runs (${apiRuns.length})`}>
+      {/* No results for this filter */}
+      {!loading && totalCount > 0 && activeFilter !== 'all' &&
+        filteredApiRuns.length === 0 && filteredRepoRuns.length === 0 && filteredLocal.length === 0 && (
+        <div className="rounded-xl border border-gray-800 bg-gray-900/40 px-6 py-8 text-center">
+          <p className="text-sm text-gray-500">No runs with status &ldquo;{activeFilter}&rdquo;.</p>
+          <button
+            type="button"
+            onClick={() => setActiveFilter('all')}
+            className="mt-2 text-xs text-blue-400 hover:underline"
+          >
+            Show all runs →
+          </button>
+        </div>
+      )}
+
+      {!loading && filteredApiRuns.length > 0 && (
+        <SectionCard title={`Orchestrator runs (${filteredApiRuns.length})`}>
           <div className="divide-y divide-gray-800">
-            {apiRuns.map((run) => (
+            {filteredApiRuns.map((run) => (
               <RunRow
                 key={run.id}
                 id={run.id}
@@ -241,10 +417,10 @@ export default function RunsPage() {
         </SectionCard>
       )}
 
-      {!loading && repoRuns.length > 0 && (
-        <SectionCard title={`Repo runs (${repoRuns.length})`}>
+      {!loading && filteredRepoRuns.length > 0 && (
+        <SectionCard title={`Repo runs (${filteredRepoRuns.length})`}>
           <div className="divide-y divide-gray-800">
-            {repoRuns.map((run) => (
+            {filteredRepoRuns.map((run) => (
               <RunRow
                 key={run.runId}
                 id={run.runId}
@@ -258,10 +434,10 @@ export default function RunsPage() {
         </SectionCard>
       )}
 
-      {!loading && localRuns.length > 0 && (
-        <SectionCard title={`Local (offline) runs (${localRuns.length})`}>
+      {!loading && filteredLocal.length > 0 && (
+        <SectionCard title={`Local (offline) runs (${filteredLocal.length})`}>
           <div className="divide-y divide-gray-800">
-            {localRuns.map((run) => (
+            {filteredLocal.map((run) => (
               <RunRow
                 key={run.id}
                 id={run.id}

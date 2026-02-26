@@ -13,7 +13,12 @@
       "Read(//c/Program Files/**)",
       "Read(//g/Development/99_Clones/UnifiedAIToolbox-1/**)",
       "Bash(npx --no-workspaces tsc:*)",
-      "Bash(\"g:/Development/99_Clones/UnifiedAIToolbox-1/apps/unifiedtoolbox.webapp/node_modules/.bin/tsc\" --noEmit --project \"g:/Development/99_Clones/UnifiedAIToolbox-1/apps/unifiedtoolbox.webapp/tsconfig.json\")"
+      "Bash(\"g:/Development/99_Clones/UnifiedAIToolbox-1/apps/unifiedtoolbox.webapp/node_modules/.bin/tsc\" --noEmit --project \"g:/Development/99_Clones/UnifiedAIToolbox-1/apps/unifiedtoolbox.webapp/tsconfig.json\")",
+      "Bash(ls -la /g/Development/20_Staging/UnifiedAIToolbox/apps/unifiedtoolbox.webapp/src/app/runs/[runId]/)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(json.dumps\\({k:v for k,v in d.items\\(\\) if k in [''scripts'',''devDependencies'']}, indent=2\\)\\)\")"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\benfu\\.claude\\projects\\g--Development-20-Staging-UnifiedAIToolbox\\memory"
     ]
   }
 }
