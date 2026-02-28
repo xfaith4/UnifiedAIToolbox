@@ -1,35 +1,66 @@
-# Documentation Hub
+# Unified AI Toolbox
 
-This folder is the canonical documentation entry point for Unified AI Toolbox.
+Local-first orchestration platform for repeatable, auditable AI workflows — with prompt libraries, agent rosters, run tracking, and multiple UX entry points (web app, API, CLI/automation).
 
-## Source of truth
+## Start here
 
-Use these files first:
+- **Documentation index:** `docs/index.md`
+- **Master roadmap (canonical):** `docs/roadmap.md`
+- **Information architecture:** `docs/information-architecture.md`
 
-- `ROADMAP.md` - main feature roadmap and roadmap IDs (`RM-###`)
-- `IMPLEMENTATION_SUMMARY.md` - concise delivery history, side tracks (`ST-###`), and decisions (`DEC-###`)
-- `UnifiedAIToolbox-Repo-Guide.md` - onboarding and operating guide
-- `mcp/README.md` - MCP-specific documentation map
+## Repository doc discovery contract (important)
 
-## Deep-dive references
+This repo has lots of subsystems. To prevent “missing roadmap items” and doc drift:
 
-These remain valuable, but they are supporting detail, not roadmap truth:
+1) **All roadmap work lives in** `docs/roadmap.md` (single source of truth).
+2) **All docs must be discoverable from** `docs/index.md`.
+   - Component-level docs may live next to the code (recommended),
+   - but they must be linked from the index.
+3) Do **not** create ad-hoc “Implementation Summary” files.
+   Update `docs/roadmap.md` checkboxes + add completion notes instead.
 
-- `../WORKFLOW_AUDIT_SUMMARY.md` - CI/workflow hardening details
-- `MCP_IMPLEMENTATION_SUMMARY.md` - detailed MCP implementation narrative
-- `MCP_LIBRARY_STATUS.md` - MCP completion checklist
-- `MCP_REMAINING_TASKS.md` - MCP enhancement backlog
-- `archive/` - historical plans, reports, and deprecated flows
+## Major areas
 
-## Documentation workflow (best practice)
+- `apps/`
+  - Product surfaces and services (web app, orchestration bridge, etc.)
+- `Orchestration/`
+  - PowerShell orchestration engine + agents + contracts
+- `agents/`
+  - Agent registry and definitions
+- `docs/`
+  - Canonical docs: roadmap, architecture, runbooks, decisions
 
-1. Update `ROADMAP.md` when priorities or feature sequencing changes.
-2. Log every shipped item in `IMPLEMENTATION_SUMMARY.md` with a roadmap ID.
-3. If a bug/task interrupts roadmap delivery, add a side-track entry (`ST-###`) and link it to the impacted roadmap ID.
-4. Add/update a decision entry (`DEC-###`) whenever tradeoffs affect roadmap direction.
+## Quickstart (high level)
 
-## Minimum traceability rule
+This repo can be run in multiple ways depending on the app/service you’re working on. Start by:
 
-Every significant change should be linkable as:
+1) Read `docs/index.md` (it links to app-specific setup).
+2) Pick the entrypoint you care about (web app vs orchestration bridge vs scripts).
+3) Follow that component README for prerequisites and run commands.
 
-`Roadmap item (RM) -> Implementation entry -> Side track (if any) -> Decision`
+## Common tasks
+
+### Update or add roadmap items
+
+- Edit `docs/roadmap.md`
+- Add checklist items under the relevant RM section
+- Treat it as the living ledger:
+  - checkbox tick
+  - completion date
+  - PR link or run id
+  - 1–2 lines of “done notes”
+
+### Inventory docs and manifests
+
+Use `Sweep-RepoManifests.ps1` to gather:
+
+- manifest files (package.json, requirements, etc.)
+- optionally all `.md` files
+- optionally generate/refresh `docs/index.generated.md`
+
+See: `tools/` (or wherever you keep scripts) and `docs/index.md`.
+
+## Contributing / workflow notes
+
+- Keep component docs close to code, but always link them from `docs/index.md`.
+- Prefer small, checklist-aligned commits that map back to `docs/roadmap.md`.

@@ -359,6 +359,8 @@ function normalizeApiRun(raw: Record<string, unknown>): OrchestrationRun {
     lease: (raw.lease as OrchestrationRun['lease']) ?? undefined,
     mode: raw.mode as 'executed' | 'simulated' | undefined,
     runMode: (raw.run_mode || 'default') as 'default' | 'codex-swarm' | 'multi-agent',
+    jobType: raw.job_type ? String(raw.job_type) : undefined,
+    appType: raw.app_type ? String(raw.app_type) : undefined,
     requestedAt: raw.requested_at ? String(raw.requested_at) : undefined,
     startedAt: raw.started_at ? String(raw.started_at) : undefined,
     completedAt: raw.completed_at ? String(raw.completed_at) : undefined,

@@ -58,6 +58,8 @@ export interface OrchestrationRun {
   goal?: string
   agents?: string[]  // Agent names participating
   runMode?: 'default' | 'codex-swarm' | 'multi-agent'
+  jobType?: string
+  appType?: string
   mode?: 'executed' | 'simulated'
   
   // Status and timing

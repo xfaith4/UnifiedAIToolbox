@@ -28,6 +28,7 @@ param(
     [string]$OutputDir = "",
     [switch]$VerboseMode,
     [string]$JobType = "",
+    [string]$AppType = "",
     [string]$RequestPath = "",
     [string]$ContractPath = "",
     [switch]$ValidateOnly,
@@ -128,16 +129,9 @@ if ([string]::IsNullOrWhiteSpace($effectiveInstruction) -and -not [string]::IsNu
     $effectiveInstruction = $ModelInstruction
 }
 
-$requestMode = $false
-if (-not [string]::IsNullOrWhiteSpace($JobType)) {
-    $requestMode = $true
-}
-if (-not [string]::IsNullOrWhiteSpace($RequestPath)) {
-    $requestMode = $true
-}
-if (-not [string]::IsNullOrWhiteSpace($ContractPath)) {
-    $requestMode = $true
-}
+$normalizedJobType = if ([string]::IsNullOrWhiteSpace($JobType)) { "" } else { $JobType.Trim().ToLowerInvariant() }
+$isMaintenanceJob = $normalizedJobType -eq "maintain_existing_app"
+$requestMode = $isMaintenanceJob -or (-not [string]::IsNullOrWhiteSpace($RequestPath)) -or (-not [string]::IsNullOrWhiteSpace($ContractPath))
 
 if ($requestMode) {
     $milestoneParams = @{
@@ -179,6 +173,8 @@ $pofParams = @{
     MaxIterations = $MaxIterations
     RunId = $targetRunId
     OutputRoot = $targetOutputRoot
+    JobType = if ([string]::IsNullOrWhiteSpace($JobType)) { "build_new_app" } else { $JobType }
+    AppType = $AppType
 }
 if (-not [string]::IsNullOrWhiteSpace($effectiveInstruction)) {
     $pofParams["Instruction"] = $effectiveInstruction

@@ -427,6 +427,27 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
     const lifecycleEvents = (orchRun.events ?? []).filter(
       (ev) => !ev.type.startsWith('agent:') && !ev.type.startsWith('overseer:') && ev.type !== 'debug'
     )
+    const allEventMessages = (orchRun.events ?? []).map((ev) => ev.message ?? '')
+    const maintenanceContextMissing = allEventMessages.some((message) =>
+      /maintenance contract context is required/i.test(message)
+    )
+    const maintenanceFailingAgents = Array.from(
+      new Set(
+        (orchRun.events ?? [])
+          .map((ev) => {
+            const match = ev.message?.match(/^\[([^\]]+)\]\s+agent_output_error:/i)
+            return match?.[1]?.trim() ?? null
+          })
+          .filter((agent): agent is string => Boolean(agent))
+      )
+    )
+    const goalLooksWpf = /\b(wpf|xaml|windows desktop|desktop app)\b/i.test(orchRun.goal ?? '')
+    const contractMismatchDetected =
+      goalLooksWpf &&
+      allEventMessages.some((message) => /conceptualmodelcontract|dom|web probe|contract/i.test(message))
+    const effectiveMaintenanceAgents = maintenanceFailingAgents.length > 0
+      ? maintenanceFailingAgents
+      : ['PRPublisher', 'ReviewGate']
 
     const synthesisHtml = orchRun.runDir
       ? toFileUrl(`${orchRun.runDir.replace(/\\/g, '/')}/Final_Synthesis.html`)
@@ -499,10 +520,31 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
           </div>
         )}
 
-        {isError && orchRun.errorDetail && (
-          <div className="rounded-2xl border border-rose-800 bg-rose-950/30 p-4 text-xs text-rose-200 space-y-1">
-            <div className="font-semibold text-rose-100">Error detail</div>
-            <pre className="whitespace-pre-wrap break-all opacity-80">{orchRun.errorDetail}</pre>
+        {isError && (
+          <div className="rounded-2xl border border-rose-800 bg-rose-950/30 p-4 text-xs text-rose-200 space-y-3">
+            {maintenanceContextMissing && (
+              <div className="space-y-1">
+                <div className="font-semibold text-rose-100">Run failed: Maintenance contract context missing</div>
+                <p>Failing agents: {effectiveMaintenanceAgents.join(', ')}</p>
+                <p>
+                  Next action: rerun with <code>-JobType maintain_existing_app -ContractPath ...</code> or run in{' '}
+                  <code>build_new_app</code> mode.
+                </p>
+              </div>
+            )}
+            {contractMismatchDetected && (
+              <div className="space-y-1 rounded-lg border border-amber-700/40 bg-amber-950/20 p-2 text-amber-100">
+                <div className="font-semibold">Contract mismatch: DOM/web probes generated for WPF goal</div>
+                <p>Contract used: ConceptualModelContract (DOM oriented)</p>
+                <p>Expected: WPF-oriented contract probes</p>
+              </div>
+            )}
+            {orchRun.errorDetail && (
+              <div className="space-y-1">
+                <div className="font-semibold text-rose-100">Error detail</div>
+                <pre className="whitespace-pre-wrap break-all opacity-80">{orchRun.errorDetail}</pre>
+              </div>
+            )}
           </div>
         )}
 

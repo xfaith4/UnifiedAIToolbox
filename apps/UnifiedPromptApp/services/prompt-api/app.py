@@ -196,8 +196,19 @@ def _extract_first_json_object(text: str) -> Optional[str]:
     return None
 
 
+def _payload_contains_markdown_fences(value: Any) -> bool:
+    """Reject markdown/code fences in any string field inside JSON payloads."""
+    if isinstance(value, str):
+        return "```" in value
+    if isinstance(value, list):
+        return any(_payload_contains_markdown_fences(item) for item in value)
+    if isinstance(value, dict):
+        return any(_payload_contains_markdown_fences(item) for item in value.values())
+    return False
+
+
 def _coerce_agent_json_payload(payload: Any, depth: int = 0) -> Optional[Dict[str, Any]]:
-    """Normalize agent output from envelope/text/transcript into a JSON object."""
+    """Normalize agent output from envelope/text/transcript into a strict JSON object."""
     if depth > 4 or payload is None:
         return None
 
@@ -218,23 +229,17 @@ def _coerce_agent_json_payload(payload: Any, depth: int = 0) -> Optional[Dict[st
         if not text:
             return None
 
-        text = re.sub(r"^\s*```(?:json)?\s*", "", text, flags=re.IGNORECASE)
-        text = re.sub(r"\s*```\s*$", "", text)
+        if "```" in text:
+            return None
 
         try:
             parsed = json.loads(text)
             return _coerce_agent_json_payload(parsed, depth + 1)
         except Exception:
-            pass
+            return None
 
-        extracted = _extract_first_json_object(text)
-        if not extracted:
-            return None
-        try:
-            parsed = json.loads(extracted)
-            return _coerce_agent_json_payload(parsed, depth + 1)
-        except Exception:
-            return None
+    if _payload_contains_markdown_fences(payload):
+        return None
 
     return None
 
@@ -3135,6 +3140,10 @@ class OrchestrationRequest(BaseModel):
     run_mode: Optional[str] = "default"  # default | multi-agent | codex-swarm | swarms
     repo_root: Optional[str] = None
     max_iterations: Optional[int] = None
+    job_type: Optional[str] = None
+    app_type: Optional[str] = None
+    request_path: Optional[str] = None
+    contract_path: Optional[str] = None
     mcp_allowed_servers: List[str] = Field(default_factory=list)
     mcp_allowed_collections: List[str] = Field(default_factory=list)
     acceptance_checks: List[str] = Field(default_factory=list)  # Phase 1: Verifier
@@ -3150,6 +3159,34 @@ class BulkRunCancelRequest(BaseModel):
     """Bulk cancellation request for orchestration runs."""
     run_ids: List[str] = Field(default_factory=list)
     cancel_all_queued: bool = False
+
+
+def _canonical_job_type(job_type_value: Any) -> Optional[str]:
+    if not isinstance(job_type_value, str):
+        return None
+    raw = job_type_value.strip().lower()
+    if not raw:
+        return None
+    aliases = {
+        "create_new_app": "build_new_app",
+        "new_app": "build_new_app",
+        "build_new_app": "build_new_app",
+        "maintain_existing_app": "maintain_existing_app",
+        "maintenance": "maintain_existing_app",
+    }
+    return aliases.get(raw, raw)
+
+
+def _derive_app_type(goal_text: str, requested_app_type: Optional[str] = None) -> str:
+    if isinstance(requested_app_type, str) and requested_app_type.strip():
+        return requested_app_type.strip().lower()
+
+    normalized_goal = (goal_text or "").lower()
+    if re.search(r"\b(wpf|winforms|windows forms|xaml|desktop app|windows desktop)\b", normalized_goal):
+        return "wpf"
+    if re.search(r"\b(web|website|browser|next\.?js|react|html|css|frontend|dom)\b", normalized_goal):
+        return "web"
+    return "unknown"
 
 
 def _iter_orchestration_manifests() -> List[Tuple[pathlib.Path, Dict[str, Any]]]:
@@ -3692,6 +3729,8 @@ def orchestrate_run(
     log_path = BRIDGE_RUN_DIR / f"{run_id}.log"
     out_dir.mkdir(parents=True, exist_ok=True)
     normalized_run_mode = _normalize_run_mode(req.run_mode)
+    normalized_job_type = _canonical_job_type(req.job_type) or "build_new_app"
+    derived_app_type = _derive_app_type(req.goal or "", req.app_type)
 
     allowlist_id = _create_run_allowlist_if_requested(run_id, req)
     middleware = get_orchestration_mcp_middleware()
@@ -3713,6 +3752,8 @@ def orchestrate_run(
                     "prompt_id": req.prompt_id,
                     "model": req.model or DEFAULT_MODEL,
                     "run_mode": normalized_run_mode,
+                    "job_type": normalized_job_type,
+                    "app_type": derived_app_type,
                     "repo_root": req.repo_root or REPO_ROOT_DEFAULT,
                     "agents": req.agents or [],
                 },
@@ -3738,6 +3779,10 @@ def orchestrate_run(
         "model": req.model or DEFAULT_MODEL,
         "run_mode": normalized_run_mode,
         "requested_run_mode": req.run_mode or "default",
+        "job_type": normalized_job_type,
+        "app_type": derived_app_type,
+        "request_path": req.request_path,
+        "contract_path": req.contract_path,
         "mode": "simulated",
         "mcp_allowlist_id": allowlist_id,
         "mcp_allowed_servers": req.mcp_allowed_servers,
@@ -4343,6 +4388,14 @@ def orchestrate_run(
                     "-Goal", str(goal_text),
                     "-Model", manifest.get("model") or DEFAULT_MODEL,
                 ]
+                if manifest.get("job_type"):
+                    args += ["-JobType", str(manifest.get("job_type"))]
+                if manifest.get("app_type"):
+                    args += ["-AppType", str(manifest.get("app_type"))]
+                if manifest.get("request_path"):
+                    args += ["-RequestPath", str(manifest.get("request_path"))]
+                if manifest.get("contract_path"):
+                    args += ["-ContractPath", str(manifest.get("contract_path"))]
                 notes = manifest.get("notes")
                 instruction_parts = [p for p in [knowledge_ctx, notes] if p]
                 if instruction_parts:

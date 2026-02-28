@@ -374,9 +374,11 @@ export default function RunsPage() {
         <div className="flex items-center gap-2 shrink-0">
           {/* Auto-refresh toggle */}
           <label className="flex items-center gap-1.5 cursor-pointer select-none">
-            <div
+            <button
+              type="button"
               role="switch"
               aria-checked={autoRefresh}
+              aria-label="Toggle auto-refresh"
               onClick={() => setAutoRefresh((v) => !v)}
               className={`relative h-5 w-9 rounded-full transition-colors cursor-pointer ${
                 autoRefresh ? 'bg-blue-600' : 'bg-gray-700'
@@ -387,7 +389,7 @@ export default function RunsPage() {
                   autoRefresh ? 'translate-x-4' : 'translate-x-0.5'
                 }`}
               />
-            </div>
+            </button>
             <span className="text-xs text-gray-400 whitespace-nowrap">Auto-refresh</span>
           </label>
 

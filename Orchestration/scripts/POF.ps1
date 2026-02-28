@@ -18,6 +18,8 @@ param(
     [string]$CanonicalAgentLibraryPath = "$PSScriptRoot\..\agents\agent-library.json",
     [switch]$UseLegacyAgentConfig,
     [switch]$VerboseMode,
+    [string]$JobType = "build_new_app",
+    [string]$AppType = "",
     # Paths for Milestone Dashboard integration (optional)
     [string]$LogPath = "$PSScriptRoot\..\MilestoneDashboard\public\data\Milestone_Log.json",
     [string]$TrendPath = "$PSScriptRoot\..\MilestoneDashboard\public\data\Metrics_Trend.json",
@@ -155,15 +157,7 @@ function Get-AgentContractDefinition {
 
 function Remove-JsonCodeFences {
     param([AllowNull()][string]$Text)
-
-    if ([string]::IsNullOrWhiteSpace($Text)) { return $Text }
-
-    $trimmed = $Text.Trim()
-    if ($trimmed -match '^\s*```(?:json)?') {
-        $trimmed = [regex]::Replace($trimmed, '^\s*```(?:json)?\s*', '', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
-        $trimmed = [regex]::Replace($trimmed, '\s*```\s*$', '')
-    }
-    return $trimmed
+    return $Text
 }
 
 function Get-FirstJsonObjectText {
@@ -171,11 +165,10 @@ function Get-FirstJsonObjectText {
 
     if ([string]::IsNullOrWhiteSpace($Text)) { return $null }
 
-    $sanitized = Remove-JsonCodeFences -Text $Text
-    $start = $sanitized.IndexOf('{')
+    $start = $Text.IndexOf('{')
     if ($start -lt 0) { return $null }
 
-    $segment = $sanitized.Substring($start)
+    $segment = $Text.Substring($start)
     $depth = 0
     $inString = $false
     $escape = $false
@@ -214,6 +207,93 @@ function Get-FirstJsonObjectText {
     }
 
     return $null
+}
+
+function Test-ContainsMarkdownFence {
+    param([AllowNull()][string]$Text)
+    if ([string]::IsNullOrWhiteSpace($Text)) { return $false }
+    return $Text.Contains('```')
+}
+
+function Test-ContainsMarkdownFenceInObject {
+    param($Value)
+
+    if ($null -eq $Value) { return $false }
+    if ($Value -is [string]) { return $Value.Contains('```') }
+    if ($Value -is [System.Collections.IDictionary]) {
+        foreach ($k in $Value.Keys) {
+            if (Test-ContainsMarkdownFenceInObject -Value $Value[$k]) { return $true }
+        }
+        return $false
+    }
+    if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
+        foreach ($item in $Value) {
+            if (Test-ContainsMarkdownFenceInObject -Value $item) { return $true }
+        }
+        return $false
+    }
+
+    $props = $Value.PSObject.Properties
+    if ($props) {
+        foreach ($prop in $props) {
+            if (Test-ContainsMarkdownFenceInObject -Value $prop.Value) { return $true }
+        }
+    }
+    return $false
+}
+
+function Resolve-EffectiveJobType {
+    param([string]$GoalText, [string]$RequestedJobType)
+    $raw = if ([string]::IsNullOrWhiteSpace($RequestedJobType)) { "build_new_app" } else { $RequestedJobType.Trim().ToLowerInvariant() }
+    switch ($raw) {
+        "create_new_app" { return "build_new_app" }
+        "new_app" { return "build_new_app" }
+        "maintenance" { return "maintain_existing_app" }
+        default { return $raw }
+    }
+}
+
+function Resolve-EffectiveAppType {
+    param([string]$GoalText, [string]$RequestedAppType)
+    if (-not [string]::IsNullOrWhiteSpace($RequestedAppType)) {
+        return $RequestedAppType.Trim().ToLowerInvariant()
+    }
+    $goal = ($GoalText ?? "").ToLowerInvariant()
+    if ($goal -match '\b(wpf|winforms|windows forms|xaml|desktop app|windows desktop)\b') { return "wpf" }
+    if ($goal -match '\b(web|website|browser|next\.?js|react|html|css|frontend|dom)\b') { return "web" }
+    return "unknown"
+}
+
+function Get-AgentSystemPrompt {
+    param(
+        [Parameter(Mandatory = $true)]$Agent,
+        [string]$BaseInstruction,
+        [string]$EffectiveAppType,
+        [string]$EffectiveJobType
+    )
+
+    $segments = @()
+    if (-not [string]::IsNullOrWhiteSpace($BaseInstruction)) { $segments += $BaseInstruction.Trim() }
+    $segments += [string]$Agent.prompt
+
+    if ($Agent.name -in @("ConceptualModelContract", "Engineer", "Critic")) {
+        $segments += "Output contract JSON must be raw JSON only. Do not emit markdown, code fences, or prose."
+    }
+
+    if ($Agent.name -eq "ConceptualModelContract") {
+        if ($EffectiveAppType -eq "wpf") {
+            $segments += "App type is WPF desktop. Do not produce DOM/web probes. Use WPF-observable probes (named controls, bound state values, visual tree state, render loop counters)."
+        }
+        elseif ($EffectiveAppType -eq "web") {
+            $segments += "App type is web. DOM/SVG/canvas probes are allowed and should be machine-verifiable."
+        }
+    }
+
+    if ($EffectiveJobType -eq "build_new_app" -and $Agent.name -in @("ReviewGate", "PRPublisher", "RepoContextBuilder")) {
+        $segments += "This is a create-new-app run. Maintenance-only gating is out of scope for this run."
+    }
+
+    return ($segments -join "`n`n")
 }
 
 function Normalize-AgentContractObject {
@@ -295,33 +375,27 @@ function ConvertTo-NormalizedAgentJson {
         return @{ ok = $false; error = "Output is empty."; parsed = $null; json = $null }
     }
 
-    $candidate = Remove-JsonCodeFences -Text $text
+    if (Test-ContainsMarkdownFence -Text $text) {
+        return @{
+            ok = $false
+            error = "Output includes markdown/code fences. Emit raw JSON only."
+            parsed = $null
+            json = $null
+        }
+    }
+
+    $candidate = $text.Trim()
     $parsed = $null
 
     try {
         $parsed = $candidate | ConvertFrom-Json -Depth 80 -ErrorAction Stop
     }
     catch {
-        $jsonObject = Get-FirstJsonObjectText -Text $candidate
-        if (-not $jsonObject) {
-            return @{
-                ok = $false
-                error = ("Output is not valid JSON: {0}" -f $_.Exception.Message)
-                parsed = $null
-                json = $null
-            }
-        }
-
-        try {
-            $parsed = $jsonObject | ConvertFrom-Json -Depth 80 -ErrorAction Stop
-        }
-        catch {
-            return @{
-                ok = $false
-                error = ("Output is not valid JSON after extraction: {0}" -f $_.Exception.Message)
-                parsed = $null
-                json = $null
-            }
+        return @{
+            ok = $false
+            error = ("Output is not valid strict JSON: {0}" -f $_.Exception.Message)
+            parsed = $null
+            json = $null
         }
     }
 
@@ -334,6 +408,15 @@ function ConvertTo-NormalizedAgentJson {
         $choice = $parsed.choices[0]
         if ($choice.message -and $choice.message.content) {
             return ConvertTo-NormalizedAgentJson -RawOutput ([string]$choice.message.content) -AgentName $AgentName -Depth ($Depth + 1)
+        }
+    }
+
+    if (Test-ContainsMarkdownFenceInObject -Value $parsed) {
+        return @{
+            ok = $false
+            error = "Output JSON includes markdown/code fences within string fields."
+            parsed = $null
+            json = $null
         }
     }
 
@@ -700,7 +783,15 @@ function Invoke-DeterministicRepoContextBuilder {
 
 # --- MAIN ORCHESTRATION LOOP -----------------------------------------------
 try {
+    $EffectiveJobType = Resolve-EffectiveJobType -GoalText $Goal -RequestedJobType $JobType
+    $EffectiveAppType = Resolve-EffectiveAppType -GoalText $Goal -RequestedAppType $AppType
+    $IsMaintenanceRun = $EffectiveJobType -eq "maintain_existing_app"
+
+    Write-Host "JobType: $EffectiveJobType | AppType: $EffectiveAppType" -ForegroundColor DarkCyan
+
     $Context = "Goal: $Goal"
+    $Context += "`nJobType: $EffectiveJobType"
+    $Context += "`nAppType: $EffectiveAppType"
     $Script:SwarmsInvocations = 0
 
     for ($i = 1; $i -le $MaxIterations; $i++) {
@@ -728,12 +819,12 @@ try {
         $Phase1Agents = @($Phase1Agents | Where-Object { $_.name -notin @("RepoContextBuilder", "ReviewGate", "PRPublisher") })
 
         foreach ($rcb in $repoContextAgents) {
-            Write-AgentStatus -Agent $rcb.name -Status "working"
-            $systemPrompt = if ([string]::IsNullOrWhiteSpace($Instruction)) {
-                $rcb.prompt
-            } else {
-                "$Instruction`n`n$($rcb.prompt)"
+            if (-not $IsMaintenanceRun) {
+                Write-AgentStatus -Agent $rcb.name -Status "complete" -ExtraData @{ source = "skipped"; reason = "maintenance_only"; job_type = $EffectiveJobType }
+                continue
             }
+            Write-AgentStatus -Agent $rcb.name -Status "working"
+            $systemPrompt = Get-AgentSystemPrompt -Agent $rcb -BaseInstruction $Instruction -EffectiveAppType $EffectiveAppType -EffectiveJobType $EffectiveJobType
             $userPrompt = $Context
 
             try {
@@ -767,12 +858,12 @@ try {
         }
 
         foreach ($maintenanceAgent in $maintenanceFallbackAgents) {
-            Write-AgentStatus -Agent $maintenanceAgent.name -Status "working"
-            $systemPrompt = if ([string]::IsNullOrWhiteSpace($Instruction)) {
-                $maintenanceAgent.prompt
-            } else {
-                "$Instruction`n`n$($maintenanceAgent.prompt)"
+            if (-not $IsMaintenanceRun) {
+                Write-AgentStatus -Agent $maintenanceAgent.name -Status "complete" -ExtraData @{ source = "skipped"; reason = "maintenance_only"; job_type = $EffectiveJobType }
+                continue
             }
+            Write-AgentStatus -Agent $maintenanceAgent.name -Status "working"
+            $systemPrompt = Get-AgentSystemPrompt -Agent $maintenanceAgent -BaseInstruction $Instruction -EffectiveAppType $EffectiveAppType -EffectiveJobType $EffectiveJobType
             $userPrompt = $Context
             $reason = "insufficient_input: maintenance contract context is required."
             $fallbackOutput = New-MaintenanceFallbackOutput -AgentName $maintenanceAgent.name -Reason $reason
@@ -796,6 +887,8 @@ try {
                 Config  = $Config
                 OutDir  = $OutDir
                 Instruction = $Instruction
+                EffectiveAppType = $EffectiveAppType
+                EffectiveJobType = $EffectiveJobType
             }
         }
 
@@ -807,6 +900,8 @@ try {
             $Config = $Work.Config
             $OutDir = $Work.OutDir
             $Instruction = $Work.Instruction
+            $EffectiveAppType = $Work.EffectiveAppType
+            $EffectiveJobType = $Work.EffectiveJobType
 
             # Write status: working
             $statusPath = Join-Path $OutDir "agent_status.json"
@@ -817,11 +912,23 @@ try {
             }
             $statusObj | ConvertTo-Json -Compress | Add-Content -Path $statusPath
 
-            $systemPrompt = if ([string]::IsNullOrWhiteSpace($Instruction)) {
-                $Agent.prompt
-            } else {
-                "$Instruction`n`n$($Agent.prompt)"
+            $guidance = @()
+            if ($Agent.name -in @("ConceptualModelContract", "Engineer", "Critic")) {
+                $guidance += "Output contract JSON must be raw JSON only. Do not emit markdown, code fences, or prose."
             }
+            if ($Agent.name -eq "ConceptualModelContract") {
+                if ($EffectiveAppType -eq "wpf") {
+                    $guidance += "App type is WPF desktop. Do not produce DOM/web probes. Use WPF-observable probes (named controls, bound state values, visual tree state, render loop counters)."
+                }
+                elseif ($EffectiveAppType -eq "web") {
+                    $guidance += "App type is web. DOM/SVG/canvas probes are allowed and should be machine-verifiable."
+                }
+            }
+            $systemPrompt = @()
+            if (-not [string]::IsNullOrWhiteSpace($Instruction)) { $systemPrompt += $Instruction.Trim() }
+            $systemPrompt += [string]$Agent.prompt
+            if ($guidance.Count -gt 0) { $systemPrompt += ($guidance -join "`n") }
+            $systemPrompt = $systemPrompt -join "`n`n"
 
             $Messages = @(
                 @{ role = "system"; content = $systemPrompt },
@@ -947,11 +1054,7 @@ Stack Trace: $($_.ScriptStackTrace)
             foreach ($S in $Synthesizer) {
                 Write-AgentStatus -Agent $S.name -Status "working"
 
-                $systemPrompt = if ([string]::IsNullOrWhiteSpace($Instruction)) {
-                    $S.prompt
-                } else {
-                    "$Instruction`n`n$($S.prompt)"
-                }
+                $systemPrompt = Get-AgentSystemPrompt -Agent $S -BaseInstruction $Instruction -EffectiveAppType $EffectiveAppType -EffectiveJobType $EffectiveJobType
 
                 $Messages = @(
                     @{ role = "system"; content = $systemPrompt },
@@ -983,11 +1086,7 @@ Stack Trace: $($_.ScriptStackTrace)
             foreach ($V in $ValidationAuditor) {
                 Write-AgentStatus -Agent $V.name -Status "working"
 
-                $systemPrompt = if ([string]::IsNullOrWhiteSpace($Instruction)) {
-                    $V.prompt
-                } else {
-                    "$Instruction`n`n$($V.prompt)"
-                }
+                $systemPrompt = Get-AgentSystemPrompt -Agent $V -BaseInstruction $Instruction -EffectiveAppType $EffectiveAppType -EffectiveJobType $EffectiveJobType
 
                 $auditInput = @{
                     run_id = $RunId
@@ -1026,11 +1125,7 @@ Stack Trace: $($_.ScriptStackTrace)
             foreach ($C in $Commissioner) {
                 Write-AgentStatus -Agent $C.name -Status "working"
 
-                $systemPrompt = if ([string]::IsNullOrWhiteSpace($Instruction)) {
-                    $C.prompt
-                } else {
-                    "$Instruction`n`n$($C.prompt)"
-                }
+                $systemPrompt = Get-AgentSystemPrompt -Agent $C -BaseInstruction $Instruction -EffectiveAppType $EffectiveAppType -EffectiveJobType $EffectiveJobType
 
                 $Messages = @(
                     @{ role = "system"; content = $systemPrompt },
@@ -1207,7 +1302,9 @@ Stack Trace: $($_.ScriptStackTrace)
                         -MaxIterations $MaxIterations `
                         -AgentConfigPath $AgentConfigPath `
                         -CanonicalAgentLibraryPath $CanonicalAgentLibraryPath `
-                        -UseLegacyAgentConfig:$legacyConfigRequested
+                        -UseLegacyAgentConfig:$legacyConfigRequested `
+                        -JobType $EffectiveJobType `
+                        -AppType $EffectiveAppType
                     $Script:ShouldExit = $true
                     return
                 }
@@ -1219,11 +1316,7 @@ Stack Trace: $($_.ScriptStackTrace)
             foreach ($Sup in $Supervisor) {
                 Write-AgentStatus -Agent $Sup.name -Status "working"
 
-                $systemPrompt = if ([string]::IsNullOrWhiteSpace($Instruction)) {
-                    $Sup.prompt
-                } else {
-                    "$Instruction`n`n$($Sup.prompt)"
-                }
+                $systemPrompt = Get-AgentSystemPrompt -Agent $Sup -BaseInstruction $Instruction -EffectiveAppType $EffectiveAppType -EffectiveJobType $EffectiveJobType
 
                 $input = @{
                     run_id = $RunId
@@ -1261,11 +1354,7 @@ Stack Trace: $($_.ScriptStackTrace)
             foreach ($H in $Historian) {
                 Write-AgentStatus -Agent $H.name -Status "working"
 
-                $systemPrompt = if ([string]::IsNullOrWhiteSpace($Instruction)) {
-                    $H.prompt
-                } else {
-                    "$Instruction`n`n$($H.prompt)"
-                }
+                $systemPrompt = Get-AgentSystemPrompt -Agent $H -BaseInstruction $Instruction -EffectiveAppType $EffectiveAppType -EffectiveJobType $EffectiveJobType
 
                 $input = @{
                     run_id = $RunId
