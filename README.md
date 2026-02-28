@@ -210,11 +210,11 @@ See [AGENTS.md](AGENTS.md) for orchestration rules and definition of done.
 
 ### 📖 Prompt Chain Resources
 
-- **[📦 Package Summary](docs/PROMPT_CHAIN_SUMMARY.md)** - Overview of all resources ⭐ **START HERE**
-- **[📋 Complete Rebuild Guide](docs/PROMPT_CHAIN_REBUILD.md)** - Full prompt chain with 26 detailed prompts
-- **[⚡ Quick Reference](docs/PROMPT_CHAIN_QUICK_REFERENCE.md)** - Checklist and time estimates
-- **[💡 Usage Examples](docs/PROMPT_CHAIN_EXAMPLES.md)** - Real-world scenarios and patterns
-- **[📊 Flow Diagrams](docs/PROMPT_CHAIN_FLOW.md)** - Visual architecture and dependency graphs
+- **[📦 Package Summary](docs/archive/PROMPT_CHAIN_SUMMARY.md)** - Overview of all resources
+- **[📋 Complete Rebuild Guide](docs/archive/PROMPT_CHAIN_REBUILD.md)** - Full prompt chain with detailed prompts
+- **[⚡ Quick Reference](docs/archive/PROMPT_CHAIN_QUICK_REFERENCE.md)** - Checklist and time estimates
+- **[💡 Usage Examples](docs/archive/PROMPT_CHAIN_EXAMPLES.md)** - Real-world scenarios and patterns
+- **[📊 Flow Diagrams](docs/archive/PROMPT_CHAIN_FLOW.md)** - Visual architecture and dependency graphs
 
 **Time to rebuild**: 38-54 hours (1-2 weeks) following the structured approach
 
@@ -230,17 +230,14 @@ The prompt chain follows **industry-standard best practices**:
 ## 📚 Documentation
 
 - **Start here** - [docs/README.md](docs/README.md)
-- **Getting started** - [docs/getting-started.md](docs/getting-started.md)
-- **Prompt Chain Rebuild** - [docs/PROMPT_CHAIN_REBUILD.md](docs/PROMPT_CHAIN_REBUILD.md) - **Recreate this app at any time!**
-- **Prompt Chain Quick Ref** - [docs/PROMPT_CHAIN_QUICK_REFERENCE.md](docs/PROMPT_CHAIN_QUICK_REFERENCE.md)
-- **Architecture** - [docs/architecture.md](docs/architecture.md)
-- **Orchestration** - [docs/orchestration.md](docs/orchestration.md)
-- **Hardening** - [docs/hardening.md](docs/hardening.md)
-- **Integrations** - [docs/integrations.md](docs/integrations.md)
-- **Telemetry** - [docs/telemetry.md](docs/telemetry.md)
-- **Cost analytics** - [docs/cost-analytics.md](docs/cost-analytics.md)
-- **Workflows** - [docs/workflows.md](docs/workflows.md)
-- **MCP docs** - [docs/mcp/README.md](docs/mcp/README.md)
+- **Feature roadmap** - [docs/ROADMAP.md](docs/ROADMAP.md)
+- **Consolidated implementation ledger** - [docs/IMPLEMENTATION_SUMMARY.md](docs/IMPLEMENTATION_SUMMARY.md)
+- **Repository guide** - [docs/UnifiedAIToolbox-Repo-Guide.md](docs/UnifiedAIToolbox-Repo-Guide.md)
+- **Architecture overview** - [docs/Unified-AI-Toolbox-Architecture.md](docs/Unified-AI-Toolbox-Architecture.md)
+- **MCP docs map** - [docs/mcp/README.md](docs/mcp/README.md)
+- **MCP status** - [docs/MCP_LIBRARY_STATUS.md](docs/MCP_LIBRARY_STATUS.md)
+- **MCP remaining tasks** - [docs/MCP_REMAINING_TASKS.md](docs/MCP_REMAINING_TASKS.md)
+- **Historical docs archive** - [docs/archive/README.md](docs/archive/README.md)
 
 ## 🛠️ Development
 

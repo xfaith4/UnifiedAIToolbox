@@ -189,5 +189,51 @@ describe('runContextStore', () => {
       localStorageMock.setItem('concierge.run-context.v1', JSON.stringify({ version: 1, runs: 'bad' }))
       expect(listRecentRunContexts(Infinity)).toEqual([])
     })
+
+    it('normalizes legacy snake_case fields from storage', () => {
+      localStorageMock.setItem(
+        'concierge.run-context.v1',
+        JSON.stringify({
+          version: 1,
+          runs: [{
+            run_id: 'legacy_run_01',
+            goal: 'Legacy run payload',
+            started_at: '2026-02-20T01:02:03.000Z',
+            status: 'running',
+            proposal_id: 'legacy_proposal_01',
+            updated_at: '2026-02-20T01:03:04.000Z',
+          }],
+        })
+      )
+
+      const last = getLastRunContext()
+      expect(last?.runId).toBe('legacy_run_01')
+      expect(last?.proposalId).toBe('legacy_proposal_01')
+      expect(last?.status).toBe('running')
+      expect(last?.startedAt).toBe('2026-02-20T01:02:03.000Z')
+    })
+
+    it('filters malformed entries missing runId', () => {
+      localStorageMock.setItem(
+        'concierge.run-context.v1',
+        JSON.stringify({
+          version: 1,
+          runs: [
+            { goal: 'missing run id', startedAt: new Date().toISOString(), status: 'queued' },
+            {
+              runId: 'valid_run_01',
+              goal: 'valid',
+              startedAt: new Date().toISOString(),
+              status: 'queued',
+              updatedAt: new Date().toISOString(),
+            },
+          ],
+        })
+      )
+
+      const runs = listRecentRunContexts(Infinity)
+      expect(runs.length).toBe(1)
+      expect(runs[0].runId).toBe('valid_run_01')
+    })
   })
 })

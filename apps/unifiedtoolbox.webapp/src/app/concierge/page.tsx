@@ -47,7 +47,7 @@ import {
   narrateRunEvent,
   TERMINAL_RUN_STATUSES,
 } from '@/lib/services/conciergeRunService'
-import { fetchOrchestrationRuns } from '@/lib/services/orchestratorApi'
+import { fetchOrchestrationRuns, isOrchestratorApiHttpError } from '@/lib/services/orchestratorApi'
 import type { OrchestrationRun } from '@/lib/types/orchestrator'
 import {
   findSimilarRuns,
@@ -1054,6 +1054,12 @@ export default function ConciergePage() {
           }
         }
       } catch (e) {
+        if (isOrchestratorApiHttpError(e) && e.status === 404) {
+          cancelled = true
+          clearInterval(intervalId)
+          setRunStatus('failed')
+          return
+        }
         console.warn('[Concierge] Poll error:', e)
       }
     }
@@ -1382,7 +1388,7 @@ export default function ConciergePage() {
       </div>
 
       {/* ── Live Event Panel (docked right drawer) ── */}
-      {showEventPanel && lastRunEntry && (
+      {showEventPanel && lastRunEntry?.runId?.trim() && (
         <div className="w-full md:w-72 lg:w-80 flex-shrink-0 rounded-2xl border border-gray-800 overflow-hidden min-h-0">
           <LiveEventPanel
             runId={lastRunEntry.runId}

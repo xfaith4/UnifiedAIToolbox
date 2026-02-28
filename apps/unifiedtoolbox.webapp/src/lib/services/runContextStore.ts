@@ -42,14 +42,53 @@ type StorePayload = {
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
+function asNonEmptyString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim().length > 0 ? value : undefined
+}
+
+function normalizeIsoTimestamp(value: unknown, fallback: string): string {
+  const candidate = asNonEmptyString(value)
+  if (!candidate) return fallback
+  const ms = new Date(candidate).getTime()
+  if (Number.isNaN(ms)) return fallback
+  return new Date(ms).toISOString()
+}
+
+function normalizeRunContextEntry(raw: unknown): RunContextEntry | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+
+  const row = raw as Record<string, unknown>
+  const now = new Date().toISOString()
+  const runId = asNonEmptyString(row.runId) ?? asNonEmptyString(row.run_id)
+  if (!runId) return undefined
+
+  return {
+    runId,
+    goal: asNonEmptyString(row.goal) ?? 'Untitled run',
+    startedAt: normalizeIsoTimestamp(row.startedAt ?? row.started_at, now),
+    mode: asNonEmptyString(row.mode),
+    status: asNonEmptyString(row.status) ?? 'queued',
+    proposalId: asNonEmptyString(row.proposalId) ?? asNonEmptyString(row.proposal_id),
+    updatedAt: normalizeIsoTimestamp(row.updatedAt ?? row.updated_at, now),
+  }
+}
+
 function loadStore(): StorePayload {
   if (typeof localStorage === 'undefined') return { version: 1, runs: [] }
   try {
     const raw = localStorage.getItem(STORE_KEY)
     if (!raw) return { version: 1, runs: [] }
-    const parsed = JSON.parse(raw) as StorePayload
+    const parsed = JSON.parse(raw) as { runs?: unknown }
     if (!Array.isArray(parsed?.runs)) return { version: 1, runs: [] }
-    return parsed
+    const seen = new Set<string>()
+    const normalized: RunContextEntry[] = []
+    for (const item of parsed.runs) {
+      const entry = normalizeRunContextEntry(item)
+      if (!entry || seen.has(entry.runId)) continue
+      seen.add(entry.runId)
+      normalized.push(entry)
+    }
+    return { version: 1, runs: normalized.slice(0, MAX_ENTRIES) }
   } catch {
     return { version: 1, runs: [] }
   }

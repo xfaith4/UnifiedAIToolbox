@@ -37,6 +37,8 @@ runs/
 !apps/unifiedtoolbox.webapp/src/app/api/app-factory/runs/**
 !apps/unifiedtoolbox.webapp/src/lib/app-factory/runs/
 !apps/unifiedtoolbox.webapp/src/lib/app-factory/runs/**
+!apps/unifiedtoolbox.webapp/src/components/runs/
+!apps/unifiedtoolbox.webapp/src/components/runs/**
 *.db
 *.log
 

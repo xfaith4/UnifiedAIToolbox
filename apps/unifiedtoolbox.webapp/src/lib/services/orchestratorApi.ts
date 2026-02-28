@@ -22,6 +22,20 @@ const API_HEALTH_CHECK_TIMEOUT_MS = 5000 // 5 seconds
 export const ORCHESTRATOR_API_BASE = API_BASE
 export const ORCHESTRATOR_API_USING_DEFAULT_BASE = API_BASE_FROM_ENV === ''
 
+export class OrchestratorApiHttpError extends Error {
+  readonly status: number
+
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = 'OrchestratorApiHttpError'
+    this.status = status
+  }
+}
+
+export function isOrchestratorApiHttpError(error: unknown): error is OrchestratorApiHttpError {
+  return error instanceof OrchestratorApiHttpError
+}
+
 // Log the configuration on module load (only in development)
 if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
   console.log('[OrchestratorAPI] Configuration:', {
@@ -133,15 +147,21 @@ export async function fetchOrchestrationRuns(): Promise<OrchestrationRun[]> {
  */
 export async function fetchOrchestrationRun(runId: string): Promise<OrchestrationRun> {
   if (!API_BASE) throw new Error('API base not configured')
+  if (!runId?.trim()) {
+    throw new Error('Run ID is required to fetch orchestration run details')
+  }
   
   try {
     const res = await fetch(`${API_BASE}/orchestrate/run/${encodeURIComponent(runId)}`)
-    if (!res.ok) throw new Error(`Failed to fetch run (${res.status})`)
+    if (!res.ok) throw new OrchestratorApiHttpError(`Failed to fetch run (${res.status})`, res.status)
     
     const payload = await res.json()
     return normalizeApiRun(payload)
   } catch (error) {
-    console.error(`[OrchestratorAPI] Failed to fetch run ${runId}:`, error)
+    // 404 is expected for stale/missing run contexts; callers can decide how to handle it.
+    if (!(error instanceof OrchestratorApiHttpError && error.status === 404)) {
+      console.error(`[OrchestratorAPI] Failed to fetch run ${runId}:`, error)
+    }
     throw error
   }
 }

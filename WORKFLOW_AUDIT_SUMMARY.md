@@ -1,5 +1,8 @@
 # GitHub Actions Workflow Audit - Summary
 
+> Canonical roadmap/history tracking now lives in `docs/ROADMAP.md` and `docs/IMPLEMENTATION_SUMMARY.md`.  
+> This file remains a detailed workflow/CI deep-dive record.
+
 ## Completed Fixes
 
 ### Priority 1: Critical TypeScript Fixes ✅
