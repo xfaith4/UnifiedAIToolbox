@@ -220,3 +220,49 @@ class TestOrchestrateRun:
         
         # Clean up the created file
         summary_path.unlink(missing_ok=True)
+
+    def test_cancel_single_queued_orchestration_run(self, cleanup_test_runs):
+        """Queued runs should cancel immediately via single-run cancel endpoint."""
+        payload = {
+            "goal": "test cancel single queued",
+            "model": "gpt-4o-mini",
+        }
+        create_res = client.post("/orchestrate/run", json=payload)
+        assert create_res.status_code == 200
+        run_id = create_res.json()["run_id"]
+
+        cancel_res = client.post(f"/orchestrate/run/{run_id}/cancel")
+        assert cancel_res.status_code == 200
+        cancelled = cancel_res.json()
+        assert cancelled.get("cancelled") is True
+        assert cancelled.get("status") == "cancelled"
+
+        run_res = client.get(f"/orchestrate/run/{run_id}")
+        assert run_res.status_code == 200
+        assert run_res.json().get("status") == "cancelled"
+
+    def test_bulk_cancel_all_queued_runs(self, cleanup_test_runs):
+        """Bulk cancel should cancel all queued runs when requested."""
+        first = client.post("/orchestrate/run", json={"goal": "test bulk cancel a", "model": "gpt-4o-mini"})
+        second = client.post("/orchestrate/run", json={"goal": "test bulk cancel b", "model": "gpt-4o-mini"})
+        assert first.status_code == 200
+        assert second.status_code == 200
+
+        bulk_res = client.post(
+            "/orchestrate/runs/cancel",
+            json={"cancel_all_queued": True},
+        )
+        assert bulk_res.status_code == 200
+        payload = bulk_res.json()
+        assert payload["requested"] >= 2
+        assert payload["cancelled"] >= 2
+
+    def test_orchestration_queue_limits_endpoint(self):
+        """Queue limits endpoint should expose configured safeguards."""
+        res = client.get("/orchestrate/runs/limits")
+        assert res.status_code == 200
+        payload = res.json()
+        assert "max_concurrent" in payload
+        assert "max_queued" in payload
+        assert "running" in payload
+        assert "queued" in payload

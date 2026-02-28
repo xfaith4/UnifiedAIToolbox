@@ -22,6 +22,32 @@ const API_HEALTH_CHECK_TIMEOUT_MS = 5000 // 5 seconds
 export const ORCHESTRATOR_API_BASE = API_BASE
 export const ORCHESTRATOR_API_USING_DEFAULT_BASE = API_BASE_FROM_ENV === ''
 
+export interface OrchestrationRunCancelResult {
+  run_id?: string
+  runId?: string
+  status?: string
+  cancelled?: boolean
+  cancel_requested?: boolean
+  cancelRequested?: boolean
+  message?: string
+}
+
+export interface BulkOrchestrationRunCancelResult {
+  requested: number
+  cancelled: number
+  cancel_requested?: number
+  cancelRequested?: number
+  results: OrchestrationRunCancelResult[]
+}
+
+export interface OrchestrationQueueLimits {
+  max_concurrent: number
+  max_queued: number
+  running: number
+  queued: number
+  available_slots: number
+}
+
 export class OrchestratorApiHttpError extends Error {
   readonly status: number
 
@@ -164,6 +190,65 @@ export async function fetchOrchestrationRun(runId: string): Promise<Orchestratio
     }
     throw error
   }
+}
+
+/**
+ * Cancel an orchestration run by ID.
+ * Queued runs cancel immediately; running runs receive a cancellation request.
+ */
+export async function cancelOrchestrationRun(runId: string): Promise<OrchestrationRunCancelResult> {
+  if (!API_BASE) throw new Error('API base not configured')
+  if (!runId?.trim()) throw new Error('Run ID is required to cancel orchestration run')
+
+  const res = await fetch(`${API_BASE}/orchestrate/run/${encodeURIComponent(runId)}/cancel`, {
+    method: 'POST',
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => 'unknown error')
+    throw new OrchestratorApiHttpError(`Failed to cancel run (${res.status}): ${text}`, res.status)
+  }
+  return (await res.json()) as OrchestrationRunCancelResult
+}
+
+/**
+ * Cancel multiple orchestration runs.
+ */
+export async function bulkCancelOrchestrationRuns(args: {
+  runIds?: string[]
+  cancelAllQueued?: boolean
+} = {}): Promise<BulkOrchestrationRunCancelResult> {
+  if (!API_BASE) throw new Error('API base not configured')
+
+  const runIds = Array.isArray(args.runIds) ? args.runIds.filter(Boolean) : []
+  const body = {
+    run_ids: runIds,
+    cancel_all_queued: Boolean(args.cancelAllQueued),
+  }
+
+  const res = await fetch(`${API_BASE}/orchestrate/runs/cancel`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => 'unknown error')
+    throw new OrchestratorApiHttpError(`Failed to cancel runs (${res.status}): ${text}`, res.status)
+  }
+  return (await res.json()) as BulkOrchestrationRunCancelResult
+}
+
+/**
+ * Get current queue limits and occupancy for orchestration runs.
+ */
+export async function fetchOrchestrationQueueLimits(): Promise<OrchestrationQueueLimits> {
+  if (!API_BASE) throw new Error('API base not configured')
+
+  const res = await fetch(`${API_BASE}/orchestrate/runs/limits`)
+  if (!res.ok) {
+    const text = await res.text().catch(() => 'unknown error')
+    throw new OrchestratorApiHttpError(`Failed to fetch queue limits (${res.status}): ${text}`, res.status)
+  }
+  return (await res.json()) as OrchestrationQueueLimits
 }
 
 /**

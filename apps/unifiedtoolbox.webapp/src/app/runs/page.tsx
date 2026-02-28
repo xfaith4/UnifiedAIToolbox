@@ -3,13 +3,16 @@
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
+  bulkCancelOrchestrationRuns,
   fetchOrchestrationRuns,
+  fetchOrchestrationQueueLimits,
   fetchRepoOrchestrationRuns,
   ORCHESTRATOR_API_BASE,
 } from '@/lib/services/orchestratorApi'
 import { listLocalRuns } from '@/lib/services/orchestratorStore'
 import { listProposals } from '@/lib/services/proposalStore'
 import { getToolAudit } from '@/lib/services/toolPermissionStore'
+import type { OrchestrationQueueLimits } from '@/lib/services/orchestratorApi'
 import type { OrchestrationRun, RepoOrchestrationRunSummary } from '@/lib/types/orchestrator'
 import type { Proposal } from '@/lib/types/proposal'
 import { PAGE_TITLES, ROUTES } from '@/lib/nav/navConfig'
@@ -22,6 +25,7 @@ import {
   ArrowRight,
   Wrench,
   Radio,
+  XCircle,
 } from 'lucide-react'
 
 // ── Status helpers ─────────────────────────────────────────────────────────────
@@ -51,6 +55,10 @@ function matchesFilter(status: string | undefined, tab: FilterTab): boolean {
     case 'failed':   return s === 'failed' || s === 'error'
     default:         return true
   }
+}
+
+function isQueuedStatus(status: string | undefined): boolean {
+  return STATUS_QUEUED.has((status ?? 'unknown').toLowerCase())
 }
 
 // ── Status badge ─────────────────────────────────────────────────────────────
@@ -109,15 +117,32 @@ function RunRow({
   status,
   startedAt,
   detailHref,
+  selectable,
+  selected,
+  onToggleSelect,
 }: {
   id: string
   goal?: string
   status?: string
   startedAt?: string
   detailHref?: string
+  selectable?: boolean
+  selected?: boolean
+  onToggleSelect?: (runId: string) => void
 }) {
   return (
     <div className="flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-gray-800/50 transition-colors">
+      {selectable && onToggleSelect && (
+        <label className="inline-flex items-center">
+          <input
+            type="checkbox"
+            checked={Boolean(selected)}
+            onChange={() => onToggleSelect(id)}
+            className="h-4 w-4 rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500"
+            aria-label={`Select queued run ${id}`}
+          />
+        </label>
+      )}
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-medium text-gray-100">{truncate(goal, 80) || id}</div>
         <div className="mt-0.5 flex items-center gap-3 text-xs text-gray-500">
@@ -185,6 +210,11 @@ export default function RunsPage() {
   const [repoRuns, setRepoRuns]   = useState<RepoOrchestrationRunSummary[]>([])
   const [localRuns, setLocalRuns] = useState<OrchestrationRun[]>([])
   const [drafts, setDrafts]       = useState<Proposal[]>([])
+  const [queueLimits, setQueueLimits] = useState<OrchestrationQueueLimits | null>(null)
+  const [selectedQueuedRunIds, setSelectedQueuedRunIds] = useState<string[]>([])
+  const [bulkCancelPending, setBulkCancelPending] = useState(false)
+  const [bulkCancelMessage, setBulkCancelMessage] = useState<string | null>(null)
+  const [bulkCancelError, setBulkCancelError] = useState<string | null>(null)
   const [loading, setLoading]     = useState(true)
   const [error, setError]         = useState<string | null>(null)
 
@@ -197,14 +227,20 @@ export default function RunsPage() {
     setLoading(true)
     setError(null)
     try {
-      const [api, repo] = await Promise.allSettled([
+      const [api, repo, limits] = await Promise.allSettled([
         fetchOrchestrationRuns(),
         fetchRepoOrchestrationRuns(),
+        fetchOrchestrationQueueLimits(),
       ])
-      setApiRuns(api.status === 'fulfilled' ? api.value : [])
+      const nextApiRuns = api.status === 'fulfilled' ? api.value : []
+      setApiRuns(nextApiRuns)
       setRepoRuns(repo.status === 'fulfilled' ? repo.value : [])
       setLocalRuns(listLocalRuns())
       setDrafts(listProposals().filter((p) => ['draft', 'approved', 'running', 'completed'].includes(p.status)))
+      setQueueLimits(limits.status === 'fulfilled' ? limits.value : null)
+
+      const queuedIds = new Set(nextApiRuns.filter((r) => isQueuedStatus(r.status)).map((r) => r.id))
+      setSelectedQueuedRunIds((prev) => prev.filter((id) => queuedIds.has(id)))
     } catch (e) {
       setError(String(e))
     } finally {
@@ -228,7 +264,7 @@ export default function RunsPage() {
     return () => {
       if (autoRefreshRef.current) clearInterval(autoRefreshRef.current)
     }
-  }, [autoRefresh]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [autoRefresh])
 
   // ── Filtered data ────────────────────────────────────────────────────────
 
@@ -248,6 +284,62 @@ export default function RunsPage() {
   const totalCount    = apiRuns.length + repoRuns.length + localRuns.length + drafts.length
   const hasActiveRuns = apiRuns.some((r) => STATUS_ACTIVE.has((r.status ?? '').toLowerCase()))
   const hasQueuedRuns = apiRuns.some((r) => STATUS_QUEUED.has((r.status ?? '').toLowerCase()))
+  const queuedApiRuns = apiRuns.filter((r) => isQueuedStatus(r.status))
+  const queuedVisibleRuns = filteredApiRuns.filter((r) => isQueuedStatus(r.status))
+  const allVisibleQueuedSelected =
+    queuedVisibleRuns.length > 0 && queuedVisibleRuns.every((run) => selectedQueuedRunIds.includes(run.id))
+
+  const toggleQueuedRunSelection = (runId: string) => {
+    setSelectedQueuedRunIds((prev) =>
+      prev.includes(runId) ? prev.filter((id) => id !== runId) : [...prev, runId]
+    )
+  }
+
+  const selectAllVisibleQueuedRuns = () => {
+    const visibleIds = queuedVisibleRuns.map((run) => run.id)
+    setSelectedQueuedRunIds((prev) => {
+      const set = new Set(prev)
+      if (allVisibleQueuedSelected) {
+        visibleIds.forEach((id) => set.delete(id))
+      } else {
+        visibleIds.forEach((id) => set.add(id))
+      }
+      return Array.from(set)
+    })
+  }
+
+  const selectAllQueuedRuns = () => {
+    setSelectedQueuedRunIds(queuedApiRuns.map((run) => run.id))
+  }
+
+  const clearQueuedSelection = () => {
+    setSelectedQueuedRunIds([])
+  }
+
+  const cancelQueuedRuns = async (cancelAllQueued: boolean) => {
+    setBulkCancelPending(true)
+    setBulkCancelError(null)
+    setBulkCancelMessage(null)
+    try {
+      const result = await bulkCancelOrchestrationRuns({
+        runIds: cancelAllQueued ? [] : selectedQueuedRunIds,
+        cancelAllQueued,
+      })
+      const cancelledNow = result.cancelled
+      const requested = result.cancel_requested ?? result.cancelRequested ?? 0
+      setBulkCancelMessage(
+        cancelAllQueued
+          ? `Bulk cancel processed: ${cancelledNow} cancelled, ${requested} cancellation request(s).`
+          : `Selected cancel processed: ${cancelledNow} cancelled, ${requested} cancellation request(s).`
+      )
+      setSelectedQueuedRunIds([])
+      await load()
+    } catch (e) {
+      setBulkCancelError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBulkCancelPending(false)
+    }
+  }
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -321,9 +413,31 @@ export default function RunsPage() {
         </div>
       )}
 
+      {queueLimits && (
+        <div className="flex items-center gap-3 rounded-xl border border-amber-900/50 bg-amber-950/20 px-4 py-3 text-sm">
+          <Info size={15} className="shrink-0 text-amber-400" aria-hidden="true" />
+          <span className="text-amber-200">
+            Queue safeguard active: max {queueLimits.max_concurrent} concurrent run(s), currently {queueLimits.running} running and {queueLimits.queued} queued.
+          </span>
+        </div>
+      )}
+
       {error && (
         <div className="rounded-xl border border-rose-800 bg-rose-950/30 px-4 py-3 text-sm text-rose-300">
           Could not connect to orchestrator API ({ORCHESTRATOR_API_BASE}). Showing locally-stored runs only.
+        </div>
+      )}
+
+      {bulkCancelMessage && (
+        <div className="flex items-center gap-2 rounded-xl border border-emerald-800/50 bg-emerald-950/30 px-4 py-3 text-sm text-emerald-200">
+          <XCircle size={15} className="text-emerald-400" aria-hidden="true" />
+          {bulkCancelMessage}
+        </div>
+      )}
+
+      {bulkCancelError && (
+        <div className="rounded-xl border border-rose-800 bg-rose-950/30 px-4 py-3 text-sm text-rose-300">
+          {bulkCancelError}
         </div>
       )}
 
@@ -402,6 +516,55 @@ export default function RunsPage() {
 
       {!loading && filteredApiRuns.length > 0 && (
         <SectionCard title={`Orchestrator runs (${filteredApiRuns.length})`}>
+          {queuedApiRuns.length > 0 && (
+            <div className="mb-3 rounded-xl border border-amber-900/50 bg-amber-950/20 px-3 py-2.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs text-amber-200">
+                  Queued runs: {queuedApiRuns.length} · selected: {selectedQueuedRunIds.length}
+                </span>
+                <button
+                  type="button"
+                  onClick={selectAllVisibleQueuedRuns}
+                  disabled={queuedVisibleRuns.length === 0}
+                  className="rounded-lg border border-gray-700 bg-gray-800 px-2 py-1 text-[11px] text-gray-200 hover:text-white disabled:opacity-40"
+                >
+                  {allVisibleQueuedSelected ? 'Unselect visible queued' : 'Select visible queued'}
+                </button>
+                <button
+                  type="button"
+                  onClick={selectAllQueuedRuns}
+                  disabled={queuedApiRuns.length === 0}
+                  className="rounded-lg border border-gray-700 bg-gray-800 px-2 py-1 text-[11px] text-gray-200 hover:text-white disabled:opacity-40"
+                >
+                  Select all queued
+                </button>
+                <button
+                  type="button"
+                  onClick={clearQueuedSelection}
+                  disabled={selectedQueuedRunIds.length === 0}
+                  className="rounded-lg border border-gray-700 bg-gray-800 px-2 py-1 text-[11px] text-gray-300 hover:text-white disabled:opacity-40"
+                >
+                  Clear selection
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void cancelQueuedRuns(false)}
+                  disabled={bulkCancelPending || selectedQueuedRunIds.length === 0}
+                  className="rounded-lg border border-rose-700/80 bg-rose-900/40 px-2 py-1 text-[11px] text-rose-100 hover:bg-rose-900/60 disabled:opacity-40"
+                >
+                  {bulkCancelPending ? 'Cancelling…' : `Cancel selected (${selectedQueuedRunIds.length})`}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void cancelQueuedRuns(true)}
+                  disabled={bulkCancelPending || queuedApiRuns.length === 0}
+                  className="rounded-lg border border-rose-700/80 bg-rose-900/40 px-2 py-1 text-[11px] text-rose-100 hover:bg-rose-900/60 disabled:opacity-40"
+                >
+                  {bulkCancelPending ? 'Cancelling…' : 'Cancel ALL queued'}
+                </button>
+              </div>
+            </div>
+          )}
           <div className="divide-y divide-gray-800">
             {filteredApiRuns.map((run) => (
               <RunRow
@@ -411,6 +574,9 @@ export default function RunsPage() {
                 status={run.status}
                 startedAt={run.startedAt ?? run.requestedAt}
                 detailHref={`/runs/${encodeURIComponent(run.id)}`}
+                selectable={isQueuedStatus(run.status)}
+                selected={selectedQueuedRunIds.includes(run.id)}
+                onToggleSelect={toggleQueuedRunSelection}
               />
             ))}
           </div>

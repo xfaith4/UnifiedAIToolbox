@@ -2,7 +2,12 @@
 
 import { use, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { ORCHESTRATOR_API_BASE, fetchOrchestrationRun, fetchOrchestrationRunLog } from '@/lib/services/orchestratorApi'
+import {
+  ORCHESTRATOR_API_BASE,
+  cancelOrchestrationRun,
+  fetchOrchestrationRun,
+  fetchOrchestrationRunLog,
+} from '@/lib/services/orchestratorApi'
 import type { OrchestrationRun, RepoOrchestrationReport } from '@/lib/types/orchestrator'
 import { nodeMatchesFilter, renderMarkdown } from '@/lib/artifacts/viewerUtils'
 
@@ -126,6 +131,9 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
   const [activeTab, setActiveTab] = useState<TabKey>('report')
   const [reportFilter, setReportFilter] = useState('')
   const [findingsFilter, setFindingsFilter] = useState('')
+  const [cancelPending, setCancelPending] = useState(false)
+  const [cancelMessage, setCancelMessage] = useState<string | null>(null)
+  const [cancelError, setCancelError] = useState<string | null>(null)
 
   const artifactByName = useMemo(() => {
     const map = new Map<string, ArtifactItem>()
@@ -164,6 +172,9 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
       setActiveTab('report')
       setOrchRun(null)
       setOrchLog(null)
+      setCancelMessage(null)
+      setCancelError(null)
+      setCancelPending(false)
 
       if (!ORCHESTRATOR_API_BASE) {
         setError('Orchestrator API base is not configured.')
@@ -311,6 +322,48 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
     }
   }
 
+  const handleCancelOrchestrationRun = async () => {
+    setCancelPending(true)
+    setCancelError(null)
+    setCancelMessage(null)
+    try {
+      const result = await cancelOrchestrationRun(runId)
+      const requested = Boolean(result.cancel_requested || result.cancelRequested)
+      if (result.cancelled) {
+        setCancelMessage(result.message || 'Run cancelled.')
+        setOrchRun((prev) =>
+          prev
+            ? {
+                ...prev,
+                status: 'cancelled',
+                completedAt: prev.completedAt ?? new Date().toISOString(),
+                events: [
+                  ...(prev.events ?? []),
+                  { timestamp: new Date().toISOString(), type: 'status', message: 'cancelled' },
+                ],
+              }
+            : prev
+        )
+      } else if (requested) {
+        setCancelMessage(result.message || 'Cancellation requested. The run will stop shortly.')
+      } else {
+        setCancelMessage(result.message || 'Run could not be cancelled.')
+      }
+
+      // Best effort refresh so UI reflects actual backend state.
+      try {
+        const refreshed = await fetchOrchestrationRun(runId)
+        setOrchRun(refreshed)
+      } catch {
+        // Keep optimistic state if refresh fails.
+      }
+    } catch (err) {
+      setCancelError(err instanceof Error ? err.message : 'Failed to cancel run.')
+    } finally {
+      setCancelPending(false)
+    }
+  }
+
   const renderArtifactLinks = (artifact?: ArtifactItem) => {
     if (!artifact) return null
     return (
@@ -333,6 +386,8 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
   if (!loading && orchRun) {
     const isError = orchRun.status?.startsWith('error') || orchRun.status === 'failed'
     const isRunning = orchRun.status && !['completed', 'failed', 'cancelled'].includes(orchRun.status) && !isError
+    const canCancel = ['queued', 'pending', 'running', 'in_progress', 'awaiting_input', 'gating', 'awaiting_gate', 'starting']
+      .includes((orchRun.status ?? '').toLowerCase())
     const statusCls = orchRun.status === 'completed'
       ? 'border-emerald-700 bg-emerald-900/30 text-emerald-100'
       : isError
@@ -378,9 +433,29 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
             >
               Swarm View
             </Link>
+            {canCancel && (
+              <button
+                type="button"
+                onClick={() => void handleCancelOrchestrationRun()}
+                disabled={cancelPending}
+                className="rounded border border-rose-500/70 bg-rose-900/30 px-2 py-1 text-xs text-rose-100 hover:bg-rose-900/50 disabled:opacity-50"
+              >
+                {cancelPending ? 'Cancelling…' : 'Cancel Run'}
+              </button>
+            )}
             <span className="font-mono text-xs opacity-50">{orchRun.id.slice(0, 20)}</span>
           </div>
         </div>
+        {cancelMessage && (
+          <div className="rounded-xl border border-amber-700/40 bg-amber-900/20 px-3 py-2 text-xs text-amber-100">
+            {cancelMessage}
+          </div>
+        )}
+        {cancelError && (
+          <div className="rounded-xl border border-rose-700/40 bg-rose-900/20 px-3 py-2 text-xs text-rose-100">
+            {cancelError}
+          </div>
+        )}
 
         {isError && orchRun.errorDetail && (
           <div className="rounded-2xl border border-rose-800 bg-rose-950/30 p-4 text-xs text-rose-200 space-y-1">

@@ -4,6 +4,7 @@ from typing import cast
 import openai
 from dataclasses import dataclass
 from contextlib import asynccontextmanager
+from concurrent.futures import Future, ThreadPoolExecutor
 from typing import List, Optional, Dict, Any, Tuple, Callable
 from functools import wraps
 
@@ -426,6 +427,45 @@ CODEX_SWARM_PS1 = os.environ.get("CODEX_SWARM_PS1") or str(
     (ROOT_DIR / "Orchestration" / "engine" / "codex-multiagent-swarm" / "Orchestrate-Codex.ps1").resolve()
 )
 REPO_ROOT_DEFAULT = str((ROOT_DIR.parent).resolve())
+
+
+def _positive_int_env(var_name: str, default: int) -> int:
+    raw = os.environ.get(var_name)
+    if raw is None:
+        return default
+    try:
+        parsed = int(raw)
+    except ValueError:
+        logger.warning("Invalid %s=%r; using default %s", var_name, raw, default)
+        return default
+    if parsed < 1:
+        logger.warning("Non-positive %s=%r; using default %s", var_name, raw, default)
+        return default
+    return parsed
+
+
+ORCH_RUN_MAX_CONCURRENT = _positive_int_env("PROMPT_API_ORCH_MAX_CONCURRENT", 2)
+ORCH_RUN_MAX_QUEUED = _positive_int_env("PROMPT_API_ORCH_MAX_QUEUED", 100)
+ORCH_QUEUE_STATUSES = {"queued", "pending"}
+ORCH_RUNNING_STATUSES = {"running", "starting", "in_progress", "awaiting_input", "gating", "awaiting_gate"}
+ORCH_TERMINAL_STATUSES = {
+    "completed",
+    "completed_with_errors",
+    "success",
+    "succeeded",
+    "failed",
+    "error",
+    "cancelled",
+    "canceled",
+}
+
+# Bounded execution pool prevents sudden queue drains from exhausting tokens.
+_orch_run_executor = ThreadPoolExecutor(
+    max_workers=ORCH_RUN_MAX_CONCURRENT,
+    thread_name_prefix="orch-run",
+)
+_orch_run_state_lock = threading.Lock()
+_orch_run_state: Dict[str, Dict[str, Any]] = {}
 
 REGISTRY_SRC = ROOT_DIR / "packages" / "prompt-registry" / "src"
 if REGISTRY_SRC.exists():
@@ -1399,7 +1439,10 @@ def create_app() -> FastAPI:
     async def lifespan(_app: FastAPI):
         ensure_github_token()
         init_db()
-        yield
+        try:
+            yield
+        finally:
+            _orch_run_executor.shutdown(wait=False, cancel_futures=True)
 
     fastapi_app.router.lifespan_context = lifespan
     return fastapi_app
@@ -2862,6 +2905,154 @@ class CheckpointResponseRequest(BaseModel):
     agent: Optional[str] = None          # which agent requested the checkpoint (for validation)
 
 
+class BulkRunCancelRequest(BaseModel):
+    """Bulk cancellation request for orchestration runs."""
+    run_ids: List[str] = Field(default_factory=list)
+    cancel_all_queued: bool = False
+
+
+def _iter_orchestration_manifests() -> List[Tuple[pathlib.Path, Dict[str, Any]]]:
+    manifests: List[Tuple[pathlib.Path, Dict[str, Any]]] = []
+    for manifest_path in BRIDGE_RUN_DIR.glob("*.json"):
+        try:
+            raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if not isinstance(raw, dict):
+            continue
+        if not raw.get("run_id"):
+            continue
+        manifests.append((manifest_path, raw))
+    return manifests
+
+
+def _orchestration_queue_snapshot() -> Dict[str, int]:
+    queued = 0
+    running = 0
+    cancelled = 0
+    terminal = 0
+    total = 0
+
+    for _, manifest in _iter_orchestration_manifests():
+        total += 1
+        status = str(manifest.get("status") or "").strip().lower()
+        if status in ORCH_QUEUE_STATUSES:
+            queued += 1
+        elif status in ORCH_RUNNING_STATUSES:
+            running += 1
+        elif status in {"cancelled", "canceled"}:
+            cancelled += 1
+            terminal += 1
+        elif status in ORCH_TERMINAL_STATUSES:
+            terminal += 1
+
+    return {
+        "total": total,
+        "queued": queued,
+        "running": running,
+        "cancelled": cancelled,
+        "terminal": terminal,
+        "max_concurrent": ORCH_RUN_MAX_CONCURRENT,
+        "max_queued": ORCH_RUN_MAX_QUEUED,
+        "available_slots": max(0, ORCH_RUN_MAX_CONCURRENT - running),
+    }
+
+
+def _set_orch_run_process(run_id: str, process: Optional[subprocess.Popen]) -> None:
+    with _orch_run_state_lock:
+        state = _orch_run_state.get(run_id)
+        if not state:
+            return
+        state["process"] = process
+        _orch_run_state[run_id] = state
+
+
+def _request_orch_run_cancel(run_id: str, cancel_future: bool) -> Dict[str, bool]:
+    cancel_event: Optional[threading.Event] = None
+    future: Optional[Future] = None
+    process: Optional[subprocess.Popen] = None
+
+    with _orch_run_state_lock:
+        state = _orch_run_state.get(run_id)
+        if state:
+            cancel_event = state.get("cancel_event")
+            future = state.get("future")
+            process = state.get("process")
+
+    if cancel_event:
+        cancel_event.set()
+
+    future_cancelled = bool(cancel_future and future and future.cancel())
+    process_running = bool(process and process.poll() is None)
+    process_terminated = False
+    if process_running and process is not None:
+        try:
+            process.terminate()
+            process_terminated = True
+        except Exception:
+            process_terminated = False
+
+    return {
+        "state_found": cancel_event is not None or future is not None or process is not None,
+        "future_cancelled": future_cancelled,
+        "process_running": process_running,
+        "process_terminated": process_terminated,
+    }
+
+
+def _cancel_orchestration_run_internal(run_id: str, reason: str = "manual") -> Dict[str, Any]:
+    manifest_path = BRIDGE_RUN_DIR / f"{run_id}.json"
+    if not manifest_path.exists():
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    data = safe_json_load(manifest_path, default={}, context=f"cancel_run:{run_id}")
+    if not isinstance(data, dict):
+        data = {}
+    status_value = str(data.get("status") or "unknown").strip().lower()
+
+    if status_value in ORCH_TERMINAL_STATUSES:
+        return {
+            "run_id": run_id,
+            "status": status_value,
+            "cancelled": False,
+            "cancel_requested": False,
+            "message": "Run already in terminal state.",
+        }
+
+    cancel_result = _request_orch_run_cancel(run_id, cancel_future=True)
+    now = now_iso()
+
+    if status_value in ORCH_QUEUE_STATUSES or cancel_result["future_cancelled"]:
+        data["status"] = "cancelled"
+        data["completed_at"] = now
+        data.setdefault("events", []).append({"ts": now, "type": "status", "message": "cancelled"})
+        data.setdefault("events", []).append(
+            {"ts": now, "type": "info", "message": f"Run cancelled before execution ({reason})."}
+        )
+        manifest_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        with _orch_run_state_lock:
+            _orch_run_state.pop(run_id, None)
+        return {
+            "run_id": run_id,
+            "status": "cancelled",
+            "cancelled": True,
+            "cancel_requested": False,
+            "message": "Queued run cancelled.",
+        }
+
+    data.setdefault("events", []).append(
+        {"ts": now, "type": "info", "message": f"Cancellation requested ({reason})."}
+    )
+    manifest_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    return {
+        "run_id": run_id,
+        "status": status_value,
+        "cancelled": False,
+        "cancel_requested": True,
+        "message": "Cancellation requested for active run.",
+    }
+
+
 def _normalize_run_mode(run_mode: Optional[str]) -> str:
     raw = (run_mode or "default").strip().lower()
     if raw in {"default", "multi-agent", "multi_agent", "multiagent"}:
@@ -2956,6 +3147,16 @@ def orchestrate_run(
     """
     _require_execution_access(execution_token or admin_token)
 
+    queue_snapshot = _orchestration_queue_snapshot()
+    if queue_snapshot["queued"] >= ORCH_RUN_MAX_QUEUED:
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                f"Queue limit reached ({queue_snapshot['queued']} queued, "
+                f"max {ORCH_RUN_MAX_QUEUED}). Cancel queued runs or wait for capacity."
+            ),
+        )
+
     # Sanitize the raw run base to ensure it's safe for filesystem use on Windows
     raw_run_base = req.prompt_id or req.goal or "run"
     safe_run_base = sanitize_run_id(raw_run_base)
@@ -3028,6 +3229,14 @@ def orchestrate_run(
     }
     path = BRIDGE_RUN_DIR / f"{run_id}.json"
     path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    cancel_event = threading.Event()
+    with _orch_run_state_lock:
+        _orch_run_state[run_id] = {
+            "cancel_event": cancel_event,
+            "future": None,
+            "process": None,
+            "created_at": now_iso(),
+        }
 
     def _update_manifest(update_fn):
         try:
@@ -3108,11 +3317,18 @@ def orchestrate_run(
             _append_events(events)
         return processed
 
-    def _execute(path: pathlib.Path, manifest: Dict[str, Any]):
+    def _execute(path: pathlib.Path, manifest: Dict[str, Any], cancel_event: threading.Event):
         nonlocal orch_logger
         start_time = time.time()
         try:
             data = safe_json_load(path, context=f"execute_start:{run_id}")
+            if cancel_event.is_set():
+                data["status"] = "cancelled"
+                data["completed_at"] = now_iso()
+                data.setdefault("events", []).append({"ts": data["completed_at"], "type": "status", "message": "cancelled"})
+                data.setdefault("events", []).append({"ts": data["completed_at"], "type": "info", "message": "Run cancelled before execution started."})
+                path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+                return
             data["status"] = "running"
             data["started_at"] = now_iso()
             data.setdefault("events", []).append({"ts": data["started_at"], "type": "status", "message": "running"})
@@ -3592,14 +3808,38 @@ def orchestrate_run(
                 "message": f"Prepared orchestration run with script {ps1} and args {args}",
             })
             path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            if cancel_event.is_set():
+                raise RuntimeError("cancelled")
             with open(log_path, "a", encoding="utf-8") as logf:
                 logf.write(f"READY TO EXECUTE: {json.dumps({'script': str(ps1), 'args': args})}\n")
-                subprocess.run(args, check=True, stdout=logf, stderr=logf)
+                proc = subprocess.Popen(args, stdout=logf, stderr=logf)
+                _set_orch_run_process(run_id, proc)
+                try:
+                    while True:
+                        if cancel_event.is_set():
+                            try:
+                                proc.terminate()
+                                proc.wait(timeout=8)
+                            except subprocess.TimeoutExpired:
+                                proc.kill()
+                                proc.wait(timeout=5)
+                            raise RuntimeError("cancelled")
+
+                        return_code = proc.poll()
+                        if return_code is not None:
+                            if return_code != 0:
+                                raise subprocess.CalledProcessError(return_code, args)
+                            break
+                        time.sleep(0.5)
+                finally:
+                    _set_orch_run_process(run_id, None)
 
             stop_event.set()
             poller.join(timeout=2.0)
             overseer.join(timeout=6.0)  # slightly longer — overseer does a final manifest sweep
             processed_status = _ingest_status_file(status_file, processed_status)
+            if cancel_event.is_set():
+                raise RuntimeError("cancelled")
 
             # ── Phase 1 Verifier ──────────────────────────────────────────────
             # Evaluates each acceptance check from the proposal against the
@@ -3790,6 +4030,8 @@ def orchestrate_run(
             except Exception as _ke:
                 print(f"[knowledge] Post-run ingestion error: {_ke}", file=sys.stderr)
             # ── End Phase 2 Knowledge ingestion ──────────────────────────────
+            if cancel_event.is_set():
+                raise RuntimeError("cancelled")
 
             # Try to populate final_synthesis from various sources
             final_synthesis_text = None
@@ -3899,26 +4141,51 @@ def orchestrate_run(
             logger.info(f"Orchestration run {run_id} completed in {elapsed_ms:.2f}ms")
             
         except Exception as exc:
-            error_detail = f"orchestrator failed: {exc}"
-            print(f"[orchestrate] {error_detail}", file=sys.stderr)
-            try:
-                _append_events(
-                    [{"ts": now_iso(), "type": "error", "message": error_detail, "error_detail": str(exc), "traceback": str(type(exc).__name__)}]
-                )
-                data = safe_json_load(path, default={}, context=f"execute_error:{run_id}")
-                data["status"] = f"error:{type(exc).__name__}"
-                data["completed_at"] = now_iso()
-                data["error_detail"] = str(exc)
-                data["last_step"] = "orchestrator execution"
-                path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-            except Exception as e:
-                print(f"[orchestrate] Failed to write error state to manifest: {e}", file=sys.stderr)
+            is_cancelled = str(exc).strip().lower() == "cancelled"
+            if is_cancelled:
+                try:
+                    data = safe_json_load(path, default={}, context=f"execute_cancelled:{run_id}")
+                    data["status"] = "cancelled"
+                    data["completed_at"] = now_iso()
+                    data.setdefault("events", []).append({"ts": data["completed_at"], "type": "status", "message": "cancelled"})
+                    data.setdefault("events", []).append({"ts": data["completed_at"], "type": "info", "message": "Run cancelled during execution."})
+                    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+                except Exception as e:
+                    print(f"[orchestrate] Failed to write cancelled state to manifest: {e}", file=sys.stderr)
+            else:
+                error_detail = f"orchestrator failed: {exc}"
+                print(f"[orchestrate] {error_detail}", file=sys.stderr)
+                try:
+                    _append_events(
+                        [{"ts": now_iso(), "type": "error", "message": error_detail, "error_detail": str(exc), "traceback": str(type(exc).__name__)}]
+                    )
+                    data = safe_json_load(path, default={}, context=f"execute_error:{run_id}")
+                    data["status"] = f"error:{type(exc).__name__}"
+                    data["completed_at"] = now_iso()
+                    data["error_detail"] = str(exc)
+                    data["last_step"] = "orchestrator execution"
+                    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+                except Exception as e:
+                    print(f"[orchestrate] Failed to write error state to manifest: {e}", file=sys.stderr)
 
     disable_exec = os.environ.get("PROMPT_API_DISABLE_ORCHESTRATION_EXEC") == "1" or bool(
         os.environ.get("PYTEST_CURRENT_TEST")
     )
     if not disable_exec:
-        threading.Thread(target=_execute, args=(path, manifest), daemon=True).start()
+        future = _orch_run_executor.submit(_execute, path, manifest, cancel_event)
+        with _orch_run_state_lock:
+            state = _orch_run_state.get(run_id, {})
+            state["future"] = future
+            _orch_run_state[run_id] = state
+
+        def _cleanup_state(_future: Future) -> None:
+            with _orch_run_state_lock:
+                _orch_run_state.pop(run_id, None)
+
+        future.add_done_callback(_cleanup_state)
+    else:
+        with _orch_run_state_lock:
+            _orch_run_state.pop(run_id, None)
 
     return {"run_id": run_id, "manifest": manifest}
 
@@ -4232,6 +4499,19 @@ def list_orchestration_runs():
     return {"runs": runs}
 
 
+@app.get("/orchestrate/runs/limits")
+def get_orchestration_queue_limits():
+    """Return queue/runtime safety limits and current queue occupancy."""
+    snapshot = _orchestration_queue_snapshot()
+    return {
+        "max_concurrent": snapshot["max_concurrent"],
+        "max_queued": snapshot["max_queued"],
+        "running": snapshot["running"],
+        "queued": snapshot["queued"],
+        "available_slots": snapshot["available_slots"],
+    }
+
+
 @app.get("/orchestrate/run/{run_id}")
 def get_orchestration_run(run_id: str):
     path = BRIDGE_RUN_DIR / f"{run_id}.json"
@@ -4251,6 +4531,71 @@ def get_orchestration_run(run_id: str):
         raise HTTPException(status_code=500, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to read run: {exc}")
+
+
+@app.post("/orchestrate/run/{run_id}/cancel")
+def cancel_orchestration_run(
+    run_id: str,
+    execution_token: Optional[str] = Header(default=None, alias="X-Execution-Token"),
+    admin_token: Optional[str] = Header(default=None, alias="X-Admin-Token"),
+):
+    """Cancel a single orchestration run (queued runs cancel immediately)."""
+    _require_execution_access(execution_token or admin_token)
+    return _cancel_orchestration_run_internal(run_id, reason="single_cancel")
+
+
+@app.post("/orchestrate/runs/cancel")
+def bulk_cancel_orchestration_runs(
+    body: BulkRunCancelRequest,
+    execution_token: Optional[str] = Header(default=None, alias="X-Execution-Token"),
+    admin_token: Optional[str] = Header(default=None, alias="X-Admin-Token"),
+):
+    """Cancel multiple orchestration runs by id, or cancel all queued runs."""
+    _require_execution_access(execution_token or admin_token)
+
+    requested_ids: List[str] = []
+    if body.cancel_all_queued:
+        queued_ids: List[str] = []
+        for _, manifest in _iter_orchestration_manifests():
+            run_id = str(manifest.get("run_id") or "").strip()
+            status = str(manifest.get("status") or "").strip().lower()
+            if run_id and status in ORCH_QUEUE_STATUSES:
+                queued_ids.append(run_id)
+        requested_ids = sorted(set(queued_ids))
+    else:
+        requested_ids = sorted({rid.strip() for rid in body.run_ids if rid and rid.strip()})
+
+    if not requested_ids:
+        return {"requested": 0, "cancelled": 0, "cancel_requested": 0, "results": []}
+
+    results: List[Dict[str, Any]] = []
+    cancelled_count = 0
+    cancel_requested_count = 0
+    for run_id in requested_ids:
+        try:
+            result = _cancel_orchestration_run_internal(run_id, reason="bulk_cancel")
+            if result.get("cancelled"):
+                cancelled_count += 1
+            if result.get("cancel_requested"):
+                cancel_requested_count += 1
+            results.append(result)
+        except HTTPException as exc:
+            results.append(
+                {
+                    "run_id": run_id,
+                    "status": "not_found" if exc.status_code == 404 else "error",
+                    "cancelled": False,
+                    "cancel_requested": False,
+                    "message": str(exc.detail),
+                }
+            )
+
+    return {
+        "requested": len(requested_ids),
+        "cancelled": cancelled_count,
+        "cancel_requested": cancel_requested_count,
+        "results": results,
+    }
 
 
 @app.post("/orchestrate/run/{run_id}/checkpoint")
