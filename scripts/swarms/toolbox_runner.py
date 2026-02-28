@@ -212,11 +212,12 @@ def _resolve_config(args: argparse.Namespace) -> Tuple[List[str], str, str, int,
 
 DEFAULT_AGENT_ROSTER = [
     "Researcher",
-    "Engineer",
-    "Critic",
     "Synthesizer",
     "ValidationAuditor",
     "Commissioner",
+    "ConceptualModelContract",
+    "Engineer",
+    "Critic",
     "Supervisor",
     "Historian",
 ]
@@ -252,6 +253,55 @@ def _ensure_validation_auditor(selected: List[str]) -> List[str]:
         roster.append("ValidationAuditor")
     else:
         roster.insert(insert_idx, "ValidationAuditor")
+    return roster
+
+
+def _ensure_conceptual_model_contract_stage(selected: List[str]) -> List[str]:
+    """
+    Ensure ConceptualModelContract is mandatory and positioned between Commissioner and Engineer.
+    """
+    roster = [a.strip() for a in selected if a and a.strip()]
+
+    # Deduplicate while preserving order.
+    deduped: List[str] = []
+    seen = set()
+    for name in roster:
+        if name in seen:
+            continue
+        seen.add(name)
+        deduped.append(name)
+    roster = deduped
+
+    # Remove any existing instance and reinsert in the correct position.
+    roster = [name for name in roster if name != "ConceptualModelContract"]
+
+    commissioner_present = "Commissioner" in roster
+    engineer_present = "Engineer" in roster
+
+    if commissioner_present and engineer_present:
+        commissioner_idx = roster.index("Commissioner")
+        engineer_idx = roster.index("Engineer")
+
+        if commissioner_idx > engineer_idx:
+            roster.pop(commissioner_idx)
+            engineer_idx = roster.index("Engineer")
+            roster.insert(engineer_idx, "Commissioner")
+
+        engineer_idx = roster.index("Engineer")
+        roster.insert(engineer_idx, "ConceptualModelContract")
+        return roster
+
+    if commissioner_present:
+        commissioner_idx = roster.index("Commissioner")
+        roster.insert(commissioner_idx + 1, "ConceptualModelContract")
+        return roster
+
+    if engineer_present:
+        engineer_idx = roster.index("Engineer")
+        roster.insert(engineer_idx, "ConceptualModelContract")
+        return roster
+
+    roster.append("ConceptualModelContract")
     return roster
 
 
@@ -296,7 +346,9 @@ def main() -> int:
         from swarms.structs.agent import Agent  # type: ignore
         from swarms.structs.swarm_router import SwarmRouter  # type: ignore
 
-        selected_agents = _ensure_validation_auditor(_ensure_default_agents(selected_agents))
+        selected_agents = _ensure_conceptual_model_contract_stage(
+            _ensure_validation_auditor(_ensure_default_agents(selected_agents))
+        )
         payload["agents"] = selected_agents
 
         workspace = (

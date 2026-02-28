@@ -165,6 +165,242 @@
     "checksum": "b6b5f8eb6316092a11c3947b0fbf74978b30f5a8298945fcf00a14ad769cf25b"
   },
   {
+    "id": "ag_20260228_conceptual_model_contract",
+    "name": "ConceptualModelContract",
+    "purpose": "Transform interpreted goals into a machine-verifiable runtime model that constrains implementation.",
+    "mission": "Define what must exist in observable runtime reality and emit only strict JSON.",
+    "status": "draft",
+    "tags": [
+      "runtime-model",
+      "contract",
+      "verification",
+      "grounded"
+    ],
+    "triggers": [
+      "After Commissioner output",
+      "Before Engineer implementation"
+    ],
+    "inputs": [
+      {
+        "source_agent": "Commissioner",
+        "field": "rationale",
+        "io_reference": "commissioner_rationale"
+      },
+      {
+        "source_agent": "Synthesizer",
+        "field": "summary",
+        "io_reference": "synthesized_plan"
+      },
+      {
+        "source_agent": "User",
+        "field": "goal",
+        "io_reference": "goal"
+      }
+    ],
+    "outputs": [
+      {
+        "consumed_by": "Engineer",
+        "field": "contract",
+        "io_reference": "conceptual_model_contract"
+      },
+      {
+        "consumed_by": "Critic",
+        "field": "acceptance_tests",
+        "io_reference": "acceptance_tests"
+      }
+    ],
+    "tools": [
+      "schema-validation",
+      "runtime-probe-design"
+    ],
+    "playbook": [
+      "1. Convert interpreted goal into a grounded runtime contract.",
+      "2. Define representation, visible objects, interactions, dynamics, data, non-goals, and acceptance tests.",
+      "3. Ensure every requirement is machine-falsifiable and programmatically observable.",
+      "4. Reject wording-only criteria and human-interpretive probes.",
+      "5. Output strict JSON only, matching output_schema exactly.",
+      "Completion Criteria: output is valid strict JSON with falsifiable probes and executable acceptance tests."
+    ],
+    "createdAt": "2026-02-28T00:00:00.000Z",
+    "updatedAt": "2026-02-28T00:00:00.000Z",
+    "role": "Defines a grounded conceptual model contract that constrains Engineer implementation.",
+    "capabilities": [
+      "schema-design",
+      "runtime-observability",
+      "falsifiability-analysis"
+    ],
+    "style": "strict, test-first, machine-verifiable",
+    "constraints": [
+      "Output must be JSON only",
+      "No markdown, commentary, or prose outside JSON",
+      "All pass criteria must be falsifiable"
+    ],
+    "io_contract": {
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "goal": {
+            "type": "string"
+          },
+          "synthesized_plan": {
+            "type": "string"
+          },
+          "commissioner_rationale": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "goal"
+        ]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "interpretation": {
+            "type": "string"
+          },
+          "representation": {
+            "type": "string",
+            "enum": [
+              "canvas",
+              "svg",
+              "dom-graphics",
+              "chart",
+              "simulation"
+            ]
+          },
+          "objects": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "description": { "type": "string" },
+                "mustBeVisible": { "type": "boolean" },
+                "observableEvidence": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": ["dom", "svg", "canvas", "state"]
+                    },
+                    "probe": { "type": "string" }
+                  },
+                  "required": ["type", "probe"]
+                }
+              },
+              "required": ["id", "description", "mustBeVisible", "observableEvidence"]
+            }
+          },
+          "interactions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "trigger": { "type": "string" },
+                "userAction": { "type": "string" },
+                "expectedVisibleEffect": { "type": "string" },
+                "verification": {
+                  "type": "object",
+                  "properties": {
+                    "actionProbe": { "type": "string" },
+                    "expectedChangeProbe": { "type": "string" }
+                  },
+                  "required": ["actionProbe", "expectedChangeProbe"]
+                }
+              },
+              "required": ["id", "trigger", "userAction", "expectedVisibleEffect", "verification"]
+            }
+          },
+          "dynamics": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "name": { "type": "string" },
+                "whatChangesOverTime": { "type": "string" },
+                "observableSignal": { "type": "string" },
+                "temporalEvidence": {
+                  "type": "object",
+                  "properties": {
+                    "durationMs": { "type": "integer", "minimum": 1 },
+                    "probe": { "type": "string" },
+                    "expectedDelta": { "type": "string" }
+                  },
+                  "required": ["durationMs", "probe", "expectedDelta"]
+                }
+              },
+              "required": ["id", "name", "whatChangesOverTime", "observableSignal", "temporalEvidence"]
+            }
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": { "type": "string" },
+                "source": { "type": "string" },
+                "usedFor": { "type": "string" }
+              },
+              "required": ["name", "source", "usedFor"]
+            }
+          },
+          "non_goals": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "acceptance_tests": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "testName": { "type": "string" },
+                "steps": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "assertions": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "failureCondition": { "type": "string" }
+              },
+              "required": ["testName", "steps", "assertions", "failureCondition"]
+            }
+          }
+        },
+        "required": [
+          "interpretation",
+          "representation",
+          "objects",
+          "interactions",
+          "dynamics",
+          "data",
+          "non_goals",
+          "acceptance_tests"
+        ]
+      }
+    },
+    "prompt": "You are the ConceptualModelContract agent.\n\nGoal: transform interpreted intent into a machine-verifiable runtime contract.\n\nOutput requirements:\n- Output MUST be strict JSON only.\n- Output MUST NOT include markdown, comments, code fences, or explanatory prose.\n- Output MUST exactly match output_schema.\n\nGlobal enforcement rules:\n- Reject wording-only requirements.\n- Reject non-falsifiable pass criteria.\n- Reject human-interpretive observables.\n- Reject contracts that could pass while rendering only text.\n- If representation implies spatial or temporal behavior, require measurable spatial/temporal probes.\n\nBehavioral principle:\n- Language agreement is insufficient.\n- Only measurable consequences count.\n",
+    "routing_hints": {
+      "preferred_models": [
+        "gpt-5.2-codex",
+        "gpt-5.2"
+      ],
+      "max_tokens": 4000,
+      "fallback_models": [
+        "gpt-4"
+      ]
+    },
+    "dependencies": [
+      "Must run after Commissioner",
+      "Must run before Engineer"
+    ],
+    "checksum": "2d07e5cb16b2765cbf4a7c0ae592ef2f4f5f6f5b0e31a77b0fe019f2b6cd8eb0"
+  },
+  {
     "id": "ag_20251202_critic",
     "name": "Critic",
     "purpose": "Find defects, risks, and spec/schema drift before the plan becomes reality.",
@@ -182,6 +418,11 @@
       "Request from Supervisor/Commissioner"
     ],
     "inputs": [
+      {
+        "source_agent": "ConceptualModelContract",
+        "field": "contract",
+        "io_reference": "conceptual_model_contract"
+      },
       {
         "source_agent": "Engineer",
         "field": "implementation",
@@ -243,6 +484,9 @@
       "input_schema": {
         "type": "object",
         "properties": {
+          "conceptual_model_contract": {
+            "type": "object"
+          },
           "implementation": {
             "type": "string"
           },
@@ -257,6 +501,7 @@
           }
         },
         "required": [
+          "conceptual_model_contract",
           "implementation",
           "specification",
           "requirements"
@@ -342,7 +587,7 @@
         ]
       }
     },
-    "prompt": "You are the Critic.\n\nGoal: aggressively improve correctness, safety, and maintainability of the Engineer output before it becomes “the plan”.\n\nInputs:\n- implementation (string)\n- specification (string)\n- requirements (string[])\n\nRules:\n- Be specific. Point to the exact section/header/snippet you’re referring to.\n- Focus on high-impact issues (correctness, security, data loss, operability, maintainability).\n- Prefer actionable fixes over vibes.\n\nReview checklist:\n1) Requirement coverage: anything missing, ambiguous, or misinterpreted?\n2) Technical soundness: broken assumptions, race conditions, edge cases, scalability traps.\n3) Security: secrets handling, auth, injection, unsafe defaults, logging PII.\n4) Operability: retries, timeouts, idempotency, telemetry, failure modes.\n5) Test adequacy: missing cases, brittle tests, no negative tests.\n\nOutput MUST be valid JSON matching output_schema and NOTHING ELSE:\n{\n  \"issues\": [\n    {\n      \"severity\": \"low|medium|high|critical\",\n      \"category\": \"requirements|correctness|security|performance|maintainability|ops|testing\",\n      \"description\": \"what’s wrong\",\n      \"suggested_fix\": \"specific fix\",\n      \"file\": \"optional filename\",\n      \"line\": 1\n    }\n  ],\n  \"ratings\": { \"completeness\": 0, \"feasibility\": 0, \"quality\": 0 },\n  \"improvements\": [\n    \"Concrete improvement 1\",\n    \"Concrete improvement 2\"\n  ],\n  \"blockers\": [\n    \"Optional blockers\"\n  ]\n}\n\nUse 1–10 numeric ratings (can be decimals).\n",
+    "prompt": "You are the Critic.\n\nGoal: evaluate falsifiability of implementation against conceptual_model_contract.\n\nInputs:\n- conceptual_model_contract (object)\n- implementation (string)\n- specification (string)\n- requirements (string[])\n\nRules:\n- Judge falsifiability, not plausibility.\n- Validate JSON schema correctness for conceptual_model_contract.\n- Verify 100% Contract Traceability coverage in Engineer output.\n- Reject acceptance tests whose assertions cannot fail.\n- Reject if mustBeVisible objects could exist but not render.\n- Reject if interactions lack measurable state change.\n- Reject if dynamics lack measurable temporal change.\n- Reject probes that are descriptive rather than measurable.\n\nOutput MUST be valid JSON matching output_schema and NOTHING ELSE:\n{\n  \"issues\": [\n    {\n      \"severity\": \"low|medium|high|critical\",\n      \"category\": \"requirements|correctness|security|performance|maintainability|ops|testing\",\n      \"description\": \"what’s wrong\",\n      \"suggested_fix\": \"specific fix\",\n      \"file\": \"optional filename\",\n      \"line\": 1\n    }\n  ],\n  \"ratings\": { \"completeness\": 0, \"feasibility\": 0, \"quality\": 0 },\n  \"improvements\": [\"Concrete improvement 1\"],\n  \"blockers\": [\"Blockers that invalidate the contract\"]\n}\n",
     "routing_hints": {
       "preferred_models": [
         "gpt-5.2-codex",
@@ -378,6 +623,11 @@
       "On Critic improvement feedback"
     ],
     "inputs": [
+      {
+        "source_agent": "ConceptualModelContract",
+        "field": "contract",
+        "io_reference": "conceptual_model_contract"
+      },
       {
         "source_agent": "Researcher",
         "field": "requirements",
@@ -448,6 +698,9 @@
       "input_schema": {
         "type": "object",
         "properties": {
+          "conceptual_model_contract": {
+            "type": "object"
+          },
           "specification": {
             "type": "string"
           },
@@ -462,6 +715,7 @@
           }
         },
         "required": [
+          "conceptual_model_contract",
           "specification",
           "requirements"
         ]
@@ -540,7 +794,7 @@
         ]
       }
     },
-    "prompt": "You are the Engineer.\n\nGoal: produce a buildable plan and concrete implementation artifacts from the Researcher’s output.\n\nInputs:\n- specification (string)  // may be sparse; treat as requirements+constraints\n- requirements (string[]) // explicit must-haves\n- context (string)        // repo/runtime/tooling details\n\nRules:\n- Make minimal, explicit assumptions. If an assumption matters, state it in documentation.\n- Default to incremental change (smallest shippable slice) unless told otherwise.\n- Provide runnable code/config where possible; otherwise provide accurate pseudocode plus file/dir placement.\n- Include error handling, logging, and a test strategy.\n\nDeliver:\n1) A technical design (components, data flow, interfaces).\n2) A stepwise implementation plan (phases/PRs).\n3) Concrete code/config snippets for critical paths (with file paths).\n4) A test plan with specific cases.\n\nOutput MUST be valid JSON matching output_schema and NOTHING ELSE:\n{\n  \"implementation\": \"string\",\n  \"tests\": [\n    { \"name\": \"test name\", \"type\": \"unit|integration|e2e\", \"steps\": [\"...\"], \"expected\": \"...\" }\n  ],\n  \"documentation\": \"string\"\n}\n\nImplementation field guidance (single string):\n- Include sections: Overview, Architecture, File changes, Key algorithms, Error handling, Observability.\n- For code, include fenced code blocks with explicit file paths (e.g., `# File: src/foo.ps1`).\n- If PowerShell is viable, prefer it; otherwise justify other languages.\n\nDocumentation field guidance:\n- Setup/run instructions\n- Configuration knobs\n- Assumptions\n- Rollback strategy\n",
+    "prompt": "You are the Engineer.\n\nGoal: implement so the Conceptual Model Contract is true at runtime.\n\nInputs:\n- conceptual_model_contract (object)\n- specification (string)\n- requirements (string[])\n- context (string)\n\nRules:\n- The contract constrains implementation. Do not treat it as optional guidance.\n- If an observable probe cannot be implemented, that feature is not implemented.\n- Do not satisfy visibility using hidden/zero-size/offscreen elements or non-executing loops.\n- Make minimal assumptions and surface them in documentation.\n\nOutput MUST be valid JSON matching output_schema and NOTHING ELSE:\n{\n  \"implementation\": \"string\",\n  \"tests\": [\n    { \"name\": \"test name\", \"type\": \"unit|integration|e2e\", \"steps\": [\"...\"], \"expected\": \"...\" }\n  ],\n  \"documentation\": \"string\"\n}\n\nImplementation field requirements:\n- Include concrete code/config and runtime verification notes.\n- MUST include a section exactly titled:\n### Contract Traceability\n- Under that section, include one line per contract id in this format:\ncontractId -> filePath : symbol : runtimeProbeExplanation\n- Coverage must include every object.id, interaction.id, and dynamic.id from conceptual_model_contract.\n",
     "routing_hints": {
       "preferred_models": [
         "gpt-5.2-codex",
@@ -552,7 +806,8 @@
       ]
     },
     "dependencies": [
-      "Researcher and Synthesizer must precede Engineer",
+      "Commissioner and ConceptualModelContract must precede Engineer",
+      "Researcher and Synthesizer inputs should be available",
       "Iterates based on Critic feedback"
     ],
     "checksum": "06c3516581dbb593bde61b3f479759d3bd8668436b87599332b66699a473e9c9"

@@ -106,6 +106,10 @@ $AgentTypes = @{
         Role        = "Decision making"
         Description = "Evaluates results and makes final calls"
     }
+    ConceptualModelContract = @{
+        Role        = "Runtime contract modeling"
+        Description = "Defines a machine-verifiable runtime model before implementation"
+    }
     Supervisor = @{
         Role        = "Quality gate"
         Description = "Scores run output and extracts reusable learnings"
@@ -325,7 +329,7 @@ function Select-Agents {
     }
 
     # Governance tail always runs so final review is explicit.
-    $governanceTail = @("ValidationAuditor", "Commissioner", "Supervisor", "Historian")
+    $governanceTail = @("ValidationAuditor", "Commissioner", "ConceptualModelContract", "Supervisor", "Historian")
 
     $priority = 1
     $coreLimit = [Math]::Max(1, $MaxAgents)
@@ -358,6 +362,33 @@ function Select-Agents {
     }
 
     $selected = @($selectedAgents.ToArray())
+
+    # Enforce mandatory grounded stage ordering:
+    # Commissioner -> ConceptualModelContract -> Engineer
+    $pipelineOrder = @(
+        "Researcher",
+        "Synthesizer",
+        "ValidationAuditor",
+        "Commissioner",
+        "ConceptualModelContract",
+        "Engineer",
+        "Critic",
+        "Supervisor",
+        "Historian"
+    )
+    $rank = @{}
+    for ($i = 0; $i -lt $pipelineOrder.Count; $i++) {
+        $rank[$pipelineOrder[$i]] = $i
+    }
+    $selected = @(
+        $selected |
+        Sort-Object -Stable -Property @{
+            Expression = {
+                if ($rank.ContainsKey($_.Type)) { return [int]$rank[$_.Type] }
+                return 9999
+            }
+        }
+    )
     $coreNames = @($selected | Where-Object { $_.Stage -eq "core" } | ForEach-Object { $_.Type })
     $governanceNames = @($selected | Where-Object { $_.Stage -eq "governance" } | ForEach-Object { $_.Type })
     Write-Log "Selected $($selected.Count) agents: $($selected.Type -join ', ')" -Level Success

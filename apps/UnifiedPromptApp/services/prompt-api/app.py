@@ -245,6 +245,7 @@ def _parse_agent_json_from_run_dir(out_dir: pathlib.Path, agent_name: str) -> Op
         "ReviewGate": ["review_gate.json"],
         "RepoContextBuilder": ["repo_context.json", "repo_context.discovery.json"],
         "PRPublisher": ["pr.json"],
+        "ConceptualModelContract": ["conceptual_model_contract.json"],
     }
 
     candidates: List[pathlib.Path] = [out_dir / f"{agent_name}_raw_response.json"]
@@ -276,6 +277,234 @@ def _parse_agent_json_from_run_dir(out_dir: pathlib.Path, agent_name: str) -> Op
             return parsed
 
     return None
+
+
+def _validate_conceptual_model_contract(contract: Any) -> List[str]:
+    """
+    Validate Conceptual Model Contract schema and enforce grounded/falsifiable probes.
+    Returns a list of validation errors; empty list means valid.
+    """
+    errors: List[str] = []
+    if not isinstance(contract, dict):
+        return ["contract is not a JSON object"]
+
+    def _non_empty_string(value: Any) -> bool:
+        return isinstance(value, str) and bool(value.strip())
+
+    def _contains_vague_probe_text(value: str) -> bool:
+        lower = value.lower()
+        vague_markers = (
+            "looks",
+            "appears",
+            "should feel",
+            "user can see",
+            "visually pleasing",
+            "seems",
+        )
+        return any(marker in lower for marker in vague_markers)
+
+    required_top_level = [
+        "interpretation",
+        "representation",
+        "objects",
+        "interactions",
+        "dynamics",
+        "data",
+        "non_goals",
+        "acceptance_tests",
+    ]
+    for key in required_top_level:
+        if key not in contract:
+            errors.append(f"missing required field: {key}")
+
+    representation = contract.get("representation")
+    if representation not in {"canvas", "svg", "dom-graphics", "chart", "simulation"}:
+        errors.append("representation must be one of: canvas|svg|dom-graphics|chart|simulation")
+
+    if not _non_empty_string(contract.get("interpretation")):
+        errors.append("interpretation must be a non-empty string")
+
+    objects = contract.get("objects")
+    if not isinstance(objects, list):
+        errors.append("objects must be an array")
+    else:
+        for idx, obj in enumerate(objects):
+            if not isinstance(obj, dict):
+                errors.append(f"objects[{idx}] must be an object")
+                continue
+            if not _non_empty_string(obj.get("id")):
+                errors.append(f"objects[{idx}].id must be a non-empty string")
+            if not _non_empty_string(obj.get("description")):
+                errors.append(f"objects[{idx}].description must be a non-empty string")
+            if obj.get("mustBeVisible") is not True:
+                errors.append(f"objects[{idx}].mustBeVisible must be true")
+            evidence = obj.get("observableEvidence")
+            if not isinstance(evidence, dict):
+                errors.append(f"objects[{idx}].observableEvidence must be an object")
+            else:
+                if evidence.get("type") not in {"dom", "svg", "canvas", "state"}:
+                    errors.append(f"objects[{idx}].observableEvidence.type must be dom|svg|canvas|state")
+                probe = evidence.get("probe")
+                if not _non_empty_string(probe):
+                    errors.append(f"objects[{idx}].observableEvidence.probe must be a non-empty string")
+                elif _contains_vague_probe_text(str(probe)):
+                    errors.append(f"objects[{idx}].observableEvidence.probe is not machine-falsifiable")
+
+    interactions = contract.get("interactions")
+    if not isinstance(interactions, list):
+        errors.append("interactions must be an array")
+    else:
+        for idx, item in enumerate(interactions):
+            if not isinstance(item, dict):
+                errors.append(f"interactions[{idx}] must be an object")
+                continue
+            for key in ("id", "trigger", "userAction", "expectedVisibleEffect"):
+                if not _non_empty_string(item.get(key)):
+                    errors.append(f"interactions[{idx}].{key} must be a non-empty string")
+            verification = item.get("verification")
+            if not isinstance(verification, dict):
+                errors.append(f"interactions[{idx}].verification must be an object")
+            else:
+                action_probe = verification.get("actionProbe")
+                change_probe = verification.get("expectedChangeProbe")
+                if not _non_empty_string(action_probe):
+                    errors.append(f"interactions[{idx}].verification.actionProbe must be a non-empty string")
+                if not _non_empty_string(change_probe):
+                    errors.append(f"interactions[{idx}].verification.expectedChangeProbe must be a non-empty string")
+                if _non_empty_string(action_probe) and _non_empty_string(change_probe) and action_probe == change_probe:
+                    errors.append(f"interactions[{idx}] verification probes must measure distinct values")
+                if _non_empty_string(change_probe) and _contains_vague_probe_text(str(change_probe)):
+                    errors.append(f"interactions[{idx}].verification.expectedChangeProbe is not machine-falsifiable")
+
+    dynamics = contract.get("dynamics")
+    if not isinstance(dynamics, list):
+        errors.append("dynamics must be an array")
+    else:
+        for idx, item in enumerate(dynamics):
+            if not isinstance(item, dict):
+                errors.append(f"dynamics[{idx}] must be an object")
+                continue
+            for key in ("id", "name", "whatChangesOverTime", "observableSignal"):
+                if not _non_empty_string(item.get(key)):
+                    errors.append(f"dynamics[{idx}].{key} must be a non-empty string")
+            temporal = item.get("temporalEvidence")
+            if not isinstance(temporal, dict):
+                errors.append(f"dynamics[{idx}].temporalEvidence must be an object")
+            else:
+                duration_ms = temporal.get("durationMs")
+                if not isinstance(duration_ms, int) or duration_ms <= 0:
+                    errors.append(f"dynamics[{idx}].temporalEvidence.durationMs must be a positive integer")
+                probe = temporal.get("probe")
+                delta = temporal.get("expectedDelta")
+                if not _non_empty_string(probe):
+                    errors.append(f"dynamics[{idx}].temporalEvidence.probe must be a non-empty string")
+                if not _non_empty_string(delta):
+                    errors.append(f"dynamics[{idx}].temporalEvidence.expectedDelta must be a non-empty string")
+                if _non_empty_string(probe) and _contains_vague_probe_text(str(probe)):
+                    errors.append(f"dynamics[{idx}].temporalEvidence.probe is not machine-falsifiable")
+
+    data_entries = contract.get("data")
+    if not isinstance(data_entries, list):
+        errors.append("data must be an array")
+    else:
+        for idx, item in enumerate(data_entries):
+            if not isinstance(item, dict):
+                errors.append(f"data[{idx}] must be an object")
+                continue
+            for key in ("name", "source", "usedFor"):
+                if not _non_empty_string(item.get(key)):
+                    errors.append(f"data[{idx}].{key} must be a non-empty string")
+
+    non_goals = contract.get("non_goals")
+    if not isinstance(non_goals, list) or not all(_non_empty_string(v) for v in non_goals):
+        errors.append("non_goals must be an array of non-empty strings")
+
+    acceptance_tests = contract.get("acceptance_tests")
+    if not isinstance(acceptance_tests, list) or len(acceptance_tests) == 0:
+        errors.append("acceptance_tests must be a non-empty array")
+    else:
+        for idx, test in enumerate(acceptance_tests):
+            if not isinstance(test, dict):
+                errors.append(f"acceptance_tests[{idx}] must be an object")
+                continue
+            if not _non_empty_string(test.get("testName")):
+                errors.append(f"acceptance_tests[{idx}].testName must be a non-empty string")
+            steps = test.get("steps")
+            assertions = test.get("assertions")
+            if not isinstance(steps, list) or len(steps) == 0 or not all(_non_empty_string(v) for v in steps):
+                errors.append(f"acceptance_tests[{idx}].steps must be a non-empty array of strings")
+            if not isinstance(assertions, list) or len(assertions) == 0 or not all(_non_empty_string(v) for v in assertions):
+                errors.append(f"acceptance_tests[{idx}].assertions must be a non-empty array of strings")
+            else:
+                for assertion in assertions:
+                    if _contains_vague_probe_text(str(assertion)):
+                        errors.append(f"acceptance_tests[{idx}] assertion is not machine-falsifiable")
+            if not _non_empty_string(test.get("failureCondition")):
+                errors.append(f"acceptance_tests[{idx}].failureCondition must be a non-empty string")
+
+    return errors
+
+
+def _validate_engineer_contract_traceability(engineer_payload: Any, contract_payload: Any) -> List[str]:
+    """
+    Ensure Engineer output contains complete Contract Traceability coverage.
+    """
+    errors: List[str] = []
+    if not isinstance(engineer_payload, dict):
+        return ["Engineer payload is not a JSON object"]
+    if not isinstance(contract_payload, dict):
+        return ["ConceptualModelContract payload is not a JSON object"]
+
+    implementation = engineer_payload.get("implementation")
+    if not isinstance(implementation, str) or not implementation.strip():
+        return ["Engineer implementation field is missing or empty"]
+
+    marker = "### Contract Traceability"
+    idx = implementation.find(marker)
+    if idx == -1:
+        return ["Engineer output missing required section: ### Contract Traceability"]
+
+    section = implementation[idx + len(marker):]
+    trace_lines = []
+    for raw_line in section.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith("### "):
+            break
+        trace_lines.append(line)
+
+    if not trace_lines:
+        return ["Contract Traceability section is empty"]
+
+    line_pattern = re.compile(r"^(?P<cid>[A-Za-z0-9_.:-]+)\s*->\s*(?P<path>[^:]+?)\s*:\s*(?P<symbol>[^:]+?)\s*:\s*(?P<probe>.+)$")
+    traced_ids: Dict[str, str] = {}
+    for line in trace_lines:
+        m = line_pattern.match(line)
+        if not m:
+            errors.append(f"Invalid traceability line format: {line}")
+            continue
+        contract_id = m.group("cid").strip()
+        probe = m.group("probe").strip()
+        traced_ids[contract_id] = line
+        if not probe:
+            errors.append(f"Traceability line has empty runtimeProbeExplanation: {line}")
+
+    required_ids: List[str] = []
+    for key in ("objects", "interactions", "dynamics"):
+        items = contract_payload.get(key)
+        if isinstance(items, list):
+            for item in items:
+                if isinstance(item, dict):
+                    contract_id = item.get("id")
+                    if isinstance(contract_id, str) and contract_id.strip():
+                        required_ids.append(contract_id.strip())
+
+    missing = [cid for cid in required_ids if cid not in traced_ids]
+    if missing:
+        errors.append(f"Missing traceability coverage for contract IDs: {', '.join(missing)}")
+
+    return errors
 
 
 def _derive_final_status(
@@ -3846,9 +4075,12 @@ def orchestrate_run(
             # run_dir output files. Runs after Overseer so reclassifications
             # are already applied. Writes sandbox_report.json.
             def _verify():
-                checks_to_run = req.acceptance_checks
-                if not checks_to_run:
-                    return
+                checks_to_run = list(req.acceptance_checks or [])
+                mandatory_contract_check = (
+                    "Conceptual Model Contract must be strict JSON, machine-falsifiable, and fully traceable in Engineer output."
+                )
+                if mandatory_contract_check not in checks_to_run:
+                    checks_to_run.append(mandatory_contract_check)
 
                 sandbox_report_path = out_dir / "sandbox_report.json"
 
@@ -3932,12 +4164,40 @@ def orchestrate_run(
                         return "passed", "Final_Synthesis.txt is present", {"file": "Final_Synthesis.txt"}
                     return "failed", "No Final_Synthesis output found in run directory", {}
 
+                def _eval_conceptual_model_contract():
+                    contract = _parse_agent_json("ConceptualModelContract")
+                    if contract is None:
+                        return "failed", "ConceptualModelContract output not found", {}
+
+                    contract_errors = _validate_conceptual_model_contract(contract)
+                    if contract_errors:
+                        return (
+                            "failed",
+                            f"ConceptualModelContract invalid: {contract_errors[0]}",
+                            {"errors": contract_errors},
+                        )
+
+                    engineer = _parse_agent_json("Engineer")
+                    if engineer is None:
+                        return "failed", "Engineer output not found for traceability validation", {}
+
+                    traceability_errors = _validate_engineer_contract_traceability(engineer, contract)
+                    if traceability_errors:
+                        return (
+                            "failed",
+                            f"Engineer Contract Traceability invalid: {traceability_errors[0]}",
+                            {"errors": traceability_errors},
+                        )
+
+                    return "passed", "ConceptualModelContract and Engineer traceability passed", {}
+
                 EVALUATOR_MAP = {
                     "commissioner_score": _eval_commissioner_score,
                     "critic_blockers": _eval_critic_blockers,
                     "reviewgate_status": _eval_reviewgate,
                     "agent_completion": _eval_agent_completion,
                     "synthesis_present": _eval_synthesis_present,
+                    "conceptual_model_contract": _eval_conceptual_model_contract,
                 }
 
                 def _pick_evaluator(check_text: str) -> str:
@@ -3952,6 +4212,8 @@ def orchestrate_run(
                         return "agent_completion"
                     if any(k in text for k in ("synthesis", "output present", "deliverable", "final output")):
                         return "synthesis_present"
+                    if any(k in text for k in ("conceptual model contract", "traceability", "observableevidence", "acceptance_tests")):
+                        return "conceptual_model_contract"
                     return "deferred_code_execution"  # needs Phase 4
 
                 results = []
