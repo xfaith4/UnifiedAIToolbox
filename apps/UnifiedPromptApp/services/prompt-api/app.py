@@ -675,8 +675,19 @@ def _positive_int_env(var_name: str, default: int) -> int:
 
 ORCH_RUN_MAX_CONCURRENT = _positive_int_env("PROMPT_API_ORCH_MAX_CONCURRENT", 2)
 ORCH_RUN_MAX_QUEUED = _positive_int_env("PROMPT_API_ORCH_MAX_QUEUED", 100)
+ORCH_LEASE_TTL_SECONDS = _positive_int_env("PROMPT_API_ORCH_LEASE_TTL_SECONDS", 45)
+ORCH_HEARTBEAT_INTERVAL_SECONDS = _positive_int_env("PROMPT_API_ORCH_HEARTBEAT_INTERVAL_SECONDS", 10)
 ORCH_QUEUE_STATUSES = {"queued", "pending"}
-ORCH_RUNNING_STATUSES = {"running", "starting", "in_progress", "awaiting_input", "gating", "awaiting_gate"}
+ORCH_DISPATCHING_STATUSES = {"dispatching"}
+ORCH_RUNNING_STATUSES = {
+    "running",
+    "starting",
+    "in_progress",
+    "awaiting_input",
+    "gating",
+    "awaiting_gate",
+    *ORCH_DISPATCHING_STATUSES,
+}
 ORCH_TERMINAL_STATUSES = {
     "completed",
     "completed_with_errors",
@@ -695,6 +706,7 @@ _orch_run_executor = ThreadPoolExecutor(
 )
 _orch_run_state_lock = threading.Lock()
 _orch_run_state: Dict[str, Dict[str, Any]] = {}
+_orch_manifest_lock = threading.Lock()
 
 REGISTRY_SRC = ROOT_DIR / "packages" / "prompt-registry" / "src"
 if REGISTRY_SRC.exists():
@@ -3155,20 +3167,184 @@ def _iter_orchestration_manifests() -> List[Tuple[pathlib.Path, Dict[str, Any]]]
     return manifests
 
 
+def _parse_iso_timestamp(value: Any) -> Optional[datetime.datetime]:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    raw = value.strip()
+    if raw.endswith("Z"):
+        raw = raw[:-1] + "+00:00"
+    try:
+        parsed = datetime.datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=datetime.timezone.utc)
+    return parsed.astimezone(datetime.timezone.utc)
+
+
+def _lease_is_stale(manifest: Dict[str, Any], now_utc: Optional[datetime.datetime] = None) -> bool:
+    if not isinstance(manifest, dict):
+        return False
+    status_value = str(manifest.get("status") or "").strip().lower()
+    if status_value in ORCH_TERMINAL_STATUSES or status_value in ORCH_QUEUE_STATUSES:
+        return False
+
+    lease = manifest.get("lease")
+    if not isinstance(lease, dict):
+        return False
+
+    now_ts = now_utc or datetime.datetime.now(datetime.timezone.utc)
+    expires_at = _parse_iso_timestamp(lease.get("expires_at"))
+    if expires_at is None:
+        return False
+    return expires_at < now_ts
+
+
+def _derive_run_runtime_fields(manifest: Dict[str, Any]) -> Dict[str, Any]:
+    data = dict(manifest)
+    raw_status = str(data.get("status") or "unknown").strip().lower()
+    derived_status = raw_status or "unknown"
+
+    now_ts = datetime.datetime.now(datetime.timezone.utc)
+    heartbeat_stale = _lease_is_stale(data, now_utc=now_ts)
+    if heartbeat_stale:
+        derived_status = "stuck"
+
+    events = data.get("events") if isinstance(data.get("events"), list) else []
+    last_event_at: Optional[str] = None
+    current_agent: Optional[str] = None
+    current_stage: Optional[str] = None
+    for ev in events:
+        if not isinstance(ev, dict):
+            continue
+        ts_value = str(ev.get("ts") or "").strip()
+        if ts_value:
+            if last_event_at is None or ts_value > last_event_at:
+                last_event_at = ts_value
+        ev_type = str(ev.get("type") or "")
+        if ev_type.startswith("agent:"):
+            current_agent = ev_type.split(":", 1)[1]
+            current_stage = "agent_activity"
+        elif ev_type.startswith("verify:"):
+            current_stage = "verification"
+        elif ev_type.startswith("checkpoint:"):
+            current_stage = "checkpoint"
+        elif ev_type.startswith("overseer:"):
+            current_stage = "overseer"
+
+    lease = data.get("lease") if isinstance(data.get("lease"), dict) else {}
+    last_heartbeat_at = lease.get("heartbeat_at") if lease else None
+
+    data["raw_status"] = raw_status
+    data["status"] = derived_status
+    data["heartbeat_stale"] = heartbeat_stale
+    data["last_heartbeat_at"] = last_heartbeat_at
+    data["last_event_at"] = last_event_at
+    if current_agent:
+        data["current_agent"] = current_agent
+    if current_stage:
+        data["current_stage"] = current_stage
+    return data
+
+
+def _update_manifest_atomic(path: pathlib.Path, update_fn: Callable[[Dict[str, Any]], Dict[str, Any]]) -> Dict[str, Any]:
+    with _orch_manifest_lock:
+        current = safe_json_load(path, default={}, context=f"manifest_atomic:{path.name}")
+        if not isinstance(current, dict):
+            current = {}
+        updated = update_fn(dict(current))
+        path.write_text(json.dumps(updated, indent=2), encoding="utf-8")
+        return updated
+
+
+def _lease_payload(run_id: str, worker_id: str) -> Dict[str, Any]:
+    now_ts = datetime.datetime.now(datetime.timezone.utc)
+    expires = now_ts + datetime.timedelta(seconds=ORCH_LEASE_TTL_SECONDS)
+    now_iso_ts = now_ts.isoformat()
+    return {
+        "run_id": run_id,
+        "worker_id": worker_id,
+        "ttl_seconds": ORCH_LEASE_TTL_SECONDS,
+        "acquired_at": now_iso_ts,
+        "heartbeat_at": now_iso_ts,
+        "expires_at": expires.isoformat(),
+        "released_at": None,
+        "release_reason": None,
+    }
+
+
+def _acquire_run_lease(run_id: str, path: pathlib.Path, worker_id: str) -> Dict[str, Any]:
+    def _apply(data: Dict[str, Any]) -> Dict[str, Any]:
+        current_status = str(data.get("status") or "").strip().lower()
+        if current_status in ORCH_QUEUE_STATUSES:
+            data["status"] = "dispatching"
+        data["lease"] = _lease_payload(run_id, worker_id)
+        data.setdefault("events", []).append(
+            {"ts": now_iso(), "type": "lease", "message": f"Lease acquired by {worker_id}."}
+        )
+        return data
+
+    return _update_manifest_atomic(path, _apply)
+
+
+def _heartbeat_run_lease(path: pathlib.Path) -> Dict[str, Any]:
+    def _apply(data: Dict[str, Any]) -> Dict[str, Any]:
+        lease = data.get("lease")
+        if not isinstance(lease, dict):
+            return data
+        now_ts = datetime.datetime.now(datetime.timezone.utc)
+        lease["heartbeat_at"] = now_ts.isoformat()
+        lease["expires_at"] = (now_ts + datetime.timedelta(seconds=ORCH_LEASE_TTL_SECONDS)).isoformat()
+        data["lease"] = lease
+        return data
+
+    return _update_manifest_atomic(path, _apply)
+
+
+def _release_run_lease(path: pathlib.Path, reason: str) -> Dict[str, Any]:
+    def _apply(data: Dict[str, Any]) -> Dict[str, Any]:
+        lease = data.get("lease")
+        if not isinstance(lease, dict):
+            return data
+        lease["released_at"] = now_iso()
+        lease["release_reason"] = reason
+        data["lease"] = lease
+        return data
+
+    return _update_manifest_atomic(path, _apply)
+
+
+def _set_run_status_atomic(path: pathlib.Path, status_value: str, event_message: Optional[str] = None) -> Dict[str, Any]:
+    def _apply(data: Dict[str, Any]) -> Dict[str, Any]:
+        data["status"] = status_value
+        if event_message:
+            data.setdefault("events", []).append({"ts": now_iso(), "type": "status", "message": event_message})
+        return data
+
+    return _update_manifest_atomic(path, _apply)
+
+
 def _orchestration_queue_snapshot() -> Dict[str, int]:
     queued = 0
     running = 0
+    dispatching = 0
     cancelled = 0
+    stuck = 0
     terminal = 0
     total = 0
 
     for _, manifest in _iter_orchestration_manifests():
+        manifest = _derive_run_runtime_fields(manifest)
         total += 1
         status = str(manifest.get("status") or "").strip().lower()
         if status in ORCH_QUEUE_STATUSES:
             queued += 1
+        elif status in ORCH_DISPATCHING_STATUSES:
+            dispatching += 1
         elif status in ORCH_RUNNING_STATUSES:
             running += 1
+        elif status == "stuck":
+            stuck += 1
         elif status in {"cancelled", "canceled"}:
             cancelled += 1
             terminal += 1
@@ -3178,12 +3354,14 @@ def _orchestration_queue_snapshot() -> Dict[str, int]:
     return {
         "total": total,
         "queued": queued,
+        "dispatching": dispatching,
         "running": running,
+        "stuck": stuck,
         "cancelled": cancelled,
         "terminal": terminal,
         "max_concurrent": ORCH_RUN_MAX_CONCURRENT,
         "max_queued": ORCH_RUN_MAX_QUEUED,
-        "available_slots": max(0, ORCH_RUN_MAX_CONCURRENT - running),
+        "available_slots": max(0, ORCH_RUN_MAX_CONCURRENT - (running + dispatching)),
     }
 
 
@@ -3196,7 +3374,7 @@ def _set_orch_run_process(run_id: str, process: Optional[subprocess.Popen]) -> N
         _orch_run_state[run_id] = state
 
 
-def _request_orch_run_cancel(run_id: str, cancel_future: bool) -> Dict[str, bool]:
+def _request_orch_run_cancel(run_id: str, cancel_future: bool, force_process: bool = False) -> Dict[str, bool]:
     cancel_event: Optional[threading.Event] = None
     future: Optional[Future] = None
     process: Optional[subprocess.Popen] = None
@@ -3214,10 +3392,19 @@ def _request_orch_run_cancel(run_id: str, cancel_future: bool) -> Dict[str, bool
     future_cancelled = bool(cancel_future and future and future.cancel())
     process_running = bool(process and process.poll() is None)
     process_terminated = False
-    if process_running and process is not None:
+    process_killed = False
+    if force_process and process_running and process is not None:
         try:
             process.terminate()
+            process.wait(timeout=8)
             process_terminated = True
+        except subprocess.TimeoutExpired:
+            try:
+                process.kill()
+                process.wait(timeout=5)
+                process_killed = True
+            except Exception:
+                process_killed = False
         except Exception:
             process_terminated = False
 
@@ -3226,6 +3413,7 @@ def _request_orch_run_cancel(run_id: str, cancel_future: bool) -> Dict[str, bool
         "future_cancelled": future_cancelled,
         "process_running": process_running,
         "process_terminated": process_terminated,
+        "process_killed": process_killed,
     }
 
 
@@ -3248,7 +3436,7 @@ def _cancel_orchestration_run_internal(run_id: str, reason: str = "manual") -> D
             "message": "Run already in terminal state.",
         }
 
-    cancel_result = _request_orch_run_cancel(run_id, cancel_future=True)
+    cancel_result = _request_orch_run_cancel(run_id, cancel_future=True, force_process=False)
     now = now_iso()
 
     if status_value in ORCH_QUEUE_STATUSES or cancel_result["future_cancelled"]:
@@ -3261,6 +3449,10 @@ def _cancel_orchestration_run_internal(run_id: str, reason: str = "manual") -> D
         manifest_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
         with _orch_run_state_lock:
             _orch_run_state.pop(run_id, None)
+        try:
+            _release_run_lease(manifest_path, reason=f"cancel:{reason}")
+        except Exception:
+            pass
         return {
             "run_id": run_id,
             "status": "cancelled",
@@ -3272,6 +3464,7 @@ def _cancel_orchestration_run_internal(run_id: str, reason: str = "manual") -> D
     data.setdefault("events", []).append(
         {"ts": now, "type": "info", "message": f"Cancellation requested ({reason})."}
     )
+    data["cancel_requested"] = True
     manifest_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
     return {
         "run_id": run_id,
@@ -3280,6 +3473,111 @@ def _cancel_orchestration_run_internal(run_id: str, reason: str = "manual") -> D
         "cancel_requested": True,
         "message": "Cancellation requested for active run.",
     }
+
+
+def _force_cancel_orchestration_run_internal(run_id: str, reason: str = "force") -> Dict[str, Any]:
+    manifest_path = BRIDGE_RUN_DIR / f"{run_id}.json"
+    if not manifest_path.exists():
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    data = safe_json_load(manifest_path, default={}, context=f"force_cancel_run:{run_id}")
+    if not isinstance(data, dict):
+        data = {}
+    status_value = str(data.get("status") or "unknown").strip().lower()
+    if status_value in ORCH_TERMINAL_STATUSES:
+        return {
+            "run_id": run_id,
+            "status": status_value,
+            "cancelled": False,
+            "cancel_requested": False,
+            "message": "Run already in terminal state.",
+        }
+
+    cancel_result = _request_orch_run_cancel(run_id, cancel_future=True, force_process=True)
+    now = now_iso()
+    data["status"] = "cancelled"
+    data["completed_at"] = now
+    data["cancel_requested"] = False
+    data.setdefault("events", []).append({"ts": now, "type": "status", "message": "cancelled"})
+    data.setdefault("events", []).append(
+        {"ts": now, "type": "info", "message": f"Force cancellation executed ({reason})."}
+    )
+    manifest_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    try:
+        _release_run_lease(manifest_path, reason=f"force_cancel:{reason}")
+    except Exception:
+        pass
+    with _orch_run_state_lock:
+        _orch_run_state.pop(run_id, None)
+    return {
+        "run_id": run_id,
+        "status": "cancelled",
+        "cancelled": True,
+        "cancel_requested": False,
+        "process_terminated": bool(cancel_result.get("process_terminated")),
+        "process_killed": bool(cancel_result.get("process_killed")),
+        "message": "Force cancel completed; worker process terminated and lease released.",
+    }
+
+
+def _requeue_orchestration_run_internal(run_id: str, reason: str = "manual_requeue") -> Dict[str, Any]:
+    manifest_path = BRIDGE_RUN_DIR / f"{run_id}.json"
+    if not manifest_path.exists():
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    def _apply(data: Dict[str, Any]) -> Dict[str, Any]:
+        status_value = str(data.get("status") or "unknown").strip().lower()
+        if status_value in ORCH_RUNNING_STATUSES:
+            raise HTTPException(status_code=409, detail="Cannot requeue an active run")
+        data["status"] = "queued"
+        data["cancel_requested"] = False
+        data["started_at"] = None
+        data["completed_at"] = None
+        data["lease"] = None
+        data.setdefault("events", []).append(
+            {"ts": now_iso(), "type": "status", "message": f"queued ({reason})"}
+        )
+        return data
+
+    _update_manifest_atomic(manifest_path, _apply)
+    with _orch_run_state_lock:
+        _orch_run_state[run_id] = {
+            "cancel_event": threading.Event(),
+            "process": None,
+            "future": None,
+        }
+    return {"run_id": run_id, "status": "queued", "requeued": True, "message": "Run requeued."}
+
+
+def _release_stale_leases_internal() -> Dict[str, Any]:
+    released: List[str] = []
+    for manifest_path, manifest in _iter_orchestration_manifests():
+        run_id = str(manifest.get("run_id") or "").strip()
+        if not run_id:
+            continue
+        if not _lease_is_stale(manifest):
+            continue
+        try:
+            def _apply(data: Dict[str, Any]) -> Dict[str, Any]:
+                data["status"] = "stuck"
+                data["cancel_requested"] = False
+                data.setdefault("events", []).append(
+                    {"ts": now_iso(), "type": "warn", "message": "Lease expired; run marked STUCK."}
+                )
+                lease = data.get("lease")
+                if isinstance(lease, dict):
+                    lease["released_at"] = now_iso()
+                    lease["release_reason"] = "stale_lease_released"
+                    data["lease"] = lease
+                return data
+
+            _update_manifest_atomic(manifest_path, _apply)
+            with _orch_run_state_lock:
+                _orch_run_state.pop(run_id, None)
+            released.append(run_id)
+        except Exception:
+            continue
+    return {"released": len(released), "run_ids": released}
 
 
 def _normalize_run_mode(run_mode: Optional[str]) -> str:
@@ -3455,6 +3753,8 @@ def orchestrate_run(
         "verification_status": "pending" if req.acceptance_checks else None,
         "loop_iteration": 0,
         "checkpoints": [],       # Phase 3: mid-run human decision log
+        "lease": None,
+        "cancel_requested": False,
     }
     path = BRIDGE_RUN_DIR / f"{run_id}.json"
     path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
@@ -3465,13 +3765,12 @@ def orchestrate_run(
             "future": None,
             "process": None,
             "created_at": now_iso(),
+            "worker_id": None,
         }
 
     def _update_manifest(update_fn):
         try:
-            data = safe_json_load(path, default={}, context=f"update_manifest:{run_id}")
-            data = update_fn(data) or data
-            path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            _update_manifest_atomic(path, lambda d: update_fn(d) or d)
         except Exception as e:
             print(f"[orchestrate] Failed to update manifest {path}: {e}", file=sys.stderr)
 
@@ -3549,7 +3848,16 @@ def orchestrate_run(
     def _execute(path: pathlib.Path, manifest: Dict[str, Any], cancel_event: threading.Event):
         nonlocal orch_logger
         start_time = time.time()
+        worker_id = f"orch-worker-{os.getpid()}-{threading.get_ident()}-{run_id[:8]}"
+        heartbeat_stop = threading.Event()
+        heartbeat_thread: Optional[threading.Thread] = None
         try:
+            _acquire_run_lease(run_id, path, worker_id=worker_id)
+            with _orch_run_state_lock:
+                state = _orch_run_state.get(run_id, {})
+                state["worker_id"] = worker_id
+                _orch_run_state[run_id] = state
+
             data = safe_json_load(path, context=f"execute_start:{run_id}")
             if cancel_event.is_set():
                 data["status"] = "cancelled"
@@ -3557,12 +3865,23 @@ def orchestrate_run(
                 data.setdefault("events", []).append({"ts": data["completed_at"], "type": "status", "message": "cancelled"})
                 data.setdefault("events", []).append({"ts": data["completed_at"], "type": "info", "message": "Run cancelled before execution started."})
                 path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+                _release_run_lease(path, reason="cancelled_before_start")
                 return
             data["status"] = "running"
             data["started_at"] = now_iso()
             data.setdefault("events", []).append({"ts": data["started_at"], "type": "status", "message": "running"})
             data["mode"] = "executed"
             path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+            def _heartbeat_loop() -> None:
+                while not heartbeat_stop.wait(ORCH_HEARTBEAT_INTERVAL_SECONDS):
+                    try:
+                        _heartbeat_run_lease(path)
+                    except Exception as hb_exc:
+                        print(f"[orchestrate] heartbeat update failed for {run_id}: {hb_exc}", file=sys.stderr)
+
+            heartbeat_thread = threading.Thread(target=_heartbeat_loop, daemon=True)
+            heartbeat_thread.start()
 
             goal_text = manifest.get("goal") or manifest.get("prompt_id") or ""
             repo_root = req.repo_root or REPO_ROOT_DEFAULT
@@ -4429,6 +4748,19 @@ def orchestrate_run(
                     path.write_text(json.dumps(data, indent=2), encoding="utf-8")
                 except Exception as e:
                     print(f"[orchestrate] Failed to write error state to manifest: {e}", file=sys.stderr)
+        finally:
+            heartbeat_stop.set()
+            if heartbeat_thread is not None:
+                heartbeat_thread.join(timeout=2.0)
+            try:
+                data = safe_json_load(path, default={}, context=f"execute_finally:{run_id}")
+                status_value = str(data.get("status") or "").strip().lower()
+                if status_value == "stuck":
+                    _release_run_lease(path, reason="stale_lease_detected")
+                elif status_value in ORCH_TERMINAL_STATUSES:
+                    _release_run_lease(path, reason=f"terminal:{status_value}")
+            except Exception:
+                pass
 
     disable_exec = os.environ.get("PROMPT_API_DISABLE_ORCHESTRATION_EXEC") == "1" or bool(
         os.environ.get("PYTEST_CURRENT_TEST")
@@ -4754,7 +5086,7 @@ def list_orchestration_runs():
         try:
             data = json.loads(f.read_text())
             data["run_id"] = data.get("run_id") or f.stem
-            runs.append(data)
+            runs.append(_derive_run_runtime_fields(data))
         except Exception:
             continue
     runs = sorted(runs, key=lambda r: r.get("requested_at", ""), reverse=True)
@@ -4770,6 +5102,8 @@ def get_orchestration_queue_limits():
         "max_queued": snapshot["max_queued"],
         "running": snapshot["running"],
         "queued": snapshot["queued"],
+        "dispatching": snapshot["dispatching"],
+        "stuck": snapshot["stuck"],
         "available_slots": snapshot["available_slots"],
     }
 
@@ -4787,7 +5121,7 @@ def get_orchestration_run(run_id: str):
             log_text = log_path.read_text(encoding="utf-8")
             data["log_path"] = str(log_path)
             data["log_excerpt"] = log_text[-4000:] if len(log_text) > 4000 else log_text
-        return data
+        return _derive_run_runtime_fields(data)
     except ValueError as exc:
         # Enhanced error for JSON parsing issues
         raise HTTPException(status_code=500, detail=str(exc))
@@ -4798,12 +5132,47 @@ def get_orchestration_run(run_id: str):
 @app.post("/orchestrate/run/{run_id}/cancel")
 def cancel_orchestration_run(
     run_id: str,
+    force: int = Query(default=0, ge=0, le=1),
     execution_token: Optional[str] = Header(default=None, alias="X-Execution-Token"),
     admin_token: Optional[str] = Header(default=None, alias="X-Admin-Token"),
 ):
     """Cancel a single orchestration run (queued runs cancel immediately)."""
     _require_execution_access(execution_token or admin_token)
+    if force == 1:
+        return _force_cancel_orchestration_run_internal(run_id, reason="single_cancel_force")
     return _cancel_orchestration_run_internal(run_id, reason="single_cancel")
+
+
+@app.post("/api/runs/{run_id}/cancel")
+def cancel_orchestration_run_alias(
+    run_id: str,
+    force: int = Query(default=0, ge=0, le=1),
+    execution_token: Optional[str] = Header(default=None, alias="X-Execution-Token"),
+    admin_token: Optional[str] = Header(default=None, alias="X-Admin-Token"),
+):
+    _require_execution_access(execution_token or admin_token)
+    if force == 1:
+        return _force_cancel_orchestration_run_internal(run_id, reason="api_alias_force_cancel")
+    return _cancel_orchestration_run_internal(run_id, reason="api_alias_cancel")
+
+
+@app.post("/api/runs/{run_id}/requeue")
+def requeue_orchestration_run_alias(
+    run_id: str,
+    execution_token: Optional[str] = Header(default=None, alias="X-Execution-Token"),
+    admin_token: Optional[str] = Header(default=None, alias="X-Admin-Token"),
+):
+    _require_execution_access(execution_token or admin_token)
+    return _requeue_orchestration_run_internal(run_id, reason="api_alias_requeue")
+
+
+@app.post("/api/runs/release-stale-leases")
+def release_stale_leases_alias(
+    execution_token: Optional[str] = Header(default=None, alias="X-Execution-Token"),
+    admin_token: Optional[str] = Header(default=None, alias="X-Admin-Token"),
+):
+    _require_execution_access(execution_token or admin_token)
+    return _release_stale_leases_internal()
 
 
 @app.post("/orchestrate/runs/cancel")
@@ -6118,12 +6487,20 @@ async def start_repo_orchestration(
                 github_token=orchestration_token,
                 runs_dir=BRIDGE_RUN_DIR,
             )
+
+            def _on_intake_progress(progress: Dict[str, Any]) -> None:
+                payload = dict(progress)
+                payload_type = payload.pop("stage", "repo_context")
+                message = str(payload.pop("message", "Repo context progress"))
+                _enqueue_sync({"type": payload_type, "message": message, "progress": payload})
+
             intake = await asyncio.to_thread(
                 intake_service.run_intake,
                 req.repo,
                 run_id,
                 req.options.branch,
                 clone_path,
+                _on_intake_progress,
             )
             manifest.update({"intake": intake, "status": "intake_complete"})
             _persist_repo_state(manifest_path, manifest)

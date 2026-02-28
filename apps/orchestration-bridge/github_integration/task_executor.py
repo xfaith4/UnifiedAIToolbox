@@ -41,6 +41,7 @@ class TaskExecutor:
         self.runs_dir = Path(base_dir)
         self.runs_dir.mkdir(parents=True, exist_ok=True)
         self.codex_service = codex_service or CodexSwarmService()
+        self.subprocess_timeout_s = max(10, int(os.environ.get("TASK_EXECUTOR_SUBPROCESS_TIMEOUT_S", "120")))
 
     def execute_taskgraph(
         self,
@@ -410,5 +411,6 @@ class TaskExecutor:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            timeout=self.subprocess_timeout_s,
             check=check,
         )
