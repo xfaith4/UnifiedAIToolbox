@@ -6,6 +6,7 @@ import type { SwarmConnectionStatus, SwarmRawEventPayload, SwarmRunEvent, UseRun
 
 type UseRunEventsOptions = {
   limit?: number
+  attemptId?: string
 }
 
 const DEFAULT_LIMIT = 400
@@ -38,7 +39,8 @@ function normalizeEvent(payload: unknown, runId: string): SwarmRunEvent | null {
   const agent = typeof raw.agent === 'string' && raw.agent.trim() ? raw.agent.trim() : undefined
   const status = typeof raw.status === 'string' && raw.status.trim() ? raw.status.trim() : undefined
 
-  const id = `${ts}|${type}|${phase || ''}|${agent || ''}|${status || ''}|${message}`
+  const attemptId = typeof raw.attemptId === 'string' && raw.attemptId.trim() ? raw.attemptId.trim() : undefined
+  const id = `${ts}|${type}|${phase || ''}|${agent || ''}|${status || ''}|${attemptId || ''}|${message}`
 
   return {
     id,
@@ -52,6 +54,7 @@ function normalizeEvent(payload: unknown, runId: string): SwarmRunEvent | null {
     message,
     details: toRecord(raw.details),
     data: toRecord(raw.data),
+    attemptId,
   }
 }
 
@@ -63,7 +66,7 @@ function sortEvents(events: SwarmRunEvent[]): SwarmRunEvent[] {
 }
 
 export function useRunEvents(runId: string | null | undefined, options: UseRunEventsOptions = {}): UseRunEventsResult {
-  const { limit = DEFAULT_LIMIT } = options
+  const { limit = DEFAULT_LIMIT, attemptId } = options
 
   const [events, setEvents] = useState<SwarmRunEvent[]>([])
   const [runStatus, setRunStatus] = useState<RunStatusResponse | null>(null)
@@ -130,7 +133,10 @@ export function useRunEvents(runId: string | null | undefined, options: UseRunEv
     }
 
     const loadRunStatus = async () => {
-      const response = await fetch(`/api/app-factory/runs/${encodeURIComponent(runId)}/status`, { cache: 'no-store' })
+      const statusParams = new URLSearchParams()
+      if (attemptId) statusParams.set('attempt_id', attemptId)
+      const statusQuery = statusParams.toString() ? `?${statusParams.toString()}` : ''
+      const response = await fetch(`/api/app-factory/runs/${encodeURIComponent(runId)}/status${statusQuery}`, { cache: 'no-store' })
       if (!response.ok) {
         const json = await response.json().catch(() => null)
         const message = json?.error?.message || `Failed to fetch run status (${response.status})`
@@ -146,6 +152,7 @@ export function useRunEvents(runId: string | null | undefined, options: UseRunEv
       if (lastEventTsRef.current) {
         params.set('since', lastEventTsRef.current)
       }
+      if (attemptId) params.set('attempt_id', attemptId)
 
       const response = await fetch(`/api/app-factory/runs/${encodeURIComponent(runId)}/events?${params.toString()}`, {
         cache: 'no-store',
@@ -180,6 +187,7 @@ export function useRunEvents(runId: string | null | undefined, options: UseRunEv
       if (lastEventTsRef.current) {
         params.set('since', lastEventTsRef.current)
       }
+      if (attemptId) params.set('attempt_id', attemptId)
 
       setConnectionStatus(reconnectAttempts > 0 ? 'reconnecting' : 'connecting')
       source = new EventSource(`/api/app-factory/runs/${encodeURIComponent(runId)}/events?${params.toString()}`)
@@ -274,7 +282,7 @@ export function useRunEvents(runId: string | null | undefined, options: UseRunEv
         window.clearTimeout(reconnectTimer)
       }
     }
-  }, [runId, limit, reloadToken])
+  }, [runId, limit, attemptId, reloadToken])
 
   return {
     events,
@@ -285,5 +293,6 @@ export function useRunEvents(runId: string | null | undefined, options: UseRunEv
     lastEventTs,
     reconnectCount,
     refresh,
+    attempts: runStatus?.attempts ?? [],
   }
 }

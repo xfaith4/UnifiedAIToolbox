@@ -40,10 +40,20 @@ export async function GET(
     return NextResponse.json({ error: { code: 'INVALID_RUN_ID', message: 'Invalid runId' } }, { status: 400 })
   }
 
+  const url = new URL(req.url)
+  const attemptId = url.searchParams.get('attempt_id') || null
+
   try {
     // Primary lookup: filesystem (App Factory runs)
-    const status = await loadRunStatus(runId)
+    let status = await loadRunStatus(runId)
     if (status) {
+      if (attemptId) {
+        status = {
+          ...status,
+          events: status.events.filter((ev) => ev.attemptId === attemptId),
+          currentAttemptId: attemptId,
+        }
+      }
       if (process.env.NODE_ENV === 'development') {
         console.debug(`[status] resolved ${runId} from filesystem`)
       }
@@ -54,8 +64,15 @@ export async function GET(
     }
 
     // Fallback: orchestrator API (Concierge runs)
-    const orchStatus = await fetchOrchestratorRunStatus(runId)
+    let orchStatus = await fetchOrchestratorRunStatus(runId)
     if (orchStatus) {
+      if (attemptId) {
+        orchStatus = {
+          ...orchStatus,
+          events: orchStatus.events.filter((ev) => ev.attemptId === attemptId),
+          currentAttemptId: attemptId,
+        }
+      }
       if (process.env.NODE_ENV === 'development') {
         console.debug(`[status] resolved ${runId} from orchestrator fallback`)
       }

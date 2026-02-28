@@ -110,6 +110,10 @@ export default function LiveEventPanel({ runId, onClose }: Props) {
       return
     }
 
+    if (process.env.NODE_ENV === 'development') {
+      console.debug(`[LiveEventPanel] fetchEvents → orchestrator fetchOrchestrationRun(${safeRunId})`)
+    }
+
     try {
       const run = await fetchOrchestrationRun(safeRunId)
 
@@ -126,6 +130,10 @@ export default function LiveEventPanel({ runId, onClose }: Props) {
 
       if (novel.length) {
         setEvents((prev) => [...prev, ...novel].slice(-MAX_BUFFERED_EVENTS))
+      }
+
+      if (process.env.NODE_ENV === 'development') {
+        console.debug(`[LiveEventPanel] fetchEvents ← status: ${run.status}, total events: ${incoming.length} (${novel.length} new)`)
       }
 
       setConnected(true)

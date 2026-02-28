@@ -35,6 +35,12 @@ export function normalizeRuntimeEvent(raw: unknown, fallbackRunId?: string): Run
       msg: typeof record.msg === 'string' ? record.msg : message,
       details,
       data,
+      attemptId:
+        typeof record.attemptId === 'string'
+          ? record.attemptId
+          : typeof record.attempt_id === 'string'
+            ? record.attempt_id
+            : undefined,
     }
   }
 
@@ -66,7 +72,7 @@ export function parseNdjsonChunk(chunk: string, fallbackRunId?: string): { event
 }
 
 export function eventKey(event: RunEvent): string {
-  return `${event.ts}:${event.type || ''}:${event.stage || ''}:${event.step || ''}:${event.message}`
+  return `${event.ts}:${event.type || ''}:${event.stage || ''}:${event.step || ''}:${event.attemptId || ''}:${event.message}`
 }
 
 export function dedupeEvents(events: RunEvent[]): RunEvent[] {

@@ -114,6 +114,11 @@ Every roadmap-impacting tradeoff gets a `DEC-###` record in `IMPLEMENTATION_SUMM
   Ref: run `local-2026-02-28-roadmap-rm005-runtime-sim`  
   Notes: Added `npm run dev:runtime-sim` script to generate staged runtime telemetry and status snapshots in a local run folder.
 
+- [x] Run Detail UX: separate execution state from quality outcome and surface explicit blocker panel.  
+  Date: 2026-02-28  
+  Ref: run `local-2026-02-28-roadmap-rm005-run-detail-dual-state`  
+  Notes: Run detail now shows dual badges (`Run State` + `Outcome`), a persistent "What failed" panel, and JSON-native traceability expectation wording.
+
 ## RM-008 Worklist (Run lifecycle control + lease/heartbeat safety)
 
 - [x] Add run lease model (TTL + heartbeat metadata) to canonical run manifest.  

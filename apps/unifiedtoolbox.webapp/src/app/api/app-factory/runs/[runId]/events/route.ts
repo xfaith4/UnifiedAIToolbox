@@ -149,6 +149,7 @@ export async function GET(req: Request, { params }: { params: { runId: string } 
   const wantsSse = accept.includes('text/event-stream') || url.searchParams.get('stream') === '1'
   const offsetParam = url.searchParams.get('offset')
   const offset = offsetParam != null ? Math.max(0, Number.parseInt(offsetParam, 10) || 0) : null
+  const attemptId = url.searchParams.get('attempt_id') || null
 
   const runsRoot = getRunsRoot()
   const runDir = path.join(runsRoot, runId)
@@ -162,7 +163,10 @@ export async function GET(req: Request, { params }: { params: { runId: string } 
 
   // Fallback: if no filesystem run directory, proxy events from the orchestrator API
   if (!runDirExists) {
-    const orchEvents = await fetchOrchestratorRunEvents(runId, since)
+    let orchEvents = await fetchOrchestratorRunEvents(runId, since)
+    if (attemptId) {
+      orchEvents = orchEvents.filter((ev) => ev.attemptId === attemptId)
+    }
 
     if (process.env.NODE_ENV === 'development') {
       console.debug(`[events] resolved ${runId} from orchestrator fallback (${orchEvents.length} events)`)
@@ -212,7 +216,10 @@ export async function GET(req: Request, { params }: { params: { runId: string } 
     return NextResponse.json({ runId, events, offset, nextOffset: adjustedOffset }, { status: 200 })
   }
 
-  const events = await loadHistoryEvents(runDir, runId, limit, since)
+  let events = await loadHistoryEvents(runDir, runId, limit, since)
+  if (attemptId) {
+    events = events.filter((ev) => ev.attemptId === attemptId)
+  }
 
   if (!wantsSse) {
     const cursor = events.length ? events[events.length - 1].ts || null : null
@@ -228,6 +235,7 @@ export async function GET(req: Request, { params }: { params: { runId: string } 
       }
 
       const unsubscribe = subscribeRunEvents(runId, (event) => {
+        if (attemptId && event.attemptId !== attemptId) return
         controller.enqueue(encoder.encode(toSseFrame(event)))
       })
 

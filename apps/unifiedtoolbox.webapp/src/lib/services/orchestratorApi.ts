@@ -37,6 +37,8 @@ export interface OrchestrationRunRequeueResult {
   status: string
   requeued: boolean
   message?: string
+  attempt_id?: string
+  attempt_number?: number
 }
 
 export interface ReleaseStaleLeasesResult {
@@ -124,7 +126,15 @@ export async function createOrchestrationRun(run: OrchestrationRun): Promise<Orc
   if (!API_BASE) {
     throw new Error('API base not configured')
   }
-  
+
+  if (process.env.NODE_ENV === 'development') {
+    console.debug(`[OrchestratorAPI] createOrchestrationRun → POST ${API_BASE}/orchestrate/run`, {
+      localRunId: run.id,
+      runMode: run.runMode,
+      goal: run.goal?.slice(0, 80),
+    })
+  }
+
   try {
     // Send snake_case keys for fields the API reads by name
     const res = await fetch(`${API_BASE}/orchestrate/run`, {
@@ -137,15 +147,19 @@ export async function createOrchestrationRun(run: OrchestrationRun): Promise<Orc
         acceptance_checks: run.acceptanceChecks ?? [],
       }),
     })
-    
+
     if (!res.ok) {
       const errorText = await res.text().catch(() => 'Unknown error')
       throw new Error(`Failed to launch orchestration (${res.status}): ${errorText}`)
     }
-    
+
     const payload = await res.json()
     const manifest = payload.manifest as OrchestrationRun
-    
+
+    if (process.env.NODE_ENV === 'development') {
+      console.debug(`[OrchestratorAPI] createOrchestrationRun ← api_run_id: ${manifest.id}, status: ${manifest.status}`)
+    }
+
     return {
       ...manifest,
       requestedAt: manifest.requestedAt,
@@ -190,13 +204,23 @@ export async function fetchOrchestrationRun(runId: string): Promise<Orchestratio
   if (!runId?.trim()) {
     throw new Error('Run ID is required to fetch orchestration run details')
   }
-  
+
+  if (process.env.NODE_ENV === 'development') {
+    console.debug(`[OrchestratorAPI] fetchOrchestrationRun → GET ${API_BASE}/orchestrate/run/${runId}`)
+  }
+
   try {
     const res = await fetch(`${API_BASE}/orchestrate/run/${encodeURIComponent(runId)}`)
     if (!res.ok) throw new OrchestratorApiHttpError(`Failed to fetch run (${res.status})`, res.status)
-    
+
     const payload = await res.json()
-    return normalizeApiRun(payload)
+    const normalized = normalizeApiRun(payload)
+
+    if (process.env.NODE_ENV === 'development') {
+      console.debug(`[OrchestratorAPI] fetchOrchestrationRun ← run_id: ${normalized.id}, status: ${normalized.status}, events: ${normalized.events.length}`)
+    }
+
+    return normalized
   } catch (error) {
     // 404 is expected for stale/missing run contexts; callers can decide how to handle it.
     if (!(error instanceof OrchestratorApiHttpError && error.status === 404)) {

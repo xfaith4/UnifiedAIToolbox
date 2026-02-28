@@ -8,6 +8,7 @@ import {
   forceCancelOrchestrationRun,
   fetchOrchestrationRun,
   fetchOrchestrationRunLog,
+  requeueOrchestrationRun,
 } from '@/lib/services/orchestratorApi'
 import type { OrchestrationRun, RepoOrchestrationReport } from '@/lib/types/orchestrator'
 import { nodeMatchesFilter, renderMarkdown } from '@/lib/artifacts/viewerUtils'
@@ -40,6 +41,11 @@ const formatValue = (value: unknown) => {
   if (typeof value === 'object') return '{...}'
   return String(value)
 }
+
+const normalizeVerificationText = (value: string | undefined) =>
+  String(value || '')
+    .replace(/###\s*Contract Traceability/gi, 'Engineer.contract_traceability[]')
+    .replace(/missing required section/gi, 'missing required JSON field')
 
 const JsonNode = ({
   label,
@@ -134,8 +140,10 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
   const [findingsFilter, setFindingsFilter] = useState('')
   const [cancelPending, setCancelPending] = useState(false)
   const [forceCancelPending, setForceCancelPending] = useState(false)
+  const [requeuePending, setRequeuePending] = useState(false)
   const [cancelMessage, setCancelMessage] = useState<string | null>(null)
   const [cancelError, setCancelError] = useState<string | null>(null)
+  const [selectedAttemptId, setSelectedAttemptId] = useState<string | null>(null)
 
   const artifactByName = useMemo(() => {
     const map = new Map<string, ArtifactItem>()
@@ -178,6 +186,7 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
       setCancelError(null)
       setCancelPending(false)
       setForceCancelPending(false)
+      setRequeuePending(false)
 
       if (!ORCHESTRATOR_API_BASE) {
         setError('Orchestrator API base is not configured.')
@@ -198,7 +207,10 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
                 fetchOrchestrationRunLog(runId),
               ])
               if (!cancelled) {
-                if (run.status === 'fulfilled') setOrchRun(run.value)
+                if (run.status === 'fulfilled') {
+                  setOrchRun(run.value)
+                  setSelectedAttemptId((prev) => prev ?? run.value.currentAttemptId ?? null)
+                }
                 if (logResult.status === 'fulfilled') setOrchLog(logResult.value.log)
                 if (run.status === 'rejected') setError('Run not found.')
               }
@@ -387,6 +399,47 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
     }
   }
 
+  const handleRequeueOrchestrationRun = async () => {
+    setRequeuePending(true)
+    setCancelError(null)
+    setCancelMessage(null)
+    try {
+      const res = await fetch(`/api/runs/${encodeURIComponent(runId)}/requeue`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ triggerReason: 'requeue' }),
+      })
+      const result = (await res.json()) as { message?: string; attempt_id?: string; attempt_number?: number }
+      setCancelMessage(result.message || `Run requeued (attempt ${result.attempt_number ?? ''}).`)
+      if (result.attempt_id) {
+        setSelectedAttemptId(result.attempt_id)
+      }
+      try {
+        const refreshed = await fetchOrchestrationRun(runId)
+        setOrchRun(refreshed)
+        if (result.attempt_id) setSelectedAttemptId(result.attempt_id)
+      } catch {
+        setOrchRun((prev) =>
+          prev
+            ? {
+                ...prev,
+                status: 'queued',
+                completedAt: undefined,
+                events: [
+                  ...(prev.events ?? []),
+                  { timestamp: new Date().toISOString(), type: 'status', message: 'requeued', attemptId: result.attempt_id },
+                ],
+              }
+            : prev
+        )
+      }
+    } catch (err) {
+      setCancelError(err instanceof Error ? err.message : 'Failed to requeue run.')
+    } finally {
+      setRequeuePending(false)
+    }
+  }
+
   const renderArtifactLinks = (artifact?: ArtifactItem) => {
     if (!artifact) return null
     return (
@@ -409,10 +462,12 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
   if (!loading && orchRun) {
     const isError = orchRun.status?.startsWith('error') || orchRun.status === 'failed'
     const isRunning = orchRun.status && !['completed', 'failed', 'cancelled', 'stuck'].includes(orchRun.status) && !isError
+    const statusLower = String(orchRun.status || '').toLowerCase()
     const canCancel = ['queued', 'pending', 'dispatching', 'running', 'in_progress', 'awaiting_input', 'gating', 'awaiting_gate', 'starting']
-      .includes((orchRun.status ?? '').toLowerCase())
+      .includes(statusLower)
     const canForceCancel = ['dispatching', 'running', 'in_progress', 'awaiting_input', 'gating', 'awaiting_gate', 'starting', 'stuck']
-      .includes((orchRun.status ?? '').toLowerCase())
+      .includes(statusLower)
+    const canRequeue = ['failed', 'cancelled', 'stuck', 'completed'].includes(statusLower)
     const statusCls = orchRun.status === 'completed'
       ? 'border-emerald-700 bg-emerald-900/30 text-emerald-100'
       : orchRun.status === 'stuck'
@@ -422,9 +477,12 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
         : 'border-blue-700 bg-blue-900/30 text-blue-100'
 
     // Separate agent activity events from run lifecycle events
-    const agentEvents = (orchRun.events ?? []).filter((ev) => ev.type.startsWith('agent:'))
-    const overseerEvents = (orchRun.events ?? []).filter((ev) => ev.type.startsWith('overseer:'))
-    const lifecycleEvents = (orchRun.events ?? []).filter(
+    const attemptFilteredEvents = (orchRun.events ?? []).filter(
+      (ev) => !selectedAttemptId || !ev.attemptId || ev.attemptId === selectedAttemptId
+    )
+    const agentEvents = attemptFilteredEvents.filter((ev) => ev.type.startsWith('agent:'))
+    const overseerEvents = attemptFilteredEvents.filter((ev) => ev.type.startsWith('overseer:'))
+    const lifecycleEvents = attemptFilteredEvents.filter(
       (ev) => !ev.type.startsWith('agent:') && !ev.type.startsWith('overseer:') && ev.type !== 'debug'
     )
     const allEventMessages = (orchRun.events ?? []).map((ev) => ev.message ?? '')
@@ -448,6 +506,70 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
     const effectiveMaintenanceAgents = maintenanceFailingAgents.length > 0
       ? maintenanceFailingAgents
       : ['PRPublisher', 'ReviewGate']
+    const failedVerificationChecks = (orchRun.sandboxReport?.checks ?? []).filter((check) => check.result === 'failed')
+    const verificationFailures = failedVerificationChecks.map((check) => {
+      const rawDetails = normalizeVerificationText(check.details || '')
+      const isTraceabilityFailure =
+        /contract traceability/i.test(rawDetails) || /contract traceability/i.test(check.check || '')
+      if (isTraceabilityFailure) {
+        return {
+          blocker: 'Contract Traceability missing',
+          expected: 'Engineer.contract_traceability[] in strict JSON',
+          found: rawDetails || 'Missing from Engineer output',
+          fix: 'Emit raw JSON only and include contract_traceability[] entries for each contract requirement.',
+        }
+      }
+      return {
+        blocker: normalizeVerificationText(check.check),
+        expected: 'Acceptance check must pass with machine-verifiable output',
+        found: rawDetails || 'Check failed',
+        fix: 'Run repair/requeue and inspect failing agent output for schema mismatch.',
+      }
+    })
+    const executionStateLabel =
+      statusLower === 'completed'
+        ? 'Completed'
+        : statusLower === 'queued' || statusLower === 'pending'
+          ? 'Queued'
+          : statusLower === 'dispatching'
+            ? 'Dispatching'
+            : statusLower === 'running' || statusLower === 'in_progress'
+              ? 'Running'
+              : statusLower === 'cancelled' || statusLower === 'canceled'
+                ? 'Cancelled'
+                : statusLower === 'stuck'
+                  ? 'Stuck'
+                  : isError
+                    ? 'Failed to run'
+                    : (orchRun.status ?? 'Unknown')
+    const executionBadgeCls =
+      executionStateLabel === 'Completed'
+        ? 'border-emerald-700 bg-emerald-900/30 text-emerald-100'
+        : executionStateLabel === 'Running' || executionStateLabel === 'Dispatching' || executionStateLabel === 'Queued'
+          ? 'border-blue-700 bg-blue-900/30 text-blue-100'
+          : executionStateLabel === 'Stuck'
+            ? 'border-amber-700 bg-amber-900/30 text-amber-100'
+            : 'border-rose-700 bg-rose-900/30 text-rose-100'
+    const outcomeLabel = isError
+      ? 'Failed to run'
+      : orchRun.sandboxReport?.verificationStatus === 'failed'
+        ? 'Failed gates'
+        : orchRun.sandboxReport?.verificationStatus === 'partial' || orchRun.sandboxReport?.verificationStatus === 'deferred'
+          ? 'Needs repair'
+          : orchRun.sandboxReport?.verificationStatus === 'passed'
+            ? 'Pass'
+            : executionStateLabel === 'Completed'
+              ? 'Conditional'
+              : 'In progress'
+    const outcomeBadgeCls =
+      outcomeLabel === 'Pass'
+        ? 'border-emerald-700 bg-emerald-900/30 text-emerald-100'
+        : outcomeLabel === 'In progress'
+          ? 'border-blue-700 bg-blue-900/30 text-blue-100'
+          : outcomeLabel === 'Conditional' || outcomeLabel === 'Needs repair'
+            ? 'border-amber-700 bg-amber-900/30 text-amber-100'
+            : 'border-rose-700 bg-rose-900/30 text-rose-100'
+    const failedGateCount = verificationFailures.length
 
     const synthesisHtml = orchRun.runDir
       ? toFileUrl(`${orchRun.runDir.replace(/\\/g, '/')}/Final_Synthesis.html`)
@@ -462,7 +584,17 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
         </div>
 
         <div className={`flex flex-wrap items-center gap-3 rounded-2xl border p-4 ${statusCls}`}>
-          <span className="text-sm font-semibold capitalize">{orchRun.status ?? 'unknown'}</span>
+          <span className={`rounded border px-2 py-1 text-xs font-semibold uppercase tracking-wide ${executionBadgeCls}`}>
+            Run State: {executionStateLabel}
+          </span>
+          <span className={`rounded border px-2 py-1 text-xs font-semibold uppercase tracking-wide ${outcomeBadgeCls}`}>
+            Outcome: {outcomeLabel}
+          </span>
+          {executionStateLabel === 'Completed' && (outcomeLabel === 'Failed gates' || outcomeLabel === 'Needs repair' || outcomeLabel === 'Conditional') && (
+            <span className="text-xs text-amber-100">
+              Completed execution, but verification reported blockers.
+            </span>
+          )}
           {isRunning && <span className="h-2 w-2 rounded-full bg-blue-400 animate-pulse" />}
           <div className="ml-auto flex items-center gap-2">
             {synthesisHtml && (
@@ -476,7 +608,7 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
               </a>
             )}
             <Link
-              href={`/runs/${encodeURIComponent(runId)}/swarm`}
+              href={`/runs/${encodeURIComponent(runId)}/swarm${selectedAttemptId ? `?attempt_id=${encodeURIComponent(selectedAttemptId)}` : ''}`}
               className="rounded border border-current px-2 py-1 text-xs opacity-80 hover:opacity-100"
             >
               Swarm View
@@ -501,6 +633,16 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
                 {forceCancelPending ? 'Force cancelling…' : 'Force Cancel'}
               </button>
             )}
+            {canRequeue && (
+              <button
+                type="button"
+                onClick={() => void handleRequeueOrchestrationRun()}
+                disabled={requeuePending}
+                className="rounded border border-amber-600/70 bg-amber-900/20 px-2 py-1 text-xs text-amber-100 hover:bg-amber-900/40 disabled:opacity-50"
+              >
+                {requeuePending ? 'Requeueing…' : 'Requeue'}
+              </button>
+            )}
             <span className="font-mono text-xs opacity-50">{orchRun.id.slice(0, 20)}</span>
           </div>
         </div>
@@ -517,6 +659,85 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
         {cancelError && (
           <div className="rounded-xl border border-rose-700/40 bg-rose-900/20 px-3 py-2 text-xs text-rose-100">
             {cancelError}
+          </div>
+        )}
+        {orchRun.attempts && orchRun.attempts.length > 1 && (
+          <div className="flex items-center gap-3 rounded-xl border border-slate-700 bg-slate-900/50 px-3 py-2 text-xs">
+            <span className="text-slate-400 shrink-0">Attempt:</span>
+            <select
+              value={selectedAttemptId ?? orchRun.currentAttemptId ?? ''}
+              onChange={(e) => setSelectedAttemptId(e.target.value || null)}
+              className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none"
+            >
+              {orchRun.attempts.map((a) => {
+                const isCurrent = a.attemptId === (orchRun.currentAttemptId ?? orchRun.attempts?.at(-1)?.attemptId)
+                return (
+                  <option key={a.attemptId} value={a.attemptId}>
+                    Attempt {a.attemptNumber}{isCurrent ? ' (current)' : ` — ${a.status}`}
+                  </option>
+                )
+              })}
+            </select>
+          </div>
+        )}
+        {(failedGateCount > 0 || maintenanceContextMissing || contractMismatchDetected) && (
+          <div className="rounded-2xl border border-rose-800 bg-rose-950/20 p-4 text-xs text-rose-100 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="font-semibold text-rose-100">
+                What failed {failedGateCount > 0 ? `(${failedGateCount} blocker${failedGateCount === 1 ? '' : 's'})` : ''}
+              </div>
+              <div className="text-[11px] text-rose-200">Completed execution != passed quality gates</div>
+            </div>
+            {verificationFailures.map((failure, idx) => (
+              <div key={`vf-${idx}`} className="rounded-xl border border-rose-800/60 bg-rose-950/30 p-3 space-y-1">
+                <div><span className="font-semibold">Blocker:</span> {failure.blocker}</div>
+                <div><span className="font-semibold">Expected:</span> {failure.expected}</div>
+                <div><span className="font-semibold">Found:</span> {failure.found}</div>
+                <div><span className="font-semibold">Fix:</span> {failure.fix}</div>
+              </div>
+            ))}
+            {maintenanceContextMissing && (
+              <div className="rounded-xl border border-rose-800/60 bg-rose-950/30 p-3 space-y-1">
+                <div><span className="font-semibold">Blocker:</span> Maintenance contract context missing</div>
+                <div><span className="font-semibold">Expected:</span> `-JobType maintain_existing_app -ContractPath ...` for maintenance flow</div>
+                <div><span className="font-semibold">Found:</span> failing agents: {effectiveMaintenanceAgents.join(', ')}</div>
+                <div><span className="font-semibold">Fix:</span> rerun with maintenance contract path or use `build_new_app` mode.</div>
+              </div>
+            )}
+            {contractMismatchDetected && (
+              <div className="rounded-xl border border-amber-700/50 bg-amber-950/20 p-3 text-amber-100 space-y-1">
+                <div><span className="font-semibold">Blocker:</span> Contract mismatch (DOM/web probes for WPF goal)</div>
+                <div><span className="font-semibold">Expected:</span> App-type-specific probe schema</div>
+                <div><span className="font-semibold">Fix:</span> set `AppType` explicitly before contract generation.</div>
+              </div>
+            )}
+            <div className="flex flex-wrap gap-2 pt-1">
+              {orchRun.runDir && (
+                <a
+                  className="rounded border border-rose-700/70 bg-rose-900/20 px-2 py-1 text-[11px] hover:bg-rose-900/40"
+                  href={toFileUrl(orchRun.runDir)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Open failing artifacts
+                </a>
+              )}
+              <button
+                type="button"
+                onClick={() => void handleRequeueOrchestrationRun()}
+                disabled={requeuePending}
+                className="rounded border border-amber-700/70 bg-amber-900/20 px-2 py-1 text-[11px] text-amber-100 hover:bg-amber-900/40 disabled:opacity-50"
+              >
+                {requeuePending ? 'Running repair/requeue…' : 'Run Repair (requeue)'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleCopy('Emit strict JSON only. No markdown, no code fences, no prose. Include Engineer.contract_traceability[] with machine-verifiable mappings.')}
+                className="rounded border border-slate-700 bg-slate-900/30 px-2 py-1 text-[11px] text-slate-200 hover:bg-slate-800/60"
+              >
+                Re-run with stricter JSON (copy guidance)
+              </button>
+            </div>
           </div>
         )}
 
@@ -632,9 +853,9 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
                       <span className={`shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px] ${badgeCls}`}>
                         {res}
                       </span>
-                      <span className="text-slate-200 font-medium">{check.check}</span>
+                      <span className="text-slate-200 font-medium">{normalizeVerificationText(check.check)}</span>
                     </div>
-                    <p className="mt-1 text-slate-400 pl-10">{check.details}</p>
+                    <p className="mt-1 text-slate-400 pl-10">{normalizeVerificationText(check.details)}</p>
                   </div>
                 )
               })}

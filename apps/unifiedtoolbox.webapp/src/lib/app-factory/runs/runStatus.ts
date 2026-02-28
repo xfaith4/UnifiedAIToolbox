@@ -3,6 +3,7 @@ import path from 'path'
 import { promises as fs } from 'fs'
 import { existsSync, readFileSync } from 'fs'
 import type { RunArtifact, RunEvent, RunStage, RunStageStatus, RunStatusResponse } from './types'
+import { loadAttempts, deriveAttemptsFromEvents, tagEventsWithAttemptId } from './attemptStore'
 
 type RunStatusOptions = {
   rootDir?: string
@@ -339,7 +340,13 @@ export async function loadRunStatus(runId: string, options: RunStatusOptions = {
     currentStage = runningStage?.id || stages.find((s) => s.status === 'pending')?.id || null
   }
 
-  const events = await readEvents(runDir, options.eventLimit ?? DEFAULT_EVENT_LIMIT)
+  const rawEvents = await readEvents(runDir, options.eventLimit ?? DEFAULT_EVENT_LIMIT)
+
+  // Attempt model: load from side-store, derive from events if missing, then tag
+  const savedAttempts = await loadAttempts(normalizedRunId)
+  const attempts = savedAttempts.length ? savedAttempts : deriveAttemptsFromEvents(normalizedRunId, rawEvents)
+  const events = tagEventsWithAttemptId(normalizedRunId, rawEvents, attempts)
+  const currentAttemptId = attempts.at(-1)?.attemptId ?? 'a1'
 
   const artifactsDir = path.join(runDir, 'artifacts')
   let artifacts: RunArtifact[] = []
@@ -430,5 +437,8 @@ export async function loadRunStatus(runId: string, options: RunStatusOptions = {
     verificationStatus: sandboxReportJson?.verificationStatus as RunStatusResponse['verificationStatus'] | undefined,
     loopIteration: typeof sandboxReportJson?.loopIteration === 'number' ? sandboxReportJson.loopIteration : undefined,
     sandboxReport: sandboxReportJson ? sandboxReportJson as RunStatusResponse['sandboxReport'] : undefined,
+    currentAttemptId,
+    attemptNumber: attempts.at(-1)?.attemptNumber ?? 1,
+    attempts,
   }
 }

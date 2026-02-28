@@ -1,5 +1,6 @@
 import 'server-only'
 import type { RunEvent, RunStatusResponse } from './types'
+import { loadAttempts, deriveAttemptsFromEvents, tagEventsWithAttemptId } from './attemptStore'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // orchestratorFallback — server-side proxy to the external orchestrator API.
@@ -55,10 +56,16 @@ function normalizeOrchestratorEvent(raw: Record<string, unknown>, runId: string)
   }
 }
 
-function normalizeOrchestratorStatus(raw: OrchestratorRunRaw, runId: string): RunStatusResponse {
-  const events: RunEvent[] = Array.isArray(raw.events)
+async function normalizeOrchestratorStatus(raw: OrchestratorRunRaw, runId: string): Promise<RunStatusResponse> {
+  const rawEvents: RunEvent[] = Array.isArray(raw.events)
     ? raw.events.map((ev) => normalizeOrchestratorEvent(ev as Record<string, unknown>, runId))
     : []
+
+  // Attempt model — load from side-store, derive from events if missing, tag
+  const savedAttempts = await loadAttempts(runId)
+  const attempts = savedAttempts.length ? savedAttempts : deriveAttemptsFromEvents(runId, rawEvents)
+  const events = tagEventsWithAttemptId(runId, rawEvents, attempts)
+  const currentAttemptId = attempts.at(-1)?.attemptId ?? 'a1'
 
   const rawStatus = String(raw.status ?? 'unknown').toLowerCase()
   let status: RunStatusResponse['status']
@@ -90,6 +97,9 @@ function normalizeOrchestratorStatus(raw: OrchestratorRunRaw, runId: string): Ru
     stages: [],
     events,
     artifacts: [],
+    currentAttemptId,
+    attemptNumber: attempts.at(-1)?.attemptNumber ?? 1,
+    attempts,
   }
 }
 
@@ -124,7 +134,7 @@ export async function fetchOrchestratorRunStatus(runId: string): Promise<RunStat
     }
 
     const raw = (await res.json()) as OrchestratorRunRaw
-    const runStatus = normalizeOrchestratorStatus(raw, runId)
+    const runStatus = await normalizeOrchestratorStatus(raw, runId)
 
     if (process.env.NODE_ENV === 'development') {
       console.debug(`[orchestratorFallback] status resolved: ${runStatus.status}, events: ${runStatus.events.length}`)

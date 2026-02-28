@@ -187,13 +187,22 @@ export default function CurrentRunCard({
       let phase: string | undefined
 
       if (isAppFactoryRunId(safeRunId)) {
+        if (process.env.NODE_ENV === 'development') {
+          console.debug(`[CurrentRunCard] poll → app-factory /api/app-factory/runs/${safeRunId}/status`)
+        }
         // App Factory runs: poll the canonical status route
         const afStatus = await fetchAppFactoryStatus(safeRunId)
         if (!afStatus) return
         // Map App Factory terminal 'succeeded' to 'completed' for display
         next = afStatus.status === 'succeeded' ? 'completed' : afStatus.status
         if (afStatus.currentStage) phase = afStatus.currentStage
+        if (process.env.NODE_ENV === 'development') {
+          console.debug(`[CurrentRunCard] poll ← app-factory status: ${next}, stage: ${phase ?? 'none'}`)
+        }
       } else {
+        if (process.env.NODE_ENV === 'development') {
+          console.debug(`[CurrentRunCard] poll → orchestrator fetchOrchestrationRun(${safeRunId})`)
+        }
         // Orchestrator/Concierge runs: poll the external orchestrator API
         const run = await fetchOrchestrationRun(safeRunId)
         if (!run.status) return
@@ -208,6 +217,9 @@ export default function CurrentRunCard({
         if (lastPhaseEv) {
           const m = lastPhaseEv.message.match(/(?:phase|Phase)[:\s]+(\w+)/i)
           if (m?.[1]) phase = m[1]
+        }
+        if (process.env.NODE_ENV === 'development') {
+          console.debug(`[CurrentRunCard] poll ← orchestrator status: ${next}, events: ${events.length}`)
         }
       }
 

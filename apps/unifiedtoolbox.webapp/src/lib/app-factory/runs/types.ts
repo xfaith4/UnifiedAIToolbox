@@ -1,3 +1,13 @@
+export type AttemptSummary = {
+  attemptId: string        // 'a1', 'a2', 'a3' …
+  attemptNumber: number    // 1-indexed
+  startedAt?: string
+  endedAt?: string
+  status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'
+  verificationStatus?: 'passed' | 'failed' | 'partial' | 'deferred' | 'pending'
+  triggerReason?: 'initial' | 'requeue' | 'repair'
+}
+
 export type RunStageStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'skipped' | string
 
 export type RunStage = {
@@ -22,6 +32,7 @@ export type RunEvent = {
   msg?: string
   details?: Record<string, unknown>
   data?: Record<string, unknown>
+  attemptId?: string
 }
 
 export type RunArtifact = {
@@ -50,6 +61,10 @@ export type RunStatusResponse = {
   links?: { pr_url?: string; repo_url?: string }
   errors?: string[]
   warnings?: string[]
+  // Attempt tracking
+  currentAttemptId?: string
+  attemptNumber?: number
+  attempts?: AttemptSummary[]
   // Phase 1 — Verification fields
   acceptanceChecks?: string[]
   verificationStatus?: 'passed' | 'failed' | 'partial' | 'deferred' | 'pending'

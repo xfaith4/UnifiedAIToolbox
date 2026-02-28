@@ -45,6 +45,7 @@ export interface OrchestrationRunEvent {
   timestamp: string
   type: 'status' | 'info' | 'warn' | 'error' | string
   message: string
+  attemptId?: string
 }
 
 /**
@@ -99,6 +100,11 @@ export interface OrchestrationRun {
   runDir?: string
   notes?: string
   errorDetail?: string
+
+  // Attempt tracking
+  currentAttemptId?: string
+  attemptNumber?: number
+  attempts?: import('@/lib/app-factory/runs/types').AttemptSummary[]
 
   // Phase 1 — Verification
   acceptanceChecks?: string[]

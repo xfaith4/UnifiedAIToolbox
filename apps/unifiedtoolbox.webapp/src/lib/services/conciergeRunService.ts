@@ -28,9 +28,18 @@ export async function startOrchestratorRun(draft: DraftRunConfig): Promise<Orche
     acceptanceChecks: draft.acceptanceChecks,
   })
 
+  if (process.env.NODE_ENV === 'development') {
+    console.debug(`[ConciergeRun] startOrchestratorRun: local_run_id=${localRun.id}, mode=${localRun.runMode}, goal="${draft.goal.slice(0, 60)}"`)
+  }
+
   addLocalRun(localRun)
 
   const apiRun = await createOrchestrationRun(localRun)
+
+  if (process.env.NODE_ENV === 'development') {
+    console.debug(`[ConciergeRun] startOrchestratorRun: api_run_id=${apiRun.id} — SSE/polling will subscribe to this id`)
+  }
+
   return apiRun
 }
 

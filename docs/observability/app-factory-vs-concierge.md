@@ -1,6 +1,6 @@
 # App Factory vs Concierge — Run Lifecycle & Observability Alignment
 
-> Last updated: 2026-02-28
+> Last updated: 2026-02-28 (rev 2)
 > Status: Living document — update when either pathway changes.
 
 ---
@@ -181,7 +181,63 @@ Concierge blocks `maintain_existing_app` at the service layer (`conciergeRunServ
 
 Neither flow logs the sequence of API calls or the IDs returned, making debugging hard.
 
-**Fix (implemented):** Dev-only tracing added as `X-Run-Source` response header and `console.debug` logging when `NODE_ENV === 'development'`.
+**Fix (implemented):** Dev-only tracing added in two layers:
+
+- **Server-side** (`orchestratorFallback.ts`): logs `[orchestratorFallback] status lookup → {url}` and resolved status/event count. Status/events routes add `X-Run-Source: app-factory | orchestrator` response header.
+- **Client-side** (`orchestratorApi.ts`, `conciergeRunService.ts`, `CurrentRunCard.tsx`, `LiveEventPanel.tsx`): each call emits `console.debug` with the exact endpoint URL, the `run_id` parameter, and the returned `run_id`/`status`/event count.
+
+To observe in browser DevTools: open Console → filter on `[OrchestratorAPI]`, `[ConciergeRun]`, `[CurrentRunCard]`, or `[LiveEventPanel]`.
+
+---
+
+### M-7: `/api/runs/{runId}/summary` has no orchestrator fallback
+
+**Symptom:** Any component calling `GET /api/runs/{runId}/summary` for a Concierge run gets a 404.
+
+**Root cause:** `src/app/api/runs/[runId]/summary/route.ts` (line 16) calls only `loadRunStatus(runId)` (filesystem lookup). It does not call `fetchOrchestratorRunStatus` as a fallback, unlike the parallel status route at `/api/app-factory/runs/{runId}/status`.
+
+**Evidence:**
+
+```typescript
+// summary/route.ts:16 — no orchestrator fallback
+const status = await loadRunStatus(runId)
+if (!status) {
+  return NextResponse.json({ error: { code: 'RUN_NOT_FOUND' ... } }, { status: 404 })
+}
+```
+
+**Impact:** Swarm View and any future dashboard widget that uses the canonical `/api/runs/{runId}/summary` will silently fail for all Concierge runs.
+
+**Fix status:** Open — add `fetchOrchestratorRunStatus` fallback mirroring `status/route.ts`.
+
+---
+
+### M-8: `/runs/[runId]` detail page bypasses canonical routes for App Factory runs
+
+**Symptom:** Navigating to `/runs/maint-{...}` shows "Run not found" because the page calls the orchestrator API directly, which has no knowledge of App Factory runs.
+
+**Root cause:** `src/app/runs/[runId]/page.tsx` (lines 197–218) issues:
+
+1. `GET {ORCHESTRATOR_API_BASE}/orchestrate/repo/{runId}/artifacts` — 404 for any `maint-` run
+2. On 404, falls back to `fetchOrchestrationRun(runId)` — also 404 for `maint-` runs
+
+Neither call goes through `/api/app-factory/runs/{runId}/status` or the canonical `/api/runs/{runId}/summary`.
+
+**Evidence:**
+
+```typescript
+// runs/[runId]/page.tsx:196-215
+const listRes = await fetch(`${ORCHESTRATOR_API_BASE}/orchestrate/repo/${runId}/artifacts`)
+if (listRes.status === 404) {
+  const [run] = await Promise.allSettled([fetchOrchestrationRun(runId), ...])
+  // fetchOrchestrationRun → GET {ORCHESTRATOR_API_BASE}/orchestrate/run/{runId}
+  // This always 404s for maint- runs
+}
+```
+
+**Impact:** The run detail page at `/runs/{runId}` is broken for all App Factory runs. Users must navigate directly to the App Factory Engine page to see run details.
+
+**Fix status:** Open — the page needs a pathway that detects `maint-` prefix and reads from `/api/app-factory/runs/{runId}/status` instead of the orchestrator API.
 
 ---
 

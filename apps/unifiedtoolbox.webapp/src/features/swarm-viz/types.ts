@@ -1,4 +1,4 @@
-import type { RunStatusResponse } from '@/lib/app-factory/runs/types'
+import type { AttemptSummary, RunStatusResponse } from '@/lib/app-factory/runs/types'
 
 export type SwarmConnectionStatus = 'connecting' | 'open' | 'reconnecting' | 'error' | 'closed'
 
@@ -13,6 +13,7 @@ export type SwarmRawEventPayload = {
   message?: string
   details?: Record<string, unknown>
   data?: Record<string, unknown>
+  attemptId?: string
 }
 
 export type SwarmRunEvent = {
@@ -27,6 +28,7 @@ export type SwarmRunEvent = {
   message: string
   details?: Record<string, unknown>
   data?: Record<string, unknown>
+  attemptId?: string
 }
 
 export type SwarmAgentStatus = 'idle' | 'working' | 'complete' | 'error'
@@ -94,4 +96,5 @@ export type UseRunEventsResult = {
   lastEventTs: string | null
   reconnectCount: number
   refresh: () => Promise<void>
+  attempts: AttemptSummary[]
 }
