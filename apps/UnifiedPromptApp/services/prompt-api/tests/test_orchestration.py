@@ -266,3 +266,95 @@ class TestOrchestrateRun:
         assert "max_queued" in payload
         assert "running" in payload
         assert "queued" in payload
+
+    def test_api_alias_cancel_supports_force_query(self, cleanup_test_runs):
+        payload = {"goal": "test api alias cancel", "model": "gpt-4o-mini"}
+        create_res = client.post("/orchestrate/run", json=payload)
+        assert create_res.status_code == 200
+        run_id = create_res.json()["run_id"]
+
+        cancel_res = client.post(f"/api/runs/{run_id}/cancel?force=1")
+        assert cancel_res.status_code == 200
+        body = cancel_res.json()
+        assert body.get("status") == "cancelled"
+        assert body.get("cancelled") is True
+
+    def test_get_run_derives_stuck_when_lease_expired(self, cleanup_test_runs):
+        run_id = f"test_stale_{app.now_iso().replace(':', '-')}"
+        path = app.BRIDGE_RUN_DIR / f"{run_id}.json"
+        now = app.now_iso()
+        stale = "2000-01-01T00:00:00+00:00"
+        manifest = {
+            "run_id": run_id,
+            "status": "running",
+            "requested_at": now,
+            "events": [{"ts": now, "type": "status", "message": "running"}],
+            "lease": {
+                "worker_id": "worker-x",
+                "acquired_at": now,
+                "heartbeat_at": stale,
+                "expires_at": stale,
+                "ttl_seconds": 45,
+            },
+        }
+        path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+        res = client.get(f"/orchestrate/run/{run_id}")
+        assert res.status_code == 200
+        payload = res.json()
+        assert payload.get("status") == "stuck"
+        assert payload.get("heartbeat_stale") is True
+
+    def test_release_stale_leases_endpoint_marks_stuck(self, cleanup_test_runs):
+        run_id = f"test_release_stale_{app.now_iso().replace(':', '-')}"
+        path = app.BRIDGE_RUN_DIR / f"{run_id}.json"
+        now = app.now_iso()
+        stale = "2000-01-01T00:00:00+00:00"
+        manifest = {
+            "run_id": run_id,
+            "status": "running",
+            "requested_at": now,
+            "events": [],
+            "lease": {
+                "worker_id": "worker-y",
+                "acquired_at": now,
+                "heartbeat_at": stale,
+                "expires_at": stale,
+                "ttl_seconds": 45,
+            },
+        }
+        path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+        res = client.post("/api/runs/release-stale-leases")
+        assert res.status_code == 200
+        payload = res.json()
+        assert payload["released"] >= 1
+        assert run_id in payload["run_ids"]
+
+        run_res = client.get(f"/orchestrate/run/{run_id}")
+        assert run_res.status_code == 200
+        run_payload = run_res.json()
+        assert run_payload.get("status") == "stuck"
+
+    def test_requeue_endpoint_sets_queued(self, cleanup_test_runs):
+        run_id = f"test_requeue_{app.now_iso().replace(':', '-')}"
+        path = app.BRIDGE_RUN_DIR / f"{run_id}.json"
+        now = app.now_iso()
+        manifest = {
+            "run_id": run_id,
+            "status": "cancelled",
+            "requested_at": now,
+            "events": [],
+            "lease": None,
+        }
+        path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+        res = client.post(f"/api/runs/{run_id}/requeue")
+        assert res.status_code == 200
+        body = res.json()
+        assert body.get("status") == "queued"
+        assert body.get("requeued") is True
+
+        run_res = client.get(f"/orchestrate/run/{run_id}")
+        assert run_res.status_code == 200
+        assert run_res.json().get("status") == "queued"
