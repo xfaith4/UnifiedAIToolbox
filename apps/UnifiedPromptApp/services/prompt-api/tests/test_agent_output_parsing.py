@@ -175,6 +175,75 @@ def test_validate_engineer_contract_traceability_requires_full_coverage():
     assert any("dyn_a" in e for e in errors)
 
 
+def test_validate_engineer_contract_traceability_accepts_json_field():
+    contract = {
+        "objects": [{"id": "obj_a"}],
+        "interactions": [{"id": "int_a"}],
+        "dynamics": [{"id": "dyn_a"}],
+    }
+    engineer = {
+        "contract_traceability": [
+            {
+                "contract_id": "obj_a",
+                "file_path": "src/a.ts",
+                "symbol": "renderObjA",
+                "runtime_probe_explanation": "document.querySelector('#a') returns a non-null element",
+            },
+            {
+                "contract_id": "int_a",
+                "file_path": "src/a.ts",
+                "symbol": "onClickA",
+                "runtime_probe_explanation": "click event changes state.a from false to true",
+            },
+            {
+                "contract_id": "dyn_a",
+                "file_path": "src/a.ts",
+                "symbol": "tick",
+                "runtime_probe_explanation": "state.t increases over 500ms",
+            },
+        ]
+    }
+
+    errors = app._validate_engineer_contract_traceability(engineer, contract)
+    assert errors == []
+
+
+def test_evaluate_commissioner_decision_returns_needs_requirements_for_low_score():
+    decision, details, data = app._evaluate_commissioner_decision(
+        {
+            "value_score": 5,
+            "recommendation": "Needs interaction and performance details",
+            "missing_requirements": [
+                {
+                    "id": "interaction_scope",
+                    "question": "Define 4 click interactions and measurable state changes.",
+                    "why": "Needed for machine-verifiable acceptance tests.",
+                    "defaults": ["Use 4 predefined interactions"],
+                }
+            ],
+            "proposed_acceptance_tests": ["At least 4 interactions update visible numeric state"],
+        }
+    )
+    assert decision == "needs_requirements"
+    assert "requirements" in details.lower()
+    packet = data.get("requirements_request")
+    assert isinstance(packet, dict)
+    assert packet.get("blockers")
+
+
+def test_evaluate_commissioner_decision_respects_hard_fail():
+    decision, details, data = app._evaluate_commissioner_decision(
+        {
+            "value_score": 2,
+            "hard_fail": True,
+            "hard_fail_reason": "Policy violation",
+        }
+    )
+    assert decision == "failed"
+    assert "hard fail" in details.lower()
+    assert data.get("commissioner_decision") == "hard_fail"
+
+
 def test_derive_final_status_rules():
     assert (
         app._derive_final_status(

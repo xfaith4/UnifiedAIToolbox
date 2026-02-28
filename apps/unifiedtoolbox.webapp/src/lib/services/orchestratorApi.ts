@@ -217,7 +217,9 @@ export async function fetchOrchestrationRun(runId: string): Promise<Orchestratio
     const normalized = normalizeApiRun(payload)
 
     if (process.env.NODE_ENV === 'development') {
-      console.debug(`[OrchestratorAPI] fetchOrchestrationRun ← run_id: ${normalized.id}, status: ${normalized.status}, events: ${normalized.events.length}`)
+      console.debug(
+        `[OrchestratorAPI] fetchOrchestrationRun ← run_id: ${normalized.id}, status: ${normalized.status}, events: ${normalized.events?.length ?? 0}`
+      )
     }
 
     return normalized
@@ -355,6 +357,61 @@ export async function fetchOrchestrationRunLog(
  * Normalize an API response into the client-side OrchestrationRun type
  */
 function normalizeApiRun(raw: Record<string, unknown>): OrchestrationRun {
+  const rawSandboxReport = raw.sandbox_report as Record<string, unknown> | undefined
+  const rawRequirementsRequest = (raw.requirements_request as Record<string, unknown> | undefined)
+    ?? (rawSandboxReport?.requirements_request as Record<string, unknown> | undefined)
+  const normalizeRequirementsRequest = (value?: Record<string, unknown>) => {
+    if (!value) return undefined
+    const blockersRaw = Array.isArray(value.blockers) ? value.blockers : []
+    const blockers = blockersRaw
+      .filter((b): b is Record<string, unknown> => Boolean(b && typeof b === 'object'))
+      .map((b, idx) => ({
+        id: String(b.id || `req_${idx + 1}`),
+        question: String(b.question || ''),
+        why: String(b.why || ''),
+        defaults: Array.isArray(b.defaults) ? b.defaults.map(String) : undefined,
+      }))
+      .filter((b) => b.question.trim().length > 0)
+    return {
+      summary: value.summary ? String(value.summary) : undefined,
+      blockers,
+      proposed_acceptance_tests: Array.isArray(value.proposed_acceptance_tests)
+        ? value.proposed_acceptance_tests.map(String)
+        : undefined,
+      performance_budget: value.performance_budget,
+      maintenance_scope: value.maintenance_scope,
+    }
+  }
+  const requirementsRequest = normalizeRequirementsRequest(rawRequirementsRequest)
+  const sandboxReport = rawSandboxReport
+    ? {
+        generatedAt: String(rawSandboxReport.generated_at || rawSandboxReport.generatedAt || ''),
+        verificationStatus: String(
+          rawSandboxReport.verification_status || rawSandboxReport.verificationStatus || 'pending'
+        ) as NonNullable<OrchestrationRun['sandboxReport']>['verificationStatus'],
+        loopIteration: Number(rawSandboxReport.loop_iteration || rawSandboxReport.loopIteration || 0),
+        checks: Array.isArray(rawSandboxReport.checks)
+          ? rawSandboxReport.checks
+              .filter((c): c is Record<string, unknown> => Boolean(c && typeof c === 'object'))
+              .map((c) => ({
+                check: String(c.check || ''),
+                evaluator: String(c.evaluator || ''),
+                result: String(c.result || 'deferred') as NonNullable<OrchestrationRun['sandboxReport']>['checks'][number]['result'],
+                details: String(c.details || ''),
+                data: (c.data as Record<string, unknown> | undefined) ?? undefined,
+              }))
+          : [],
+        passedCount: Number(rawSandboxReport.passed_count || rawSandboxReport.passedCount || 0),
+        failedCount: Number(rawSandboxReport.failed_count || rawSandboxReport.failedCount || 0),
+        needsRequirementsCount: Number(
+          rawSandboxReport.needs_requirements_count || rawSandboxReport.needsRequirementsCount || 0
+        ),
+        deferredCount: Number(rawSandboxReport.deferred_count || rawSandboxReport.deferredCount || 0),
+        requirementsRequest: normalizeRequirementsRequest(
+          rawSandboxReport.requirements_request as Record<string, unknown> | undefined
+        ),
+      }
+    : undefined
   const events: OrchestrationRunEvent[] = []
   if (Array.isArray(raw.events)) {
     for (const ev of raw.events) {
@@ -404,7 +461,8 @@ function normalizeApiRun(raw: Record<string, unknown>): OrchestrationRun {
       : undefined,
     verificationStatus: raw.verification_status ? String(raw.verification_status) as OrchestrationRun['verificationStatus'] : undefined,
     loopIteration: typeof raw.loop_iteration === 'number' ? raw.loop_iteration : undefined,
-    sandboxReport: raw.sandbox_report as OrchestrationRun['sandboxReport'] ?? undefined,
+    sandboxReport,
+    requirementsRequest,
   }
 }
 

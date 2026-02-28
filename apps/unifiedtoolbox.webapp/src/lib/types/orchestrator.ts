@@ -17,8 +17,23 @@ export interface CheckpointRecord {
 
 // ── Phase 1: Verification / Sandbox types ─────────────────────────────────────
 
-export type VerificationResult = 'passed' | 'failed' | 'deferred'
-export type VerificationStatus = 'passed' | 'failed' | 'partial' | 'deferred' | 'pending'
+export type VerificationResult = 'passed' | 'failed' | 'deferred' | 'needs_requirements'
+export type VerificationStatus = 'passed' | 'failed' | 'partial' | 'deferred' | 'pending' | 'needs_requirements'
+
+export interface RequirementsRequestBlocker {
+  id: string
+  question: string
+  why: string
+  defaults?: string[]
+}
+
+export interface RequirementsRequest {
+  summary?: string
+  blockers: RequirementsRequestBlocker[]
+  proposed_acceptance_tests?: string[]
+  performance_budget?: unknown
+  maintenance_scope?: unknown
+}
 
 export interface SandboxCheck {
   check: string              // original acceptance check string from the proposal
@@ -35,7 +50,9 @@ export interface SandboxReport {
   checks: SandboxCheck[]
   passedCount: number
   failedCount: number
+  needsRequirementsCount?: number
   deferredCount: number
+  requirementsRequest?: RequirementsRequest
 }
 
 /**
@@ -111,6 +128,7 @@ export interface OrchestrationRun {
   verificationStatus?: VerificationStatus
   loopIteration?: number
   sandboxReport?: SandboxReport
+  requirementsRequest?: RequirementsRequest
 
   // Output
   output?: string

@@ -460,41 +460,6 @@ def _validate_engineer_contract_traceability(engineer_payload: Any, contract_pay
     if not isinstance(contract_payload, dict):
         return ["ConceptualModelContract payload is not a JSON object"]
 
-    implementation = engineer_payload.get("implementation")
-    if not isinstance(implementation, str) or not implementation.strip():
-        return ["Engineer implementation field is missing or empty"]
-
-    marker = "### Contract Traceability"
-    idx = implementation.find(marker)
-    if idx == -1:
-        return ["Engineer output missing required section: ### Contract Traceability"]
-
-    section = implementation[idx + len(marker):]
-    trace_lines = []
-    for raw_line in section.splitlines():
-        line = raw_line.strip()
-        if not line:
-            continue
-        if line.startswith("### "):
-            break
-        trace_lines.append(line)
-
-    if not trace_lines:
-        return ["Contract Traceability section is empty"]
-
-    line_pattern = re.compile(r"^(?P<cid>[A-Za-z0-9_.:-]+)\s*->\s*(?P<path>[^:]+?)\s*:\s*(?P<symbol>[^:]+?)\s*:\s*(?P<probe>.+)$")
-    traced_ids: Dict[str, str] = {}
-    for line in trace_lines:
-        m = line_pattern.match(line)
-        if not m:
-            errors.append(f"Invalid traceability line format: {line}")
-            continue
-        contract_id = m.group("cid").strip()
-        probe = m.group("probe").strip()
-        traced_ids[contract_id] = line
-        if not probe:
-            errors.append(f"Traceability line has empty runtimeProbeExplanation: {line}")
-
     required_ids: List[str] = []
     for key in ("objects", "interactions", "dynamics"):
         items = contract_payload.get(key)
@@ -505,11 +470,256 @@ def _validate_engineer_contract_traceability(engineer_payload: Any, contract_pay
                     if isinstance(contract_id, str) and contract_id.strip():
                         required_ids.append(contract_id.strip())
 
+    traced_ids: Dict[str, str] = {}
+    traceability_entries = engineer_payload.get("contract_traceability")
+    if traceability_entries is not None:
+        if not isinstance(traceability_entries, list) or len(traceability_entries) == 0:
+            errors.append("Engineer.contract_traceability must be a non-empty array")
+        else:
+            for idx, entry in enumerate(traceability_entries):
+                if not isinstance(entry, dict):
+                    errors.append(f"Engineer.contract_traceability[{idx}] must be an object")
+                    continue
+                contract_id = (
+                    entry.get("contract_id")
+                    or entry.get("contractId")
+                    or entry.get("requirement_id")
+                    or entry.get("requirementId")
+                    or entry.get("id")
+                )
+                if not isinstance(contract_id, str) or not contract_id.strip():
+                    errors.append(f"Engineer.contract_traceability[{idx}] missing contract_id/requirement_id")
+                    continue
+                probe = (
+                    entry.get("runtime_probe_explanation")
+                    or entry.get("runtimeProbeExplanation")
+                    or entry.get("probe")
+                    or entry.get("notes")
+                )
+                if not isinstance(probe, str) or not probe.strip():
+                    errors.append(
+                        f"Engineer.contract_traceability[{idx}] missing runtimeProbeExplanation/probe"
+                    )
+                    continue
+                traced_ids[contract_id.strip()] = probe.strip()
+    else:
+        implementation = engineer_payload.get("implementation")
+        if not isinstance(implementation, str) or not implementation.strip():
+            return ["Engineer output missing required JSON field: contract_traceability[]"]
+
+        marker = "### Contract Traceability"
+        idx = implementation.find(marker)
+        if idx == -1:
+            return ["Engineer output missing required JSON field: contract_traceability[]"]
+
+        section = implementation[idx + len(marker):]
+        trace_lines = []
+        for raw_line in section.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            if line.startswith("### "):
+                break
+            trace_lines.append(line)
+
+        if not trace_lines:
+            return ["Engineer.contract_traceability is empty"]
+
+        line_pattern = re.compile(
+            r"^(?P<cid>[A-Za-z0-9_.:-]+)\s*->\s*(?P<path>[^:]+?)\s*:\s*(?P<symbol>[^:]+?)\s*:\s*(?P<probe>.+)$"
+        )
+        for line in trace_lines:
+            m = line_pattern.match(line)
+            if not m:
+                errors.append(f"Invalid traceability line format: {line}")
+                continue
+            contract_id = m.group("cid").strip()
+            probe = m.group("probe").strip()
+            traced_ids[contract_id] = line
+            if not probe:
+                errors.append(f"Traceability line has empty runtimeProbeExplanation: {line}")
+
     missing = [cid for cid in required_ids if cid not in traced_ids]
     if missing:
         errors.append(f"Missing traceability coverage for contract IDs: {', '.join(missing)}")
 
     return errors
+
+
+def _normalize_requirements_blocker(raw: Any, idx: int) -> Dict[str, Any]:
+    question = ""
+    why = ""
+    defaults: List[str] = []
+    blocker_id = f"req_{idx + 1}"
+
+    if isinstance(raw, str):
+        question = raw.strip()
+    elif isinstance(raw, dict):
+        question = str(
+            raw.get("question")
+            or raw.get("prompt")
+            or raw.get("missing")
+            or raw.get("requirement")
+            or ""
+        ).strip()
+        why = str(raw.get("why") or raw.get("reason") or raw.get("impact") or "").strip()
+        blocker_id = str(
+            raw.get("id")
+            or raw.get("requirement_id")
+            or raw.get("requirementId")
+            or blocker_id
+        ).strip() or blocker_id
+        defaults_raw = raw.get("defaults")
+        if defaults_raw is None:
+            defaults_raw = raw.get("default")
+        if defaults_raw is None:
+            defaults_raw = raw.get("options")
+        if isinstance(defaults_raw, list):
+            defaults = [str(v).strip() for v in defaults_raw if str(v).strip()]
+        elif isinstance(defaults_raw, str) and defaults_raw.strip():
+            defaults = [defaults_raw.strip()]
+
+    if not question:
+        fallback_questions = [
+            "Define 4 interactions and the measurable state each interaction must change.",
+            "Set performance target hardware and visual complexity budget.",
+            "Choose verification scope (unit only vs unit + UI interaction tests).",
+            "Choose delivery mode (demo-only vs maintainable project expectations).",
+        ]
+        question = fallback_questions[idx] if idx < len(fallback_questions) else f"Provide requirement detail #{idx + 1}."
+
+    if not why:
+        why = "Required to convert intent into machine-verifiable acceptance criteria."
+
+    return {
+        "id": blocker_id,
+        "question": question,
+        "why": why,
+        "defaults": defaults,
+    }
+
+
+def _build_requirements_request_packet(commissioner_payload: Dict[str, Any]) -> Dict[str, Any]:
+    missing_sources: List[Any] = []
+    for key in ("missing_requirements", "requirements_gaps", "open_questions", "blockers"):
+        value = commissioner_payload.get(key)
+        if isinstance(value, list):
+            missing_sources.extend(value)
+
+    normalized_blockers = [
+        _normalize_requirements_blocker(raw, idx)
+        for idx, raw in enumerate(missing_sources)
+    ]
+
+    if not normalized_blockers:
+        normalized_blockers = [
+            _normalize_requirements_blocker(None, 0),
+            _normalize_requirements_blocker(None, 1),
+            _normalize_requirements_blocker(None, 2),
+        ]
+
+    proposed_tests_raw = commissioner_payload.get("proposed_acceptance_tests")
+    if not isinstance(proposed_tests_raw, list):
+        proposed_tests_raw = commissioner_payload.get("acceptance_tests")
+    proposed_acceptance_tests: List[str] = []
+    if isinstance(proposed_tests_raw, list):
+        for item in proposed_tests_raw:
+            if isinstance(item, str) and item.strip():
+                proposed_acceptance_tests.append(item.strip())
+            elif isinstance(item, dict):
+                test_name = str(item.get("testName") or item.get("name") or "").strip()
+                if test_name:
+                    proposed_acceptance_tests.append(test_name)
+
+    summary = str(
+        commissioner_payload.get("requirements_summary")
+        or commissioner_payload.get("summary")
+        or commissioner_payload.get("recommendation")
+        or "Commissioner identified missing requirements needed to continue implementation."
+    ).strip()
+
+    return {
+        "summary": summary,
+        "blockers": normalized_blockers,
+        "proposed_acceptance_tests": proposed_acceptance_tests,
+        "performance_budget": commissioner_payload.get("performance_budget") or commissioner_payload.get("performanceTarget"),
+        "maintenance_scope": commissioner_payload.get("maintenance_scope") or commissioner_payload.get("maintenanceScope"),
+    }
+
+
+def _evaluate_commissioner_decision(payload: Dict[str, Any]) -> Tuple[str, str, Dict[str, Any]]:
+    score_raw = payload.get("value_score")
+    recommendation = str(payload.get("recommendation") or "").strip()
+    confidence = payload.get("confidence")
+
+    score_value: Optional[float]
+    try:
+        score_value = float(score_raw) if score_raw is not None else None
+    except (TypeError, ValueError):
+        score_value = None
+
+    decision_hint = str(payload.get("commissioner_decision") or payload.get("decision") or "").strip().lower()
+    hard_fail_reason = str(
+        payload.get("hard_fail_reason")
+        or payload.get("failure_reason")
+        or payload.get("policy_reason")
+        or ""
+    ).strip()
+    hard_fail_flag = bool(
+        payload.get("hard_fail")
+        or payload.get("policy_violation")
+        or payload.get("non_viable")
+        or decision_hint in {"hard_fail", "fail", "rejected", "reject"}
+    )
+
+    if hard_fail_flag:
+        reason = hard_fail_reason or recommendation or "Commissioner marked this run as non-viable."
+        return (
+            "failed",
+            f"Commissioner hard fail: {reason}",
+            {
+                "value_score": score_raw,
+                "recommendation": recommendation,
+                "commissioner_decision": "hard_fail",
+                "hard_fail_reason": reason,
+            },
+        )
+
+    packet = _build_requirements_request_packet(payload)
+    blockers = packet.get("blockers") if isinstance(packet, dict) else []
+    has_blockers = isinstance(blockers, list) and len(blockers) > 0
+
+    if decision_hint in {"needs_requirements", "blocked_requirements", "needs_info"}:
+        return (
+            "needs_requirements",
+            f"Requirements needed: {len(blockers)} blocker(s) must be answered before implementation can continue.",
+            {
+                "value_score": score_raw,
+                "recommendation": recommendation,
+                "commissioner_decision": "needs_requirements",
+                "confidence": confidence,
+                "requirements_request": packet,
+            },
+        )
+
+    if score_value is not None and score_value >= 7 and not has_blockers:
+        return (
+            "passed",
+            f"Commissioner score: {score_raw}/10, recommendation: {recommendation or 'proceed'}",
+            {"value_score": score_raw, "recommendation": recommendation, "commissioner_decision": "success"},
+        )
+
+    return (
+        "needs_requirements",
+        f"Requirements needed: Commissioner score {score_raw if score_raw is not None else 'n/a'}/10 indicates more input is required.",
+        {
+            "value_score": score_raw,
+            "recommendation": recommendation,
+            "commissioner_decision": "needs_requirements",
+            "confidence": confidence,
+            "requirements_request": packet,
+        },
+    )
 
 
 def _derive_final_status(
@@ -698,6 +908,8 @@ ORCH_TERMINAL_STATUSES = {
     "completed_with_errors",
     "success",
     "succeeded",
+    "blocked_requirements",
+    "needs_requirements",
     "failed",
     "error",
     "cancelled",
@@ -3795,7 +4007,7 @@ def orchestrate_run(
         ],
         "scratchpad": [],
         "acceptance_checks": req.acceptance_checks,
-        "verification_status": "pending" if req.acceptance_checks else None,
+        "verification_status": "pending",
         "loop_iteration": 0,
         "checkpoints": [],       # Phase 3: mid-run human decision log
         "lease": None,
@@ -4463,16 +4675,7 @@ def orchestrate_run(
                     d = _parse_agent_json("Commissioner")
                     if d is None:
                         return "deferred", "Commissioner output not found", {}
-                    score = d.get("value_score")
-                    rec = d.get("recommendation", "")
-                    if score is None:
-                        return "deferred", "value_score not found in Commissioner output", {}
-                    passed = int(score) >= 7
-                    return (
-                        "passed" if passed else "failed",
-                        f"Commissioner score: {score}/10, recommendation: {rec}",
-                        {"value_score": score, "recommendation": rec},
-                    )
+                    return _evaluate_commissioner_decision(d)
 
                 def _eval_critic_blockers():
                     d = _parse_agent_json("Critic")
@@ -4615,9 +4818,29 @@ def orchestrate_run(
 
                 n_passed  = sum(1 for r in results if r["result"] == "passed")
                 n_failed  = sum(1 for r in results if r["result"] == "failed")
+                n_needs_requirements = sum(1 for r in results if r["result"] == "needs_requirements")
                 n_deferred = sum(1 for r in results if r["result"] == "deferred")
+                commissioner_hard_fail = any(
+                    r.get("evaluator") == "commissioner_score"
+                    and r.get("result") == "failed"
+                    and isinstance(r.get("data"), dict)
+                    and str(cast(Dict[str, Any], r.get("data", {})).get("commissioner_decision") or "") == "hard_fail"
+                    for r in results
+                )
+                requirements_request = next(
+                    (
+                        cast(Dict[str, Any], r.get("data", {})).get("requirements_request")
+                        for r in results
+                        if r.get("result") == "needs_requirements" and isinstance(r.get("data"), dict)
+                    ),
+                    None,
+                )
 
-                if n_failed > 0:
+                if commissioner_hard_fail:
+                    v_status = "failed"
+                elif n_needs_requirements > 0:
+                    v_status = "needs_requirements"
+                elif n_failed > 0:
                     v_status = "failed"
                 elif n_passed > 0 and n_deferred == 0:
                     v_status = "passed"
@@ -4633,7 +4856,9 @@ def orchestrate_run(
                     "checks": results,
                     "passed_count": n_passed,
                     "failed_count": n_failed,
+                    "needs_requirements_count": n_needs_requirements,
                     "deferred_count": n_deferred,
+                    "requirements_request": requirements_request,
                 }
                 try:
                     sandbox_report_path.write_text(json.dumps(sandbox_report, indent=2), encoding="utf-8")
@@ -4645,13 +4870,15 @@ def orchestrate_run(
                     "type": f"verify:{v_status}",
                     "message": (
                         f"Verification {v_status}: {n_passed} passed, {n_failed} failed, "
-                        f"{n_deferred} deferred out of {len(results)} check(s)."
+                        f"{n_needs_requirements} needs_requirements, {n_deferred} deferred "
+                        f"out of {len(results)} check(s)."
                     ),
                 }])
                 _update_manifest(lambda d: {
                     **d,
                     "verification_status": v_status,
                     "sandbox_report": sandbox_report,
+                    "requirements_request": requirements_request,
                 })
 
             _verify()
@@ -4721,9 +4948,15 @@ def orchestrate_run(
                 })
 
             data = safe_json_load(path, context=f"execute_complete:{run_id}")
-            data["status"] = "completed"
+            verification_status = str(data.get("verification_status") or "").strip().lower()
+            if verification_status in {"needs_requirements", "blocked_requirements"}:
+                data["status"] = "blocked_requirements"
+                completion_message = "blocked_requirements"
+            else:
+                data["status"] = "completed"
+                completion_message = "completed"
             data["completed_at"] = now_iso()
-            data.setdefault("events", []).append({"ts": data["completed_at"], "type": "status", "message": "completed"})
+            data.setdefault("events", []).append({"ts": data["completed_at"], "type": "status", "message": completion_message})
             path.write_text(json.dumps(data, indent=2), encoding="utf-8")
             
             # Log artifact manifest and run verification if logger is available
@@ -4925,13 +5158,275 @@ def _kb_similarity(a: List[str], b: List[str]) -> float:
     return len(sa & sb) / max(len(sa), len(sb))
 
 
+def _normalize_knowledge_status(value: Any) -> str:
+    raw = str(value or "").strip().lower()
+    if raw in {"pass", "needs_info", "fail"}:
+        return raw
+    return "needs_info"
+
+
+def _normalize_learning_payload(value: Any) -> Dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    learning = dict(value)
+    if not isinstance(learning.get("evidence"), list):
+        learning["evidence"] = []
+    if not isinstance(learning.get("prevention_patches"), list):
+        learning["prevention_patches"] = []
+    if not isinstance(learning.get("regression_checks"), list):
+        learning["regression_checks"] = []
+    if "questions_needed" in learning and not isinstance(learning.get("questions_needed"), list):
+        learning["questions_needed"] = []
+    return learning
+
+
+def _derive_knowledge_status_for_entry(entry: Dict[str, Any]) -> Tuple[str, Optional[float]]:
+    learning = _normalize_learning_payload(entry.get("learning"))
+    evidence = [str(v).strip() for v in learning.get("evidence", []) if str(v).strip()]
+    patches = [p for p in learning.get("prevention_patches", []) if isinstance(p, dict)]
+    checks = [str(v).strip() for v in learning.get("regression_checks", []) if str(v).strip()]
+    root_cause = str(learning.get("root_cause") or "").strip()
+    what_broke = str(learning.get("what_broke") or "").strip()
+    classification = str(learning.get("classification") or "").strip()
+
+    has_required_fields = bool(classification and what_broke and root_cause)
+    has_prevention = len(patches) >= 1
+    has_checks = len(checks) >= 1
+    has_evidence = len(evidence) >= 1
+
+    if has_required_fields and has_prevention and has_checks and has_evidence:
+        score = 7.0 + min(3.0, (len(patches) * 0.8 + len(checks) * 0.5 + len(evidence) * 0.3) / 3.0)
+        return "pass", round(min(10.0, score), 1)
+
+    # needs_info means learning payload exists but evidence/diagnosis is incomplete.
+    if has_required_fields or has_prevention or has_checks or has_evidence:
+        return "needs_info", 4.0
+
+    # Legacy fallback if no learning object was present.
+    legacy_patches = entry.get("prevention_patches")
+    if isinstance(legacy_patches, list) and len(legacy_patches) > 0:
+        return "pass", 7.0
+    return "needs_info", 3.0
+
+
+def _migrate_knowledge_entry(entry: Dict[str, Any]) -> Tuple[Dict[str, Any], bool]:
+    migrated = dict(entry)
+    changed = False
+
+    learning = _normalize_learning_payload(migrated.get("learning"))
+    if learning != migrated.get("learning"):
+        migrated["learning"] = learning
+        changed = True
+
+    status_value, score_value = _derive_knowledge_status_for_entry(migrated)
+    normalized_existing = _normalize_knowledge_status(migrated.get("knowledge_status"))
+    if normalized_existing != migrated.get("knowledge_status"):
+        changed = True
+    if normalized_existing == "needs_info" and status_value == "pass":
+        normalized_existing = "pass"
+        changed = True
+    if "knowledge_status" not in migrated:
+        normalized_existing = status_value
+        changed = True
+    migrated["knowledge_status"] = normalized_existing
+
+    if migrated.get("knowledge_score") is None and score_value is not None:
+        migrated["knowledge_score"] = score_value
+        changed = True
+
+    return migrated, changed
+
+
+def _build_learning_payload(
+    manifest: Dict[str, Any],
+    commissioner_payload: Optional[Dict[str, Any]],
+    critic_payload: Optional[Dict[str, Any]],
+    researcher_payload: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    verification_status = str(manifest.get("verification_status") or "pending").strip().lower()
+    run_status = str(manifest.get("status") or "unknown").strip().lower()
+    sandbox_report = manifest.get("sandbox_report") if isinstance(manifest.get("sandbox_report"), dict) else {}
+    checks = sandbox_report.get("checks") if isinstance(sandbox_report.get("checks"), list) else []
+    failed_checks = [c for c in checks if isinstance(c, dict) and str(c.get("result") or "").lower() == "failed"]
+    deferred_checks = [c for c in checks if isinstance(c, dict) and str(c.get("result") or "").lower() == "deferred"]
+
+    if verification_status in {"needs_requirements", "blocked_requirements"}:
+        classification = "requirements_gap"
+    elif verification_status == "failed":
+        classification = "verification_gate_failure"
+    elif verification_status == "deferred":
+        classification = "evidence_deferred"
+    elif run_status.startswith("error") or run_status == "failed":
+        classification = "execution_failure"
+    else:
+        classification = "general_learning"
+
+    evidence: List[str] = []
+    for check in failed_checks[:3]:
+        evidence.append(f"failed_check:{check.get('evaluator')}:{check.get('details')}")
+    for check in deferred_checks[:2]:
+        evidence.append(f"deferred_check:{check.get('evaluator')}:{check.get('details')}")
+    requirements_request = manifest.get("requirements_request")
+    if isinstance(requirements_request, dict):
+        blockers = requirements_request.get("blockers")
+        if isinstance(blockers, list) and blockers:
+            evidence.append(f"requirements_request_blockers:{len(blockers)}")
+
+    events = manifest.get("events") if isinstance(manifest.get("events"), list) else []
+    overseer_warnings = [
+        str(ev.get("message"))
+        for ev in events
+        if isinstance(ev, dict)
+        and (
+            str(ev.get("type") or "").startswith("overseer:warn")
+            or str(ev.get("type") or "").startswith("overseer:critical")
+        )
+    ]
+    evidence.extend(overseer_warnings[:3])
+
+    critic_blockers = []
+    if isinstance(critic_payload, dict):
+        raw_blockers = critic_payload.get("blockers")
+        if isinstance(raw_blockers, list):
+            critic_blockers = [str(v) for v in raw_blockers if str(v).strip()]
+            evidence.extend([f"critic_blocker:{b}" for b in critic_blockers[:2]])
+
+    if isinstance(commissioner_payload, dict):
+        score = commissioner_payload.get("value_score")
+        if score is not None:
+            evidence.append(f"commissioner_score:{score}")
+        recommendation = commissioner_payload.get("recommendation")
+        if recommendation:
+            evidence.append(f"commissioner_recommendation:{recommendation}")
+
+    researcher_facts: List[str] = []
+    if isinstance(researcher_payload, dict):
+        facts = researcher_payload.get("facts")
+        if isinstance(facts, list):
+            researcher_facts = [str(v) for v in facts if str(v).strip()]
+
+    if classification == "requirements_gap":
+        what_broke = "Requirements were incomplete for machine-verifiable implementation."
+        root_cause = "Commissioner detected unresolved requirement gaps and requested follow-up inputs."
+    elif classification == "verification_gate_failure":
+        what_broke = "One or more verification gates failed after orchestration execution."
+        root_cause = "Agent outputs did not satisfy required schema/traceability checks."
+    elif classification == "evidence_deferred":
+        what_broke = "Verification could not complete due to deferred code-execution checks."
+        root_cause = "Evidence pipeline lacked executable validation for at least one acceptance check."
+    elif classification == "execution_failure":
+        what_broke = "Execution ended with runtime or orchestration errors."
+        root_cause = "Runtime pipeline failed before all expected artifacts/checks were produced."
+    else:
+        what_broke = "Run completed with reusable learnings."
+        root_cause = "Process produced actionable patterns worth preserving."
+
+    prevention_patches: List[Dict[str, Any]] = []
+    regression_checks: List[str] = []
+    questions_needed: List[str] = []
+
+    if classification == "requirements_gap":
+        prevention_patches.append(
+            {
+                "target": "commissioner_evaluator",
+                "change": "Route incomplete requirements to needs_requirements with structured blockers instead of failed.",
+                "artifact_ref": "sandbox_report.requirements_request",
+            }
+        )
+        prevention_patches.append(
+            {
+                "target": "concierge_ui",
+                "change": "Render blockers as concise follow-up questions with defaults for fast-path responses.",
+                "artifact_ref": "requirements_request.blockers",
+            }
+        )
+        regression_checks.append("Commissioner low-score + resolvable blockers yields verification_status=needs_requirements")
+        regression_checks.append("Concierge receives blockers/questions payload and keeps run non-failure")
+    elif classification == "verification_gate_failure":
+        prevention_patches.append(
+            {
+                "target": "agent_prompt_contracts",
+                "change": "Enforce strict JSON output and required traceability fields before finalization.",
+            }
+        )
+        regression_checks.append("Failing gate details include evaluator + actionable fix text")
+    elif classification == "evidence_deferred":
+        prevention_patches.append(
+            {
+                "target": "verification_pipeline",
+                "change": "Add executable probes or simulation harness for deferred acceptance checks.",
+            }
+        )
+        regression_checks.append("Deferred checks are surfaced with explicit next-action guidance")
+    elif classification == "execution_failure":
+        prevention_patches.append(
+            {
+                "target": "runtime_supervision",
+                "change": "Improve liveness monitoring and failure diagnostics around worker execution.",
+            }
+        )
+        regression_checks.append("Runtime errors create actionable blocker summary and repair path")
+    else:
+        prevention_patches.append(
+            {
+                "target": "playbook",
+                "change": "Preserve successful run pattern for future similar goals.",
+            }
+        )
+        regression_checks.append("Knowledge context includes top similar runs with actionable guidance")
+
+    if not evidence:
+        questions_needed.append("Provide concrete evidence (logs/checks/events) supporting the inferred root cause.")
+
+    return {
+        "classification": classification,
+        "what_broke": what_broke,
+        "root_cause": root_cause,
+        "evidence": evidence,
+        "prevention_patches": prevention_patches,
+        "regression_checks": regression_checks,
+        "questions_needed": questions_needed,
+        "context_facts": researcher_facts[:3],
+        "critic_blockers": critic_blockers[:3],
+    }
+
+
+def _build_learning_failure_payload(error_message: str) -> Dict[str, Any]:
+    return {
+        "classification": "knowledge_generation_failure",
+        "what_broke": "Knowledge artifact generation crashed.",
+        "root_cause": error_message,
+        "evidence": [error_message],
+        "prevention_patches": [],
+        "regression_checks": [],
+        "questions_needed": [],
+    }
+
+
 def _kb_load() -> List[Dict[str, Any]]:
     """Load all knowledge entries from disk (thread-safe read)."""
     with _knowledge_lock:
         if not KNOWLEDGE_DB_PATH.exists():
             return []
         try:
-            return json.loads(KNOWLEDGE_DB_PATH.read_text(encoding="utf-8"))
+            loaded = json.loads(KNOWLEDGE_DB_PATH.read_text(encoding="utf-8"))
+            if not isinstance(loaded, list):
+                return []
+
+            migrated_entries: List[Dict[str, Any]] = []
+            changed = False
+            for item in loaded:
+                if not isinstance(item, dict):
+                    continue
+                migrated, did_change = _migrate_knowledge_entry(item)
+                migrated_entries.append(migrated)
+                changed = changed or did_change
+
+            if changed:
+                tmp = KNOWLEDGE_DB_PATH.with_suffix(".tmp")
+                tmp.write_text(json.dumps(migrated_entries, indent=2), encoding="utf-8")
+                tmp.replace(KNOWLEDGE_DB_PATH)
+            return migrated_entries
         except Exception:
             return []
 
@@ -4960,6 +5455,8 @@ def ingest_run_knowledge(run_id: str, out_dir: pathlib.Path, manifest_path: path
     """
     try:
         manifest = safe_json_load(manifest_path, default={}, context=f"knowledge_ingest:{run_id}")
+        if not isinstance(manifest, dict):
+            manifest = {}
         goal = manifest.get("goal") or ""
         if not goal:
             return  # goal-less runs (prompt-id only) aren't useful for knowledge
@@ -4968,6 +5465,9 @@ def ingest_run_knowledge(run_id: str, out_dir: pathlib.Path, manifest_path: path
         critic = _kb_parse_agent_json(out_dir, "Critic")
         researcher = _kb_parse_agent_json(out_dir, "Researcher")
 
+        learning = _build_learning_payload(manifest, comm, critic, researcher)
+        knowledge_status, knowledge_score = _derive_knowledge_status_for_entry({"learning": learning})
+
         entry: Dict[str, Any] = {
             "run_id": run_id,
             "ingested_at": now_iso(),
@@ -4975,6 +5475,9 @@ def ingest_run_knowledge(run_id: str, out_dir: pathlib.Path, manifest_path: path
             "goal_tokens": _kb_tokenize(goal),
             "status": manifest.get("status", "unknown"),
             "verification_status": manifest.get("verification_status"),
+            "knowledge_status": knowledge_status,
+            "knowledge_score": knowledge_score,
+            "learning": learning,
             "agents": manifest.get("agents", []),
             "model": manifest.get("model", ""),
             "synthesis_present": (
@@ -5005,15 +5508,46 @@ def ingest_run_knowledge(run_id: str, out_dir: pathlib.Path, manifest_path: path
                 "deferred": manifest.get("sandbox_report", {}).get("deferred_count", 0),
             } if manifest.get("sandbox_report") else None,
         }
+        if knowledge_status == "needs_info" and not learning.get("questions_needed"):
+            learning["questions_needed"] = ["Confirm root cause with additional evidence from run logs or failing artifacts."]
+            entry["learning"] = learning
 
         entries = _kb_load()
         # Replace if this run is already indexed (re-run after retry)
         entries = [e for e in entries if e.get("run_id") != run_id]
         entries.insert(0, entry)
         _kb_save(entries)
-        print(f"[knowledge] Ingested run {run_id} (score={entry['commissioner_score']})", file=sys.stderr)
+        print(
+            f"[knowledge] Ingested run {run_id} (score={entry['commissioner_score']}, knowledge_status={entry['knowledge_status']})",
+            file=sys.stderr,
+        )
     except Exception as _e:
         print(f"[knowledge] Ingestion failed for {run_id}: {_e}", file=sys.stderr)
+        try:
+            fallback_manifest = safe_json_load(manifest_path, default={}, context=f"knowledge_ingest_fallback:{run_id}")
+            if not isinstance(fallback_manifest, dict):
+                fallback_manifest = {}
+            fallback_goal = str(fallback_manifest.get("goal") or run_id).strip() or run_id
+            failure_entry = {
+                "run_id": run_id,
+                "ingested_at": now_iso(),
+                "goal": fallback_goal,
+                "goal_tokens": _kb_tokenize(fallback_goal),
+                "status": fallback_manifest.get("status", "unknown"),
+                "verification_status": fallback_manifest.get("verification_status"),
+                "knowledge_status": "fail",
+                "knowledge_score": 0,
+                "learning": _build_learning_failure_payload(str(_e)),
+                "agents": fallback_manifest.get("agents", []),
+                "model": fallback_manifest.get("model", ""),
+                "synthesis_present": False,
+            }
+            entries = _kb_load()
+            entries = [e for e in entries if e.get("run_id") != run_id]
+            entries.insert(0, failure_entry)
+            _kb_save(entries)
+        except Exception:
+            pass
 
 
 def query_knowledge_similar(goal: str, limit: int = 4) -> List[Dict[str, Any]]:

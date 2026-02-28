@@ -467,7 +467,7 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
       .includes(statusLower)
     const canForceCancel = ['dispatching', 'running', 'in_progress', 'awaiting_input', 'gating', 'awaiting_gate', 'starting', 'stuck']
       .includes(statusLower)
-    const canRequeue = ['failed', 'cancelled', 'stuck', 'completed'].includes(statusLower)
+    const canRequeue = ['failed', 'cancelled', 'stuck', 'completed', 'blocked_requirements', 'needs_requirements'].includes(statusLower)
     const statusCls = orchRun.status === 'completed'
       ? 'border-emerald-700 bg-emerald-900/30 text-emerald-100'
       : orchRun.status === 'stuck'
@@ -529,6 +529,8 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
     const executionStateLabel =
       statusLower === 'completed'
         ? 'Completed'
+        : statusLower === 'blocked_requirements' || statusLower === 'needs_requirements'
+          ? 'Blocked requirements'
         : statusLower === 'queued' || statusLower === 'pending'
           ? 'Queued'
           : statusLower === 'dispatching'
@@ -545,6 +547,8 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
     const executionBadgeCls =
       executionStateLabel === 'Completed'
         ? 'border-emerald-700 bg-emerald-900/30 text-emerald-100'
+        : executionStateLabel === 'Blocked requirements'
+          ? 'border-amber-700 bg-amber-900/30 text-amber-100'
         : executionStateLabel === 'Running' || executionStateLabel === 'Dispatching' || executionStateLabel === 'Queued'
           ? 'border-blue-700 bg-blue-900/30 text-blue-100'
           : executionStateLabel === 'Stuck'
@@ -552,6 +556,8 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
             : 'border-rose-700 bg-rose-900/30 text-rose-100'
     const outcomeLabel = isError
       ? 'Failed to run'
+      : orchRun.sandboxReport?.verificationStatus === 'needs_requirements'
+        ? 'Needs requirements'
       : orchRun.sandboxReport?.verificationStatus === 'failed'
         ? 'Failed gates'
         : orchRun.sandboxReport?.verificationStatus === 'partial' || orchRun.sandboxReport?.verificationStatus === 'deferred'
@@ -564,12 +570,13 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
     const outcomeBadgeCls =
       outcomeLabel === 'Pass'
         ? 'border-emerald-700 bg-emerald-900/30 text-emerald-100'
-        : outcomeLabel === 'In progress'
+      : outcomeLabel === 'In progress'
           ? 'border-blue-700 bg-blue-900/30 text-blue-100'
-          : outcomeLabel === 'Conditional' || outcomeLabel === 'Needs repair'
+          : outcomeLabel === 'Conditional' || outcomeLabel === 'Needs repair' || outcomeLabel === 'Needs requirements'
             ? 'border-amber-700 bg-amber-900/30 text-amber-100'
             : 'border-rose-700 bg-rose-900/30 text-rose-100'
     const failedGateCount = verificationFailures.length
+    const requirementsRequest = orchRun.requirementsRequest ?? orchRun.sandboxReport?.requirementsRequest
 
     const synthesisHtml = orchRun.runDir
       ? toFileUrl(`${orchRun.runDir.replace(/\\/g, '/')}/Final_Synthesis.html`)
@@ -590,9 +597,9 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
           <span className={`rounded border px-2 py-1 text-xs font-semibold uppercase tracking-wide ${outcomeBadgeCls}`}>
             Outcome: {outcomeLabel}
           </span>
-          {executionStateLabel === 'Completed' && (outcomeLabel === 'Failed gates' || outcomeLabel === 'Needs repair' || outcomeLabel === 'Conditional') && (
+          {(executionStateLabel === 'Completed' || executionStateLabel === 'Blocked requirements') && (outcomeLabel === 'Failed gates' || outcomeLabel === 'Needs repair' || outcomeLabel === 'Conditional' || outcomeLabel === 'Needs requirements') && (
             <span className="text-xs text-amber-100">
-              Completed execution, but verification reported blockers.
+              Verification reported blockers or missing requirements.
             </span>
           )}
           {isRunning && <span className="h-2 w-2 rounded-full bg-blue-400 animate-pulse" />}
@@ -740,6 +747,38 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
             </div>
           </div>
         )}
+        {outcomeLabel === 'Needs requirements' && requirementsRequest && (
+          <div className="rounded-2xl border border-amber-700/60 bg-amber-950/20 p-4 text-xs text-amber-100 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="font-semibold text-amber-100">Requirements request</div>
+              <div className="text-[11px] text-amber-200">Run is blocked pending requirements, not failed.</div>
+            </div>
+            {requirementsRequest.summary && (
+              <p className="text-amber-100">{requirementsRequest.summary}</p>
+            )}
+            <div className="space-y-2">
+              {(requirementsRequest.blockers ?? []).map((item, idx) => (
+                <div key={`req-${idx}`} className="rounded-xl border border-amber-700/50 bg-amber-950/30 p-3">
+                  <div><span className="font-semibold">Question:</span> {item.question}</div>
+                  {item.why && <div><span className="font-semibold">Why:</span> {item.why}</div>}
+                  {item.defaults && item.defaults.length > 0 && (
+                    <div><span className="font-semibold">Defaults:</span> {item.defaults.join(' | ')}</div>
+                  )}
+                </div>
+              ))}
+            </div>
+            {(requirementsRequest.proposed_acceptance_tests ?? []).length > 0 && (
+              <div className="rounded-xl border border-amber-700/50 bg-amber-950/30 p-3 space-y-1">
+                <div className="font-semibold">Proposed acceptance tests</div>
+                <ul className="list-disc pl-5 space-y-1">
+                  {requirementsRequest.proposed_acceptance_tests?.map((test, idx) => (
+                    <li key={`accept-${idx}`}>{test}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
 
         {isError && (
           <div className="rounded-2xl border border-rose-800 bg-rose-950/30 p-4 text-xs text-rose-200 space-y-3">
@@ -819,6 +858,8 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
                   ? 'bg-emerald-900/60 text-emerald-300 border-emerald-700'
                   : vs === 'failed'
                     ? 'bg-rose-900/60 text-rose-300 border-rose-700'
+                    : vs === 'needs_requirements'
+                      ? 'bg-amber-900/60 text-amber-300 border-amber-700'
                     : vs === 'partial'
                       ? 'bg-amber-900/60 text-amber-300 border-amber-700'
                       : 'bg-slate-800 text-slate-400 border-slate-700'
@@ -831,6 +872,7 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
               <span className="ml-auto text-[11px] text-slate-600">
                 {orchRun.sandboxReport.passedCount} passed ·{' '}
                 {orchRun.sandboxReport.failedCount} failed ·{' '}
+                {(orchRun.sandboxReport.needsRequirementsCount ?? 0)} needs requirements ·{' '}
                 {orchRun.sandboxReport.deferredCount} deferred
               </span>
             </div>

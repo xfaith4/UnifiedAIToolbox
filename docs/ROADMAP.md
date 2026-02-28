@@ -170,3 +170,15 @@ Every roadmap-impacting tradeoff gets a `DEC-###` record in `IMPLEMENTATION_SUMM
   Date: 2026-02-28  
   Ref: run `local-2026-02-28-roadmap-rm008-sim-script`  
   Notes: `scripts/Simulate-RunLifecycle.ps1` now exercises queued->cancel and stale-lease recovery flow.
+
+## RM-003 Worklist (Concierge staged evolution)
+
+- [x] Commissioner incomplete-input outcomes route to Concierge as `needs_requirements` (blocked, not failed).  
+  Date: 2026-02-28  
+  Ref: run `local-2026-02-28-roadmap-rm003-needs-requirements-loop`  
+  Notes: verification now emits `needs_requirements` + structured `requirements_request` packet; Concierge and Run Detail surface follow-up questions instead of marking the run failed.
+
+- [x] Knowledge loop decouples learning outcome from run outcome and preserves blocked-requirements routing.  
+  Date: 2026-02-28  
+  Ref: run `local-2026-02-28-roadmap-rm003-knowledge-loop-refactor`  
+  Notes: added `knowledge_status` rubric + migration, updated Knowledge UI to show Learning badge as primary and Run result as secondary, and documented Concierge requirements loop contract.

@@ -7,7 +7,14 @@ import { createOrchestrationRun, fetchOrchestrationRun } from '@/lib/services/or
 
 // ── Terminal states ────────────────────────────────────────────────────────────
 
-export const TERMINAL_RUN_STATUSES = new Set(['completed', 'failed', 'cancelled', 'error'])
+export const TERMINAL_RUN_STATUSES = new Set([
+  'completed',
+  'blocked_requirements',
+  'needs_requirements',
+  'failed',
+  'cancelled',
+  'error',
+])
 
 // ── Run launch ────────────────────────────────────────────────────────────────
 

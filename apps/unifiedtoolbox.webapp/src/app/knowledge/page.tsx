@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Brain, ChevronDown, ChevronUp, Search, Star, AlertTriangle, CheckCircle, XCircle, Clock } from 'lucide-react'
 import { fetchKnowledgeEntries, fetchSimilarKnowledge, type KnowledgeEntry } from '@/lib/services/knowledgeApi'
+import { formatRunResultLabel } from '@/lib/knowledge/status'
 import { PAGE_TITLES } from '@/lib/nav/navConfig'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -25,6 +26,8 @@ function verificationBadge(v: string | null | undefined) {
   if (!v || v === 'pending') return null
   const colors: Record<string, string> = {
     passed: 'bg-green-900/40 text-green-300',
+    needs_requirements: 'bg-amber-900/40 text-amber-300',
+    blocked_requirements: 'bg-amber-900/40 text-amber-300',
     partial: 'bg-yellow-900/40 text-yellow-300',
     failed: 'bg-red-900/40 text-red-300',
     deferred: 'bg-gray-700/60 text-gray-300',
@@ -32,6 +35,20 @@ function verificationBadge(v: string | null | undefined) {
   return (
     <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${colors[v] ?? 'bg-gray-700/50 text-gray-400'}`}>
       {v}
+    </span>
+  )
+}
+
+function learningBadge(status: KnowledgeEntry['knowledge_status']) {
+  const value = status ?? 'needs_info'
+  const colors: Record<string, string> = {
+    pass: 'bg-emerald-900/40 text-emerald-300',
+    needs_info: 'bg-amber-900/40 text-amber-300',
+    fail: 'bg-rose-900/40 text-rose-300',
+  }
+  return (
+    <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${colors[value] ?? colors.needs_info}`}>
+      Learning: {value.replace('_', ' ')}
     </span>
   )
 }
@@ -45,6 +62,9 @@ function EntryCard({ entry, similarity }: { entry: KnowledgeEntry; similarity?: 
   const hasBlockers = (entry.critic_blockers?.length ?? 0) > 0
   const hasWarnings = (entry.overseer_warnings?.length ?? 0) > 0
   const hasImprovements = (entry.commissioner_improvements?.length ?? 0) > 0
+  const preventionPatches = entry.learning?.prevention_patches ?? []
+  const regressionChecks = entry.learning?.regression_checks ?? []
+  const topPatchSummaries = preventionPatches.slice(0, 2).map((p) => p.change)
 
   return (
     <div className="rounded-xl border border-gray-800 bg-gray-900 p-4">
@@ -53,6 +73,10 @@ function EntryCard({ entry, similarity }: { entry: KnowledgeEntry; similarity?: 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2 mb-1">
             {statusIcon(entry.status)}
+            {learningBadge(entry.knowledge_status)}
+            <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] font-semibold text-slate-300">
+              {formatRunResultLabel(entry.verification_status)}
+            </span>
             {verificationBadge(entry.verification_status)}
             {similarity != null && (
               <span className="rounded bg-blue-900/40 px-1.5 py-0.5 text-[10px] font-semibold text-blue-300">
@@ -82,12 +106,40 @@ function EntryCard({ entry, similarity }: { entry: KnowledgeEntry; similarity?: 
 
       {/* Collapsed summary row */}
       {!expanded && entry.commissioner_recommendation && (
-        <p className="mt-1.5 text-xs text-gray-400 italic">{entry.commissioner_recommendation}</p>
+        <div className="mt-1.5 space-y-1">
+          <p className="text-xs text-gray-400 italic">{entry.commissioner_recommendation}</p>
+          <p className="text-[11px] text-gray-500">
+            What changed: {preventionPatches.length} prevention patch{preventionPatches.length === 1 ? '' : 'es'} · {regressionChecks.length} regression check{regressionChecks.length === 1 ? '' : 's'}
+          </p>
+        </div>
       )}
 
       {/* Expanded detail */}
       {expanded && (
         <div className="mt-3 space-y-3 border-t border-gray-800 pt-3 text-xs text-gray-300">
+          <div className="rounded-lg border border-gray-800 bg-gray-950/40 p-2 space-y-1">
+            <p className="font-semibold text-gray-400">What changed</p>
+            <p className="text-gray-300">
+              Prevention patches: {preventionPatches.length} · Regression checks: {regressionChecks.length}
+            </p>
+            {topPatchSummaries.length > 0 && (
+              <ul className="list-disc list-inside space-y-0.5 text-gray-300">
+                {topPatchSummaries.map((summary, idx) => (
+                  <li key={idx}>{summary}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+          {entry.learning?.questions_needed && entry.learning.questions_needed.length > 0 && (
+            <div>
+              <p className="font-semibold text-gray-400 mb-1">Questions needed</p>
+              <ul className="list-disc list-inside space-y-0.5">
+                {entry.learning.questions_needed.map((q, i) => (
+                  <li key={i} className="text-amber-300">{q}</li>
+                ))}
+              </ul>
+            </div>
+          )}
           {entry.commissioner_rationale && (
             <div>
               <p className="font-semibold text-gray-400 mb-0.5">Commissioner rationale</p>
@@ -200,7 +252,17 @@ export default function KnowledgePage() {
     ? Math.round((entries.filter((e) => e.status === 'completed' || e.status === 'completed_with_errors').length / totalRuns) * 100)
     : null
 
-  const displayList = searchResults ?? entries
+  const displayList = (searchResults ?? entries).slice().sort((a, b) => {
+    const rank = (status?: string | null) => {
+      if (status === 'pass') return 0
+      if (status === 'needs_info') return 1
+      if (status === 'fail') return 2
+      return 1
+    }
+    const rankDelta = rank(a.knowledge_status) - rank(b.knowledge_status)
+    if (rankDelta !== 0) return rankDelta
+    return String(b.ingested_at).localeCompare(String(a.ingested_at))
+  })
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">

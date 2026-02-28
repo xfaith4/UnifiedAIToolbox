@@ -60,8 +60,14 @@ import {
   type RunContextEntry,
   type RunContextStatus,
 } from '@/lib/services/runContextStore'
+import { buildRequirementsRequestPrompt } from '@/lib/concierge/requirementsLoop'
 import CurrentRunCard from '@/components/runs/CurrentRunCard'
 import LiveEventPanel from '@/components/runs/LiveEventPanel'
+
+function buildRequirementsRequestMessage(run: OrchestrationRun): string | null {
+  const packet = run.requirementsRequest ?? run.sandboxReport?.requirementsRequest
+  return buildRequirementsRequestPrompt(packet)
+}
 
 // ── Risk badge ────────────────────────────────────────────────────────────────
 function RiskBadge({ level }: { level: ProposalRisk['level'] }) {
@@ -352,10 +358,16 @@ function RunStatusIndicator({
   const status = runStatus ?? 'queued'
   const isTerminal = TERMINAL_RUN_STATUSES.has(status)
   const isCompleted = status === 'completed'
+  const isBlockedRequirements = status === 'blocked_requirements' || status === 'needs_requirements'
+  const isNeedsRequirements = isCompleted && verificationStatus === 'needs_requirements'
   const isVerified = isCompleted && verificationStatus === 'passed'
 
   const cls = isVerified
     ? 'border-emerald-600 bg-emerald-950/40 text-emerald-200 hover:bg-emerald-950/60'
+    : isBlockedRequirements
+      ? 'border-amber-700 bg-amber-950/30 text-amber-200 hover:bg-amber-950/50'
+    : isNeedsRequirements
+      ? 'border-amber-700 bg-amber-950/30 text-amber-200 hover:bg-amber-950/50'
     : isCompleted
       ? 'border-emerald-700 bg-emerald-950/30 text-emerald-300 hover:bg-emerald-950/50'
       : isTerminal
@@ -369,13 +381,19 @@ function RunStatusIndicator({
     >
       {!isTerminal && <Radio size={12} className="animate-pulse" aria-hidden="true" />}
       {isVerified && <ShieldCheck size={12} aria-hidden="true" />}
-      {isCompleted && !isVerified && <CheckCircle2 size={12} aria-hidden="true" />}
+      {isBlockedRequirements && <AlertTriangle size={12} aria-hidden="true" />}
+      {isNeedsRequirements && <AlertTriangle size={12} aria-hidden="true" />}
+      {isCompleted && !isVerified && !isNeedsRequirements && <CheckCircle2 size={12} aria-hidden="true" />}
       {isTerminal && !isCompleted && <XCircle size={12} aria-hidden="true" />}
       <span>
         {!isTerminal
           ? `Running… (${status})`
+          : isBlockedRequirements
+            ? 'Needs requirements'
           : isVerified
             ? 'Run verified'
+            : isNeedsRequirements
+              ? 'Needs requirements'
             : isCompleted
               ? 'Run completed'
               : `Run ${status}`}
@@ -1044,10 +1062,40 @@ export default function ConciergePage() {
           if (TERMINAL_RUN_STATUSES.has(run.status)) {
             cancelled = true
             clearInterval(intervalId)
-            if (run.status === 'completed') {
-              updateDraftRun(proposalId, { runStatus: 'completed' })
-              const updated = updateProposalStatus(proposalId, 'completed')
-              if (updated) setProposal(updated)
+            if (run.status === 'completed' || run.status === 'blocked_requirements' || run.status === 'needs_requirements') {
+              if (run.verificationStatus === 'needs_requirements') {
+                updateDraftRun(proposalId, { runStatus: 'pending' })
+                const needsInfoMsg = buildRequirementsRequestMessage(run)
+                if (needsInfoMsg) {
+                  setMessages((prev) => [
+                    ...prev,
+                    {
+                      id: `run_req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+                      role: 'assistant' as const,
+                      content: needsInfoMsg,
+                      timestamp: new Date().toISOString(),
+                    },
+                  ])
+                }
+              } else if (run.status === 'blocked_requirements' || run.status === 'needs_requirements') {
+                updateDraftRun(proposalId, { runStatus: 'pending' })
+                const needsInfoMsg = buildRequirementsRequestMessage(run)
+                if (needsInfoMsg) {
+                  setMessages((prev) => [
+                    ...prev,
+                    {
+                      id: `run_req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+                      role: 'assistant' as const,
+                      content: needsInfoMsg,
+                      timestamp: new Date().toISOString(),
+                    },
+                  ])
+                }
+              } else {
+                updateDraftRun(proposalId, { runStatus: 'completed' })
+                const updated = updateProposalStatus(proposalId, 'completed')
+                if (updated) setProposal(updated)
+              }
             } else {
               updateDraftRun(proposalId, { runStatus: 'failed' })
             }

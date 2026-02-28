@@ -1,0 +1,71 @@
+Build a local-first, modern web application that provides an interactive 3D “Phi Playground” visualization of the golden ratio (φ ≈ 1.6180339887). The experience should feel like a small, polished science museum exhibit: objects float in a 3D space, users can click/tap them to interact, and every interaction teaches something concrete about φ.
+
+TECH STACK (use these exactly)
+- Vite + React + TypeScript
+- Three.js via @react-three/fiber and @react-three/drei
+- Optional: @react-three/rapier for simple physics (only if it meaningfully improves interaction)
+- State: Zustand (or React state if small)
+- Styling: TailwindCSS
+- No backend required. No external APIs. Must run fully offline after install.
+
+CORE CONCEPTS TO VISUALIZE (must be accurate)
+1) φ relationships:
+   - φ = (1 + √5) / 2
+   - Fibonacci ratio convergence: F(n+1)/F(n) → φ
+   - Golden rectangle properties (sub-rectangle similarity)
+   - Golden spiral as a geometric construction (approx via Fibonacci squares is acceptable, but label it as an approximation)
+
+SCENE / UX REQUIREMENTS
+- Render a 3D scene with subtle depth, lighting, and a calm background (no seizure strobe, no heavy bloom).
+- Camera: orbit controls (mouse drag) + zoom (wheel) + pan (shift-drag). Smooth damping enabled.
+- The space contains multiple floating “exhibits” (3D objects) that are clearly clickable:
+  A) A Golden Rectangle exhibit:
+     - A 3D frame/plane showing a golden rectangle.
+     - Clicking subdivides it into a square + smaller golden rectangle repeatedly (animated), showing self-similarity.
+     - Display the current ratio and subdivision depth.
+  B) Fibonacci / Ratio exhibit:
+     - A set of stacked blocks or tiles labeled with Fibonacci numbers.
+     - Clicking advances n and animates the ratio F(n+1)/F(n), showing convergence toward φ with a small chart/overlay.
+  C) Spiral exhibit:
+     - A spiral curve in 3D (or 2D on a plane in the 3D world) that grows by φ scaling.
+     - Clicking toggles between:
+       - “Fibonacci-square spiral (approx)” and
+       - “Logarithmic golden spiral (idealized)”
+     - Clearly label approximation vs idealized.
+  D) φ Formula / Derivation exhibit:
+     - A 3D “tablet” object that shows (1+√5)/2 and a short explanation.
+     - Clicking cycles through explanation steps.
+
+INTERACTION DESIGN
+- Every clickable exhibit must have:
+  - Hover highlight (subtle outline/glow)
+  - Click feedback (small scale pulse or soundless haptic-like animation)
+  - A short UI panel (React overlay) that explains what the user is seeing with numbers.
+- Provide a “Guided Tour” mode:
+  - A button that sequentially focuses the camera on each exhibit and triggers one interaction automatically (with user ability to exit anytime).
+- Provide “Reset Scene” and “Pause Motion” controls.
+- Provide a “Quality” toggle: Low/High (affects antialiasing/postprocessing; keep it simple).
+
+PERFORMANCE / QUALITY
+- Must maintain good FPS on a typical laptop. Keep geometry modest.
+- Use instancing where reasonable.
+- Avoid heavy postprocessing by default.
+- Ensure resize handling, mobile touch support, and accessible UI text.
+
+PROJECT OUTPUTS
+- Full runnable repo with:
+  - package.json scripts: dev, build, preview
+  - README with: install, run, how to use, features, troubleshooting
+- Keep code organized:
+  - /src/components/scene/*
+  - /src/components/ui/*
+  - /src/state/*
+  - /src/math/* (phi/fibonacci helpers + tests if feasible)
+- Include a small unit test set for math utilities (Vitest preferred).
+
+ACCEPTANCE TEST (must pass)
+1) `npm install` then `npm run dev` starts successfully with no manual steps.
+2) User can orbit camera and click at least 4 distinct exhibits.
+3) Each exhibit interaction changes something visible and updates a numeric overlay related to φ.
+4) Guided Tour works end-to-end.
+5) App works offline after first install (no runtime fetch dependencies).

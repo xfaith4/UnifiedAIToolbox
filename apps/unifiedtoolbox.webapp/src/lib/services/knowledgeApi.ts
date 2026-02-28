@@ -13,6 +13,17 @@ export interface KnowledgeEntry {
   goal_tokens: string[]
   status: string
   verification_status?: string | null
+  knowledge_status?: 'pass' | 'needs_info' | 'fail'
+  knowledge_score?: number | null
+  learning?: {
+    classification?: string
+    what_broke?: string
+    root_cause?: string
+    evidence?: string[]
+    prevention_patches?: Array<{ target: string; change: string; artifact_ref?: string }>
+    regression_checks?: string[]
+    questions_needed?: string[]
+  }
   agents: string[]
   model: string
   synthesis_present: boolean
@@ -56,7 +67,7 @@ export async function fetchKnowledgeEntries(): Promise<KnowledgeEntry[]> {
   const res = await fetch(`${API_BASE}/knowledge/entries`)
   if (!res.ok) throw new Error(`Knowledge entries fetch failed: ${res.status}`)
   const data = await res.json()
-  return (data.entries ?? []) as KnowledgeEntry[]
+  return ((data.entries ?? []) as KnowledgeEntry[]).map(normalizeKnowledgeEntry)
 }
 
 /**
@@ -67,7 +78,7 @@ export async function fetchSimilarKnowledge(goal: string, limit = 5): Promise<Kn
   const res = await fetch(`${API_BASE}/knowledge/similar?${params}`)
   if (!res.ok) throw new Error(`Knowledge similar fetch failed: ${res.status}`)
   const data = await res.json()
-  return (data.entries ?? []) as KnowledgeEntry[]
+  return ((data.entries ?? []) as KnowledgeEntry[]).map(normalizeKnowledgeEntry)
 }
 
 /**
@@ -78,4 +89,29 @@ export async function fetchRunDna(goal: string): Promise<RunDnaResponse> {
   const res = await fetch(`${API_BASE}/knowledge/run-dna?${params}`)
   if (!res.ok) throw new Error(`Run DNA fetch failed: ${res.status}`)
   return res.json() as Promise<RunDnaResponse>
+}
+
+function normalizeKnowledgeEntry(entry: KnowledgeEntry): KnowledgeEntry {
+  const normalizedStatus = entry.knowledge_status ?? inferKnowledgeStatus(entry)
+  return {
+    ...entry,
+    knowledge_status: normalizedStatus,
+    learning: entry.learning
+      ? {
+          ...entry.learning,
+          evidence: Array.isArray(entry.learning.evidence) ? entry.learning.evidence : [],
+          prevention_patches: Array.isArray(entry.learning.prevention_patches) ? entry.learning.prevention_patches : [],
+          regression_checks: Array.isArray(entry.learning.regression_checks) ? entry.learning.regression_checks : [],
+          questions_needed: Array.isArray(entry.learning.questions_needed) ? entry.learning.questions_needed : [],
+        }
+      : undefined,
+  }
+}
+
+function inferKnowledgeStatus(entry: KnowledgeEntry): 'pass' | 'needs_info' | 'fail' {
+  const patches = entry.learning?.prevention_patches
+  if (Array.isArray(patches) && patches.length > 0) return 'pass'
+  const hasWarnings = Array.isArray(entry.overseer_warnings) && entry.overseer_warnings.length > 0
+  if (hasWarnings || entry.verification_status === 'failed') return 'needs_info'
+  return 'needs_info'
 }
