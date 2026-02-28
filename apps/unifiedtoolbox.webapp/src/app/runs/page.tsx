@@ -30,8 +30,9 @@ import {
 
 // ── Status helpers ─────────────────────────────────────────────────────────────
 
-const STATUS_ACTIVE  = new Set(['running', 'in_progress'])
+const STATUS_ACTIVE  = new Set(['dispatching', 'running', 'in_progress'])
 const STATUS_QUEUED  = new Set(['queued', 'pending'])
+const STATUS_STUCK   = new Set(['stuck'])
 
 type FilterTab = 'all' | 'running' | 'queued' | 'gating' | 'complete' | 'failed'
 
@@ -50,9 +51,9 @@ function matchesFilter(status: string | undefined, tab: FilterTab): boolean {
     case 'all':      return true
     case 'running':  return STATUS_ACTIVE.has(s)
     case 'queued':   return STATUS_QUEUED.has(s)
+    case 'failed':   return s === 'failed' || s === 'error' || s === 'stuck'
     case 'gating':   return s === 'gating' || s === 'awaiting_gate'
     case 'complete': return s === 'completed' || s === 'success' || s === 'succeeded'
-    case 'failed':   return s === 'failed' || s === 'error'
     default:         return true
   }
 }
@@ -69,6 +70,7 @@ function StatusBadge({ status }: { status?: string }) {
     success:       'bg-emerald-900/60 text-emerald-300 border-emerald-700',
     succeeded:     'bg-emerald-900/60 text-emerald-300 border-emerald-700',
     running:       'bg-blue-900/60 text-blue-300 border-blue-700',
+    dispatching:   'bg-cyan-900/60 text-cyan-300 border-cyan-700',
     in_progress:   'bg-blue-900/60 text-blue-300 border-blue-700',
     queued:        'bg-amber-900/60 text-amber-300 border-amber-700',
     pending:       'bg-amber-900/60 text-amber-300 border-amber-700',
@@ -77,6 +79,7 @@ function StatusBadge({ status }: { status?: string }) {
     failed:        'bg-rose-900/60 text-rose-300 border-rose-700',
     error:         'bg-rose-900/60 text-rose-300 border-rose-700',
     cancelled:     'bg-gray-800 text-gray-400 border-gray-700',
+    stuck:         'bg-amber-900/60 text-amber-300 border-amber-700',
   }
   const cls = colorMap[s] ?? 'bg-gray-800 text-gray-400 border-gray-700'
   const isLive = STATUS_ACTIVE.has(s)
@@ -116,6 +119,8 @@ function RunRow({
   goal,
   status,
   startedAt,
+  heartbeatStale,
+  lastHeartbeatAt,
   detailHref,
   selectable,
   selected,
@@ -125,6 +130,8 @@ function RunRow({
   goal?: string
   status?: string
   startedAt?: string
+  heartbeatStale?: boolean
+  lastHeartbeatAt?: string
   detailHref?: string
   selectable?: boolean
   selected?: boolean
@@ -148,9 +155,15 @@ function RunRow({
         <div className="mt-0.5 flex items-center gap-3 text-xs text-gray-500">
           <span className="font-mono">{id.slice(0, 12)}</span>
           <span>{fmtDate(startedAt)}</span>
+          {lastHeartbeatAt && <span>hb {fmtDate(lastHeartbeatAt)}</span>}
         </div>
       </div>
       <StatusBadge status={status} />
+      {heartbeatStale && (
+        <span className="rounded border border-amber-700/60 bg-amber-950/50 px-2 py-0.5 text-[10px] text-amber-200">
+          STUCK
+        </span>
+      )}
       {detailHref && (
         <Link
           href={detailHref}
@@ -284,6 +297,7 @@ export default function RunsPage() {
   const totalCount    = apiRuns.length + repoRuns.length + localRuns.length + drafts.length
   const hasActiveRuns = apiRuns.some((r) => STATUS_ACTIVE.has((r.status ?? '').toLowerCase()))
   const hasQueuedRuns = apiRuns.some((r) => STATUS_QUEUED.has((r.status ?? '').toLowerCase()))
+  const hasStuckRuns = apiRuns.some((r) => STATUS_STUCK.has((r.status ?? '').toLowerCase()) || r.heartbeatStale)
   const queuedApiRuns = apiRuns.filter((r) => isQueuedStatus(r.status))
   const queuedVisibleRuns = filteredApiRuns.filter((r) => isQueuedStatus(r.status))
   const allVisibleQueuedSelected =
@@ -402,11 +416,13 @@ export default function RunsPage() {
       </div>
 
       {/* Active / queued run callout */}
-      {(hasActiveRuns || hasQueuedRuns) && (
+      {(hasActiveRuns || hasQueuedRuns || hasStuckRuns) && (
         <div className="flex items-center gap-3 rounded-xl border border-emerald-900/50 bg-emerald-950/20 px-4 py-3 text-sm">
           <Radio size={15} className="shrink-0 text-emerald-400 animate-pulse" aria-hidden="true" />
           <span className="text-emerald-200">
-            {hasActiveRuns
+            {hasStuckRuns
+              ? 'One or more runs are STUCK (lease heartbeat stale). Use run detail to force-cancel or requeue.'
+              : hasActiveRuns
               ? 'An orchestration is currently running — refresh to see latest status.'
               : 'A run is queued and waiting for a worker to pick it up. Agents will show 0 active until a worker starts.'}
           </span>
@@ -417,7 +433,7 @@ export default function RunsPage() {
         <div className="flex items-center gap-3 rounded-xl border border-amber-900/50 bg-amber-950/20 px-4 py-3 text-sm">
           <Info size={15} className="shrink-0 text-amber-400" aria-hidden="true" />
           <span className="text-amber-200">
-            Queue safeguard active: max {queueLimits.max_concurrent} concurrent run(s), currently {queueLimits.running} running and {queueLimits.queued} queued.
+            Queue safeguard active: max {queueLimits.max_concurrent} concurrent run(s), currently {queueLimits.running} running, {queueLimits.dispatching ?? 0} dispatching, {queueLimits.queued} queued, {queueLimits.stuck ?? 0} stuck.
           </span>
         </div>
       )}
@@ -573,6 +589,8 @@ export default function RunsPage() {
                 goal={run.goal}
                 status={run.status}
                 startedAt={run.startedAt ?? run.requestedAt}
+                heartbeatStale={run.heartbeatStale}
+                lastHeartbeatAt={run.lastHeartbeatAt}
                 detailHref={`/runs/${encodeURIComponent(run.id)}`}
                 selectable={isQueuedStatus(run.status)}
                 selected={selectedQueuedRunIds.includes(run.id)}

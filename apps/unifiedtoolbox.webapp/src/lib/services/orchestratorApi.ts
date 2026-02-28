@@ -32,6 +32,18 @@ export interface OrchestrationRunCancelResult {
   message?: string
 }
 
+export interface OrchestrationRunRequeueResult {
+  run_id: string
+  status: string
+  requeued: boolean
+  message?: string
+}
+
+export interface ReleaseStaleLeasesResult {
+  released: number
+  run_ids: string[]
+}
+
 export interface BulkOrchestrationRunCancelResult {
   requested: number
   cancelled: number
@@ -45,6 +57,8 @@ export interface OrchestrationQueueLimits {
   max_queued: number
   running: number
   queued: number
+  dispatching?: number
+  stuck?: number
   available_slots: number
 }
 
@@ -210,6 +224,47 @@ export async function cancelOrchestrationRun(runId: string): Promise<Orchestrati
   return (await res.json()) as OrchestrationRunCancelResult
 }
 
+export async function forceCancelOrchestrationRun(runId: string): Promise<OrchestrationRunCancelResult> {
+  if (!API_BASE) throw new Error('API base not configured')
+  if (!runId?.trim()) throw new Error('Run ID is required to force-cancel orchestration run')
+
+  const res = await fetch(`${API_BASE}/api/runs/${encodeURIComponent(runId)}/cancel?force=1`, {
+    method: 'POST',
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => 'unknown error')
+    throw new OrchestratorApiHttpError(`Failed to force-cancel run (${res.status}): ${text}`, res.status)
+  }
+  return (await res.json()) as OrchestrationRunCancelResult
+}
+
+export async function requeueOrchestrationRun(runId: string): Promise<OrchestrationRunRequeueResult> {
+  if (!API_BASE) throw new Error('API base not configured')
+  if (!runId?.trim()) throw new Error('Run ID is required to requeue orchestration run')
+
+  const res = await fetch(`${API_BASE}/api/runs/${encodeURIComponent(runId)}/requeue`, {
+    method: 'POST',
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => 'unknown error')
+    throw new OrchestratorApiHttpError(`Failed to requeue run (${res.status}): ${text}`, res.status)
+  }
+  return (await res.json()) as OrchestrationRunRequeueResult
+}
+
+export async function releaseStaleRunLeases(): Promise<ReleaseStaleLeasesResult> {
+  if (!API_BASE) throw new Error('API base not configured')
+
+  const res = await fetch(`${API_BASE}/api/runs/release-stale-leases`, {
+    method: 'POST',
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => 'unknown error')
+    throw new OrchestratorApiHttpError(`Failed to release stale leases (${res.status}): ${text}`, res.status)
+  }
+  return (await res.json()) as ReleaseStaleLeasesResult
+}
+
 /**
  * Cancel multiple orchestration runs.
  */
@@ -295,6 +350,13 @@ function normalizeApiRun(raw: Record<string, unknown>): OrchestrationRun {
     goal: raw.goal ? String(raw.goal) : undefined,
     agents: Array.isArray(raw.agents) ? raw.agents.map(String) : [],
     status: String(raw.status || 'unknown'),
+    rawStatus: raw.raw_status ? String(raw.raw_status) : undefined,
+    heartbeatStale: Boolean(raw.heartbeat_stale),
+    lastHeartbeatAt: raw.last_heartbeat_at ? String(raw.last_heartbeat_at) : undefined,
+    lastEventAt: raw.last_event_at ? String(raw.last_event_at) : undefined,
+    currentAgent: raw.current_agent ? String(raw.current_agent) : undefined,
+    currentStage: raw.current_stage ? String(raw.current_stage) : undefined,
+    lease: (raw.lease as OrchestrationRun['lease']) ?? undefined,
     mode: raw.mode as 'executed' | 'simulated' | undefined,
     runMode: (raw.run_mode || 'default') as 'default' | 'codex-swarm' | 'multi-agent',
     requestedAt: raw.requested_at ? String(raw.requested_at) : undefined,

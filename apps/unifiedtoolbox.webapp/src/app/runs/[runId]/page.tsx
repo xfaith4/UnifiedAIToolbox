@@ -5,6 +5,7 @@ import Link from 'next/link'
 import {
   ORCHESTRATOR_API_BASE,
   cancelOrchestrationRun,
+  forceCancelOrchestrationRun,
   fetchOrchestrationRun,
   fetchOrchestrationRunLog,
 } from '@/lib/services/orchestratorApi'
@@ -132,6 +133,7 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
   const [reportFilter, setReportFilter] = useState('')
   const [findingsFilter, setFindingsFilter] = useState('')
   const [cancelPending, setCancelPending] = useState(false)
+  const [forceCancelPending, setForceCancelPending] = useState(false)
   const [cancelMessage, setCancelMessage] = useState<string | null>(null)
   const [cancelError, setCancelError] = useState<string | null>(null)
 
@@ -175,6 +177,7 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
       setCancelMessage(null)
       setCancelError(null)
       setCancelPending(false)
+      setForceCancelPending(false)
 
       if (!ORCHESTRATOR_API_BASE) {
         setError('Orchestrator API base is not configured.')
@@ -364,6 +367,26 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
     }
   }
 
+  const handleForceCancelOrchestrationRun = async () => {
+    setForceCancelPending(true)
+    setCancelError(null)
+    setCancelMessage(null)
+    try {
+      const result = await forceCancelOrchestrationRun(runId)
+      setCancelMessage(result.message || 'Force cancel completed.')
+      try {
+        const refreshed = await fetchOrchestrationRun(runId)
+        setOrchRun(refreshed)
+      } catch {
+        // Keep current state when refresh fails.
+      }
+    } catch (err) {
+      setCancelError(err instanceof Error ? err.message : 'Failed to force-cancel run.')
+    } finally {
+      setForceCancelPending(false)
+    }
+  }
+
   const renderArtifactLinks = (artifact?: ArtifactItem) => {
     if (!artifact) return null
     return (
@@ -385,11 +408,15 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
   // ── Orchestrator run fallback view ────────────────────────────────────────────
   if (!loading && orchRun) {
     const isError = orchRun.status?.startsWith('error') || orchRun.status === 'failed'
-    const isRunning = orchRun.status && !['completed', 'failed', 'cancelled'].includes(orchRun.status) && !isError
-    const canCancel = ['queued', 'pending', 'running', 'in_progress', 'awaiting_input', 'gating', 'awaiting_gate', 'starting']
+    const isRunning = orchRun.status && !['completed', 'failed', 'cancelled', 'stuck'].includes(orchRun.status) && !isError
+    const canCancel = ['queued', 'pending', 'dispatching', 'running', 'in_progress', 'awaiting_input', 'gating', 'awaiting_gate', 'starting']
+      .includes((orchRun.status ?? '').toLowerCase())
+    const canForceCancel = ['dispatching', 'running', 'in_progress', 'awaiting_input', 'gating', 'awaiting_gate', 'starting', 'stuck']
       .includes((orchRun.status ?? '').toLowerCase())
     const statusCls = orchRun.status === 'completed'
       ? 'border-emerald-700 bg-emerald-900/30 text-emerald-100'
+      : orchRun.status === 'stuck'
+        ? 'border-amber-700 bg-amber-900/30 text-amber-100'
       : isError
         ? 'border-rose-700 bg-rose-900/30 text-rose-100'
         : 'border-blue-700 bg-blue-900/30 text-blue-100'
@@ -443,9 +470,24 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
                 {cancelPending ? 'Cancelling…' : 'Cancel Run'}
               </button>
             )}
+            {canForceCancel && (
+              <button
+                type="button"
+                onClick={() => void handleForceCancelOrchestrationRun()}
+                disabled={forceCancelPending}
+                className="rounded border border-rose-700 bg-rose-950/60 px-2 py-1 text-xs text-rose-100 hover:bg-rose-900/60 disabled:opacity-50"
+              >
+                {forceCancelPending ? 'Force cancelling…' : 'Force Cancel'}
+              </button>
+            )}
             <span className="font-mono text-xs opacity-50">{orchRun.id.slice(0, 20)}</span>
           </div>
         </div>
+        {orchRun.heartbeatStale && (
+          <div className="rounded-xl border border-amber-700/50 bg-amber-950/30 px-3 py-2 text-xs text-amber-100">
+            STUCK (no heartbeat): worker lease expired. Use Force Cancel or Requeue.
+          </div>
+        )}
         {cancelMessage && (
           <div className="rounded-xl border border-amber-700/40 bg-amber-900/20 px-3 py-2 text-xs text-amber-100">
             {cancelMessage}
@@ -489,6 +531,18 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
               {orchRun.model}
             </div>
           )}
+          <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-3 text-xs text-slate-300">
+            <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Last Heartbeat</div>
+            {orchRun.lastHeartbeatAt ? new Date(orchRun.lastHeartbeatAt).toLocaleString() : '—'}
+          </div>
+          <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-3 text-xs text-slate-300">
+            <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Last Event</div>
+            {orchRun.lastEventAt ? new Date(orchRun.lastEventAt).toLocaleString() : '—'}
+          </div>
+          <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-3 text-xs text-slate-300">
+            <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Current Agent / Stage</div>
+            {orchRun.currentAgent ?? '—'} / {orchRun.currentStage ?? '—'}
+          </div>
         </div>
 
         {/* ── Phase 1 Verification ── */}

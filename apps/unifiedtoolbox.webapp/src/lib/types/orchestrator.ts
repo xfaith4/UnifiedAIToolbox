@@ -62,6 +62,21 @@ export interface OrchestrationRun {
   
   // Status and timing
   status?: string
+  rawStatus?: string
+  heartbeatStale?: boolean
+  lastHeartbeatAt?: string
+  lastEventAt?: string
+  currentAgent?: string
+  currentStage?: string
+  lease?: {
+    worker_id?: string
+    acquired_at?: string
+    heartbeat_at?: string
+    expires_at?: string
+    released_at?: string | null
+    release_reason?: string | null
+    ttl_seconds?: number
+  } | null
   requestedAt?: string
   startedAt?: string
   completedAt?: string

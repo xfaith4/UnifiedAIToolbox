@@ -1,6 +1,6 @@
 'use client'
 
-import { use, useMemo, useState } from 'react'
+import { use, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Activity, ArrowLeft, Network, RefreshCw } from 'lucide-react'
 import ActivityLog from '@/features/swarm-viz/components/ActivityLog'
@@ -8,6 +8,8 @@ import ControlPanel from '@/features/swarm-viz/components/ControlPanel'
 import SwarmCanvas from '@/features/swarm-viz/components/SwarmCanvas'
 import { useRunEvents } from '@/features/swarm-viz/hooks/useRunEvents'
 import { buildSwarmModel } from '@/features/swarm-viz/model/swarmModel'
+import { fetchOrchestrationRun } from '@/lib/services/orchestratorApi'
+import type { OrchestrationRun } from '@/lib/types/orchestrator'
 
 function safeDecode(value: string): string {
   try {
@@ -39,10 +41,24 @@ function statusBadge(status: string | undefined): string {
 export default function RunSwarmPage({ params }: { params: Promise<{ runId: string }> }) {
   const { runId: rawRunId } = use(params)
   const runId = safeDecode(rawRunId)
+  const [runSummary, setRunSummary] = useState<OrchestrationRun | null>(null)
 
   const { events, runStatus, loading, error, connectionStatus, lastEventTs, reconnectCount, refresh } = useRunEvents(runId, {
     limit: 600,
   })
+  useEffect(() => {
+    let active = true
+    void fetchOrchestrationRun(runId)
+      .then((run) => {
+        if (active) setRunSummary(run)
+      })
+      .catch(() => {
+        if (active) setRunSummary(null)
+      })
+    return () => {
+      active = false
+    }
+  }, [runId])
 
   const model = useMemo(() => buildSwarmModel(events, runStatus), [events, runStatus])
 
@@ -129,8 +145,8 @@ export default function RunSwarmPage({ params }: { params: Promise<{ runId: stri
         </div>
 
         <div className="flex flex-wrap items-center gap-2 text-xs">
-          <span className={`rounded-full border px-2.5 py-1 font-medium ${statusBadge(runStatus?.status)}`}>
-            {runStatus?.status || 'unknown'}
+          <span className={`rounded-full border px-2.5 py-1 font-medium ${statusBadge(runSummary?.status || runStatus?.status)}`}>
+            {runSummary?.status || runStatus?.status || 'unknown'}
           </span>
           <span className="rounded-full border border-slate-700 bg-slate-900 px-2.5 py-1 text-slate-200">
             events: {events.length}
@@ -156,7 +172,7 @@ export default function RunSwarmPage({ params }: { params: Promise<{ runId: stri
         <ControlPanel
           connectionStatus={connectionStatus}
           loading={loading}
-          error={error}
+          error={runSummary ? null : error}
           reconnectCount={reconnectCount}
           lastEventTs={lastEventTs}
           showCompleted={showCompleted}
@@ -178,6 +194,11 @@ export default function RunSwarmPage({ params }: { params: Promise<{ runId: stri
         />
 
         <div className="flex min-h-0 flex-col gap-4">
+          {error && (
+            <div className="rounded-xl border border-amber-700/50 bg-amber-950/20 px-3 py-2 text-xs text-amber-200">
+              Events unavailable. Showing run summary with agents marked as not started until telemetry returns.
+            </div>
+          )}
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="rounded-xl border border-slate-800 bg-slate-900/55 px-3 py-2 text-xs text-slate-300">
               <div className="flex items-center gap-1 text-[11px] uppercase tracking-wide text-slate-500">
@@ -192,13 +213,13 @@ export default function RunSwarmPage({ params }: { params: Promise<{ runId: stri
                 Started
               </div>
               <div className="mt-1 text-sm font-medium text-slate-100">
-                {runStatus?.startedAt ? new Date(runStatus.startedAt).toLocaleString() : '—'}
+                {(runSummary?.startedAt || runStatus?.startedAt) ? new Date(runSummary?.startedAt || runStatus?.startedAt || '').toLocaleString() : '—'}
               </div>
             </div>
             <div className="rounded-xl border border-slate-800 bg-slate-900/55 px-3 py-2 text-xs text-slate-300">
               <div className="flex items-center gap-1 text-[11px] uppercase tracking-wide text-slate-500">Updated</div>
               <div className="mt-1 text-sm font-medium text-slate-100">
-                {runStatus?.updatedAt ? new Date(runStatus.updatedAt).toLocaleString() : '—'}
+                {(runSummary?.lastEventAt || runStatus?.updatedAt) ? new Date(runSummary?.lastEventAt || runStatus?.updatedAt || '').toLocaleString() : '—'}
               </div>
             </div>
           </div>
