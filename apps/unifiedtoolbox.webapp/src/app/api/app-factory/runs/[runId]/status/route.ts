@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { isValidRunId, loadRunStatus } from '@/lib/app-factory/runs/runStatus'
+import { fetchOrchestratorRunStatus } from '@/lib/app-factory/runs/orchestratorFallback'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -40,11 +41,34 @@ export async function GET(
   }
 
   try {
+    // Primary lookup: filesystem (App Factory runs)
     const status = await loadRunStatus(runId)
-    if (!status) {
-      return NextResponse.json({ error: { code: 'RUN_NOT_FOUND', message: `Run not found: ${runId}` } }, { status: 404 })
+    if (status) {
+      if (process.env.NODE_ENV === 'development') {
+        console.debug(`[status] resolved ${runId} from filesystem`)
+      }
+      return NextResponse.json(status, {
+        status: 200,
+        headers: { 'X-Run-Source': 'app-factory' },
+      })
     }
-    return NextResponse.json(status, { status: 200 })
+
+    // Fallback: orchestrator API (Concierge runs)
+    const orchStatus = await fetchOrchestratorRunStatus(runId)
+    if (orchStatus) {
+      if (process.env.NODE_ENV === 'development') {
+        console.debug(`[status] resolved ${runId} from orchestrator fallback`)
+      }
+      return NextResponse.json(orchStatus, {
+        status: 200,
+        headers: { 'X-Run-Source': 'orchestrator' },
+      })
+    }
+
+    return NextResponse.json(
+      { error: { code: 'RUN_NOT_FOUND', message: `Run not found: ${runId}` } },
+      { status: 404 }
+    )
   } catch (err) {
     return NextResponse.json(
       { error: { code: 'STATUS_READ_FAILED', message: 'Failed to read run status', details: err instanceof Error ? err.message : String(err) } },

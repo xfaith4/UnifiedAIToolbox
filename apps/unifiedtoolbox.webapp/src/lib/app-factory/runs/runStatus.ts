@@ -87,9 +87,11 @@ async function readTailLines(filePath: string, maxLines: number): Promise<string
 function normalizeState(raw?: string): 'queued' | 'running' | 'succeeded' | 'failed' {
   const value = String(raw || '').toLowerCase()
   if (['queued', 'pending'].includes(value)) return 'queued'
-  if (['running', 'in_progress', 'active'].includes(value)) return 'running'
+  // dispatching = worker assigned but not yet processing → treat as running
+  if (['running', 'in_progress', 'active', 'dispatching', 'gating', 'awaiting_gate', 'awaiting_input', 'starting'].includes(value)) return 'running'
   if (['succeeded', 'success', 'passed', 'completed', 'done'].includes(value)) return 'succeeded'
-  if (['failed', 'error', 'cancelled', 'canceled'].includes(value)) return 'failed'
+  // stuck + cancelled are terminal failures
+  if (['failed', 'error', 'cancelled', 'canceled', 'stuck'].includes(value)) return 'failed'
   return 'running'
 }
 

@@ -1,0 +1,26 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "webapp",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3000,
+      "cwd": "apps/unifiedtoolbox.webapp"
+    },
+    {
+      "name": "prompt-api",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["app.py"],
+      "port": 8000,
+      "cwd": "apps/UnifiedPromptApp/services/prompt-api"
+    },
+    {
+      "name": "demo",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8765", "--bind", "127.0.0.1"],
+      "port": 8765,
+      "cwd": "."
+    }
+  ]
+}

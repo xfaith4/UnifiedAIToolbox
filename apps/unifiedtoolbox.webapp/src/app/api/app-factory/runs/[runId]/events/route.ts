@@ -4,6 +4,7 @@ import { promises as fs } from 'fs'
 import { getRunsRoot, isValidRunId } from '@/lib/app-factory/runs/runStatus'
 import { getBufferedEvents, subscribeRunEvents, type RunStreamEvent } from '@/lib/app-factory/runs/runEvents'
 import { normalizeRuntimeEvent, parseNdjsonChunk } from '@/lib/app-factory/runs/runtimeEventUtils'
+import { fetchOrchestratorRunEvents } from '@/lib/app-factory/runs/orchestratorFallback'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -140,15 +141,6 @@ export async function GET(req: Request, { params }: { params: { runId: string } 
     return NextResponse.json({ error: { code: 'INVALID_RUN_ID', message: 'Invalid runId' } }, { status: 400 })
   }
 
-  const runsRoot = getRunsRoot()
-  const runDir = path.join(runsRoot, runId)
-  try {
-    const stat = await fs.stat(runDir)
-    if (!stat.isDirectory()) throw new Error('not a directory')
-  } catch {
-    return NextResponse.json({ error: { code: 'RUN_NOT_FOUND', message: `Run not found: ${runId}` } }, { status: 404 })
-  }
-
   const url = new URL(req.url)
   const since = url.searchParams.get('since')
   const limitParam = url.searchParams.get('limit')
@@ -157,6 +149,57 @@ export async function GET(req: Request, { params }: { params: { runId: string } 
   const wantsSse = accept.includes('text/event-stream') || url.searchParams.get('stream') === '1'
   const offsetParam = url.searchParams.get('offset')
   const offset = offsetParam != null ? Math.max(0, Number.parseInt(offsetParam, 10) || 0) : null
+
+  const runsRoot = getRunsRoot()
+  const runDir = path.join(runsRoot, runId)
+  let runDirExists = false
+  try {
+    const stat = await fs.stat(runDir)
+    runDirExists = stat.isDirectory()
+  } catch {
+    runDirExists = false
+  }
+
+  // Fallback: if no filesystem run directory, proxy events from the orchestrator API
+  if (!runDirExists) {
+    const orchEvents = await fetchOrchestratorRunEvents(runId, since)
+
+    if (process.env.NODE_ENV === 'development') {
+      console.debug(`[events] resolved ${runId} from orchestrator fallback (${orchEvents.length} events)`)
+    }
+
+    if (!wantsSse) {
+      const cursor = orchEvents.length ? orchEvents[orchEvents.length - 1].ts ?? null : null
+      return NextResponse.json(
+        { runId, events: orchEvents, cursor, source: 'orchestrator' },
+        { status: 200, headers: { 'X-Run-Source': 'orchestrator' } }
+      )
+    }
+
+    // SSE mode with orchestrator fallback: emit buffered events then heartbeat
+    const encoder = new TextEncoder()
+    const orchStream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode(': connected-orchestrator-fallback\n\n'))
+        for (const event of orchEvents) {
+          const frame = `id: ${event.ts}\nevent: run\ndata: ${JSON.stringify(event)}\n\n`
+          controller.enqueue(encoder.encode(frame))
+        }
+        // No live subscription available for orchestrator — send heartbeat and close
+        controller.enqueue(encoder.encode(`event: heartbeat\ndata: {"ts":"${new Date().toISOString()}","runId":"${runId}","source":"orchestrator"}\n\n`))
+        controller.close()
+      },
+    })
+    return new Response(orchStream, {
+      headers: {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
+        'X-Run-Source': 'orchestrator',
+      },
+    })
+  }
 
   if (!wantsSse && offset != null) {
     const ndjsonPath = path.join(runDir, 'events.ndjson')

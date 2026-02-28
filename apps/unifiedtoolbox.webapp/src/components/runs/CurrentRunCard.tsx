@@ -23,6 +23,25 @@ import { updateRunContextStatus } from '@/lib/services/runContextStore'
 import { fetchOrchestrationRun, isOrchestratorApiHttpError } from '@/lib/services/orchestratorApi'
 import { TERMINAL_RUN_STATUSES } from '@/lib/services/conciergeRunService'
 
+// ── App Factory run detection ─────────────────────────────────────────────────
+// App Factory runs use filesystem-backed storage; detected by ID prefix.
+// They are polled via /api/app-factory/runs/{runId}/status instead of the
+// external orchestrator API.
+
+function isAppFactoryRunId(runId: string): boolean {
+  return runId.startsWith('maint-')
+}
+
+async function fetchAppFactoryStatus(runId: string): Promise<{ status: string; currentStage?: string | null } | null> {
+  const res = await fetch(`/api/app-factory/runs/${encodeURIComponent(runId)}/status`, { cache: 'no-store' })
+  if (!res.ok) return null
+  const json = (await res.json()) as Record<string, unknown>
+  return {
+    status: String(json.status ?? 'unknown'),
+    currentStage: json.currentStage != null ? String(json.currentStage) : null,
+  }
+}
+
 // ── Status display config ─────────────────────────────────────────────────────
 
 type StatusConfig = { label: string; cls: string; icon: React.ReactNode }
@@ -163,33 +182,44 @@ export default function CurrentRunCard({
     if (!safeRunId) return
 
     try {
-      const run = await fetchOrchestrationRun(safeRunId)
-      if (!run.status) return
+      let next: string
+      let completedAt: string | undefined
+      let phase: string | undefined
 
-      const next = run.status
+      if (isAppFactoryRunId(safeRunId)) {
+        // App Factory runs: poll the canonical status route
+        const afStatus = await fetchAppFactoryStatus(safeRunId)
+        if (!afStatus) return
+        // Map App Factory terminal 'succeeded' to 'completed' for display
+        next = afStatus.status === 'succeeded' ? 'completed' : afStatus.status
+        if (afStatus.currentStage) phase = afStatus.currentStage
+      } else {
+        // Orchestrator/Concierge runs: poll the external orchestrator API
+        const run = await fetchOrchestrationRun(safeRunId)
+        if (!run.status) return
+        next = run.status
+        completedAt = run.completedAt
+
+        // Extract current phase from the latest status/phase event
+        const events = run.events ?? []
+        const lastPhaseEv = [...events]
+          .reverse()
+          .find((e) => e.message?.toLowerCase().includes('phase') || e.type === 'status')
+        if (lastPhaseEv) {
+          const m = lastPhaseEv.message.match(/(?:phase|Phase)[:\s]+(\w+)/i)
+          if (m?.[1]) phase = m[1]
+        }
+      }
+
       if (next !== liveStatus) {
         setLiveStatus(next)
         updateRunContextStatus(safeRunId, next)
         onStatusChange?.(next)
       }
+      if (completedAt) setEndedAt(completedAt)
+      if (phase) setCurrentPhase(phase)
 
-      if (run.completedAt) setEndedAt(run.completedAt)
-
-      // Extract current phase from the latest status/phase event
-      const events = run.events ?? []
-      const lastPhaseEv = [...events]
-        .reverse()
-        .find(
-          (e) =>
-            e.message?.toLowerCase().includes('phase') ||
-            e.type === 'status'
-        )
-      if (lastPhaseEv) {
-        const m = lastPhaseEv.message.match(/(?:phase|Phase)[:\s]+(\w+)/i)
-        if (m?.[1]) setCurrentPhase(m[1])
-      }
-
-      if (TERMINAL_RUN_STATUSES.has(next)) {
+      if (TERMINAL_RUN_STATUSES.has(next) || next === 'succeeded') {
         if (pollRef.current) {
           clearInterval(pollRef.current)
           pollRef.current = null
