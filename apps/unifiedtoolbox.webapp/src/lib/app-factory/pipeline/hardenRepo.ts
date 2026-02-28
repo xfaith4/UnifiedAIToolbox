@@ -87,86 +87,172 @@ export async function hardenRepo(options: {
   const repoDir = path.join(options.workRootDir, 'runs', runId, 'repo')
   await fs.mkdir(repoDir, { recursive: true })
 
-  const emit = async (event: Parameters<typeof emitRunEvent>[0]) => {
+  type EmitInput = Omit<Parameters<typeof emitRunEvent>[0], 'runId'>
+  const emit = async (event: EmitInput) => {
     const sender = options.onEvent || emitRunEvent
     await sender({ ...event, runId })
   }
 
-  await emit({ phase: 'run', status: 'running', message: 'Hardening run started' })
+  const emitStage = async (stage: string, type: string, msg: string, data?: Record<string, unknown>, level?: 'debug' | 'info' | 'warn' | 'error') => {
+    await emit({
+      phase: stage,
+      stage,
+      type,
+      level: level || (type === 'error' ? 'error' : type === 'warn' ? 'warn' : 'info'),
+      message: msg,
+      msg,
+      data,
+    })
+  }
+
+  const withProgressPulse = async <T>(
+    stage: string,
+    step: string,
+    task: () => Promise<T>,
+    pulseMs = 5000
+  ): Promise<T> => {
+    const startedAt = Date.now()
+    let timer: NodeJS.Timeout | null = null
+    try {
+      timer = setInterval(() => {
+        void emitStage(stage, 'step.progress', `${step} in progress`, { elapsed_ms: Date.now() - startedAt, step })
+      }, pulseMs)
+      return await task()
+    } finally {
+      if (timer) clearInterval(timer)
+    }
+  }
+
+  await emitStage('agents', 'stage.start', 'Hardening run started')
 
   let parallelPrepare: ParallelPrepareResult | null = null
   if (parallelEnabled) {
     const planned = planArtifactWrites(repoDir, options.artifacts)
     parallelPrepare = await prepareParallelArtifacts(repoDir, planned)
-    await ingestArtifacts(repoDir, parallelPrepare.selectedArtifacts, { plannedWrites: planArtifactWrites(repoDir, parallelPrepare.selectedArtifacts) })
+    await emitStage('agents', 'step.start', 'Ingesting selected artifacts', {
+      selected_artifacts: parallelPrepare.selectedArtifacts.length,
+      total_artifacts: options.artifacts.length,
+    })
+    await ingestArtifacts(repoDir, parallelPrepare.selectedArtifacts, {
+      plannedWrites: planArtifactWrites(repoDir, parallelPrepare.selectedArtifacts),
+      onProgress: async (progress) => {
+        await emitStage('agents', 'step.progress', 'Applying exclusions and writing artifacts', {
+          files_scanned: progress.processed,
+          files_total: progress.total,
+          files_excluded: progress.skipped,
+          files_written: progress.written,
+          files_errors: progress.errors,
+        })
+      },
+    })
   } else {
-    await ingestArtifacts(repoDir, options.artifacts)
+    await emitStage('agents', 'step.start', 'Ingesting artifacts', { total_artifacts: options.artifacts.length })
+    await ingestArtifacts(repoDir, options.artifacts, {
+      onProgress: async (progress) => {
+        await emitStage('agents', 'step.progress', 'Applying exclusions and writing artifacts', {
+          files_scanned: progress.processed,
+          files_total: progress.total,
+          files_excluded: progress.skipped,
+          files_written: progress.written,
+          files_errors: progress.errors,
+        })
+      },
+    })
   }
-  await emit({ phase: 'artifacts', status: 'success', message: 'Artifacts ingested', details: { artifactCount: options.artifacts.length } })
+  await emitStage('agents', 'step.complete', 'Artifacts ingested', { artifact_count: options.artifacts.length })
 
   const timings: HardenRepoResult['timings'] = {}
   {
     const startedAt = new Date().toISOString()
-    await emit({ phase: 'assemble', status: 'running', agent: 'Engineer', message: 'Assemble started' })
-    await assembleRepo(repoDir, options.contract)
-    await writeAppFactoryMetadata({ repoDir, runId, contract: options.contract })
+    await emitStage('assemble', 'stage.start', 'Assemble started', { agent: 'Engineer' })
+    await withProgressPulse('assemble', 'Scaffolding repository', async () => {
+      await assembleRepo(repoDir, options.contract)
+      await writeAppFactoryMetadata({ repoDir, runId, contract: options.contract })
+    })
     const endedAt = new Date().toISOString()
     timings.assemble = { startedAt, endedAt }
-    await emit({ phase: 'assemble', status: 'success', agent: 'Engineer', message: 'Assemble completed' })
-    await emit({ phase: 'artifacts', status: 'success', message: 'Artifact created', details: { file: 'ASSEMBLY_REPORT.md' } })
+    await emitStage('assemble', 'stage.complete', 'Assemble completed', { agent: 'Engineer' })
+    await emitStage('assemble', 'artifact.created', 'Artifact created', { path: 'ASSEMBLY_REPORT.md' })
   }
 
   let normalization: NormalizeRepoResult
   {
     const startedAt = new Date().toISOString()
-    await emit({ phase: 'normalize', status: 'running', agent: 'Critic', message: 'Normalization started' })
-    normalization = await normalizeRepo(repoDir, options.contract)
+    await emitStage('normalize', 'stage.start', 'Normalization started', { agent: 'Critic' })
+    normalization = await withProgressPulse('normalize', 'Normalizing generated files', async () =>
+      normalizeRepo(repoDir, options.contract)
+    )
     const endedAt = new Date().toISOString()
     timings.normalize = { startedAt, endedAt }
-    await emit({ phase: 'normalize', status: normalization.violations.length === 0 ? 'success' : 'failed', agent: 'Critic', message: normalization.violations.length === 0 ? 'Normalization passed' : 'Normalization reported violations', details: { violations: normalization.violations.length } })
-    await emit({ phase: 'artifacts', status: 'success', message: 'Artifact created', details: { file: 'NORMALIZATION_REPORT.md' } })
+    await emitStage(
+      'normalize',
+      normalization.violations.length === 0 ? 'stage.complete' : 'error',
+      normalization.violations.length === 0 ? 'Normalization passed' : 'Normalization reported violations',
+      { violations: normalization.violations.length, agent: 'Critic' },
+      normalization.violations.length === 0 ? 'info' : 'error'
+    )
+    await emitStage('normalize', 'artifact.created', 'Artifact created', { path: 'NORMALIZATION_REPORT.md' })
   }
 
   let contractEval: RepoContractEvaluation
   {
     const startedAt = new Date().toISOString()
-    await emit({ phase: 'contract', status: 'running', agent: 'Supervisor', message: 'Contract evaluation started' })
-    contractEval = await evaluateRepoContract(repoDir, options.contract)
+    await emitStage('contract', 'stage.start', 'Contract evaluation started', { agent: 'Supervisor' })
+    contractEval = await withProgressPulse('contract', 'Evaluating repo contract', async () =>
+      evaluateRepoContract(repoDir, options.contract)
+    )
     const endedAt = new Date().toISOString()
     timings.contract = { startedAt, endedAt }
-    await emit({ phase: 'contract', status: contractEval.passed ? 'success' : 'failed', agent: 'Supervisor', message: contractEval.passed ? 'Contract checks passed' : 'Contract checks failed', details: { failures: contractEval.failures.length } })
-    await emit({ phase: 'artifacts', status: 'success', message: 'Artifact created', details: { file: 'REPO_CONTRACT.json' } })
+    await emitStage(
+      'contract',
+      contractEval.passed ? 'stage.complete' : 'error',
+      contractEval.passed ? 'Contract checks passed' : 'Contract checks failed',
+      { failures: contractEval.failures.length, agent: 'Supervisor' },
+      contractEval.passed ? 'info' : 'error'
+    )
+    await emitStage('contract', 'artifact.created', 'Artifact created', { path: 'REPO_CONTRACT.json' })
   }
 
   let gateReport: GateReport
   {
     const startedAt = new Date().toISOString()
-    await emit({ phase: 'gates', status: 'running', agent: 'Commissioner', message: 'Gate checks started' })
+    await emitStage('gates', 'stage.start', 'Gate checks started', { agent: 'Commissioner' })
     const canRunGatesNow = normalization.violations.length === 0 && contractEval.passed
     gateReport = canRunGatesNow
-      ? await runGates(repoDir, options.contract, {
-          gateTimeoutSeconds: cfg.gateTimeoutSeconds,
-          bootTimeoutSeconds: cfg.bootTimeoutSeconds,
-          healthPollIntervalMs: cfg.healthPollIntervalMs,
-        })
+      ? await withProgressPulse('gates', 'Running gate commands', async () =>
+          runGates(repoDir, options.contract, {
+            gateTimeoutSeconds: cfg.gateTimeoutSeconds,
+            bootTimeoutSeconds: cfg.bootTimeoutSeconds,
+            healthPollIntervalMs: cfg.healthPollIntervalMs,
+          })
+        )
       : await writeSkippedGateReport(
           repoDir,
           normalization.violations.length > 0 ? 'Skipped: normalization violations present' : 'Skipped: contract failed'
         )
     const endedAt = new Date().toISOString()
     timings.gates = { startedAt, endedAt }
-    await emit({ phase: 'gates', status: gateReport.passed ? 'success' : gateReport.steps.every((step) => step.status === 'skipped') ? 'skipped' : 'failed', agent: 'Commissioner', message: gateReport.passed ? 'Gate checks passed' : 'Gate checks failed or skipped', details: { skippedReason: gateReport.steps.find((step) => step.status === 'skipped')?.message } })
-    await emit({ phase: 'artifacts', status: 'success', message: 'Artifact created', details: { file: 'GATE_REPORT.md' } })
+    await emitStage(
+      'gates',
+      gateReport.passed ? 'stage.complete' : gateReport.steps.every((step) => step.status === 'skipped') ? 'warn' : 'error',
+      gateReport.passed ? 'Gate checks passed' : 'Gate checks failed or skipped',
+      {
+        skipped_reason: gateReport.steps.find((step) => step.status === 'skipped')?.message,
+        agent: 'Commissioner',
+      },
+      gateReport.passed ? 'info' : gateReport.steps.every((step) => step.status === 'skipped') ? 'warn' : 'error'
+    )
+    await emitStage('gates', 'artifact.created', 'Artifact created', { path: 'GATE_REPORT.md' })
   }
 
   let decisionLock: DecisionLockResult | null = null
   if (parallelEnabled) {
     const startedAt = new Date().toISOString()
-    await emit({ phase: 'decision-lock', status: 'running', agent: 'Supervisor', message: 'Decision lock started' })
+    await emitStage('contract', 'step.start', 'Decision lock started', { agent: 'Supervisor' })
     decisionLock = await runDecisionLock(repoDir, options.contract)
     const endedAt = new Date().toISOString()
     timings.decisionLock = { startedAt, endedAt }
-    await emit({ phase: 'decision-lock', status: 'success', agent: 'Supervisor', message: 'Decision lock completed' })
+    await emitStage('contract', 'step.complete', 'Decision lock completed', { agent: 'Supervisor' })
   }
 
   // Deterministic repair: attempt to fix common contract failures without an API key.
@@ -176,7 +262,7 @@ export async function hardenRepo(options: {
     const detRepairStart = new Date().toISOString()
     const detResult = await runDeterministicRepair(repoDir, options.contract, contractEval)
     if (detResult.fixed) {
-      await emit({ phase: 'repair', status: 'running', agent: 'Synthesizer', message: `Deterministic repair: ${detResult.notes.join('; ')}` })
+      await emitStage('repair', 'step.start', `Deterministic repair: ${detResult.notes.join('; ')}`, { agent: 'Synthesizer' })
       normalization = await normalizeRepo(repoDir, options.contract)
       contractEval = await evaluateRepoContract(repoDir, options.contract)
       const canRunGatesNowDet = normalization.violations.length === 0 && contractEval.passed
@@ -192,14 +278,19 @@ export async function hardenRepo(options: {
           )
       timings.repair = { startedAt: detRepairStart, endedAt: new Date().toISOString() }
       const detAllPassed = normalization.violations.length === 0 && contractEval.passed && gateReport.passed
-      await emit({ phase: 'repair', status: detAllPassed ? 'success' : 'running', agent: 'Synthesizer', message: detAllPassed ? 'Deterministic repair resolved all issues' : 'Deterministic repair applied; remaining issues may need LLM repair' })
+      await emitStage(
+        'repair',
+        detAllPassed ? 'step.complete' : 'step.progress',
+        detAllPassed ? 'Deterministic repair resolved all issues' : 'Deterministic repair applied; remaining issues may need LLM repair',
+        { agent: 'Synthesizer' }
+      )
     }
   }
 
   const parallelPassed = !parallelEnabled || Boolean(parallelPrepare?.passed)
   if (normalization.violations.length === 0 && contractEval.passed && gateReport.passed && parallelPassed) {
     await removeGitDir(repoDir)
-    await emit({ phase: 'run', status: 'success', message: 'Hardening run completed successfully' })
+    await emitStage('agents', 'stage.complete', 'Hardening run completed successfully')
     await writeRunDiagnosticsBundle({
       repoDir,
       runId,
@@ -238,7 +329,7 @@ export async function hardenRepo(options: {
   }
 
   if (parallelEnabled && parallelPrepare && !parallelPrepare.passed) {
-    await emit({ phase: 'teams', status: 'failed', agent: 'Supervisor', message: 'Parallel ownership/conflict checks failed' })
+    await emitStage('agents', 'error', 'Parallel ownership/conflict checks failed', { agent: 'Supervisor' }, 'error')
     await fs.writeFile(
       path.join(repoDir, 'PATCHLOG.md'),
       '# Patch Log\n\nRepair loop skipped: parallel teams ownership/conflict checks failed.\nSee `OWNERSHIP_REPORT.md` and `ASSEMBLER_REPORT.md`.\n',
@@ -247,14 +338,14 @@ export async function hardenRepo(options: {
   }
 
   if (!cfg.apiKey) {
-    await emit({ phase: 'repair', status: 'failed', agent: 'Synthesizer', message: 'Repair loop skipped: missing API key' })
+    await emitStage('repair', 'error', 'Repair loop skipped: missing API key', { agent: 'Synthesizer' }, 'error')
     await fs.writeFile(
       path.join(repoDir, 'PATCHLOG.md'),
       '# Patch Log\n\nRepair loop skipped: missing OpenAI API key for fixer.\nSet `OPENAI_API_KEY` (recommended) or `NEXT_PUBLIC_OPENAI_API_KEY`.\n',
       'utf8'
     )
     await removeGitDir(repoDir)
-    await emit({ phase: 'run', status: 'failed', message: 'Hardening run failed before repair' })
+    await emitStage('agents', 'error', 'Hardening run failed before repair', undefined, 'error')
     await writeRunDiagnosticsBundle({
       repoDir,
       runId,
@@ -296,7 +387,7 @@ export async function hardenRepo(options: {
 
   if (parallelEnabled && parallelPrepare && !parallelPrepare.passed) {
     await removeGitDir(repoDir)
-    await emit({ phase: 'run', status: 'success', message: 'Hardening run completed successfully' })
+    await emitStage('agents', 'error', 'Hardening run failed due to parallel ownership/conflict checks', undefined, 'error')
     await writeRunDiagnosticsBundle({
       repoDir,
       runId,
@@ -333,39 +424,47 @@ export async function hardenRepo(options: {
   }
 
   const repairStartedAt = new Date().toISOString()
-  await emit({ phase: 'repair', status: 'running', agent: 'Synthesizer', message: 'Repair loop started' })
-  const repair = await repairLoop({
-    repoDir,
-    contract: options.contract,
-    normalization,
-    contractEval,
-    gateReport,
-    config: { maxRepairCycles: cfg.maxRepairCycles, model: cfg.fixerModel, apiKey: cfg.apiKey },
-    onEvent: async (event) => {
-      await emit({ ...event })
-    },
-    onCycle: async (cycle) => {
-      await emit({ phase: 'repair', status: 'running', agent: 'Synthesizer', message: `Repair cycle ${cycle} running` })
-      const newNormalization = await normalizeRepo(repoDir, options.contract)
-      const newContractEval = await evaluateRepoContract(repoDir, options.contract)
-      const canRunGates = newNormalization.violations.length === 0 && newContractEval.passed
-      const newGateReport = canRunGates
-        ? await runGates(repoDir, options.contract, {
-            gateTimeoutSeconds: cfg.gateTimeoutSeconds,
-            bootTimeoutSeconds: cfg.bootTimeoutSeconds,
-            healthPollIntervalMs: cfg.healthPollIntervalMs,
-          })
-        : await writeSkippedGateReport(
-            repoDir,
-            newNormalization.violations.length > 0 ? 'Skipped: normalization violations present' : 'Skipped: contract failed'
-          )
-      return { normalization: newNormalization, contractEval: newContractEval, gateReport: newGateReport }
-    },
-  })
+  await emitStage('repair', 'stage.start', 'Repair loop started', { agent: 'Synthesizer' })
+  const repair = await withProgressPulse('repair', 'Repair loop active', async () =>
+    repairLoop({
+      repoDir,
+      contract: options.contract,
+      normalization,
+      contractEval,
+      gateReport,
+      config: { maxRepairCycles: cfg.maxRepairCycles, model: cfg.fixerModel, apiKey: cfg.apiKey! },
+      onEvent: async (event) => {
+        await emit({ ...event })
+      },
+      onCycle: async (cycle) => {
+        await emit({ phase: 'repair', status: 'running', agent: 'Synthesizer', message: `Repair cycle ${cycle} running` })
+        const newNormalization = await normalizeRepo(repoDir, options.contract)
+        const newContractEval = await evaluateRepoContract(repoDir, options.contract)
+        const canRunGates = newNormalization.violations.length === 0 && newContractEval.passed
+        const newGateReport = canRunGates
+          ? await runGates(repoDir, options.contract, {
+              gateTimeoutSeconds: cfg.gateTimeoutSeconds,
+              bootTimeoutSeconds: cfg.bootTimeoutSeconds,
+              healthPollIntervalMs: cfg.healthPollIntervalMs,
+            })
+          : await writeSkippedGateReport(
+              repoDir,
+              newNormalization.violations.length > 0 ? 'Skipped: normalization violations present' : 'Skipped: contract failed'
+            )
+        return { normalization: newNormalization, contractEval: newContractEval, gateReport: newGateReport }
+      },
+    })
+  )
   const repairEndedAt = new Date().toISOString()
   timings.repair = { startedAt: repairStartedAt, endedAt: repairEndedAt }
-  await emit({ phase: 'repair', status: repair.attemptedCycles > 0 ? 'success' : 'skipped', agent: 'Synthesizer', message: `Repair loop finished after ${repair.attemptedCycles} cycle(s)` })
-  await emit({ phase: 'artifacts', status: 'success', message: 'Artifact created', details: { file: 'PATCHLOG.md' } })
+  await emitStage(
+    'repair',
+    repair.attemptedCycles > 0 ? 'stage.complete' : 'warn',
+    `Repair loop finished after ${repair.attemptedCycles} cycle(s)`,
+    { agent: 'Synthesizer', pass: repair.attemptedCycles, total_passes: cfg.maxRepairCycles },
+    repair.attemptedCycles > 0 ? 'info' : 'warn'
+  )
+  await emitStage('repair', 'artifact.created', 'Artifact created', { path: 'PATCHLOG.md' })
 
   normalization = await normalizeRepo(repoDir, options.contract)
   contractEval = await evaluateRepoContract(repoDir, options.contract)
@@ -386,7 +485,13 @@ export async function hardenRepo(options: {
   await removeGitDir(repoDir)
 
   const passed = normalization.violations.length === 0 && contractEval.passed && gateReport.passed
-  await emit({ phase: 'run', status: passed ? 'success' : 'failed', message: passed ? 'Hardening run completed successfully' : 'Hardening run finished with blockers' })
+  await emitStage(
+    'agents',
+    passed ? 'stage.complete' : 'error',
+    passed ? 'Hardening run completed successfully' : 'Hardening run finished with blockers',
+    undefined,
+    passed ? 'info' : 'error'
+  )
   await writeRunDiagnosticsBundle({
     repoDir,
     runId,

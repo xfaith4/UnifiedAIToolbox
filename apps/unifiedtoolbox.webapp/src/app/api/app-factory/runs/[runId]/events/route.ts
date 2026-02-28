@@ -3,6 +3,7 @@ import path from 'path'
 import { promises as fs } from 'fs'
 import { getRunsRoot, isValidRunId } from '@/lib/app-factory/runs/runStatus'
 import { getBufferedEvents, subscribeRunEvents, type RunStreamEvent } from '@/lib/app-factory/runs/runEvents'
+import { normalizeRuntimeEvent, parseNdjsonChunk } from '@/lib/app-factory/runs/runtimeEventUtils'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -60,18 +61,29 @@ async function readTailLines(filePath: string, maxLines: number): Promise<string
   return lines.slice(-maxLines)
 }
 
-function parseEvent(line: string, runId: string): RunStreamEvent {
+async function readFileChunk(filePath: string, offset: number): Promise<{ text: string; nextOffset: number }> {
+  const stat = await fs.stat(filePath)
+  const safeOffset = Math.max(0, Math.min(offset, stat.size))
+  const bytesToRead = stat.size - safeOffset
+  if (bytesToRead <= 0) return { text: '', nextOffset: stat.size }
+  const fd = await fs.open(filePath, 'r')
+  const buffer = Buffer.alloc(bytesToRead)
   try {
-    const parsed = JSON.parse(line) as RunStreamEvent
-    return {
-      ...parsed,
-      runId: parsed.runId || runId,
-      ts: parsed.ts || new Date().toISOString(),
-      message: parsed.message || 'event',
-    }
-  } catch {
-    return { ts: new Date().toISOString(), runId, type: 'info', message: line }
+    await fd.read(buffer, 0, bytesToRead, safeOffset)
+  } finally {
+    await fd.close()
   }
+  return { text: buffer.toString('utf8'), nextOffset: stat.size }
+}
+
+function parseEvent(line: string, runId: string): RunStreamEvent {
+  return normalizeRuntimeEvent((() => {
+    try {
+      return JSON.parse(line)
+    } catch {
+      return line
+    }
+  })(), runId) as RunStreamEvent
 }
 
 async function loadHistoryEvents(runDir: string, runId: string, limit: number, since?: string | null): Promise<RunStreamEvent[]> {
@@ -143,6 +155,19 @@ export async function GET(req: Request, { params }: { params: { runId: string } 
   const limit = limitParam ? Math.max(1, Number.parseInt(limitParam, 10) || DEFAULT_LIMIT) : DEFAULT_LIMIT
   const accept = req.headers.get('accept') || ''
   const wantsSse = accept.includes('text/event-stream') || url.searchParams.get('stream') === '1'
+  const offsetParam = url.searchParams.get('offset')
+  const offset = offsetParam != null ? Math.max(0, Number.parseInt(offsetParam, 10) || 0) : null
+
+  if (!wantsSse && offset != null) {
+    const ndjsonPath = path.join(runDir, 'events.ndjson')
+    if (!(await fileExists(ndjsonPath))) {
+      return NextResponse.json({ runId, events: [], offset, nextOffset: offset }, { status: 200 })
+    }
+    const { text, nextOffset } = await readFileChunk(ndjsonPath, offset)
+    const { events, remainder } = parseNdjsonChunk(text, runId)
+    const adjustedOffset = remainder ? nextOffset - Buffer.byteLength(remainder, 'utf8') : nextOffset
+    return NextResponse.json({ runId, events, offset, nextOffset: adjustedOffset }, { status: 200 })
+  }
 
   const events = await loadHistoryEvents(runDir, runId, limit, since)
 

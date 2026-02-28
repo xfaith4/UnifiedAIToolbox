@@ -10,7 +10,9 @@ export type RunStreamEventStatus = 'running' | 'success' | 'failed' | 'skipped' 
 
 export type RunStreamEvent = RunEvent & {
   runId: string
+  level?: 'debug' | 'info' | 'warn' | 'error' | string
   phase?: string
+  step?: string
   agent?: string
   status?: RunStreamEventStatus
   details?: Record<string, unknown>
@@ -52,16 +54,49 @@ function sanitizeDetails(input: Record<string, unknown> | undefined): Record<str
   return out
 }
 
+function inferEventLevel(event: Omit<RunStreamEvent, 'ts'> & { ts?: string }): 'debug' | 'info' | 'warn' | 'error' {
+  const explicitLevel = typeof event.level === 'string' ? event.level.toLowerCase() : ''
+  if (explicitLevel === 'debug' || explicitLevel === 'info' || explicitLevel === 'warn' || explicitLevel === 'error') {
+    return explicitLevel
+  }
+  const status = String(event.status || '').toLowerCase()
+  if (status === 'failed') return 'error'
+  if (status === 'skipped' || status === 'retrying') return 'warn'
+
+  const text = String(event.msg || event.message || '').toLowerCase()
+  if (text.includes('error') || text.includes('failed') || text.includes('exception')) return 'error'
+  if (text.includes('warn') || text.includes('stalled') || text.includes('slow')) return 'warn'
+  return 'info'
+}
+
+function inferEventType(event: Omit<RunStreamEvent, 'ts'> & { ts?: string }): string {
+  if (typeof event.type === 'string' && event.type.trim()) return event.type
+  const status = String(event.status || '').toLowerCase()
+  const message = String(event.msg || event.message || '').toLowerCase()
+  if (status === 'running') return message.includes('started') ? 'stage.start' : 'step.progress'
+  if (status === 'success') return message.includes('completed') ? 'stage.complete' : 'step.complete'
+  if (status === 'failed') return 'error'
+  if (status === 'skipped') return 'warn'
+  return 'metric'
+}
+
 function normalizeEvent(event: Omit<RunStreamEvent, 'ts'> & { ts?: string }): RunStreamEvent {
+  const message = redactValue(event.message || event.msg || 'event')
+  const stage = event.stage || event.phase
+  const level = inferEventLevel(event)
+  const normalizedType = inferEventType(event)
   return {
     ts: event.ts || new Date().toISOString(),
     runId: event.runId,
-    type: event.type || 'info',
-    stage: event.stage,
+    type: normalizedType,
+    level,
+    stage,
+    step: event.step,
     phase: event.phase,
     agent: event.agent,
     status: event.status,
-    message: redactValue(event.message),
+    message,
+    msg: message,
     details: sanitizeDetails(event.details),
     data: event.data,
   }
@@ -71,7 +106,7 @@ async function appendFileEvent(event: RunStreamEvent): Promise<void> {
   const runsRoot = getRunsRoot()
   const runDir = ensureWithin(runsRoot, event.runId)
   await fs.mkdir(runDir, { recursive: true })
-  const filePath = path.join(runDir, 'events.jsonl')
+  const filePath = path.join(runDir, 'events.ndjson')
   await fs.appendFile(filePath, JSON.stringify(event) + '\n', 'utf8')
 }
 

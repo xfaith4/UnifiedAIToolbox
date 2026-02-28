@@ -82,6 +82,14 @@ export type ArtifactIngestResult = {
   reportPath: string
 }
 
+export type ArtifactIngestProgress = {
+  processed: number
+  total: number
+  written: number
+  skipped: number
+  errors: number
+}
+
 const INVALID_SEGMENT_RE = /[<>:"|?*\u0000]/g
 const CONTROL_RE = /[\r\n\t]/g
 
@@ -251,10 +259,18 @@ export function planArtifactWrites(repoDir: string, artifacts: AppFactoryArtifac
 export async function ingestArtifacts(
   repoDir: string,
   artifacts: AppFactoryArtifact[],
-  options?: { plannedWrites?: PlannedArtifactWrite[] }
+  options?: {
+    plannedWrites?: PlannedArtifactWrite[]
+    onProgress?: (progress: ArtifactIngestProgress) => Promise<void> | void
+  }
 ): Promise<ArtifactIngestResult> {
   const items: ArtifactIngestItem[] = []
   const planned = options?.plannedWrites ?? planArtifactWrites(repoDir, artifacts)
+  const progress = { processed: 0, total: planned.length, written: 0, skipped: 0, errors: 0 }
+
+  const emitProgress = async () => {
+    await options?.onProgress?.({ ...progress })
+  }
 
   for (const entry of planned) {
     const art = entry.artifact
@@ -262,6 +278,9 @@ export async function ingestArtifacts(
     try {
       if (!originalName.trim()) {
         items.push({ originalName, status: 'skipped', reason: entry.reason || 'missing name' })
+        progress.processed += 1
+        progress.skipped += 1
+        await emitProgress()
         continue
       }
 
@@ -269,23 +288,35 @@ export async function ingestArtifacts(
       const denied = firstDeniedSegment(rel)
       if (denied) {
         items.push({ originalName, status: 'skipped', reason: `blocked path segment '${denied}'`, sourceTeamId: art.sourceTeamId, sourceTaskId: art.sourceTaskId })
+        progress.processed += 1
+        progress.skipped += 1
+        await emitProgress()
         continue
       }
 
       const baseLower = path.posix.basename(rel.replace(/\\/g, '/')).toLowerCase()
       if (JUNK_FILENAMES.has(baseLower)) {
         items.push({ originalName, status: 'skipped', reason: `junk file '${baseLower}'`, sourceTeamId: art.sourceTeamId, sourceTaskId: art.sourceTaskId })
+        progress.processed += 1
+        progress.skipped += 1
+        await emitProgress()
         continue
       }
 
       if (isExtensionlessJunk(rel)) {
         items.push({ originalName, status: 'skipped', reason: 'blocked extensionless junk file', sourceTeamId: art.sourceTeamId, sourceTaskId: art.sourceTaskId })
+        progress.processed += 1
+        progress.skipped += 1
+        await emitProgress()
         continue
       }
 
       // Block tiny prompt-only fragments in unexpected locations (keeps docs/ and prompts/ intact).
       if (!rel.startsWith('docs/') && !rel.startsWith('prompts/') && looksLikePromptFragmentOnly(art.content || '')) {
         items.push({ originalName, status: 'skipped', reason: 'blocked prompt-fragment-only file', sourceTeamId: art.sourceTeamId, sourceTaskId: art.sourceTaskId })
+        progress.processed += 1
+        progress.skipped += 1
+        await emitProgress()
         continue
       }
 
@@ -295,6 +326,9 @@ export async function ingestArtifacts(
       const boundaryCheck = hasInvalidCodeBoundary(art.content || '', rel)
       if (!boundaryCheck.ok) {
         items.push({ originalName, status: 'skipped', reason: boundaryCheck.reason, sourceTeamId: art.sourceTeamId, sourceTaskId: art.sourceTaskId })
+        progress.processed += 1
+        progress.skipped += 1
+        await emitProgress()
         continue
       }
 
@@ -316,6 +350,9 @@ export async function ingestArtifacts(
         sourceTeamId: art.sourceTeamId,
         sourceTaskId: art.sourceTaskId,
       })
+      progress.processed += 1
+      progress.written += 1
+      await emitProgress()
     } catch (err) {
       items.push({
         originalName,
@@ -324,6 +361,9 @@ export async function ingestArtifacts(
         sourceTeamId: art?.sourceTeamId,
         sourceTaskId: art?.sourceTaskId,
       })
+      progress.processed += 1
+      progress.errors += 1
+      await emitProgress()
       continue
     }
   }

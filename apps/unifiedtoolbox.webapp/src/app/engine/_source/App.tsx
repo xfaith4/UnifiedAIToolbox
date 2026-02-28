@@ -20,10 +20,12 @@ import PipelineStepper from './components/PipelineStepper';
 import RunFileModal from './components/RunFileModal';
 import JobTypeOverviewPanel from './components/JobTypeOverviewPanel';
 import MaintenanceRunPanel from './components/MaintenanceRunPanel';
+import RuntimeActivityDrawer from './components/RuntimeActivityDrawer';
 
 import useOrchestrator from './hooks/useOrchestrator';
 import { useJobTypes } from './hooks/useJobTypes';
 import { useRunStatus } from './hooks/useRunStatus';
+import { useRuntimeActivity } from './hooks/useRuntimeActivity';
 import { getBrowserApiKeyFromEnv } from './utils/apiKey';
 import type { Task, Artifact, RunMode } from './types';
 import type { EnginePipelinePayload } from '@/lib/app-factory/pipeline/pipelineStatus';
@@ -78,6 +80,9 @@ const App: React.FC = () => {
   const [maintenanceCanceling, setMaintenanceCanceling] = useState(false)
   const { status: maintenanceStatus, error: maintenanceStatusError, loading: maintenanceStatusLoading } = useRunStatus(maintenanceRunId, { enabled: isMaintenance })
   const maintenanceError = maintenanceStartError || maintenanceStatusError
+  const runtimeRunId = isMaintenance ? maintenanceRunId : pipeline?.runId || null
+  const runtimeStatus = isMaintenance ? maintenanceStatus : null
+  const runtimeActivity = useRuntimeActivity(runtimeRunId, Boolean(runtimeRunId))
 
   // GitHub Repo Orchestration state
   const [githubEnvReady, setGithubEnvReady] = useState(false)
@@ -646,6 +651,16 @@ const App: React.FC = () => {
           runId={viewFile.runId}
           relPath={viewFile.relPath}
           scope={viewFile.scope}
+        />
+      )}
+      {runtimeRunId && (
+        <RuntimeActivityDrawer
+          runId={runtimeRunId}
+          status={runtimeStatus}
+          events={runtimeActivity.events}
+          mode={runtimeActivity.mode}
+          error={runtimeActivity.error}
+          loading={runtimeActivity.loading}
         />
       )}
     </div>

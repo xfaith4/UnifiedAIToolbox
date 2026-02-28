@@ -84,6 +84,36 @@ Every roadmap-impacting tradeoff gets a `DEC-###` record in `IMPLEMENTATION_SUMM
   Ref: run `local-2026-02-28-roadmap-rm005-swarm-fallback`  
   Notes: Swarm view falls back to orchestration run summary and shows "events unavailable" instead of hard run-not-found failure.
 
+- [x] Define structured runtime event schema for App Factory run lifecycle telemetry.  
+  Date: 2026-02-28  
+  Ref: run `local-2026-02-28-roadmap-rm005-runtime-schema`  
+  Notes: Added `docs/run-events.schema.md` with stage/type/metric contracts and export-specific progress event conventions.
+
+- [x] Add SSE-primary + file-tail fallback endpoints for runtime event transport.  
+  Date: 2026-02-28  
+  Ref: run `local-2026-02-28-roadmap-rm005-runtime-transport`  
+  Notes: Added `/api/runs/{run_id}/events/stream`, `/api/runs/{run_id}/events/file`, and `/api/runs/{run_id}/summary` aliases over App Factory run observability APIs.
+
+- [x] App Factory: bottom Runtime Log/Activity drawer with tabs, filters, copy, and stuck heuristics.  
+  Date: 2026-02-28  
+  Ref: run `local-2026-02-28-roadmap-rm005-runtime-drawer`  
+  Notes: Added collapsible drawer (Live/Steps/Errors/Artifacts), auto-open on warn/error/long stage, and fallback-mode banner when SSE is unavailable.
+
+- [x] Emit periodic progress signals during validate/repair/export long-running stages.  
+  Date: 2026-02-28  
+  Ref: run `local-2026-02-28-roadmap-rm005-progress-pulse`  
+  Notes: Added 5s pulse events in hardening/repair loops plus export enumeration/zip metric events (files, exclusions, bytes, pass counters).
+
+- [x] Add runtime activity tests (event parsing/filtering + panel smoke render).  
+  Date: 2026-02-28  
+  Ref: run `local-2026-02-28-roadmap-rm005-runtime-tests`  
+  Notes: Added `runtimeEventUtils` unit coverage and a `RuntimeActivityDrawer` integration smoke test with sample fallback/live indicators.
+
+- [x] Add local dev simulator for events.ndjson playback without full orchestration run.  
+  Date: 2026-02-28  
+  Ref: run `local-2026-02-28-roadmap-rm005-runtime-sim`  
+  Notes: Added `npm run dev:runtime-sim` script to generate staged runtime telemetry and status snapshots in a local run folder.
+
 ## RM-008 Worklist (Run lifecycle control + lease/heartbeat safety)
 
 - [x] Add run lease model (TTL + heartbeat metadata) to canonical run manifest.  

@@ -12,11 +12,14 @@ export type RunEvent = {
   ts: string
   runId?: string
   type?: string
+  level?: 'debug' | 'info' | 'warn' | 'error' | string
   stage?: string
+  step?: string
   phase?: string
   agent?: string
   status?: 'running' | 'success' | 'failed' | 'skipped' | 'retrying' | 'pending' | string
   message: string
+  msg?: string
   details?: Record<string, unknown>
   data?: Record<string, unknown>
 }

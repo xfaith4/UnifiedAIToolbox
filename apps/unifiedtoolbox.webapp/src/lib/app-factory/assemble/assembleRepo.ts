@@ -63,7 +63,7 @@ export async function assembleRepo(repoDir: string, contract: RepoContract): Pro
           dev: 'next dev -p 3000',
           build: 'next build',
           start: 'next start -p 3000',
-          lint: 'next lint',
+          lint: 'eslint .',
           typecheck: 'tsc -p tsconfig.json --noEmit',
         },
         dependencies: {
@@ -93,6 +93,13 @@ export async function assembleRepo(repoDir: string, contract: RepoContract): Pro
       'Next.js config'
     )
     await ensureFile(repoDir, 'apps/web/next-env.d.ts', `/// <reference types="next" />\n/// <reference types="next/image-types/global" />\n\nexport {}\n`, changes, 'Next.js type env')
+    await ensureFile(
+      repoDir,
+      'apps/web/eslint.config.mjs',
+      `import nextVitals from 'eslint-config-next/core-web-vitals'\n\nconst config = [...nextVitals]\n\nexport default config\n`,
+      changes,
+      'ESLint flat config'
+    )
     await ensureFile(
       repoDir,
       'apps/web/tsconfig.json',
@@ -212,7 +219,7 @@ export async function assembleRepo(repoDir: string, contract: RepoContract): Pro
             dev: 'next dev -p 3000',
             build: 'next build',
             start: 'next start -p 3000',
-            lint: 'next lint',
+            lint: 'eslint .',
             typecheck: 'tsc -p tsconfig.json --noEmit',
           },
           dependencies: {
@@ -276,16 +283,10 @@ export async function assembleRepo(repoDir: string, contract: RepoContract): Pro
 
     await ensureFile(
       repoDir,
-      '.eslintrc.json',
-      JSON.stringify(
-        {
-          extends: ['next/core-web-vitals'],
-        },
-        null,
-        2
-      ) + '\n',
+      'eslint.config.mjs',
+      `import nextVitals from 'eslint-config-next/core-web-vitals'\n\nconst config = [...nextVitals]\n\nexport default config\n`,
       changes,
-      'ESLint config for next lint'
+      'ESLint flat config'
     )
 
     const hasRootApp = await fileExists(path.join(repoDir, 'app', 'page.tsx'))

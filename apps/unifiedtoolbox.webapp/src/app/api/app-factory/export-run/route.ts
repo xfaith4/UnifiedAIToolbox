@@ -3,6 +3,7 @@ import path from 'path'
 import { promises as fs } from 'fs'
 import { zipDirectoryToBuffer } from '@/lib/app-factory/pipeline/zipRepo'
 import { getRunsRoot, isValidRunId } from '@/lib/app-factory/runs/runStatus'
+import { emitRunEvent } from '@/lib/app-factory/runs/runEvents'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -32,7 +33,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: `Run not found: ${payload.runId}` }, { status: 404 })
     }
 
-    const zip = await zipDirectoryToBuffer(repoDir)
+    await emitRunEvent({ runId: payload.runId, stage: 'export', phase: 'export', type: 'stage.start', message: 'Export stage started' })
+    const zip = await zipDirectoryToBuffer(repoDir, {
+      onProgress: async (event) => {
+        await emitRunEvent({ runId: payload.runId, stage: 'export', phase: 'export', type: 'step.progress', message: event.type, data: event.data })
+      },
+    })
+    await emitRunEvent({ runId: payload.runId, stage: 'export', phase: 'export', type: 'stage.complete', message: 'Export stage completed' })
     return new NextResponse(new Uint8Array(zip), {
       status: 200,
       headers: {

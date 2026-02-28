@@ -136,6 +136,16 @@ export async function repairLoop(options: {
     })
 
     let content = ''
+    const requestStartedAt = Date.now()
+    const pulse = setInterval(() => {
+      void options.onEvent?.({
+        phase: 'repair',
+        agent: 'Synthesizer',
+        status: 'running',
+        message: `Repair cycle ${cycle} waiting for fixer response`,
+        details: { cycle, elapsed_ms: Date.now() - requestStartedAt },
+      })
+    }, 5000)
     try {
       const res = await callOpenAIChat(
         [
@@ -149,6 +159,7 @@ export async function repairLoop(options: {
       )
       content = res.content
     } catch (err) {
+      clearInterval(pulse)
       const msg = err instanceof Error ? err.message : String(err)
       if (msg.includes('429')) {
         await options.onEvent?.({ phase: 'repair', agent: 'Synthesizer', status: 'retrying', message: `Rate limited — retrying repair cycle ${cycle}`, details: { retryAttempt: cycle } })
@@ -157,6 +168,7 @@ export async function repairLoop(options: {
       await options.onEvent?.({ phase: 'repair', agent: 'Synthesizer', status: 'failed', message: `Repair cycle ${cycle} failed`, details: { error: msg } })
       break
     }
+    clearInterval(pulse)
 
     const diff = extractUnifiedDiff(content)
     if (!diff) {

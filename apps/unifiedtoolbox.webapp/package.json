@@ -10,7 +10,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "ux:simulate": "node ./scripts/ux-simulate.cjs",
-    "ux:analyze:api-errors": "node ./scripts/ux-analyze-api-errors.cjs"
+    "ux:analyze:api-errors": "node ./scripts/ux-analyze-api-errors.cjs",
+    "dev:runtime-sim": "node ./scripts/simulate-runtime-events.cjs"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -51,3 +52,4 @@
     "vitest": "^4.0.18"
   }
 }
+

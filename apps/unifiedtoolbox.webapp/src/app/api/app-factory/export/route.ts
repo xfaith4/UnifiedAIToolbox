@@ -87,14 +87,23 @@ export async function POST(req: Request) {
         .toISOString()
         .replace(/[:.]/g, '-')}-${crypto.randomBytes(3).toString('hex')}`
       const artifactsDir = path.join(workRootDir, 'design-runs', runId, 'artifacts')
+      const emit = async (type: string, msg: string, data?: Record<string, unknown>, level: 'debug' | 'info' | 'warn' | 'error' = 'info') =>
+        emitRunEvent({ runId, stage: 'export', phase: 'export', type, level, message: msg, msg, data })
       await fs.mkdir(artifactsDir, { recursive: true })
+      await emit('stage.start', 'Export stage started', { run_mode: 'design' })
       await ingestArtifacts(artifactsDir, artifacts as { name: string; type?: string; content: string }[])
       await fs.writeFile(
         path.join(artifactsDir, 'DESIGN_RUN.md'),
         `# Design Run Export\n\nThis zip contains docs/specs artifacts only (no runnable repo scaffolding).\n\nGenerated: ${new Date().toISOString()}\nSession: ${payload.sessionId || '(inline artifacts)'}\n`,
         'utf8'
       )
-      const zip = await zipDirectoryToBuffer(artifactsDir)
+      await emit('artifact.created', 'Artifact created', { path: 'DESIGN_RUN.md' })
+      const zip = await zipDirectoryToBuffer(artifactsDir, {
+        onProgress: async (event) => {
+          await emit('step.progress', event.type, event.data)
+        },
+      })
+      await emit('stage.complete', 'Export stage completed')
       return new NextResponse(new Uint8Array(zip), {
         status: 200,
         headers: {
@@ -112,7 +121,15 @@ export async function POST(req: Request) {
         workRootDir,
         runLabel: payload.runLabel,
       })
-      const zip = await zipDirectoryToBuffer(legacy.repoDir)
+      const emit = async (type: string, msg: string, data?: Record<string, unknown>, level: 'debug' | 'info' | 'warn' | 'error' = 'info') =>
+        emitRunEvent({ runId: legacy.runId, stage: 'export', phase: 'export', type, level, message: msg, msg, data })
+      await emit('stage.start', 'Export stage started', { mode: 'legacy' })
+      const zip = await zipDirectoryToBuffer(legacy.repoDir, {
+        onProgress: async (event) => {
+          await emit('step.progress', event.type, event.data)
+        },
+      })
+      await emit('stage.complete', 'Export stage completed', { mode: 'legacy' })
       return new NextResponse(new Uint8Array(zip), {
         status: 200,
         headers: {
@@ -165,7 +182,13 @@ export async function POST(req: Request) {
       )
     }
 
-    const zip = await zipDirectoryToBuffer(result.repoDir)
+    await emitRunEvent({ runId: result.runId, stage: 'export', phase: 'export', type: 'stage.start', message: 'Export stage started' })
+    const zip = await zipDirectoryToBuffer(result.repoDir, {
+      onProgress: async (event) => {
+        await emitRunEvent({ runId: result.runId, stage: 'export', phase: 'export', type: 'step.progress', message: event.type, data: event.data })
+      },
+    })
+    await emitRunEvent({ runId: result.runId, stage: 'export', phase: 'export', type: 'stage.complete', message: 'Export stage completed' })
     return new NextResponse(new Uint8Array(zip), {
       status: 200,
       headers: {

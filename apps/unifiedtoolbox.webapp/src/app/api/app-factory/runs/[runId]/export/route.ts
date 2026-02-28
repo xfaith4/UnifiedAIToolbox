@@ -4,6 +4,7 @@ import { promises as fs } from 'fs'
 import JSZip from 'jszip'
 import { zipDirectoryToBuffer } from '@/lib/app-factory/pipeline/zipRepo'
 import { getRunsRoot, isValidRunId } from '@/lib/app-factory/runs/runStatus'
+import { emitRunEvent } from '@/lib/app-factory/runs/runEvents'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -115,6 +116,7 @@ export async function GET(req: Request, { params }: { params: { runId: string } 
   const scope = scopeParam
 
   try {
+    await emitRunEvent({ runId, stage: 'export', phase: 'export', type: 'stage.start', message: 'Export stage started' })
     let zip: Buffer
     let filename: string
 
@@ -131,10 +133,20 @@ export async function GET(req: Request, { params }: { params: { runId: string } 
       // Add artifacts directory if it exists
       if (await dirExists(artifactsDir)) {
         const artifactFiles = await listFilesRecursive(artifactsDir)
+        let scanned = 0
         for (const file of artifactFiles) {
           const rel = path.relative(runDir, file).replace(/\\/g, '/')
           const buf = await fs.readFile(file)
           zipObj.file(rel, buf)
+          scanned += 1
+          await emitRunEvent({
+            runId,
+            stage: 'export',
+            phase: 'export',
+            type: 'step.progress',
+            message: 'export.enumeration.progress',
+            data: { files_scanned: scanned, path: rel, bytes_written: buf.byteLength },
+          })
         }
       }
       
@@ -159,8 +171,13 @@ export async function GET(req: Request, { params }: { params: { runId: string } 
     } else {
       // Export full run directory
       filename = `${runId}-full.zip`
-      zip = await zipDirectoryToBuffer(runDir)
+      zip = await zipDirectoryToBuffer(runDir, {
+        onProgress: async (event) => {
+          await emitRunEvent({ runId, stage: 'export', phase: 'export', type: 'step.progress', message: event.type, data: event.data })
+        },
+      })
     }
+    await emitRunEvent({ runId, stage: 'export', phase: 'export', type: 'stage.complete', message: 'Export stage completed' })
 
     return new NextResponse(new Uint8Array(zip), {
       status: 200,

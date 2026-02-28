@@ -24,6 +24,45 @@ function truthyCommand(cmd?: string): string | null {
   return trimmed ? trimmed : null
 }
 
+async function readPackageJson(repoDir: string): Promise<Record<string, unknown> | null> {
+  try {
+    const raw = await fs.readFile(path.join(repoDir, 'package.json'), 'utf8')
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : null
+  } catch {
+    return null
+  }
+}
+
+function extractMajor(versionText: string): number | null {
+  const match = String(versionText || '').match(/(\d+)/)
+  if (!match) return null
+  const major = Number.parseInt(match[1], 10)
+  return Number.isFinite(major) ? major : null
+}
+
+async function detectNextMajorVersion(repoDir: string): Promise<number | null> {
+  const pkg = await readPackageJson(repoDir)
+  if (!pkg) return null
+  const deps = (pkg.dependencies as Record<string, unknown> | undefined) ?? {}
+  const devDeps = (pkg.devDependencies as Record<string, unknown> | undefined) ?? {}
+  const nextVersion = deps.next ?? devDeps.next
+  if (typeof nextVersion !== 'string') return null
+  return extractMajor(nextVersion)
+}
+
+async function hasFlatEslintConfig(repoDir: string): Promise<boolean> {
+  for (const candidate of ['eslint.config.js', 'eslint.config.mjs', 'eslint.config.cjs']) {
+    try {
+      const stat = await fs.stat(path.join(repoDir, candidate))
+      if (stat.isFile()) return true
+    } catch {
+      // ignore
+    }
+  }
+  return false
+}
+
 async function lintConfigured(repoDir: string): Promise<boolean> {
   const candidates = [
     'eslint.config.js',
@@ -68,6 +107,7 @@ export async function runGates(repoDir: string, contract: RepoContract, config: 
   const typecheckCmd = truthyCommand(contract.typecheckCommand)
   const lintCmd = truthyCommand(contract.lintCommand)
   const testCmd = truthyCommand(contract.testCommand)
+  const nextMajor = await detectNextMajorVersion(repoDir)
 
   if (!installCmd || !buildCmd) {
     throw new Error('Contract must specify installCommand and buildCommand')
@@ -104,15 +144,37 @@ export async function runGates(repoDir: string, contract: RepoContract, config: 
   if (lintCmd) {
     const isConfigured = await lintConfigured(repoDir)
     if (isConfigured) {
-      const lintRes = await runCommandToLog({
-        name: '03-lint',
-        command: lintCmd,
-        cwd: repoDir,
-        timeoutSeconds: config.gateTimeoutSeconds,
-        logDir: logsDir,
-      })
-      steps.push({ name: 'lint', status: lintRes.exitCode === 0 && !lintRes.timedOut ? 'passed' : 'failed', result: lintRes })
-      if (steps.at(-1)?.status === 'failed') return await writeGateReport(repoDir, steps, healthChecks, logsDir)
+      const usingDeprecatedNextLint = /\bnext\s+lint\b/i.test(lintCmd) && (nextMajor ?? 0) >= 16
+      if (usingDeprecatedNextLint) {
+        const hasFlatConfig = await hasFlatEslintConfig(repoDir)
+        if (!hasFlatConfig) {
+          steps.push({
+            name: 'lint',
+            status: 'skipped',
+            message: 'Skipped lint: next lint is unsupported on Next.js 16+ and no eslint.config.* was found',
+          })
+        } else {
+          const lintRes = await runCommandToLog({
+            name: '03-lint',
+            command: 'eslint .',
+            cwd: repoDir,
+            timeoutSeconds: config.gateTimeoutSeconds,
+            logDir: logsDir,
+          })
+          steps.push({ name: 'lint', status: lintRes.exitCode === 0 && !lintRes.timedOut ? 'passed' : 'failed', result: lintRes })
+          if (steps.at(-1)?.status === 'failed') return await writeGateReport(repoDir, steps, healthChecks, logsDir)
+        }
+      } else {
+        const lintRes = await runCommandToLog({
+          name: '03-lint',
+          command: lintCmd,
+          cwd: repoDir,
+          timeoutSeconds: config.gateTimeoutSeconds,
+          logDir: logsDir,
+        })
+        steps.push({ name: 'lint', status: lintRes.exitCode === 0 && !lintRes.timedOut ? 'passed' : 'failed', result: lintRes })
+        if (steps.at(-1)?.status === 'failed') return await writeGateReport(repoDir, steps, healthChecks, logsDir)
+      }
     } else {
       steps.push({ name: 'lint', status: 'skipped', message: 'No ESLint config detected' })
     }

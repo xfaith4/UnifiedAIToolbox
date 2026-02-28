@@ -90,15 +90,76 @@ async function listFiles(baseDir: string): Promise<string[]> {
   return out
 }
 
-export async function zipDirectoryToBuffer(baseDir: string): Promise<Buffer> {
+export type ZipProgressEvent =
+  | {
+      type: 'export.enumeration.start'
+      data: { baseDir: string }
+    }
+  | {
+      type: 'export.enumeration.progress'
+      data: { files_seen: number; excluded_dirs: string[] }
+    }
+  | {
+      type: 'export.zip.progress'
+      data: { files_zipped: number; files_total: number; bytes_written: number; bytes_total_estimate: number; percent: number }
+    }
+
+export async function zipDirectoryToBuffer(
+  baseDir: string,
+  options?: { onProgress?: (event: ZipProgressEvent) => Promise<void> | void }
+): Promise<Buffer> {
   const zip = new JSZip()
+  await options?.onProgress?.({
+    type: 'export.enumeration.start',
+    data: { baseDir: baseDir.replace(/\\/g, '/') },
+  })
   const files = await listFiles(baseDir)
+  await options?.onProgress?.({
+    type: 'export.enumeration.progress',
+    data: { files_seen: files.length, excluded_dirs: Array.from(DENY_DIRS).sort() },
+  })
+  const fileSizes = await Promise.all(
+    files.map(async (file) => {
+      try {
+        const stat = await fs.stat(file)
+        return stat.size
+      } catch {
+        return 0
+      }
+    })
+  )
+  const totalBytesEstimate = fileSizes.reduce((sum, size) => sum + size, 0)
+  let zippedCount = 0
+  let zippedBytes = 0
   for (const file of files) {
     const rel = path.relative(baseDir, file).replace(/\\/g, '/')
     if (isExtensionlessJunk(rel)) continue
     const buf = await fs.readFile(file)
     zip.file(rel, buf)
+    zippedCount += 1
+    zippedBytes += buf.byteLength
+    await options?.onProgress?.({
+      type: 'export.zip.progress',
+      data: {
+        files_zipped: zippedCount,
+        files_total: files.length,
+        bytes_written: zippedBytes,
+        bytes_total_estimate: totalBytesEstimate,
+        percent: files.length > 0 ? Math.round((zippedCount / files.length) * 100) : 100,
+      },
+    })
   }
-  const arrayBuffer = await zip.generateAsync({ type: 'arraybuffer' })
+  const arrayBuffer = await zip.generateAsync({ type: 'arraybuffer' }, (metadata) => {
+    void options?.onProgress?.({
+      type: 'export.zip.progress',
+      data: {
+        files_zipped: zippedCount,
+        files_total: files.length,
+        bytes_written: zippedBytes,
+        bytes_total_estimate: totalBytesEstimate,
+        percent: Math.max(0, Math.min(100, Math.round(metadata.percent || 0))),
+      },
+    })
+  })
   return Buffer.from(arrayBuffer)
 }
