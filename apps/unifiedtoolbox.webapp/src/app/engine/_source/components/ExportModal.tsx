@@ -5,6 +5,53 @@ import { getBrowserApiKeyFromEnv } from '../utils/apiKey';
 import type { EnginePipelinePayload, PipelineStage } from '@/lib/app-factory/pipeline/pipelineStatus'
 import type { RunArtifact } from '@/lib/app-factory/runs/types'
 
+// ── Timeout constants ─────────────────────────────────────────────────────────
+// VALIDATE_TIMEOUT: matches the server-side default gate timeout (600 s) + buffer
+const VALIDATE_TIMEOUT_MS = 10 * 60 * 1000   // 10 min
+// DOWNLOAD_TIMEOUT: zipping an existing run dir is fast; 3 min is generous
+const DOWNLOAD_TIMEOUT_MS = 3 * 60 * 1000    // 3 min
+// LEGACY_EXPORT_TIMEOUT: legacy path re-runs hardenRepo which can be very slow
+const LEGACY_EXPORT_TIMEOUT_MS = 12 * 60 * 1000  // 12 min
+
+/**
+ * Wraps fetch() with an AbortController timeout.
+ * Throws a user-readable Error when the timeout fires, naming the operation.
+ */
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit,
+  timeoutMs: number,
+  operationLabel: string,
+): Promise<Response> {
+  const controller = new AbortController()
+  const timerId = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    return await fetch(url, { ...options, signal: controller.signal })
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      const mins = Math.round(timeoutMs / 60000)
+      throw new Error(
+        `Timed out after ${mins} min: "${operationLabel}".\n` +
+        `The server may still be processing. Check the run status page and try again.`,
+      )
+    }
+    throw err
+  } finally {
+    clearTimeout(timerId)
+  }
+}
+
+/** Triggers a browser file-save dialog for a Blob. */
+function triggerBlobDownload(blob: Blob, filename: string): void {
+  const link = document.createElement('a')
+  link.href = URL.createObjectURL(blob)
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(link.href)
+}
+
 type ExportBlocker = {
   kind: string
   filePath?: string
@@ -53,7 +100,8 @@ const ExportModal: React.FC<ExportModalProps> = ({
   // These are intentionally separate so a long-running repair never blocks the download button.
   const [isValidating, setIsValidating] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
-  const [lastValidationError, setLastValidationError] = useState<string | null>(null)
+  // lastError covers validation errors, download errors, and timeouts.
+  const [lastError, setLastError] = useState<string | null>(null)
   const [exportBlockers, setExportBlockers] = useState<ExportBlocker[]>([])
   const [buildInfo, setBuildInfo] = useState<{
     runDir: string
@@ -106,10 +154,10 @@ const ExportModal: React.FC<ExportModalProps> = ({
   const validateHardening = async (options?: { repairMode?: boolean }): Promise<EnginePipelinePayload | null> => {
     const repairMode = Boolean(options?.repairMode)
     if (runMode === 'design') {
-      setLastValidationError('Design Run selected: acceptance checks are skipped. Switch to Build Run to validate a runnable repo.')
+      setLastError('Design Run selected: acceptance checks are skipped. Switch to Build Run to validate a runnable repo.')
       return null
     }
-    setLastValidationError(null)
+    setLastError(null)
     setExportBlockers([])
     const startedAt = new Date().toISOString()
     setPipeline({
@@ -122,27 +170,32 @@ const ExportModal: React.FC<ExportModalProps> = ({
     })
 
     const apiKey = getBrowserApiKeyFromEnv()
-    const res = await fetch('/api/app-factory/validate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        stackId: 'node-next-app-npm',
-        runLabel: repairMode ? 'ui-repair' : 'ui-validate',
-        sessionId,
-        artifacts: sessionId
-          ? []
-          : uniqueArtifacts.map((a) => ({
-              name: a.name,
-              type: a.type,
-              content: a.content,
-            })),
-        config: {
-          apiKey: apiKey || undefined,
-          runMode,
-          maxRepairCycles: repairMode ? 6 : undefined,
-        },
-      }),
-    })
+    const res = await fetchWithTimeout(
+      '/api/app-factory/validate',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          stackId: 'node-next-app-npm',
+          runLabel: repairMode ? 'ui-repair' : 'ui-validate',
+          sessionId,
+          artifacts: sessionId
+            ? []
+            : uniqueArtifacts.map((a) => ({
+                name: a.name,
+                type: a.type,
+                content: a.content,
+              })),
+          config: {
+            apiKey: apiKey || undefined,
+            runMode,
+            maxRepairCycles: repairMode ? 6 : undefined,
+          },
+        }),
+      },
+      VALIDATE_TIMEOUT_MS,
+      repairMode ? 'Running repair pass' : 'Running acceptance checks',
+    )
 
     const json = await res.json().catch(() => null)
     if (json?.pipeline) setPipeline(json.pipeline as EnginePipelinePayload)
@@ -151,58 +204,61 @@ const ExportModal: React.FC<ExportModalProps> = ({
       const blockers = Array.isArray(json?.blockers) ? (json.blockers as ExportBlocker[]) : []
       setExportBlockers(blockers)
       const detail = json ? JSON.stringify(json, null, 2) : `HTTP ${res.status}`
-      setLastValidationError(detail)
+      setLastError(detail)
       return null
     }
     setExportBlockers([])
     return (json?.pipeline as EnginePipelinePayload) || null
   }
 
-  const downloadFromRun = async (runId: string) => {
-    const res = await fetch(
-      useRunArtifactsExport ? `/api/app-factory/runs/${encodeURIComponent(runId)}/export` : '/api/app-factory/export-run',
+  const downloadFromRun = async (targetRunId: string) => {
+    const res = await fetchWithTimeout(
+      useRunArtifactsExport
+        ? `/api/app-factory/runs/${encodeURIComponent(targetRunId)}/export`
+        : '/api/app-factory/export-run',
       useRunArtifactsExport
         ? { method: 'GET' }
         : {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ runId }),
-          }
+            body: JSON.stringify({ runId: targetRunId }),
+          },
+      DOWNLOAD_TIMEOUT_MS,
+      `Downloading artifacts from run ${targetRunId}`,
     )
     if (!res.ok) {
       const text = await res.text()
       throw new Error(`export-run failed: HTTP ${res.status}\n${text}`)
     }
     const blob = await res.blob()
-    const link = document.createElement('a')
-    link.href = URL.createObjectURL(blob)
-    link.download = `run-${runId}-artifacts.zip`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(link.href)
+    triggerBlobDownload(blob, `run-${targetRunId}-artifacts.zip`)
   }
 
   const downloadLegacy = async () => {
-    const res = await fetch('/api/app-factory/export', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        stackId: 'node-next-app-npm',
-        runLabel: 'ui-export',
-        sessionId,
-        artifacts: sessionId
-          ? []
-          : uniqueArtifacts.map((a) => ({
-              name: a.name,
-              type: a.type,
-              content: a.content,
-            })),
-        config: {
-          runMode,
-        },
-      }),
-    })
+    const res = await fetchWithTimeout(
+      '/api/app-factory/export',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          stackId: 'node-next-app-npm',
+          runLabel: 'ui-export',
+          sessionId,
+          artifacts: sessionId
+            ? []
+            : uniqueArtifacts.map((a) => ({
+                name: a.name,
+                type: a.type,
+                content: a.content,
+              })),
+          config: {
+            runMode,
+          },
+        }),
+      },
+      LEGACY_EXPORT_TIMEOUT_MS,
+      'Building and packaging artifacts (this may take several minutes)',
+    )
 
     if (!res.ok) {
       const contentType = res.headers.get('content-type') || ''
@@ -210,20 +266,14 @@ const ExportModal: React.FC<ExportModalProps> = ({
       if (res.status === 422) {
         const blockers = Array.isArray(payload?.blockers) ? (payload.blockers as ExportBlocker[]) : []
         setExportBlockers(blockers)
-        setLastValidationError('Export blocked by validation')
+        setLastError('Export blocked by validation — the generated artifacts did not pass acceptance checks.')
       }
       const detail = payload ? JSON.stringify(payload, null, 2) : await res.text()
       throw new Error(`export failed: HTTP ${res.status}\n${detail}`)
     }
 
     const blob = await res.blob()
-    const link = document.createElement('a')
-    link.href = URL.createObjectURL(blob)
-    link.download = 'app-factory-repo.zip'
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(link.href)
+    triggerBlobDownload(blob, 'app-factory-repo.zip')
   }
 
   const handleValidate = async () => {
@@ -236,9 +286,7 @@ const ExportModal: React.FC<ExportModalProps> = ({
       await validateHardening()
     } catch (error) {
       console.error("Validation failed:", error);
-      if (!lastValidationError) {
-        alert("An error occurred while validating artifacts. Please check the console.")
-      }
+      setLastError(error instanceof Error ? error.message : 'Validation failed. Check the console for details.')
     } finally {
       setIsValidating(false);
     }
@@ -252,9 +300,7 @@ const ExportModal: React.FC<ExportModalProps> = ({
       await validateHardening({ repairMode: true })
     } catch (error) {
       console.error('Repair run failed:', error)
-      if (!lastValidationError) {
-        alert('An error occurred while running repair. Please check the console.')
-      }
+      setLastError(error instanceof Error ? error.message : 'Repair run failed. Check the console for details.')
     } finally {
       setIsValidating(false)
     }
@@ -263,17 +309,23 @@ const ExportModal: React.FC<ExportModalProps> = ({
   const handleDownloadZip = async () => {
     if (isDownloading) return
     setIsDownloading(true)
+    setLastError(null)
     try {
+      // Path 1: direct run artifact export (e.g. maintenance mode)
       if (useRunArtifactsExport && runId) {
         await downloadFromRun(runId)
         return
       }
+
+      // Path 2: design mode — no hardening, just zip the artifacts as-is
       if (runMode === 'design') {
         await downloadLegacy()
         return
       }
+
+      // Path 3: hardening-enabled build run
       if (pipeline.hardeningEnabled) {
-        // Allow export even if validation failed, but warn the user
+        // Warn when validation failed but still allow the download
         if (!isRunnable(pipeline)) {
           const proceed = confirm(
             'Warning: Validation checks failed. The exported artifacts may not be runnable.\n\n' +
@@ -283,30 +335,57 @@ const ExportModal: React.FC<ExportModalProps> = ({
             return
           }
         }
-        
-        // Prefer run export when available; fall back to session artifacts if run export fails.
+
         if (pipeline.runId) {
+          // First attempt: POST export-run (expects runs/{runId}/repo/ subdirectory)
           try {
             await downloadFromRun(pipeline.runId)
-          } catch (runExportError) {
-            console.warn('Run-based export failed; falling back to session artifacts export.', runExportError)
-            setLastValidationError(
-              `Run export failed for ${pipeline.runId}. Falling back to session artifacts export.\n` +
-              `${runExportError instanceof Error ? runExportError.message : String(runExportError)}`
-            )
-            await downloadLegacy()
+            return
+          } catch (postErr) {
+            console.warn('[ExportModal] POST export-run failed; trying direct GET export.', postErr)
           }
-        } else {
-          await downloadLegacy()
+
+          // Second attempt: GET export (zips the entire run directory as-is, no hardenRepo re-run).
+          // This succeeds even when validation failed, because it just reads what's on disk.
+          try {
+            const res = await fetchWithTimeout(
+              `/api/app-factory/runs/${encodeURIComponent(pipeline.runId)}/export`,
+              { method: 'GET' },
+              DOWNLOAD_TIMEOUT_MS,
+              `Downloading all artifacts from run ${pipeline.runId}`,
+            )
+            if (!res.ok) {
+              const errText = await res.text().catch(() => `HTTP ${res.status}`)
+              throw new Error(`Run export failed: HTTP ${res.status}\n${errText}`)
+            }
+            const blob = await res.blob()
+            triggerBlobDownload(blob, `run-${pipeline.runId}-artifacts.zip`)
+            return
+          } catch (getErr) {
+            // Both direct-download paths failed. Surface the error without re-running hardenRepo,
+            // which would be slow and would block again if validation still fails.
+            const msg = getErr instanceof Error ? getErr.message : String(getErr)
+            setLastError(
+              `Could not download artifacts from run "${pipeline.runId}".\n${msg}\n\n` +
+              `Try re-running acceptance checks or starting a new build.`,
+            )
+            return
+          }
         }
+
+        // No pipeline.runId: no prior run to pull from, so run the full legacy export.
+        // Note: this re-runs hardenRepo and will block (422) if the generated code fails validation.
+        await downloadLegacy()
         return
       }
 
+      // Path 4: hardening disabled — simple zip of whatever was generated
       await downloadLegacy()
     } catch (error) {
       console.error("Failed to generate zip file:", error);
-      if (!lastValidationError) {
-        alert("An error occurred while creating the zip file. Please check the console.")
+      const msg = error instanceof Error ? error.message : String(error)
+      if (!lastError) {
+        setLastError(`Download failed: ${msg}`)
       }
     } finally {
       setIsDownloading(false);
@@ -331,15 +410,11 @@ const ExportModal: React.FC<ExportModalProps> = ({
         </div>
 
         <div className="p-6 max-h-[70vh] overflow-y-auto">
-          {lastValidationError && (
+          {lastError && (
             <div className="mb-4 p-3 rounded border border-amber-700 bg-amber-900/20 text-amber-200 text-xs whitespace-pre-wrap">
-              <strong>⚠️ Validation Failed</strong>
+              <strong>⚠️ Notice</strong>
               {'\n\n'}
-              The acceptance checks detected issues with the generated artifacts. You can still export the artifacts, but they may not be runnable without fixing the issues below.
-              {'\n\n'}
-              <strong>Issues:</strong>
-              {'\n'}
-              {lastValidationError.length > 1800 ? lastValidationError.slice(0, 1800) + '…' : lastValidationError}
+              {lastError.length > 1800 ? lastError.slice(0, 1800) + '…' : lastError}
             </div>
           )}
           {exportBlockers.length > 0 && (
