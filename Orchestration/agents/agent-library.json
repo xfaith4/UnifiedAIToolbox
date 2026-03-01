@@ -63,7 +63,7 @@
       "1. Receive the synthesized plan, goal, estimated cost, and estimated time.",
       "2. Assess business value, benefits, and practical impact using available data and business-metrics tools.",
       "3. Analyze cost-benefit tradeoff numerically.",
-      "4. Rate overall value from 0–10 and make a go/no-go/conditional recommendation.",
+      "4. Rate overall value from 0\u201310 and make a go/no-go/conditional recommendation.",
       "5. Document rationale and highlight improvement opportunities.",
       "6. If needed, specify agent or plan improvements and route to appropriate agent(s).",
       "7. Structure output per output_schema and return only error structure if input contract violated.",
@@ -124,18 +124,21 @@
             ]
           },
           "rationale": {
-            "type": "string"
+            "type": "string",
+            "minLength": 10
           },
           "conditions": {
             "type": "array",
             "items": {
-              "type": "string"
+              "type": "string",
+              "minLength": 10
             }
           },
           "improvements": {
             "type": "array",
             "items": {
-              "type": "string"
+              "type": "string",
+              "minLength": 10
             }
           },
           "estimated_cost_units": {
@@ -272,14 +275,16 @@
           }
         },
         "required": [
-          "goal"
+          "goal",
+          "synthesized_plan"
         ]
       },
       "output_schema": {
         "type": "object",
         "properties": {
           "interpretation": {
-            "type": "string"
+            "type": "string",
+            "minLength": 20
           },
           "representation": {
             "type": "string",
@@ -305,6 +310,15 @@
                 "mustBeVisible": {
                   "type": "boolean"
                 },
+                "id": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "mustBeVisible": {
+                  "type": "boolean"
+                },
                 "observableEvidence": {
                   "type": "object",
                   "properties": {
@@ -316,11 +330,24 @@
                         "canvas",
                         "state"
                       ]
+                      "enum": [
+                        "dom",
+                        "svg",
+                        "canvas",
+                        "state"
+                      ]
                     },
                     "probe": {
                       "type": "string"
                     }
+                    "probe": {
+                      "type": "string"
+                    }
                   },
+                  "required": [
+                    "type",
+                    "probe"
+                  ]
                   "required": [
                     "type",
                     "probe"
@@ -352,6 +379,18 @@
                 "expectedVisibleEffect": {
                   "type": "string"
                 },
+                "id": {
+                  "type": "string"
+                },
+                "trigger": {
+                  "type": "string"
+                },
+                "userAction": {
+                  "type": "string"
+                },
+                "expectedVisibleEffect": {
+                  "type": "string"
+                },
                 "verification": {
                   "type": "object",
                   "properties": {
@@ -361,7 +400,17 @@
                     "expectedChangeProbe": {
                       "type": "string"
                     }
+                    "actionProbe": {
+                      "type": "string"
+                    },
+                    "expectedChangeProbe": {
+                      "type": "string"
+                    }
                   },
+                  "required": [
+                    "actionProbe",
+                    "expectedChangeProbe"
+                  ]
                   "required": [
                     "actionProbe",
                     "expectedChangeProbe"
@@ -394,6 +443,18 @@
                 "observableSignal": {
                   "type": "string"
                 },
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "whatChangesOverTime": {
+                  "type": "string"
+                },
+                "observableSignal": {
+                  "type": "string"
+                },
                 "temporalEvidence": {
                   "type": "object",
                   "properties": {
@@ -407,7 +468,22 @@
                     "expectedDelta": {
                       "type": "string"
                     }
+                    "durationMs": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "probe": {
+                      "type": "string"
+                    },
+                    "expectedDelta": {
+                      "type": "string"
+                    }
                   },
+                  "required": [
+                    "durationMs",
+                    "probe",
+                    "expectedDelta"
+                  ]
                   "required": [
                     "durationMs",
                     "probe",
@@ -438,7 +514,21 @@
                 "usedFor": {
                   "type": "string"
                 }
+                "name": {
+                  "type": "string"
+                },
+                "source": {
+                  "type": "string"
+                },
+                "usedFor": {
+                  "type": "string"
+                }
               },
+              "required": [
+                "name",
+                "source",
+                "usedFor"
+              ]
               "required": [
                 "name",
                 "source",
@@ -451,6 +541,9 @@
             "items": {
               "type": "string"
             }
+            "items": {
+              "type": "string"
+            }
           },
           "acceptance_tests": {
             "type": "array",
@@ -460,8 +553,14 @@
                 "testName": {
                   "type": "string"
                 },
+                "testName": {
+                  "type": "string"
+                },
                 "steps": {
                   "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
                   "items": {
                     "type": "string"
                   }
@@ -471,7 +570,13 @@
                   "items": {
                     "type": "string"
                   }
+                  "items": {
+                    "type": "string"
+                  }
                 },
+                "failureCondition": {
+                  "type": "string"
+                }
                 "failureCondition": {
                   "type": "string"
                 }
@@ -497,7 +602,7 @@
         ]
       }
     },
-    "prompt": "You are the ConceptualModelContract agent.\n\nGoal: transform interpreted intent into a machine-verifiable runtime contract.\n\nOutput requirements:\n- Output MUST be strict JSON only.\n- Output MUST NOT include markdown, comments, code fences, or explanatory prose.\n- Output MUST exactly match output_schema.\n\nGlobal enforcement rules:\n- Reject wording-only requirements.\n- Reject non-falsifiable pass criteria.\n- Reject human-interpretive observables.\n- Reject contracts that could pass while rendering only text.\n- If representation implies spatial or temporal behavior, require measurable spatial/temporal probes.\n\nBehavioral principle:\n- Language agreement is insufficient.\n- Only measurable consequences count.\n",
+    "prompt": "You are the ConceptualModelContract agent.\n\nGoal: transform interpreted intent into a machine-verifiable runtime contract.\n\nOutput requirements:\n- Output MUST be strict JSON only.\n- Output MUST NOT include markdown, comments, code fences, or explanatory prose.\n- Output MUST exactly match output_schema.\n\nGlobal enforcement rules:\n- Reject wording-only requirements.\n- Reject non-falsifiable pass criteria.\n- Reject human-interpretive observables.\n- Reject contracts that could pass while rendering only text.\n- If representation implies spatial or temporal behavior, require measurable spatial/temporal probes.\n\nBehavioral principle:\n- Language agreement is insufficient.\n- Only measurable consequences count.\n\nCLARIFICATION RULE: If the inputs provided are missing, vague, contradictory, or insufficient to produce a valid output, you MUST output ONLY the following JSON and nothing else:\n{\n  \"clarification_request\": \"<specific, actionable question or list of questions that must be answered before you can proceed>\"\n}\nDo NOT attempt to guess, assume, or partially complete the task when core inputs are missing. Do NOT proceed with an incomplete or invalid output.",
     "routing_hints": {
       "preferred_models": [
         "gpt-5.2-codex",
@@ -630,16 +735,36 @@
               "type": "object",
               "properties": {
                 "severity": {
-                  "type": "string"
+                  "type": "string",
+                  "enum": [
+                    "low",
+                    "medium",
+                    "high",
+                    "critical"
+                  ],
+                  "description": "Severity of the issue."
                 },
                 "category": {
-                  "type": "string"
+                  "type": "string",
+                  "enum": [
+                    "requirements",
+                    "correctness",
+                    "security",
+                    "performance",
+                    "maintainability",
+                    "ops",
+                    "testing"
+                  ],
+                  "description": "Category of the issue."
                 },
                 "description": {
-                  "type": "string"
+                  "type": "string",
+                  "minLength": 10
                 },
                 "suggested_fix": {
-                  "type": "string"
+                  "type": "string",
+                  "minLength": 10,
+                  "description": "Specific actionable fix for the issue."
                 },
                 "file": {
                   "type": "string"
@@ -684,13 +809,15 @@
           "improvements": {
             "type": "array",
             "items": {
-              "type": "string"
+              "type": "string",
+              "minLength": 10
             }
           },
           "blockers": {
             "type": "array",
             "items": {
-              "type": "string"
+              "type": "string",
+              "minLength": 10
             }
           },
           "verdict": {
@@ -747,7 +874,8 @@
         "required": [
           "issues",
           "ratings",
-          "improvements"
+          "improvements",
+          "blockers"
         ]
       }
     },
@@ -888,7 +1016,8 @@
         "type": "object",
         "properties": {
           "implementation": {
-            "type": "string"
+            "type": "string",
+            "minLength": 50
           },
           "tests": {
             "type": "array",
@@ -896,7 +1025,8 @@
               "type": "object",
               "properties": {
                 "name": {
-                  "type": "string"
+                  "type": "string",
+                  "minLength": 3
                 },
                 "type": {
                   "type": "string"
@@ -905,16 +1035,27 @@
                   "type": "array",
                   "items": {
                     "type": "string"
-                  }
+                  },
+                  "minItems": 1
                 },
                 "expected": {
-                  "type": "string"
+                  "type": "string",
+                  "minLength": 10,
+                  "description": "Expected outcome of the test."
                 }
-              }
-            }
+              },
+              "required": [
+                "name",
+                "type",
+                "steps",
+                "expected"
+              ]
+            },
+            "minItems": 1
           },
           "documentation": {
-            "type": "string"
+            "type": "string",
+            "minLength": 20
           },
           "changes": {
             "type": "array",
@@ -1124,14 +1265,18 @@
           "facts": {
             "type": "array",
             "items": {
-              "type": "string"
-            }
+              "type": "string",
+              "minLength": 10
+            },
+            "minItems": 1
           },
           "risks": {
             "type": "array",
             "items": {
-              "type": "string"
-            }
+              "type": "string",
+              "minLength": 10
+            },
+            "minItems": 1
           },
           "sources": {
             "type": "array",
@@ -1352,14 +1497,18 @@
           "feedback": {
             "type": "array",
             "items": {
-              "type": "string"
-            }
+              "type": "string",
+              "minLength": 10
+            },
+            "minItems": 1
           },
           "insights": {
             "type": "array",
             "items": {
-              "type": "string"
-            }
+              "type": "string",
+              "minLength": 10
+            },
+            "minItems": 1
           },
           "agent_scores": {
             "type": "object",
@@ -1386,6 +1535,11 @@
                 }
               }
             }
+          },
+          "clarification_request": {
+            "type": "string",
+            "minLength": 20,
+            "description": "If inputs are insufficient, output ONLY this field with specific questions. Omit all other fields."
           }
         },
         "required": [
@@ -1396,7 +1550,7 @@
         ]
       }
     },
-    "prompt": "You are the Supervisor.\n\nGoal: judge orchestration quality, give corrective guidance, and extract reusable learnings.\n\nInputs:\n- run_id (string)\n- agent_outputs (object)\n- goal (string)\n\nRules:\n- Always consider the SUPERVISOR CONTEXT block (job_type + policies + required artifacts).\n- Score outputs on: completeness, correctness, usability, efficiency, and fit-to-goal.\n- If job_type = maintain_existing_app, explicitly score:\n  - Gate compliance (baseline/change/diff/review) and evidence quality (evidence.json contents).\n  - Diff discipline (changeset.summary.json, changeset.patch, forbidden files).\n  - PR artifact completion (pr.json + pr.md) and PR readiness.\n- If job_type = build_new_app, keep the existing rubric focused on plan and implementation quality.\n- Provide feedback as concrete actions (not motivational quotes).\n- Extract durable playbook insights: what to repeat, what to avoid.\n\nOutput MUST be valid JSON matching output_schema and NOTHING ELSE:\n{\n  \"quality_score\": 0,\n  \"feedback\": [\n    \"Actionable feedback item 1\",\n    \"Actionable feedback item 2\"\n  ],\n  \"insights\": [\n    \"Reusable pattern 1\",\n    \"Pitfall to avoid 1\"\n  ],\n  \"agent_scores\": {\n    \"Researcher\": 0,\n    \"Engineer\": 0,\n    \"Critic\": 0,\n    \"Synthesizer\": 0,\n    \"Commissioner\": 0\n  }\n}\n\nUse 0–10 numeric scores (can be decimals).\n",
+    "prompt": "You are the Supervisor.\n\nGoal: judge orchestration quality, give corrective guidance, and extract reusable learnings.\n\nInputs:\n- run_id (string)\n- agent_outputs (object)\n- goal (string)\n\nRules:\n- Always consider the SUPERVISOR CONTEXT block (job_type + policies + required artifacts).\n- Score outputs on: completeness, correctness, usability, efficiency, and fit-to-goal.\n- If job_type = maintain_existing_app, explicitly score:\n  - Gate compliance (baseline/change/diff/review) and evidence quality (evidence.json contents).\n  - Diff discipline (changeset.summary.json, changeset.patch, forbidden files).\n  - PR artifact completion (pr.json + pr.md) and PR readiness.\n- If job_type = build_new_app, keep the existing rubric focused on plan and implementation quality.\n- Provide feedback as concrete actions (not motivational quotes).\n- Extract durable playbook insights: what to repeat, what to avoid.\n\nOutput MUST be valid JSON matching output_schema and NOTHING ELSE:\n{\n  \"quality_score\": 0,\n  \"feedback\": [\n    \"Actionable feedback item 1\",\n    \"Actionable feedback item 2\"\n  ],\n  \"insights\": [\n    \"Reusable pattern 1\",\n    \"Pitfall to avoid 1\"\n  ],\n  \"agent_scores\": {\n    \"Researcher\": 0,\n    \"Engineer\": 0,\n    \"Critic\": 0,\n    \"Synthesizer\": 0,\n    \"Commissioner\": 0\n  }\n}\n\nUse 0\u201310 numeric scores (can be decimals).\n\nCLARIFICATION RULE: If the inputs provided are missing, vague, contradictory, or insufficient to produce a valid output, you MUST output ONLY the following JSON and nothing else:\n{\n  \"clarification_request\": \"<specific, actionable question or list of questions that must be answered before you can proceed>\"\n}\nDo NOT attempt to guess, assume, or partially complete the task when core inputs are missing. Do NOT proceed with an incomplete or invalid output.",
     "routing_hints": {
       "preferred_models": [
         "gpt-5.2",
@@ -1534,13 +1688,15 @@
               "type": "object",
               "properties": {
                 "phase": {
-                  "type": "string"
+                  "type": "string",
+                  "minLength": 3
                 },
                 "deliverables": {
                   "type": "array",
                   "items": {
                     "type": "string"
-                  }
+                  },
+                  "minItems": 1
                 },
                 "dependencies": {
                   "type": "array",
@@ -1562,7 +1718,8 @@
                 "phase",
                 "deliverables"
               ]
-            }
+            },
+            "minItems": 1
           },
           "deliverables": {
             "type": "array",
@@ -1571,7 +1728,9 @@
             }
           },
           "summary": {
-            "type": "string"
+            "type": "string",
+            "minLength": 30,
+            "description": "1\u20132 paragraphs: what we're building, how it works, and what 'done' means."
           },
           "conflicts_resolved": {
             "type": "array",
@@ -1610,6 +1769,11 @@
           "estimated_cost_usd": {
             "type": "number",
             "minimum": 0
+          },
+          "clarification_request": {
+            "type": "string",
+            "minLength": 20,
+            "description": "If inputs are insufficient, output ONLY this field with specific questions. Omit all other fields."
           }
         },
         "required": [
@@ -1620,7 +1784,7 @@
         ]
       }
     },
-    "prompt": "You are the Synthesizer.\n\nGoal: merge Researcher + Engineer + Critic into a single execution-ready roadmap that a dev team can follow.\n\nInputs:\n- researcher_output (string)\n- engineer_output (string)\n- critic_output (string)\n- goal (string)\n\nRules:\n- Resolve contradictions explicitly (state the decision + why).\n- Bake Critic fixes into the plan; do not merely restate issues.\n- Prefer shippable slices: MVP first, then hardening, then nice-to-haves.\n- Output must be consumable: phases, deliverables, acceptance criteria.\n\nOutput MUST be valid JSON matching output_schema and NOTHING ELSE:\n{\n  \"roadmap\": [\n    {\n      \"phase\": \"Phase 1: MVP\",\n      \"objective\": \"…\",\n      \"deliverables\": [\"…\"],\n      \"tasks\": [\"…\"],\n      \"dependencies\": [\"…\"],\n      \"acceptance\": [\"…\"],\n      \"estimate\": \"S|M|L (and/or hours)\"\n    }\n  ],\n  \"deliverables\": [\"…\"],\n  \"summary\": \"1–2 paragraphs: what we’re building, how it works, and what ‘done’ means.\",\n  \"conflicts_resolved\": [\n    \"Conflict: … | Decision: … | Rationale: …\"\n  ]\n}\n\nKeep roadmap phases tight (3–6 phases).\n",
+    "prompt": "You are the Synthesizer.\n\nGoal: merge Researcher + Engineer + Critic into a single execution-ready roadmap that a dev team can follow.\n\nInputs:\n- researcher_output (string)\n- engineer_output (string)\n- critic_output (string)\n- goal (string)\n\nRules:\n- Resolve contradictions explicitly (state the decision + why).\n- Bake Critic fixes into the plan; do not merely restate issues.\n- Prefer shippable slices: MVP first, then hardening, then nice-to-haves.\n- Output must be consumable: phases, deliverables, acceptance criteria.\n\nOutput MUST be valid JSON matching output_schema and NOTHING ELSE:\n{\n  \"roadmap\": [\n    {\n      \"phase\": \"Phase 1: MVP\",\n      \"objective\": \"\u2026\",\n      \"deliverables\": [\"\u2026\"],\n      \"tasks\": [\"\u2026\"],\n      \"dependencies\": [\"\u2026\"],\n      \"acceptance\": [\"\u2026\"],\n      \"estimate\": \"S|M|L (and/or hours)\"\n    }\n  ],\n  \"deliverables\": [\"\u2026\"],\n  \"summary\": \"1\u20132 paragraphs: what we\u2019re building, how it works, and what \u2018done\u2019 means.\",\n  \"conflicts_resolved\": [\n    \"Conflict: \u2026 | Decision: \u2026 | Rationale: \u2026\"\n  ]\n}\n\nKeep roadmap phases tight (3\u20136 phases).\n\nCLARIFICATION RULE: If the inputs provided are missing, vague, contradictory, or insufficient to produce a valid output, you MUST output ONLY the following JSON and nothing else:\n{\n  \"clarification_request\": \"<specific, actionable question or list of questions that must be answered before you can proceed>\"\n}\nDo NOT attempt to guess, assume, or partially complete the task when core inputs are missing. Do NOT proceed with an incomplete or invalid output.",
     "routing_hints": {
       "preferred_models": [
         "gpt-5.2-codex",
@@ -1655,7 +1819,7 @@
     "playbook": [],
     "createdAt": "2026-01-10T07:17:02.775Z",
     "updatedAt": "2026-01-10T07:17:21.480Z",
-    "role": "Produces a compact, durable run summary (‘memory capsule’) for reuse.",
+    "role": "Produces a compact, durable run summary (\u2018memory capsule\u2019) for reuse.",
     "capabilities": [
       "summarization",
       "decision-capture",
@@ -1667,7 +1831,7 @@
       "Only summarize what was provided.",
       "Prefer stable, reusable knowledge over ephemeral chatter."
     ],
-    "prompt": "You are the Historian.\n\nGoal: capture durable project knowledge from a run so future runs get smarter.\n\nThis agent is used when the orchestrator wants a “memory capsule” or “project brief” snapshot.\n\nRules:\n- Do not invent facts. Only summarize what is provided.\n- Prefer stable, reusable knowledge: definitions, decisions, constraints, interfaces, acceptance criteria.\n- Keep it short, structured, and grep-friendly.\n\nOutput MUST be valid JSON matching output_schema and NOTHING ELSE:\n{\n  \"memory_capsule\": \"DECISIONS:\\n...\\nCONSTRAINTS:\\n...\\nINTERFACES:\\n...\\nDATA:\\n...\\nRISKS:\\n...\\nNEXT:\\n...\\n\"\n}\n\nThe value of memory_capsule must be a markdown-free text block with the following headers:\nDECISIONS:\nCONSTRAINTS:\nINTERFACES:\nDATA:\nRISKS:\nNEXT:\n",
+    "prompt": "You are the Historian.\n\nGoal: capture durable project knowledge from a run so future runs get smarter.\n\nThis agent is used when the orchestrator wants a \u201cmemory capsule\u201d or \u201cproject brief\u201d snapshot.\n\nRules:\n- Do not invent facts. Only summarize what is provided.\n- Prefer stable, reusable knowledge: definitions, decisions, constraints, interfaces, acceptance criteria.\n- Keep it short, structured, and grep-friendly.\n\nOutput MUST be valid JSON matching output_schema and NOTHING ELSE:\n{\n  \"memory_capsule\": \"DECISIONS:\\n...\\nCONSTRAINTS:\\n...\\nINTERFACES:\\n...\\nDATA:\\n...\\nRISKS:\\n...\\nNEXT:\\n...\\n\"\n}\n\nThe value of memory_capsule must be a markdown-free text block with the following headers:\nDECISIONS:\nCONSTRAINTS:\nINTERFACES:\nDATA:\nRISKS:\nNEXT:\n\nCLARIFICATION RULE: If the inputs provided are missing, vague, contradictory, or insufficient to produce a valid output, you MUST output ONLY the following JSON and nothing else:\n{\n  \"clarification_request\": \"<specific, actionable question or list of questions that must be answered before you can proceed>\"\n}\nDo NOT attempt to guess, assume, or partially complete the task when core inputs are missing. Do NOT proceed with an incomplete or invalid output.",
     "routing_hints": {
       "preferred_models": [
         "gpt-5.2",
@@ -1700,7 +1864,13 @@
         "type": "object",
         "properties": {
           "memory_capsule": {
-            "type": "string"
+            "type": "string",
+            "minLength": 50
+          },
+          "clarification_request": {
+            "type": "string",
+            "minLength": 20,
+            "description": "If inputs are insufficient, output ONLY this field with specific questions. Omit all other fields."
           }
         },
         "required": [
@@ -1771,6 +1941,15 @@
       "input_schema": {
         "type": "object",
         "properties": {
+          "repo_path": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string"
+          },
+          "constraints": {
+            "type": "object"
+          }
           "repo_path": {
             "type": "string"
           },
@@ -1865,6 +2044,9 @@
       "input_schema": {
         "type": "object",
         "properties": {
+          "repo_context": {
+            "type": "object"
+          }
           "repo_context": {
             "type": "object"
           }

@@ -35,12 +35,12 @@
           },
           "question": {
             "type": "string",
-            "minLength": 10,
+            "minLength": 20,
             "description": "The exact question Concierge should ask the user (or answer from GoalSpec context)."
           },
           "why": {
             "type": "string",
-            "minLength": 10,
+            "minLength": 20,
             "description": "Why this field is needed to proceed (rationale for the user)."
           },
           "defaults": {
@@ -53,7 +53,8 @@
     },
     "proposed_acceptance_tests": {
       "type": "array",
-      "description": "Commissioner's suggestions for concrete acceptance tests that would resolve the gap. Concierge may adopt, adapt, or reject these.",
+      "minItems": 1,
+      "description": "Commissioner's suggestions for concrete acceptance tests that would resolve the gap. Concierge may adopt, adapt, or reject these. At least one test must be proposed.",
       "items": { "type": "string", "minLength": 10 }
     },
     "risk_notes": {

@@ -8,7 +8,9 @@
     "reason",
     "missing_fields",
     "expected_schema",
-    "retry_instructions"
+    "retry_instructions",
+    "rejected_message_id",
+    "rejected_message_type"
   ],
   "additionalProperties": false,
   "properties": {
@@ -38,16 +40,18 @@
     },
     "retry_instructions": {
       "type": "string",
-      "minLength": 10,
+      "minLength": 30,
       "description": "Plain-language instructions for the sender to fix the message. Must be actionable. 'Provide the missing fields exactly; do not proceed.' is the minimum."
     },
     "rejected_message_id": {
       "type": "string",
-      "description": "The message_id of the message being rejected. Helps the sender identify which message to fix."
+      "minLength": 1,
+      "description": "The message_id of the message being rejected. Required so the sender can identify which message to fix."
     },
     "rejected_message_type": {
       "type": "string",
-      "description": "The message_type of the rejected message."
+      "minLength": 1,
+      "description": "The message_type of the rejected message. Required to allow the sender to locate the correct message."
     }
   }
 }

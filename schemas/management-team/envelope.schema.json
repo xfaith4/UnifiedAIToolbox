@@ -25,6 +25,7 @@
     "message_id": {
       "type": "string",
       "minLength": 1,
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
       "description": "UUID v4. Unique across all messages in all runs."
     },
     "run_id": {
@@ -54,11 +55,13 @@
     },
     "timestamp_utc": {
       "type": "string",
+      "format": "date-time",
       "description": "ISO-8601 UTC timestamp when the message was created."
     },
     "correlation_id": {
       "type": "string",
       "minLength": 1,
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
       "description": "UUID v4. A response message copies the correlation_id of the message it is responding to. New requests generate a fresh UUID."
     },
     "payload": {
