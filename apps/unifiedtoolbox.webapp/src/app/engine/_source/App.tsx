@@ -71,7 +71,20 @@ type GitHubRepo = {
   default_branch?: string
   appfactory?: { known?: boolean }
 }
-import type { RepoOrchestrationEvent, RepoOrchestrationResult } from '@/lib/types/orchestrator';
+type RepoOrchestrationResult = {
+  runId?: string
+  run_id?: string
+  artifacts_index?: Array<{ fileName?: string; artifactId?: string }>
+  [key: string]: unknown
+}
+
+type RepoOrchestrationEvent = {
+  type?: string
+  message?: string
+  final?: boolean
+  result?: RepoOrchestrationResult
+  [key: string]: unknown
+}
 import GitHubRepoPanel from './components/GitHubRepoPanel';
 
 const App: React.FC = () => {
