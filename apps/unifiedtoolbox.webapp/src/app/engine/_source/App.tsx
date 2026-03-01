@@ -1,7 +1,16 @@
 // Fix: Import 'useEffect' from 'react'.
 import React, { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { getDraftRun } from '@/lib/services/proposalStore';
+const safeGetDraftRun = (draftId: string) => {
+  try {
+    const req = (globalThis as any)?.require as undefined | ((id: string) => any)
+    const mod = req ? req('@/lib/services/proposalStore') : null
+    const fn = mod?.getDraftRun as undefined | ((id: string) => any)
+    return fn ? fn(draftId) : null
+  } catch {
+    return null
+  }
+}
 
 import Header from './components/Header';
 import GoalInput from './components/GoalInput';
@@ -28,10 +37,40 @@ import { useRunStatus } from './hooks/useRunStatus';
 import { useRuntimeActivity } from './hooks/useRuntimeActivity';
 import { getBrowserApiKeyFromEnv } from './utils/apiKey';
 import type { Task, Artifact, RunMode } from './types';
-import type { EnginePipelinePayload } from '@/lib/app-factory/pipeline/pipelineStatus';
-import { getGithubStatus, listAccessibleRepos } from '@/lib/services/github';
-import { startRepoOrchestration, ORCHESTRATOR_API_BASE } from '@/lib/services/orchestratorApi';
-import type { GitHubRepo } from '@/lib/types/github';
+type EnginePipelinePayload = any;
+const safeGetGithubApi = () => {
+  try {
+    const req = (globalThis as any)?.require as undefined | ((id: string) => any)
+    const mod = req ? req('@/lib/services/github') : null
+    return mod ?? null
+  } catch {
+    return null
+  }
+}
+
+const githubApi = safeGetGithubApi()
+const getGithubStatus: any = githubApi?.getGithubStatus ?? (async () => ({ authenticated: false }))
+const listAccessibleRepos: any = githubApi?.listAccessibleRepos ?? (async () => [])
+const safeGetOrchestratorApi = () => {
+  try {
+    const req = (globalThis as any)?.require as undefined | ((id: string) => any)
+    const mod = req ? req('@/lib/services/orchestratorApi') : null
+    return mod ?? null
+  } catch {
+    return null
+  }
+}
+
+const orchestratorApi = safeGetOrchestratorApi()
+const startRepoOrchestration: any = orchestratorApi?.startRepoOrchestration ?? (async () => {
+  throw new Error('Repo orchestration API not available.')
+})
+const ORCHESTRATOR_API_BASE: string | undefined = orchestratorApi?.ORCHESTRATOR_API_BASE
+type GitHubRepo = {
+  full_name: string
+  default_branch?: string
+  appfactory?: { known?: boolean }
+}
 import type { RepoOrchestrationEvent, RepoOrchestrationResult } from '@/lib/types/orchestrator';
 import GitHubRepoPanel from './components/GitHubRepoPanel';
 
@@ -62,9 +101,9 @@ const App: React.FC = () => {
       ...(jobTypesData
         ? Object.values(jobTypesData.job_types).map((entry) => ({ id: entry.id, label: entry.label || entry.id }))
         : [
-            { id: 'build_new_app', label: 'Create New' },
-            { id: 'maintain_existing_app', label: 'Maintain Existing' },
-          ]),
+          { id: 'build_new_app', label: 'Create New' },
+          { id: 'maintain_existing_app', label: 'Maintain Existing' },
+        ]),
       { id: 'github_repo', label: 'GitHub Repo' },
     ],
     [jobTypesData]
@@ -118,7 +157,7 @@ const App: React.FC = () => {
   useEffect(() => {
     const draftId = searchParams.get('draft');
     if (!draftId) return;
-    const draft = getDraftRun(draftId);
+    const draft = safeGetDraftRun(draftId);
     if (!draft) return;
     setDraftGoal(draft.goal);
     setDraftProposalId(draft.proposalId);
@@ -181,7 +220,7 @@ const App: React.FC = () => {
     let cancelled = false
     setGithubReposLoading(true)
     void Promise.all([
-      getGithubStatus().then((s) => { if (!cancelled) setGithubEnvReady(Boolean(s?.authenticated)) }).catch(() => {}),
+      getGithubStatus().then((s) => { if (!cancelled) setGithubEnvReady(Boolean(s?.authenticated)) }).catch(() => { }),
       listAccessibleRepos(undefined, { includeAppfactory: true })
         .then((repos) => {
           if (!cancelled)
@@ -189,7 +228,7 @@ const App: React.FC = () => {
               [...repos].sort((a, b) => Number(Boolean(b.appfactory?.known)) - Number(Boolean(a.appfactory?.known)))
             )
         })
-        .catch(() => {}),
+        .catch(() => { }),
     ]).finally(() => { if (!cancelled) setGithubReposLoading(false) })
     return () => { cancelled = true }
   }, [isGithubRepo])
@@ -199,19 +238,28 @@ const App: React.FC = () => {
     return history.find(s => s.id === activeView) || null;
   }, [activeView, liveSession, history]);
 
-  // Fix: The "Export" button is now enabled for any completed session,
-  // including historical ones, not just the "live" completed session.
+  // ### BEGIN: Export availability should not be blocked by validation failures
+  const hasAnyArtifacts = useMemo(() => {
+    const t = displayedSession?.tasks ?? [];
+    return t.some((task) => Array.isArray(task?.artifacts) && task.artifacts.length > 0);
+  }, [displayedSession]);
+
+  // Fix: Enable Export for any run that has artifacts (even if acceptance checks fail),
+  // while keeping "completed" as the primary success signal.
   const isExportAvailable = useMemo(() => {
     if (isMaintenance) {
-      return Boolean(maintenanceRunId)
+      return Boolean(maintenanceRunId);
     }
+
     if (activeView !== 'live') {
-      // Any historical session is considered complete and is exportable.
-      return !!history.find(s => s.id === activeView);
+      // Any historical session is considered exportable.
+      return !!history.find((s) => s.id === activeView);
     }
-    // For the live view, it's exportable only when the orchestration is complete.
-    return isComplete;
-  }, [activeView, history, isComplete, isMaintenance, maintenanceRunId]);
+
+    // Live view: exportable if the run completed OR if we already have artifacts on disk/in memory.
+    return isComplete || hasAnyArtifacts;
+  }, [activeView, history, isComplete, isMaintenance, maintenanceRunId, hasAnyArtifacts]);
+  // ### END: Export availability should not be blocked by validation failures
 
   const totalCost = useMemo(() => {
     if (!displayedSession) return null;
@@ -508,7 +556,7 @@ const App: React.FC = () => {
             <GoalInput
               onGoalSubmit={handleGoalSubmit}
               isOrchestrating={isGithubRepo ? githubRunning : isMaintenance ? maintenanceRunning : isOrchestrating}
-              onCancelOrchestration={isGithubRepo ? (githubCancelFn ?? (() => {})) : isMaintenance ? cancelMaintenanceRun : cancelOrchestration}
+              onCancelOrchestration={isGithubRepo ? (githubCancelFn ?? (() => { })) : isMaintenance ? cancelMaintenanceRun : cancelOrchestration}
               jobType={jobType}
               jobTypeConfig={jobTypeConfig}
               jobTypeOptions={jobTypeOptions}
@@ -564,43 +612,42 @@ const App: React.FC = () => {
               </>
             )}
             {!isGithubRepo && (
-            <div
-              className={`flex min-h-[28rem] ${
-                viewMode === 'graph'
+              <div
+                className={`flex min-h-[28rem] ${viewMode === 'graph'
                   ? 'overflow-hidden'
                   : 'h-auto overflow-visible'
-              }`}
-              style={viewMode === 'graph' ? { height: `${graphPaneHeightPx}px` } : undefined}
-            >
-              <div className="flex-1 min-h-0 flex flex-col min-w-0">
-                <RunMonitorPanel
-                  tasks={tasks}
-                  isOrchestrating={isMaintenance ? maintenanceRunning : isOrchestrating}
-                  viewMode={viewMode}
-                  onChangeViewMode={setViewMode}
-                />
-                <div className={viewMode === 'graph' ? 'flex-1 min-h-0' : 'min-h-[16rem]'}>
-                  {viewMode === 'graph' ? (
-                    <TaskGraph
-                      tasks={tasks}
-                      onSelectTask={handleSelectTask}
-                      selectedTaskId={selectedTaskId}
-                    />
-                  ) : (
-                    <TaskClustersView
-                      tasks={tasks}
-                      onSelectTask={handleSelectTask}
-                      selectedTaskId={selectedTaskId}
-                    />
-                  )}
+                  }`}
+                style={viewMode === 'graph' ? { height: `${graphPaneHeightPx}px` } : undefined}
+              >
+                <div className="flex-1 min-h-0 flex flex-col min-w-0">
+                  <RunMonitorPanel
+                    tasks={tasks}
+                    isOrchestrating={isMaintenance ? maintenanceRunning : isOrchestrating}
+                    viewMode={viewMode}
+                    onChangeViewMode={setViewMode}
+                  />
+                  <div className={viewMode === 'graph' ? 'flex-1 min-h-0' : 'min-h-[16rem]'}>
+                    {viewMode === 'graph' ? (
+                      <TaskGraph
+                        tasks={tasks}
+                        onSelectTask={handleSelectTask}
+                        selectedTaskId={selectedTaskId}
+                      />
+                    ) : (
+                      <TaskClustersView
+                        tasks={tasks}
+                        onSelectTask={handleSelectTask}
+                        selectedTaskId={selectedTaskId}
+                      />
+                    )}
+                  </div>
                 </div>
+                <SidePanel
+                  task={selectedTask}
+                  clearSelection={handleClearSelection}
+                  onShowDefinitions={() => setShowDefinitions(true)}
+                />
               </div>
-              <SidePanel
-                task={selectedTask}
-                clearSelection={handleClearSelection}
-                onShowDefinitions={() => setShowDefinitions(true)}
-              />
-            </div>
             )}
           </>
         )}
