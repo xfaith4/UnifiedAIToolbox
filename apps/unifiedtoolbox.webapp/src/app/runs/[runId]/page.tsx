@@ -144,6 +144,23 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
   const [cancelMessage, setCancelMessage] = useState<string | null>(null)
   const [cancelError, setCancelError] = useState<string | null>(null)
   const [selectedAttemptId, setSelectedAttemptId] = useState<string | null>(null)
+  const [buildInfo, setBuildInfo] = useState<{
+    runDir: string
+    artifactsDir: string
+    artifactsDirExists: boolean
+    readme: string | null
+    fileCount: number
+    files: string[]
+  } | null>(null)
+
+  // Fetch build output location for completed App Factory (maint-) runs
+  useEffect(() => {
+    if (!orchRun || orchRun.status !== 'completed' || !orchRun.id.startsWith('maint-')) return
+    void fetch(`/api/app-factory/runs/${encodeURIComponent(orchRun.id)}/info`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => { if (data?.runDir) setBuildInfo(data) })
+      .catch(() => null)
+  }, [orchRun?.id, orchRun?.status])
 
   const artifactByName = useMemo(() => {
     const map = new Map<string, ArtifactItem>()
@@ -804,6 +821,51 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
                 <div className="font-semibold text-rose-100">Error detail</div>
                 <pre className="whitespace-pre-wrap break-all opacity-80">{orchRun.errorDetail}</pre>
               </div>
+            )}
+          </div>
+        )}
+
+        {buildInfo && orchRun.status === 'completed' && (
+          <div className="rounded-2xl border border-emerald-700/60 bg-emerald-950/20 p-4 space-y-3">
+            <div className="text-xs font-semibold uppercase tracking-wide text-emerald-400">Build Output</div>
+            <div>
+              <div className="text-[11px] text-emerald-300/70 mb-1">
+                {buildInfo.fileCount} file{buildInfo.fileCount !== 1 ? 's' : ''} generated — files are ready locally
+              </div>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 truncate rounded bg-gray-900/60 px-2 py-1 text-xs font-mono text-emerald-100">
+                  {buildInfo.artifactsDirExists ? buildInfo.artifactsDir : buildInfo.runDir}
+                </code>
+                <button
+                  type="button"
+                  onClick={() => void navigator.clipboard?.writeText(buildInfo.artifactsDirExists ? buildInfo.artifactsDir : buildInfo.runDir)}
+                  className="shrink-0 rounded bg-emerald-900/40 px-2 py-1 text-[11px] text-emerald-200 hover:bg-emerald-900/70"
+                >
+                  Copy path
+                </button>
+              </div>
+            </div>
+            {buildInfo.readme && (
+              <details>
+                <summary className="cursor-pointer text-[11px] font-semibold text-emerald-200 hover:text-emerald-100">
+                  README.md
+                </summary>
+                <pre className="mt-2 max-h-64 overflow-y-auto whitespace-pre-wrap rounded bg-gray-900/60 p-3 text-[11px] text-gray-300">
+                  {buildInfo.readme}
+                </pre>
+              </details>
+            )}
+            {buildInfo.files.length > 0 && (
+              <details>
+                <summary className="cursor-pointer text-[11px] font-semibold text-slate-400 hover:text-slate-200">
+                  Generated files ({buildInfo.fileCount})
+                </summary>
+                <ul className="mt-2 max-h-48 overflow-y-auto space-y-0.5">
+                  {buildInfo.files.map((f) => (
+                    <li key={f} className="font-mono text-[11px] text-slate-400 pl-2">{f}</li>
+                  ))}
+                </ul>
+              </details>
             )}
           </div>
         )}

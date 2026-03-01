@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import type { Task, Artifact, RunMode } from '../types';
 import { CloseIcon, DownloadIcon, PaperclipIcon, LoadingIcon } from './icons';
 import { getBrowserApiKeyFromEnv } from '../utils/apiKey';
@@ -55,6 +55,22 @@ const ExportModal: React.FC<ExportModalProps> = ({
   const [isDownloading, setIsDownloading] = useState(false);
   const [lastValidationError, setLastValidationError] = useState<string | null>(null)
   const [exportBlockers, setExportBlockers] = useState<ExportBlocker[]>([])
+  const [buildInfo, setBuildInfo] = useState<{
+    runDir: string
+    artifactsDir: string
+    artifactsDirExists: boolean
+    readme: string | null
+    fileCount: number
+    files: string[]
+  } | null>(null)
+
+  useEffect(() => {
+    if (!isOpen || !useRunArtifactsExport || !runId) return
+    void fetch(`/api/app-factory/runs/${encodeURIComponent(runId)}/info`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => { if (data && data.runDir) setBuildInfo(data) })
+      .catch(() => null)
+  }, [isOpen, useRunArtifactsExport, runId])
 
   const uniqueArtifacts = useMemo(() => {
     // Defensively handle potentially malformed task data from sources like localStorage.
@@ -168,7 +184,6 @@ const ExportModal: React.FC<ExportModalProps> = ({
   }
 
   const downloadLegacy = async () => {
-    const apiKey = getBrowserApiKeyFromEnv()
     const res = await fetch('/api/app-factory/export', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -184,7 +199,6 @@ const ExportModal: React.FC<ExportModalProps> = ({
               content: a.content,
             })),
         config: {
-          apiKey: apiKey || undefined,
           runMode,
         },
       }),
@@ -353,6 +367,37 @@ const ExportModal: React.FC<ExportModalProps> = ({
             </div>
           )}
 
+          {buildInfo && (
+            <div className="mb-4 rounded-lg border border-emerald-700/60 bg-emerald-950/20 p-4">
+              <h3 className="text-sm font-semibold text-emerald-200 mb-2">Build Output Location</h3>
+              <div className="flex items-center gap-2 mb-2">
+                <code className="flex-1 truncate rounded bg-gray-900/60 px-2 py-1 text-xs font-mono text-emerald-100">
+                  {buildInfo.artifactsDirExists ? buildInfo.artifactsDir : buildInfo.runDir}
+                </code>
+                <button
+                  type="button"
+                  onClick={() => void navigator.clipboard?.writeText(buildInfo.artifactsDirExists ? buildInfo.artifactsDir : buildInfo.runDir)}
+                  className="shrink-0 rounded bg-emerald-900/40 px-2 py-1 text-[11px] text-emerald-200 hover:bg-emerald-900/70"
+                >
+                  Copy
+                </button>
+              </div>
+              <p className="text-[11px] text-emerald-300/70">
+                {buildInfo.fileCount} file{buildInfo.fileCount !== 1 ? 's' : ''} generated — files are ready locally, no download needed.
+              </p>
+              {buildInfo.readme && (
+                <details className="mt-3">
+                  <summary className="cursor-pointer text-[11px] font-semibold text-emerald-200 hover:text-emerald-100">
+                    README.md
+                  </summary>
+                  <pre className="mt-2 max-h-48 overflow-y-auto whitespace-pre-wrap rounded bg-gray-900/60 p-2 text-[11px] text-gray-300">
+                    {buildInfo.readme}
+                  </pre>
+                </details>
+              )}
+            </div>
+          )}
+
           <div className="bg-gray-700/50 p-4 rounded-lg">
             <h3 className="flex items-center text-lg font-semibold mb-3">
               <PaperclipIcon className="w-5 h-5 mr-2 text-indigo-400" /> Generated Artifacts
@@ -394,7 +439,7 @@ const ExportModal: React.FC<ExportModalProps> = ({
               </button>
               <button
                 onClick={handleRepairRun}
-                disabled={isValidating || displayArtifacts.length === 0 || useRunArtifactsExport || runMode === 'design'}
+                disabled={isValidating || displayArtifacts.length === 0 || useRunArtifactsExport}
                 className="px-4 py-2 bg-amber-700 hover:bg-amber-600 text-white font-semibold rounded-lg flex items-center transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 title="Run another validation cycle with extended repair attempts using the same generated artifacts."
               >
