@@ -1,0 +1,58 @@
+{
+  "stackId": "browser-vite-react-npm",
+  "description": "Browser-only Vite + React + TypeScript app (no backend), npm",
+  "requiredFilesAll": [
+    "package.json",
+    "index.html",
+    "vite.config.ts"
+  ],
+  "requiredFilesAny": [
+    ["src/main.tsx", "src/main.ts", "src/index.tsx", "src/index.ts"]
+  ],
+  "codeFileExtensions": [
+    ".ts",
+    ".tsx",
+    ".js",
+    ".jsx",
+    ".mjs",
+    ".cjs",
+    ".json"
+  ],
+  "forbiddenPatternsByExtension": {
+    ".ts": [
+      { "id": "md-fence", "description": "Markdown code fences are not allowed in code files", "pattern": "^\\s*```", "flags": "m" },
+      { "id": "file-header", "description": "File wrappers like '## File:' are not allowed in code files", "pattern": "^\\s*#{1,6}\\s*File\\s*:", "flags": "mi" },
+      { "id": "frontmatter-marker", "description": "YAML frontmatter markers are not allowed in code files", "pattern": "^(?:\\uFEFF)?\\s*---\\s*$", "flags": "m" }
+    ],
+    ".tsx": [
+      { "id": "md-fence", "description": "Markdown code fences are not allowed in code files", "pattern": "^\\s*```", "flags": "m" },
+      { "id": "file-header", "description": "File wrappers like '## File:' are not allowed in code files", "pattern": "^\\s*#{1,6}\\s*File\\s*:", "flags": "mi" },
+      { "id": "frontmatter-marker", "description": "YAML frontmatter markers are not allowed in code files", "pattern": "^(?:\\uFEFF)?\\s*---\\s*$", "flags": "m" }
+    ],
+    ".js": [
+      { "id": "md-fence", "description": "Markdown code fences are not allowed in code files", "pattern": "^\\s*```", "flags": "m" },
+      { "id": "file-header", "description": "File wrappers like '## File:' are not allowed in code files", "pattern": "^\\s*#{1,6}\\s*File\\s*:", "flags": "mi" },
+      { "id": "frontmatter-marker", "description": "YAML frontmatter markers are not allowed in code files", "pattern": "^(?:\\uFEFF)?\\s*---\\s*$", "flags": "m" }
+    ],
+    ".jsx": [
+      { "id": "md-fence", "description": "Markdown code fences are not allowed in code files", "pattern": "^\\s*```", "flags": "m" },
+      { "id": "file-header", "description": "File wrappers like '## File:' are not allowed in code files", "pattern": "^\\s*#{1,6}\\s*File\\s*:", "flags": "mi" },
+      { "id": "frontmatter-marker", "description": "YAML frontmatter markers are not allowed in code files", "pattern": "^(?:\\uFEFF)?\\s*---\\s*$", "flags": "m" }
+    ]
+  },
+  "envVarsRequired": [],
+  "installCommand": "npm install",
+  "typecheckCommand": "npx tsc --noEmit",
+  "lintCommand": "npm run lint",
+  "buildCommand": "npm run build",
+  "bootCommands": [
+    {
+      "name": "vite-dev",
+      "command": "npm run dev",
+      "env": { "HOST": "127.0.0.1" }
+    }
+  ],
+  "healthChecks": [
+    { "name": "vite-root", "url": "http://127.0.0.1:5173", "expectedStatus": 200, "timeoutSeconds": 60 }
+  ]
+}

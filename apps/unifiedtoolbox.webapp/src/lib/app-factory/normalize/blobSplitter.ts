@@ -13,6 +13,12 @@ export type BlobSplitResult =
 // - "FILE: path/to/file.ts"
 const FILE_MARKER_RE = /^\s*(?:(?:\/{2,}|#{1,6})\s*)?file\s*:\s*(.+?)\s*$/i
 
+// Supports horizontal-rule separators like:
+// - "--- tsconfig.app.json ---"
+// - "---- src/App.tsx ----"
+// Filename must start with an alphanumeric/underscore and contain at least one dot (extension).
+const DASH_SEPARATOR_RE = /^\s*-{3,}\s*([a-zA-Z0-9_][\w./\\-]*\.[a-zA-Z0-9]+)\s*-{3,}\s*$/
+
 function safeRelativePath(input: string): string {
   const raw = (input || '').replace(/\\/g, '/').trim()
   const noDrive = raw.replace(/^[a-zA-Z]:\//, '')
@@ -31,7 +37,8 @@ export async function splitBundledBlobIfNeeded(repoDir: string, filePath: string
 
   const markers: { idx: number; target: string }[] = []
   for (let i = 0; i < lines.length; i++) {
-    const match = FILE_MARKER_RE.exec(lines[i] ?? '')
+    const line = lines[i] ?? ''
+    const match = FILE_MARKER_RE.exec(line) ?? DASH_SEPARATOR_RE.exec(line)
     if (match?.[1]) {
       const target = safeRelativePath(match[1])
       if (target) markers.push({ idx: i, target })

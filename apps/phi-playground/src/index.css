@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --phi: 1.6180339887;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: #0b1121;
+}
+
+/* Canvas container */
+.phi-canvas {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+}
+
+/* UI overlay layer */
+.phi-ui {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.phi-ui > * {
+  pointer-events: auto;
+}
+
+/* Exhibit hover outline */
+@keyframes pulse-outline {
+  0%, 100% { opacity: 0.6; }
+  50%       { opacity: 1; }
+}

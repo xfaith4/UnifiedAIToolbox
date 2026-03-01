@@ -323,7 +323,14 @@ export async function ingestArtifacts(
       const full = entry.fullPath || ensureWithinRepo(repoDir, rel)
       await fs.mkdir(path.dirname(full), { recursive: true })
 
-      const boundaryCheck = hasInvalidCodeBoundary(art.content || '', rel)
+      // Pre-clean to strip outer markdown fences before boundary validation.
+      // LLMs routinely wrap code in a single ```lang ... ``` block; stripping
+      // that before the check allows valid code through while still rejecting
+      // content that has embedded/nested fences after stripping.
+      const isImage = (art.type || '').toUpperCase() === 'IMAGE'
+      const preCleaned = isImage ? (art.content || '') : cleanupArtifactContent(art.content || '', originalName)
+
+      const boundaryCheck = hasInvalidCodeBoundary(preCleaned, rel)
       if (!boundaryCheck.ok) {
         items.push({ originalName, status: 'skipped', reason: boundaryCheck.reason, sourceTeamId: art.sourceTeamId, sourceTaskId: art.sourceTaskId })
         progress.processed += 1
@@ -332,13 +339,11 @@ export async function ingestArtifacts(
         continue
       }
 
-      if ((art.type || '').toUpperCase() === 'IMAGE') {
+      if (isImage) {
         const buf = Buffer.from(art.content || '', 'base64')
         await fs.writeFile(full, buf)
       } else {
-        // Apply cleanup to remove markdown code fencing and normalize line endings
-        const cleaned = cleanupArtifactContent(art.content || '', originalName)
-        const body = cleaned.replace(/\r\n/g, '\n')
+        const body = preCleaned.replace(/\r\n/g, '\n')
         await fs.writeFile(full, body, 'utf8')
       }
 

@@ -162,8 +162,12 @@ export async function POST(req: Request) {
   if (!jobType) {
     return NextResponse.json({ error: { code: 'MISSING_JOB_TYPE', message: 'job_type is required' } }, { status: 400 })
   }
-  if (jobType !== 'maintain_existing_app') {
-    return NextResponse.json({ error: { code: 'UNSUPPORTED_JOB_TYPE', message: `Unsupported job_type: ${jobType}` } }, { status: 400 })
+  const SUPPORTED_JOB_TYPES = ['maintain_existing_app', 'build_new_app', 'create_new_app', 'new_app']
+  if (!SUPPORTED_JOB_TYPES.includes(jobType)) {
+    return NextResponse.json(
+      { error: { code: 'UNSUPPORTED_JOB_TYPE', message: `Unsupported job_type: ${jobType}. Supported: ${SUPPORTED_JOB_TYPES.join(', ')}` } },
+      { status: 400 }
+    )
   }
 
   if (typeof request.goal !== 'string' || !request.goal.trim()) {

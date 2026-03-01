@@ -18,7 +18,8 @@
       "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(json.dumps\\({k:v for k,v in d.items\\(\\) if k in [''scripts'',''devDependencies'']}, indent=2\\)\\)\")",
       "Bash(grep -n \"loopIteration\\\\|loop_iteration\\\\|attempt\\\\|requeue\\\\|cancel\" /g/Development/20_Staging/UnifiedAIToolbox/apps/unifiedtoolbox.webapp/src/app/runs/[runId]/page.tsx)",
       "Bash(grep -n \"runtimeEventUtils\\\\|RuntimeEvent\" \"g:/Development/20_Staging/UnifiedAIToolbox/apps/unifiedtoolbox.webapp/src/lib/app-factory/runs\"/*.ts)",
-      "Bash(xargs basename -a)"
+      "Bash(xargs basename -a)",
+      "Bash(NODE_PATH=\"g:/Development/20_Staging/UnifiedAIToolbox/apps/unifiedtoolbox.webapp/node_modules\" \"g:/Development/20_Staging/UnifiedAIToolbox/apps/unifiedtoolbox.webapp/node_modules/.bin/vitest\" run --reporter=verbose src/math/__tests__/phi.test.ts)"
     ],
     "additionalDirectories": [
       "C:\\Users\\benfu\\.claude\\projects\\g--Development-20-Staging-UnifiedAIToolbox\\memory"

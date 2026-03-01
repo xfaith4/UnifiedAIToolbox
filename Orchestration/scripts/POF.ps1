@@ -280,6 +280,21 @@ function Get-AgentSystemPrompt {
         $segments += "Output contract JSON must be raw JSON only. Do not emit markdown, code fences, or prose."
     }
 
+    if ($Agent.name -eq "Engineer") {
+        $segments += @"
+Artifacts field rules (CRITICAL):
+- Populate artifacts[] with one entry per source file to create or modify.
+- artifacts[].name: relative file path from the project root, e.g. src/App.tsx or vite.config.ts
+- artifacts[].content: raw source code or config text only.
+  DO NOT wrap content in backtick code fences.
+  DO NOT use '--- filename ---' separators inside content.
+  The content value must be exactly what you would write into the file.
+- artifacts[].type: optional string like 'code/typescript', 'code/tsx', 'config/json'.
+- Honor the tech stack exactly as specified in the goal. If goal says Vite+React, output Vite files (vite.config.ts, src/main.tsx, index.html), NOT Next.js files (next.config.mjs, app/page.tsx).
+- Every file listed in changes[] with action 'create' or 'modify' MUST have a matching artifacts[] entry.
+"@
+    }
+
     if ($Agent.name -eq "ConceptualModelContract") {
         if ($EffectiveAppType -eq "wpf") {
             $segments += "App type is WPF desktop. Do not produce DOM/web probes. Use WPF-observable probes (named controls, bound state values, visual tree state, render loop counters)."

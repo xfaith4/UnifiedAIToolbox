@@ -49,7 +49,10 @@ const ExportModal: React.FC<ExportModalProps> = ({
   runArtifacts,
   useRunArtifactsExport = false,
 }) => {
-  const [isZipping, setIsZipping] = useState(false);
+  // isValidating tracks validate/repair operations; isDownloading tracks download.
+  // These are intentionally separate so a long-running repair never blocks the download button.
+  const [isValidating, setIsValidating] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
   const [lastValidationError, setLastValidationError] = useState<string | null>(null)
   const [exportBlockers, setExportBlockers] = useState<ExportBlocker[]>([])
 
@@ -210,8 +213,8 @@ const ExportModal: React.FC<ExportModalProps> = ({
   }
 
   const handleValidate = async () => {
-    if (isZipping) return;
-    setIsZipping(true);
+    if (isValidating) return;
+    setIsValidating(true);
     setExportBlockers([])
 
     try {
@@ -223,13 +226,13 @@ const ExportModal: React.FC<ExportModalProps> = ({
         alert("An error occurred while validating artifacts. Please check the console.")
       }
     } finally {
-      setIsZipping(false);
+      setIsValidating(false);
     }
   };
 
   const handleRepairRun = async () => {
-    if (isZipping) return
-    setIsZipping(true)
+    if (isValidating) return
+    setIsValidating(true)
     try {
       if (!pipeline.hardeningEnabled) return
       await validateHardening({ repairMode: true })
@@ -239,13 +242,13 @@ const ExportModal: React.FC<ExportModalProps> = ({
         alert('An error occurred while running repair. Please check the console.')
       }
     } finally {
-      setIsZipping(false)
+      setIsValidating(false)
     }
   }
 
   const handleDownloadZip = async () => {
-    if (isZipping) return
-    setIsZipping(true)
+    if (isDownloading) return
+    setIsDownloading(true)
     try {
       if (useRunArtifactsExport && runId) {
         await downloadFromRun(runId)
@@ -292,7 +295,7 @@ const ExportModal: React.FC<ExportModalProps> = ({
         alert("An error occurred while creating the zip file. Please check the console.")
       }
     } finally {
-      setIsZipping(false);
+      setIsDownloading(false);
     }
   }
 
@@ -377,10 +380,10 @@ const ExportModal: React.FC<ExportModalProps> = ({
             <>
               <button
                 onClick={handleValidate}
-                disabled={isZipping || displayArtifacts.length === 0 || useRunArtifactsExport}
+                disabled={isValidating || displayArtifacts.length === 0 || useRunArtifactsExport}
                 className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white font-semibold rounded-lg flex items-center transition-colors disabled:opacity-60 disabled:cursor-wait"
               >
-                {isZipping ? (
+                {isValidating ? (
                   <>
                     <LoadingIcon className="w-5 h-5 mr-2 animate-spin" />
                     Validating…
@@ -391,11 +394,11 @@ const ExportModal: React.FC<ExportModalProps> = ({
               </button>
               <button
                 onClick={handleRepairRun}
-                disabled={isZipping || displayArtifacts.length === 0 || useRunArtifactsExport || runMode === 'design'}
+                disabled={isValidating || displayArtifacts.length === 0 || useRunArtifactsExport || runMode === 'design'}
                 className="px-4 py-2 bg-amber-700 hover:bg-amber-600 text-white font-semibold rounded-lg flex items-center transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 title="Run another validation cycle with extended repair attempts using the same generated artifacts."
               >
-                {isZipping ? (
+                {isValidating ? (
                   <>
                     <LoadingIcon className="w-5 h-5 mr-2 animate-spin" />
                     Repairing…
@@ -406,24 +409,33 @@ const ExportModal: React.FC<ExportModalProps> = ({
               </button>
               <button
                 onClick={handleDownloadZip}
-                disabled={isZipping || displayArtifacts.length === 0}
+                disabled={isDownloading || displayArtifacts.length === 0}
                 className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg flex items-center transition-colors disabled:bg-indigo-400 disabled:cursor-not-allowed"
                 title={!isRunnable(pipeline) ? 'Validation failed - exported artifacts may not be runnable' : 'Download exported artifacts'}
               >
-                <DownloadIcon className="w-5 h-5 mr-2" />
-                Download .zip {!isRunnable(pipeline) && '⚠️'}
+                {isDownloading ? (
+                  <>
+                    <LoadingIcon className="w-5 h-5 mr-2 animate-spin" />
+                    Downloading…
+                  </>
+                ) : (
+                  <>
+                    <DownloadIcon className="w-5 h-5 mr-2" />
+                    Download .zip {!isRunnable(pipeline) && '⚠️'}
+                  </>
+                )}
               </button>
             </>
           ) : (
             <button
               onClick={handleDownloadZip}
-              disabled={isZipping || displayArtifacts.length === 0}
+              disabled={isDownloading || displayArtifacts.length === 0}
               className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg flex items-center transition-colors disabled:bg-indigo-400 disabled:cursor-wait"
             >
-              {isZipping ? (
+              {isDownloading ? (
                 <>
                   <LoadingIcon className="w-5 h-5 mr-2 animate-spin" />
-                  Zipping...
+                  Downloading...
                 </>
               ) : (
                 <>

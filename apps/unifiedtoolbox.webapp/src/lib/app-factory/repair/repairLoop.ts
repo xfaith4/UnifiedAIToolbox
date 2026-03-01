@@ -126,6 +126,22 @@ export async function repairLoop(options: {
   const patchesDir = path.join(options.repoDir, 'patches')
   await fs.mkdir(patchesDir, { recursive: true })
 
+  const hasInfrastructureTimeout = (report: GateReport) =>
+    report.steps.some((s) => s.status === 'failed' && s.result?.timedOut)
+
+  if (hasInfrastructureTimeout(options.gateReport)) {
+    await options.onEvent?.({
+      phase: 'repair',
+      agent: 'Synthesizer',
+      status: 'failed',
+      message: 'Skipping repair: a gate step timed out (infrastructure failure — code patches cannot fix this)',
+      details: { timedOutStep: options.gateReport.steps.find((s) => s.status === 'failed' && s.result?.timedOut)?.name },
+    })
+    const patchLog = renderPatchLog([])
+    await fs.writeFile(patchLogPath, patchLog, 'utf8')
+    return { attemptedCycles: 0, cycles: [], patchLogPath }
+  }
+
   for (let cycle = 1; cycle <= options.config.maxRepairCycles; cycle++) {
     const prompt = await renderFixerPrompt({
       repoDir: options.repoDir,
@@ -194,6 +210,18 @@ export async function repairLoop(options: {
     options.gateReport = refreshed.gateReport
 
     if (options.contractEval.passed && options.gateReport.passed && options.normalization.violations.length === 0) {
+      break
+    }
+
+    // Stop retrying if the failure is an infrastructure timeout — code patches can't fix it.
+    if (hasInfrastructureTimeout(options.gateReport)) {
+      await options.onEvent?.({
+        phase: 'repair',
+        agent: 'Synthesizer',
+        status: 'failed',
+        message: `Repair cycle ${cycle} stopped: gate step timed out (infrastructure failure)`,
+        details: { cycle, timedOutStep: options.gateReport.steps.find((s) => s.status === 'failed' && s.result?.timedOut)?.name },
+      })
       break
     }
   }

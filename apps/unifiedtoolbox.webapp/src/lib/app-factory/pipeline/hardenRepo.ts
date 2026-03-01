@@ -469,7 +469,8 @@ export async function hardenRepo(options: {
   normalization = await normalizeRepo(repoDir, options.contract)
   contractEval = await evaluateRepoContract(repoDir, options.contract)
   {
-    const canRunGates = normalization.violations.length === 0 && contractEval.passed
+    const lastGateHadTimeout = gateReport.steps.some((s) => s.status === 'failed' && s.result?.timedOut)
+    const canRunGates = normalization.violations.length === 0 && contractEval.passed && !lastGateHadTimeout
     gateReport = canRunGates
       ? await runGates(repoDir, options.contract, {
           gateTimeoutSeconds: cfg.gateTimeoutSeconds,
@@ -478,7 +479,11 @@ export async function hardenRepo(options: {
         })
       : await writeSkippedGateReport(
           repoDir,
-          normalization.violations.length > 0 ? 'Skipped: normalization violations present' : 'Skipped: contract failed'
+          normalization.violations.length > 0
+            ? 'Skipped: normalization violations present'
+            : !contractEval.passed
+              ? 'Skipped: contract failed'
+              : 'Skipped: previous gate run timed out (infrastructure failure — re-run would also time out)'
         )
   }
 
