@@ -1,0 +1,72 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "management-team/verification-report",
+  "title": "VerificationReport",
+  "description": "Payload for message_type=VerificationReport. Sent by Verifier → Overseer. Reports whether acceptance tests passed. Overseer MUST NACK if any failed check has no evidence — this prevents hallucinated failures.",
+  "type": "object",
+  "required": [
+    "verification_status",
+    "checks",
+    "summary"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "verification_status": {
+      "type": "string",
+      "enum": ["pass", "fail", "blocked_requirements", "deferred"],
+      "description": "'pass' moves run to COMPLETE (after Knowledge). 'fail' triggers Knowledge. 'blocked_requirements' routes back to REQUIREMENTS_GATHERING. 'deferred' = cannot verify yet (infrastructure not ready)."
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 1,
+      "description": "One entry per acceptance test from GoalSpec. Overseer MUST NACK if any failed check has evidence=[].",
+      "items": {
+        "type": "object",
+        "required": ["id", "result", "evidence"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Matches an id from GoalSpec.acceptance_tests (or a derived id)."
+          },
+          "result": {
+            "type": "string",
+            "enum": ["pass", "fail", "defer"],
+            "description": "'defer' = check could not be run (infrastructure issue, not a build failure)."
+          },
+          "evidence": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Log excerpts, file:line references, or screenshot refs proving the result. MUST be non-empty if result='fail'. Overseer NACKs empty evidence on failures."
+          },
+          "notes": {
+            "type": "string",
+            "description": "Optional additional context."
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 10,
+      "description": "Human-readable overall conclusion. Must be factual, not evaluative ('looks good', 'nice' not allowed)."
+    },
+    "requirements_gaps": {
+      "type": "array",
+      "description": "If verification_status='blocked_requirements', list the specific requirements that are missing.",
+      "items": { "type": "string" }
+    }
+  },
+  "if": {
+    "properties": {
+      "verification_status": { "const": "blocked_requirements" }
+    }
+  },
+  "then": {
+    "required": ["requirements_gaps"],
+    "properties": {
+      "requirements_gaps": { "minItems": 1 }
+    }
+  }
+}

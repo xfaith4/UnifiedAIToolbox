@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "management-team/nack",
+  "title": "NACK",
+  "description": "Payload for message_type=NACK. Any agent may send a NACK when it receives an invalid envelope or payload. A NACK blocks the run stage until a corrected message arrives. The sender of the invalid message MUST correct and re-send — it must NOT proceed.",
+  "type": "object",
+  "required": [
+    "reason",
+    "missing_fields",
+    "expected_schema",
+    "retry_instructions"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "reason": {
+      "type": "string",
+      "enum": [
+        "missing_required_fields",
+        "invalid_enum",
+        "no_evidence",
+        "contradiction",
+        "insufficient_items",
+        "schema_version_mismatch",
+        "unknown_message_type",
+        "vague_acceptance_test"
+      ],
+      "description": "Machine-readable rejection reason code."
+    },
+    "missing_fields": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "JSON paths to fields that are missing or invalid (e.g. ['payload.interactions', 'payload.open_questions']). May be empty for non-field errors like 'unknown_message_type'."
+    },
+    "expected_schema": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The schema ID that the rejected message should conform to (e.g. 'management-team/goal-spec v1.0')."
+    },
+    "retry_instructions": {
+      "type": "string",
+      "minLength": 10,
+      "description": "Plain-language instructions for the sender to fix the message. Must be actionable. 'Provide the missing fields exactly; do not proceed.' is the minimum."
+    },
+    "rejected_message_id": {
+      "type": "string",
+      "description": "The message_id of the message being rejected. Helps the sender identify which message to fix."
+    },
+    "rejected_message_type": {
+      "type": "string",
+      "description": "The message_type of the rejected message."
+    }
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "management-team/approval",
+  "title": "Approval",
+  "description": "Payload for message_type=Approval. Sent by Commissioner → Overseer. Grants permission to begin EXECUTION. Overseer MUST NACK if constraints_confirmed or acceptance_tests_confirmed are not exactly true.",
+  "type": "object",
+  "required": [
+    "decision",
+    "commissioner_score",
+    "rationale",
+    "constraints_confirmed",
+    "acceptance_tests_confirmed"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "decision": {
+      "type": "string",
+      "enum": ["approved", "hard_fail"],
+      "description": "'approved' moves run to EXECUTION. 'hard_fail' terminates the run immediately (used only for contradictions, policy violations, or provably impossible goals)."
+    },
+    "commissioner_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Final completeness score. Should be >= 80 for 'approved'; informational for 'hard_fail'."
+    },
+    "rationale": {
+      "type": "string",
+      "minLength": 20,
+      "description": "Explanation of the decision. Must reference specific GoalSpec fields for hard_fail."
+    },
+    "constraints_confirmed": {
+      "type": "boolean",
+      "enum": [true],
+      "description": "Must be exactly true. Overseer MUST NACK if false or missing."
+    },
+    "acceptance_tests_confirmed": {
+      "type": "boolean",
+      "enum": [true],
+      "description": "Must be exactly true. Overseer MUST NACK if false or missing."
+    },
+    "hard_fail_reason": {
+      "type": "string",
+      "description": "Required if decision='hard_fail'. Explains exactly why the goal is impossible or violates policy."
+    },
+    "approved_stack": {
+      "type": "object",
+      "description": "Optional: Commissioner may narrow or confirm specific stack choices here.",
+      "additionalProperties": true
+    }
+  },
+  "if": {
+    "properties": { "decision": { "const": "hard_fail" } }
+  },
+  "then": {
+    "required": ["hard_fail_reason"]
+  }
+}

@@ -1,0 +1,157 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "management-team/goal-spec",
+  "title": "GoalSpec",
+  "description": "Payload for message_type=GoalSpec. Sent by Concierge → Commissioner. Represents a complete, unambiguous set of requirements. Commissioner MUST NACK if interactions.length < 4 or any acceptance_test is vague.",
+  "type": "object",
+  "required": [
+    "goal_summary",
+    "stack",
+    "constraints",
+    "interactions",
+    "acceptance_tests",
+    "maintenance_scope",
+    "defaults_applied",
+    "open_questions"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "goal_summary": {
+      "type": "string",
+      "minLength": 20,
+      "description": "A clear, unambiguous statement of what should be built. Must be specific enough to write a failing test from."
+    },
+    "stack": {
+      "type": "object",
+      "required": ["runtime"],
+      "additionalProperties": false,
+      "properties": {
+        "runtime": {
+          "type": "string",
+          "enum": ["node", "python", "dotnet", "powershell", "browser"],
+          "description": "Primary runtime environment."
+        },
+        "frontend": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Frontend libraries/frameworks (e.g. react, vite, ts)."
+        },
+        "3d": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "3D libraries if applicable (e.g. r3f, three, drei)."
+        },
+        "state": {
+          "type": "string",
+          "description": "State management approach (e.g. zustand, react, redux)."
+        },
+        "tests": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Test frameworks (e.g. vitest, jest, playwright)."
+        },
+        "other": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Any additional tooling not covered above."
+        }
+      }
+    },
+    "constraints": {
+      "type": "object",
+      "required": ["offline_after_install", "no_external_apis", "target_devices"],
+      "additionalProperties": true,
+      "properties": {
+        "offline_after_install": {
+          "type": "boolean",
+          "description": "If true, the app must work fully offline after npm install."
+        },
+        "no_external_apis": {
+          "type": "boolean",
+          "description": "If true, no runtime calls to external APIs are permitted."
+        },
+        "target_devices": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "description": "Target device profiles (e.g. typical_laptop, mobile, desktop)."
+        },
+        "performance_budget": {
+          "type": "object",
+          "properties": {
+            "fps_target": {
+              "type": "number",
+              "minimum": 15,
+              "description": "Minimum acceptable frames per second."
+            },
+            "geometry_budget_notes": {
+              "type": "string",
+              "description": "Human-readable geometry complexity guidance."
+            }
+          }
+        }
+      }
+    },
+    "interactions": {
+      "type": "array",
+      "minItems": 4,
+      "description": "Distinct user interactions. Commissioner MUST NACK if fewer than 4.",
+      "items": {
+        "type": "object",
+        "required": ["id", "user_action", "visible_change", "state_change", "numeric_readout"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Stable identifier for this interaction (e.g. exhibit_A)."
+          },
+          "user_action": {
+            "type": "string",
+            "description": "What the user does (e.g. click, tap, drag)."
+          },
+          "visible_change": {
+            "type": "string",
+            "minLength": 10,
+            "description": "Observable change in the UI after the action. Must be specific enough to verify."
+          },
+          "state_change": {
+            "type": "string",
+            "minLength": 5,
+            "description": "Internal state that changes (e.g. 'subdivisionDepth increments by 1')."
+          },
+          "numeric_readout": {
+            "type": "string",
+            "minLength": 5,
+            "description": "What number or formula is displayed to the user after the interaction."
+          }
+        }
+      }
+    },
+    "acceptance_tests": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Pass/fail acceptance criteria. Commissioner MUST NACK vague tests (e.g. 'looks nice', 'works well').",
+      "items": {
+        "type": "string",
+        "minLength": 20
+      }
+    },
+    "maintenance_scope": {
+      "type": "string",
+      "enum": ["demo", "maintainable"],
+      "description": "Whether this is a throwaway demo or production-quality maintainable code."
+    },
+    "defaults_applied": {
+      "type": "array",
+      "description": "List of assumptions Concierge applied without explicit user confirmation.",
+      "items": { "type": "string" }
+    },
+    "open_questions": {
+      "type": "array",
+      "description": "Must be empty ([]) before GoalSpec is sent. If non-empty, Concierge must resolve them first.",
+      "items": { "type": "string" },
+      "maxItems": 0
+    }
+  }
+}

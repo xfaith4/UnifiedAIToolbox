@@ -377,7 +377,7 @@ export default function RunsPage() {
             <button
               type="button"
               role="switch"
-              aria-checked={autoRefresh}
+              aria-checked={autoRefresh ? 'true' : 'false'}
               aria-label="Toggle auto-refresh"
               onClick={() => setAutoRefresh((v) => !v)}
               className={`relative h-5 w-9 rounded-full transition-colors cursor-pointer ${

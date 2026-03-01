@@ -1,0 +1,87 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "management-team/knowledge-record",
+  "title": "KnowledgeRecord",
+  "description": "Payload for message_type=KnowledgeRecord. Sent by Knowledge → Overseer. Triggered automatically on verification_status=fail/blocked_requirements/deferred. Overseer MUST NACK if prevention_patches or regression_checks are empty — this enforces 'heal the failure point' behavior.",
+  "type": "object",
+  "required": [
+    "knowledge_status",
+    "classification",
+    "what_broke",
+    "root_cause",
+    "evidence",
+    "prevention_patches",
+    "regression_checks"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "knowledge_status": {
+      "type": "string",
+      "enum": ["pass", "needs_info", "fail"],
+      "description": "'pass' = record is complete and Overseer can advance. 'needs_info' = Knowledge needs more data before it can produce patches. 'fail' = Knowledge is blocked."
+    },
+    "classification": {
+      "type": "string",
+      "enum": [
+        "requirements_incomplete",
+        "dependency",
+        "build",
+        "test",
+        "perf",
+        "infra",
+        "flaky",
+        "policy"
+      ],
+      "description": "Primary failure category. Used to route the record to the correct prevention library."
+    },
+    "what_broke": {
+      "type": "string",
+      "minLength": 10,
+      "description": "Concise description of the observable failure. Must be specific enough to reproduce."
+    },
+    "root_cause": {
+      "type": "string",
+      "minLength": 10,
+      "description": "The underlying cause of the failure. Must be one level deeper than 'what_broke'."
+    },
+    "evidence": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Log excerpts, file:line references, or other artifacts proving root_cause. Must not be empty.",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "prevention_patches": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Concrete changes to prevent recurrence. Overseer MUST NACK if empty. At least one entry required.",
+      "items": {
+        "type": "object",
+        "required": ["target", "change"],
+        "additionalProperties": false,
+        "properties": {
+          "target": {
+            "type": "string",
+            "minLength": 1,
+            "description": "What is being patched: a role prompt, a file path, a policy rule, or a template."
+          },
+          "change": {
+            "type": "string",
+            "minLength": 10,
+            "description": "The specific change to apply. Must be actionable (not 'improve error handling')."
+          }
+        }
+      }
+    },
+    "regression_checks": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Concrete tests that would catch a recurrence of this failure. Overseer MUST NACK if empty. At least one entry required.",
+      "items": { "type": "string", "minLength": 10 }
+    },
+    "anti_repeat_key": {
+      "type": "string",
+      "description": "Optional stable identifier for this failure pattern. Knowledge uses this to detect duplicate root causes across runs.",
+      "minLength": 1
+    }
+  }
+}

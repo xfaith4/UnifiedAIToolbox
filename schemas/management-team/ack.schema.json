@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "management-team/ack",
+  "title": "ACK",
+  "description": "Payload for message_type=ACK. Sent when a receiver accepts a message and wants to confirm receipt without sending a substantive response. Used by Concierge when Commissioner's question is already answered in GoalSpec — Concierge replies ACK + reference rather than re-asking the user.",
+  "type": "object",
+  "required": ["acknowledged_message_id", "acknowledged_message_type"],
+  "additionalProperties": false,
+  "properties": {
+    "acknowledged_message_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The message_id of the message being acknowledged."
+    },
+    "acknowledged_message_type": {
+      "type": "string",
+      "description": "The message_type of the acknowledged message."
+    },
+    "reference": {
+      "type": "string",
+      "description": "Optional: if the ACK is in response to a NeedsRequirements, this points to where in GoalSpec the question is already answered (e.g. 'GoalSpec.constraints.offline_after_install = true')."
+    },
+    "note": {
+      "type": "string",
+      "description": "Optional human-readable context."
+    }
+  }
+}

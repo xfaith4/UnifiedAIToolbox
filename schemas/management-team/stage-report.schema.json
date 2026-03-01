@@ -1,0 +1,67 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "management-team/stage-report",
+  "title": "StageReport",
+  "description": "Payload for message_type=StageReport. Sent by Overseer to any role to communicate stage progress. Also sent by build/verify agents back to Overseer. If a stage is marked 'completed' but artifacts_expected is not a subset of artifacts_present, Overseer MUST self-NACK and block progression.",
+  "type": "object",
+  "required": [
+    "stage",
+    "status",
+    "artifacts_expected",
+    "artifacts_present",
+    "errors",
+    "next_expected_message_type"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "stage": {
+      "type": "string",
+      "enum": ["requirements", "feasibility", "execution", "verification", "knowledge"],
+      "description": "The lifecycle stage this report covers."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["started", "working", "completed", "blocked"],
+      "description": "'blocked' halts progression until a corrected message arrives."
+    },
+    "artifacts_expected": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Artifact names/paths that must exist for this stage to be 'completed'. Overseer enforces this list."
+    },
+    "artifacts_present": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Artifacts confirmed present at the time of this report. Overseer compares against artifacts_expected."
+    },
+    "errors": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Error messages from this stage, if any. May be empty ([]) on success."
+    },
+    "next_expected_message_type": {
+      "type": "string",
+      "enum": [
+        "GoalSpec",
+        "NeedsRequirements",
+        "Approval",
+        "StageReport",
+        "VerificationReport",
+        "KnowledgeRecord",
+        "NACK",
+        "ACK",
+        "none"
+      ],
+      "description": "What message Overseer expects to receive next. 'none' = run is terminal."
+    },
+    "notes": {
+      "type": "string",
+      "description": "Optional human-readable context for debugging."
+    },
+    "elapsed_ms": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Wall-clock milliseconds this stage has been running, if known."
+    }
+  }
+}
