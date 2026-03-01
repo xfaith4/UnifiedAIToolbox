@@ -26,7 +26,7 @@
     },
     "rationale": {
       "type": "string",
-      "minLength": 20,
+      "minLength": 30,
       "description": "Explanation of the decision. Must reference specific GoalSpec fields for hard_fail."
     },
     "constraints_confirmed": {

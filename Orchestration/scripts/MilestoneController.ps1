@@ -960,6 +960,26 @@ function Assert-AgentOutputContract {
 
     $parsed = $normalized.parsed
 
+    # If the agent output is a clarification_request, treat it as a valid bypass:
+    # the agent is signalling that its inputs are insufficient to proceed.
+    $propNames = @($parsed.PSObject.Properties.Name)
+    if ($propNames.Count -eq 1 -and $propNames[0] -eq "clarification_request") {
+        $clarificationText = $parsed.clarification_request
+        if (-not [string]::IsNullOrWhiteSpace($clarificationText)) {
+            Write-Log "Agent '${AgentName}' requested clarification: $clarificationText" -Level "WARN"
+            return @{
+                ok                   = $true
+                parsed               = $parsed
+                normalized_json      = $normalized.json
+                error                = $null
+                errors               = @()
+                schema               = $schema
+                clarification_needed = $true
+                clarification_text   = $clarificationText
+            }
+        }
+    }
+
     if ($schema) {
         try {
             $schemaJson = $schema | ConvertTo-Json -Depth 60
