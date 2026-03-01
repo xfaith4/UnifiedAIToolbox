@@ -37,19 +37,21 @@
           },
           "evidence": {
             "type": "array",
-            "items": { "type": "string" },
-            "description": "Log excerpts, file:line references, or screenshot refs proving the result. MUST be non-empty if result='fail'. Overseer NACKs empty evidence on failures."
+            "items": { "type": "string", "minLength": 1 },
+            "description": "Log excerpts, file:line references, or screenshot refs proving the result. MUST be non-empty if result='fail' or result='pass'. Overseer NACKs empty evidence on failures."
           },
           "notes": {
             "type": "string",
             "description": "Optional additional context."
           }
-        }
+        },
+        "if": { "properties": { "result": { "enum": ["pass", "fail"] } }, "required": ["result"] },
+        "then": { "required": ["evidence"], "properties": { "evidence": { "minItems": 1 } } }
       }
     },
     "summary": {
       "type": "string",
-      "minLength": 10,
+      "minLength": 20,
       "description": "Human-readable overall conclusion. Must be factual, not evaluative ('looks good', 'nice' not allowed)."
     },
     "requirements_gaps": {

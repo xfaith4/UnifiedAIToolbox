@@ -18,7 +18,7 @@
   "properties": {
     "goal_summary": {
       "type": "string",
-      "minLength": 20,
+      "minLength": 40,
       "description": "A clear, unambiguous statement of what should be built. Must be specific enough to write a failing test from."
     },
     "stack": {
@@ -33,26 +33,27 @@
         },
         "frontend": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": { "type": "string", "minLength": 1 },
           "description": "Frontend libraries/frameworks (e.g. react, vite, ts)."
         },
         "3d": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": { "type": "string", "minLength": 1 },
           "description": "3D libraries if applicable (e.g. r3f, three, drei)."
         },
         "state": {
           "type": "string",
+          "minLength": 1,
           "description": "State management approach (e.g. zustand, react, redux)."
         },
         "tests": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": { "type": "string", "minLength": 1 },
           "description": "Test frameworks (e.g. vitest, jest, playwright)."
         },
         "other": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": { "type": "string", "minLength": 1 },
           "description": "Any additional tooling not covered above."
         }
       }
@@ -112,17 +113,17 @@
           },
           "visible_change": {
             "type": "string",
-            "minLength": 10,
+            "minLength": 20,
             "description": "Observable change in the UI after the action. Must be specific enough to verify."
           },
           "state_change": {
             "type": "string",
-            "minLength": 5,
+            "minLength": 15,
             "description": "Internal state that changes (e.g. 'subdivisionDepth increments by 1')."
           },
           "numeric_readout": {
             "type": "string",
-            "minLength": 5,
+            "minLength": 10,
             "description": "What number or formula is displayed to the user after the interaction."
           }
         }
@@ -134,7 +135,7 @@
       "description": "Pass/fail acceptance criteria. Commissioner MUST NACK vague tests (e.g. 'looks nice', 'works well').",
       "items": {
         "type": "string",
-        "minLength": 20
+        "minLength": 30
       }
     },
     "maintenance_scope": {
