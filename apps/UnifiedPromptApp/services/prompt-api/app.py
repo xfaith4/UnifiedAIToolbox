@@ -4623,34 +4623,55 @@ def orchestrate_run(
             path.write_text(json.dumps(data, indent=2), encoding="utf-8")
             if cancel_event.is_set():
                 raise RuntimeError("cancelled")
-            with open(log_path, "a", encoding="utf-8") as logf:
-                logf.write(f"READY TO EXECUTE: {json.dumps({'script': str(ps1), 'args': args})}\n")
-                proc = subprocess.Popen(args, stdout=logf, stderr=logf)
-                _set_orch_run_process(run_id, proc)
-                try:
-                    while True:
-                        if cancel_event.is_set():
-                            try:
-                                proc.terminate()
-                                proc.wait(timeout=8)
-                            except subprocess.TimeoutExpired:
-                                proc.kill()
-                                proc.wait(timeout=5)
-                            raise RuntimeError("cancelled")
+            try:
+                with open(log_path, "a", encoding="utf-8") as logf:
+                    logf.write(f"READY TO EXECUTE: {json.dumps({'script': str(ps1), 'args': args})}\n")
+                    proc = subprocess.Popen(args, stdout=logf, stderr=logf)
+                    _set_orch_run_process(run_id, proc)
+                    try:
+                        while True:
+                            if cancel_event.is_set():
+                                try:
+                                    proc.terminate()
+                                    proc.wait(timeout=8)
+                                except subprocess.TimeoutExpired:
+                                    proc.kill()
+                                    proc.wait(timeout=5)
+                                raise RuntimeError("cancelled")
 
-                        return_code = proc.poll()
-                        if return_code is not None:
-                            if return_code != 0:
-                                raise subprocess.CalledProcessError(return_code, args)
-                            break
-                        time.sleep(0.5)
-                finally:
-                    _set_orch_run_process(run_id, None)
-
-            stop_event.set()
-            poller.join(timeout=2.0)
-            overseer.join(timeout=6.0)  # slightly longer — overseer does a final manifest sweep
-            processed_status = _ingest_status_file(status_file, processed_status)
+                            return_code = proc.poll()
+                            if return_code is not None:
+                                if return_code != 0:
+                                    # Capture the last 4 KB of combined stdout/stderr (both were
+                                    # redirected into log_path) so the error handler can surface
+                                    # the actual PowerShell failure message instead of just an
+                                    # opaque exit-code number.
+                                    _log_tail = ""
+                                    try:
+                                        _log_sz = log_path.stat().st_size
+                                        _read_sz = min(_log_sz, 4096)
+                                        with open(log_path, "r", encoding="utf-8", errors="replace") as _lf:
+                                            _lf.seek(max(0, _log_sz - _read_sz))
+                                            _log_tail = _lf.read()
+                                    except Exception:
+                                        pass
+                                    raise subprocess.CalledProcessError(
+                                        return_code, args, output=_log_tail.encode("utf-8", errors="replace")
+                                    )
+                                break
+                            time.sleep(0.5)
+                    finally:
+                        _set_orch_run_process(run_id, None)
+            finally:
+                # Always stop background threads when the subprocess exits, whether it
+                # succeeded, failed, or was cancelled.  Without this guard the poller
+                # thread keeps calling _ingest_status_file every second, and the overseer
+                # thread keeps appending events — both after the run is already marked
+                # failed — producing duplicate/phantom entries in the manifest.
+                stop_event.set()
+                poller.join(timeout=2.0)
+                overseer.join(timeout=6.0)  # slightly longer — overseer does a final manifest sweep
+                processed_status = _ingest_status_file(status_file, processed_status)
             if cancel_event.is_set():
                 raise RuntimeError("cancelled")
 
@@ -5020,7 +5041,21 @@ def orchestrate_run(
                 except Exception as e:
                     print(f"[orchestrate] Failed to write cancelled state to manifest: {e}", file=sys.stderr)
             else:
-                error_detail = f"orchestrator failed: {exc}"
+                # When the subprocess exited non-zero, CalledProcessError.output holds the
+                # last 4 KB of the script's combined stdout+stderr (captured above).
+                # Decode it and attach to the error so operators can read the root cause
+                # directly from the manifest instead of hunting through log files.
+                error_log_tail = ""
+                if isinstance(exc, subprocess.CalledProcessError) and exc.output:
+                    try:
+                        raw = exc.output if isinstance(exc.output, str) else exc.output.decode("utf-8", errors="replace")
+                        error_log_tail = raw.strip()[-3000:]  # cap at 3000 chars for manifest size
+                    except Exception:
+                        pass
+                exit_code_str = f" (exit code {exc.returncode})" if isinstance(exc, subprocess.CalledProcessError) else ""
+                error_detail = f"orchestrator failed{exit_code_str}: {exc}"
+                if error_log_tail:
+                    error_detail = f"{error_detail}\n\n--- Script output (last 4 KB) ---\n{error_log_tail}"
                 print(f"[orchestrate] {error_detail}", file=sys.stderr)
                 try:
                     _append_events(
@@ -5030,6 +5065,8 @@ def orchestrate_run(
                     data["status"] = f"error:{type(exc).__name__}"
                     data["completed_at"] = now_iso()
                     data["error_detail"] = str(exc)
+                    if error_log_tail:
+                        data["error_log_tail"] = error_log_tail
                     data["last_step"] = "orchestrator execution"
                     path.write_text(json.dumps(data, indent=2), encoding="utf-8")
                 except Exception as e:
