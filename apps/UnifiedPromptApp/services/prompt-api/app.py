@@ -229,14 +229,26 @@ def _coerce_agent_json_payload(payload: Any, depth: int = 0) -> Optional[Dict[st
         if not text:
             return None
 
-        if "```" in text:
-            return None
-
+        # Try parsing as JSON first (before checking for markdown fences, since
+        # the string may be a JSON envelope whose content contains backticks)
         try:
             parsed = json.loads(text)
             return _coerce_agent_json_payload(parsed, depth + 1)
         except Exception:
-            return None
+            pass
+
+        # If JSON parse failed, try stripping markdown code fences and re-parsing
+        if "```" in text:
+            match = re.search(r'^```[^\n]*\n(.*?)\n?```$', text, flags=re.DOTALL | re.MULTILINE)
+            inner = match.group(1).strip() if match else None
+            if inner:
+                try:
+                    parsed = json.loads(inner)
+                    return _coerce_agent_json_payload(parsed, depth + 1)
+                except Exception:
+                    pass
+
+        return None
 
     if _payload_contains_markdown_fences(payload):
         return None
@@ -1151,8 +1163,8 @@ def sanitize_run_id(raw: str, max_length: int = 120) -> str:
         result = result.replace(char, '_')
 
     # Replace any remaining unsafe characters (including [] and commas) with underscores
-    # Keep only letters, numbers, dot, dash, and underscore to avoid shell/glob issues.
-    result = re.sub(r'[^A-Za-z0-9._-]+', '_', result)
+    # Keep Unicode letters/digits, dot, dash, and underscore to avoid shell/glob issues.
+    result = re.sub(r'[^\w._-]+', '_', result, flags=re.UNICODE)
     
     # Collapse multiple consecutive underscores into a single underscore
     result = re.sub(r'_+', '_', result)
