@@ -172,12 +172,16 @@ jobs:
         run: |
           Set-PSRepository PSGallery -InstallationPolicy Trusted
           Install-Module powershell-yaml -Scope CurrentUser -Force
+
+      - name: Install PromptLibrary module
+        shell: pwsh
+        run: |
+          $env:PSModulePath = "$PWD/modules" + [IO.Path]::PathSeparator + $env:PSModulePath
           Import-Module PromptLibrary -Force
           if (-not (Get-Command Get-Prompt -ErrorAction SilentlyContinue)) {
              Write-Error "Get-Prompt function not found. Ensure the PromptLibrary module is present and imported correctly."
-          exit 1
+             exit 1
           }
-          $prompts = Get-Prompt
       - name: Build prompt index
         shell: pwsh
         run: |
