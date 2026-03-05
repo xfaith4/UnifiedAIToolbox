@@ -7998,45 +7998,166 @@ def list_clones():
 
 
 def _is_port_available(port: int, host: str = "0.0.0.0") -> bool:
-    """Check if a port is available for binding."""
+    """Check if a port is available for binding.
+
+    Does NOT set SO_REUSEADDR so that the check reflects the real bind state
+    (SO_REUSEADDR can return false-positives, especially on Windows where it
+    allows multiple listeners on the same port).
+    """
     import socket
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             sock.bind((host, port))
             return True
     except OSError:
         return False
 
 
+def _get_port_owner(port: int) -> str:
+    """Return a human-readable description of the process listening on *port*.
+
+    Tries ``psutil`` first (cross-platform), then falls back to platform-native
+    CLI tools (``ss``/``lsof`` on POSIX, ``netstat``/``tasklist`` on Windows).
+    Returns ``"unknown process"`` when the owner cannot be determined.
+    """
+    # -- psutil path (preferred) ------------------------------------------
+    try:
+        import psutil  # type: ignore[import]
+        for conn in psutil.net_connections(kind="inet"):
+            if conn.laddr.port == port and conn.status == "LISTEN":
+                try:
+                    proc = psutil.Process(conn.pid)
+                    return f"{proc.name()} (PID {conn.pid})"
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    if conn.pid:
+                        return f"PID {conn.pid}"
+    except ImportError:
+        pass
+
+    # -- CLI fallback -------------------------------------------------------
+    try:
+        if sys.platform == "win32":
+            result = subprocess.run(
+                ["netstat", "-ano"],
+                capture_output=True, text=True, timeout=5,
+            )
+            for line in result.stdout.splitlines():
+                if f":{port}" in line and "LISTENING" in line:
+                    parts = line.split()
+                    if parts:
+                        pid = parts[-1]
+                        r2 = subprocess.run(
+                            ["tasklist", "/FI", f"PID eq {pid}", "/NH", "/FO", "CSV"],
+                            capture_output=True, text=True, timeout=5,
+                        )
+                        for row in r2.stdout.splitlines():
+                            if pid in row:
+                                name = row.split(",")[0].strip('"')
+                                return f"{name} (PID {pid})"
+                        return f"PID {pid}"
+        else:
+            # Try ss (iproute2) first
+            result = subprocess.run(
+                ["ss", "-tlnp", f"sport = :{port}"],
+                capture_output=True, text=True, timeout=5,
+            )
+            if result.returncode == 0:
+                for line in result.stdout.splitlines():
+                    if f":{port}" in line:
+                        m = re.search(r'users:\(\("([^"]+)",pid=(\d+)', line)
+                        if m:
+                            return f"{m.group(1)} (PID {m.group(2)})"
+            # Fallback: lsof
+            result = subprocess.run(
+                ["lsof", "-ti", f":{port}"],
+                capture_output=True, text=True, timeout=5,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                pid = result.stdout.strip().split("\n")[0]
+                r2 = subprocess.run(
+                    ["ps", "-p", pid, "-o", "comm="],
+                    capture_output=True, text=True, timeout=5,
+                )
+                if r2.returncode == 0 and r2.stdout.strip():
+                    return f"{r2.stdout.strip()} (PID {pid})"
+                return f"PID {pid}"
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        pass
+
+    return "unknown process"
+
+
 def _find_available_port(start_port: int, max_attempts: int = 10, host: str = "0.0.0.0") -> int:
-    """Find an available port, starting from start_port."""
+    """Find an available port starting from *start_port*.
+
+    Emits a warning (to stderr) for each busy port encountered, including the
+    name of the process holding it where determinable.
+    """
     for offset in range(max_attempts):
         port = start_port + offset
         if _is_port_available(port, host):
             return port
-    raise RuntimeError(f"No available port found in range {start_port}-{start_port + max_attempts - 1}")
+        owner = _get_port_owner(port)
+        print(
+            f"WARNING: Port {port} is in use by {owner} — skipping.",
+            file=sys.stderr,
+        )
+    raise RuntimeError(
+        f"No available port found in range {start_port}–{start_port + max_attempts - 1}"
+    )
 
 
 if __name__ == "__main__":
     requested_port = int(os.environ.get("PROMPT_API_PORT", "8000"))
     host = os.environ.get("PROMPT_API_HOST", "127.0.0.1")
-    
-    # Check if port is available, find alternative if not
+
+    # Determine whether to enable auto-reload (development only).
+    # Reload uses a file-watcher subprocess which is not suitable for production.
+    _debug_mode = os.environ.get("APP_ENV", "development").lower() in ("development", "dev", "local")
+    _reload = _debug_mode and os.environ.get("UVICORN_RELOAD", "1") not in ("0", "false", "no")
+
+    # Check if requested port is available; fall back to next free port.
     if _is_port_available(requested_port, host):
         port = requested_port
     else:
-        print(f"Port {requested_port} is already in use, searching for available port...")
+        owner = _get_port_owner(requested_port)
+        print(
+            f"WARNING: Port {requested_port} is already in use by {owner}. "
+            "Searching for the next available port…",
+            file=sys.stderr,
+        )
         try:
             port = _find_available_port(requested_port + 1, max_attempts=10, host=host)
-            print(f"Using alternative port: {port}")
-        except RuntimeError as e:
-            print(f"Error: {e}")
-            print("Please free up port 8000 or set PROMPT_API_PORT to an available port.")
+            print(f"INFO: Using alternative port {port}.", file=sys.stderr)
+        except RuntimeError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            print(
+                f"Please free port {requested_port} or set PROMPT_API_PORT to an available port.",
+                file=sys.stderr,
+            )
             sys.exit(1)
-    
-    print(f"Starting server on {host}:{port}")
-    uvicorn.run("app:app", host=host, port=port, reload=True)
+
+    log_level = os.environ.get("UVICORN_LOG_LEVEL", "info").lower()
+    _keep_alive_raw = os.environ.get("UVICORN_KEEP_ALIVE", "30")
+    try:
+        _keep_alive = int(_keep_alive_raw)
+    except ValueError:
+        print(
+            f"WARNING: UVICORN_KEEP_ALIVE='{_keep_alive_raw}' is not a valid integer; "
+            "defaulting to 30 seconds.",
+            file=sys.stderr,
+        )
+        _keep_alive = 30
+    print(f"Starting Prompt API on {host}:{port} (reload={_reload}, log_level={log_level})")
+    uvicorn.run(
+        "app:app",
+        host=host,
+        port=port,
+        reload=_reload,
+        log_level=log_level,
+        timeout_keep_alive=_keep_alive,
+        access_log=True,
+    )
 ### END FILE
 
 
