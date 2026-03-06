@@ -123,10 +123,29 @@ if ([string]::IsNullOrWhiteSpace($env:PROMPT_API_HOST)) {
 # Port helpers
 # ---------------------------------------------------------------------------
 
+function Get-ExcludedPortRanges {
+    <#
+    .SYNOPSIS
+        Returns TCP port ranges reserved by Windows (e.g. by Hyper-V, WSL2, WinNAT, Docker).
+        These ranges cause bind() to fail with "access denied" even though no process is
+        actively listening, which is why netstat shows nothing for those ports.
+    #>
+    $ranges = @()
+    try {
+        $output = & netsh int ipv4 show excludedportrange protocol=tcp 2>$null
+        foreach ($line in $output) {
+            if ($line -match '^\s*(\d+)\s+(\d+)') {
+                $ranges += [PSCustomObject]@{ Start = [int]$Matches[1]; End = [int]$Matches[2] }
+            }
+        }
+    } catch { }
+    return $ranges
+}
+
 function Get-PortOwner([int]$Port) {
     <#
     .SYNOPSIS
-        Return a human-readable description of the process listening on Port.
+        Return a human-readable description of the process (or reservation) blocking Port.
     #>
     try {
         $matches2 = netstat -ano 2>$null |
@@ -137,6 +156,16 @@ function Get-PortOwner([int]$Port) {
             $proc = Get-Process -Id $pid2 -ErrorAction SilentlyContinue
             if ($proc) { return "$($proc.ProcessName) (PID $pid2)" }
             return "PID $pid2"
+        }
+    } catch { }
+    # No LISTENING process found - check whether Windows has reserved this port range.
+    # Hyper-V, WSL2, and Docker Desktop reserve port ranges on startup; attempts to bind
+    # those ports fail with "access denied" even though no user-space process holds them.
+    try {
+        foreach ($r in (Get-ExcludedPortRanges)) {
+            if ($Port -ge $r.Start -and $Port -le $r.End) {
+                return "Windows port reservation (range $($r.Start)-$($r.End); typically reserved by Hyper-V, WSL2, or Docker Desktop)"
+            }
         }
     } catch { }
     return "unknown process"
@@ -158,12 +187,26 @@ function Test-PortFree([int]$Port) {
     }
 }
 
+function Test-PortInExcludedRange([int]$Port, [object[]]$ExcludedRanges) {
+    <#
+    .SYNOPSIS
+        Returns $true when Port falls within any of the supplied Windows-excluded ranges.
+    #>
+    foreach ($r in $ExcludedRanges) {
+        if ($Port -ge $r.Start -and $Port -le $r.End) { return $true }
+    }
+    return $false
+}
+
 function Find-AvailablePort([int]$BasePort, [string]$ServiceName, [int]$MaxAttempts = 10) {
     <#
     .SYNOPSIS
         Return the first free TCP port at or above BasePort.
         Emits a warning for each occupied port, identifying its owner.
+        When all ports fail due to Windows OS reservations (Hyper-V/WSL2/Docker) rather
+        than actual listening processes, prints an actionable diagnostic with fix steps.
     #>
+    $maxPort = $BasePort + $MaxAttempts - 1
     for ($i = 0; $i -lt $MaxAttempts; $i++) {
         $candidate = $BasePort + $i
         if (Test-PortFree $candidate) {
@@ -175,7 +218,41 @@ function Find-AvailablePort([int]$BasePort, [string]$ServiceName, [int]$MaxAttem
         $owner = Get-PortOwner $candidate
         Write-Warning "Port $candidate (for $ServiceName) is in use by: $owner"
     }
-    throw "No available port found for $ServiceName in range $BasePort–$($BasePort + $MaxAttempts - 1)."
+
+    # Determine whether the failures are caused by Windows port exclusions rather than
+    # real listening processes.  When Hyper-V, WSL2, or Docker Desktop is enabled,
+    # Windows reserves whole port ranges at the OS level.  bind() fails with
+    # "access denied" so no process appears in netstat, yet the ports are unusable.
+    try {
+        $excluded = Get-ExcludedPortRanges
+        if ($excluded.Count -gt 0) {
+            $reservedCount = 0
+            for ($i = 0; $i -lt $MaxAttempts; $i++) {
+                if (Test-PortInExcludedRange ($BasePort + $i) $excluded) { $reservedCount++ }
+            }
+            if ($reservedCount -gt 0) {
+                Write-Host ""
+                Write-Host "  HINT: Port(s) in the range $BasePort-$maxPort are reserved by" -ForegroundColor Yellow
+                Write-Host "  Windows and cannot be bound, even though no process is listening on them." -ForegroundColor Yellow
+                Write-Host "  This is typically caused by Hyper-V, WSL2, or Docker Desktop reserving" -ForegroundColor Yellow
+                Write-Host "  dynamic port ranges on startup." -ForegroundColor Yellow
+                Write-Host ""
+                Write-Host "  To see all currently reserved ranges, run:" -ForegroundColor Cyan
+                Write-Host "    netsh int ipv4 show excludedportrange protocol=tcp" -ForegroundColor Cyan
+                Write-Host ""
+                Write-Host "  REMEDIATION - choose one option:" -ForegroundColor Green
+                Write-Host "    1. Set a different base port in your .env file (e.g. API_PORT=9000)" -ForegroundColor Green
+                Write-Host "       then rerun this script." -ForegroundColor Green
+                Write-Host "    2. (Advanced) Disable and re-enable the Hyper-V/WSL2/Docker service" -ForegroundColor Green
+                Write-Host "       to force Windows to pick a different exclusion range, or run" -ForegroundColor Green
+                Write-Host "       'netsh int ipv4 delete excludedportrange ...' in an elevated" -ForegroundColor Green
+                Write-Host "       PowerShell to remove the conflicting reservation." -ForegroundColor Green
+                Write-Host ""
+            }
+        }
+    } catch { }
+
+    throw "No available port found for $ServiceName in range $BasePort–$maxPort."
 }
 
 Write-Host "Installing dependencies..." -ForegroundColor Cyan
