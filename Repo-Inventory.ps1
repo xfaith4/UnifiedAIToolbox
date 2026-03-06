@@ -163,8 +163,6 @@ function Get-DirTree {
       $child = $dirs[$i]
       $name = [IO.Path]::GetFileName($child)
       $isLast = ($i -eq ($dirs.Count - 1))
-      $branch = if ($isLast) { "└── " } else { "├── " }
-      $nextPrefix = $Prefix + (if ($isLast) { "    " } else { "│   " })
       [void]$sb.AppendLine("$Prefix$branch$name")
       Recurse -Dir $child -Depth ($Depth + 1) -Prefix $nextPrefix
     }
