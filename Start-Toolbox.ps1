@@ -112,15 +112,73 @@ if (
     exit 1
 }
 
-$ApiPort = if ($env:API_PORT) { $env:API_PORT } else { "8000" }
-$WebPort = if ($env:WEB_PORT) { $env:WEB_PORT } else { "3000" }
+$ApiPort = if ($env:API_PORT) { [int]$env:API_PORT } else { 8000 }
+$WebPort = if ($env:WEB_PORT) { [int]$env:WEB_PORT } else { 3000 }
 if ([string]::IsNullOrWhiteSpace($env:PROMPT_API_HOST)) {
     # Keep API loopback-bound by default to reduce accidental LAN exposure.
     $env:PROMPT_API_HOST = "127.0.0.1"
 }
 
+# ---------------------------------------------------------------------------
+# Port helpers
+# ---------------------------------------------------------------------------
+
+function Get-PortOwner([int]$Port) {
+    <#
+    .SYNOPSIS
+        Return a human-readable description of the process listening on Port.
+    #>
+    try {
+        $matches2 = netstat -ano 2>$null |
+            Select-String -Pattern ":$Port\s" |
+            Where-Object { $_ -match 'LISTENING' }
+        if ($matches2) {
+            $pid2 = ($matches2[0].ToString().Trim() -split '\s+')[-1]
+            $proc = Get-Process -Id $pid2 -ErrorAction SilentlyContinue
+            if ($proc) { return "$($proc.ProcessName) (PID $pid2)" }
+            return "PID $pid2"
+        }
+    } catch { }
+    return "unknown process"
+}
+
+function Test-PortFree([int]$Port) {
+    <#
+    .SYNOPSIS
+        Returns $true when Port is available to bind.
+    #>
+    try {
+        $tcp = [System.Net.Sockets.TcpListener]::new(
+            [System.Net.IPAddress]::Loopback, $Port)
+        $tcp.Start()
+        $tcp.Stop()
+        return $true
+    } catch {
+        return $false
+    }
+}
+
+function Find-AvailablePort([int]$BasePort, [string]$ServiceName, [int]$MaxAttempts = 10) {
+    <#
+    .SYNOPSIS
+        Return the first free TCP port at or above BasePort.
+        Emits a warning for each occupied port, identifying its owner.
+    #>
+    for ($i = 0; $i -lt $MaxAttempts; $i++) {
+        $candidate = $BasePort + $i
+        if (Test-PortFree $candidate) {
+            if ($candidate -ne $BasePort) {
+                Write-Host "  Using port $candidate for $ServiceName." -ForegroundColor Gray
+            }
+            return $candidate
+        }
+        $owner = Get-PortOwner $candidate
+        Write-Warning "Port $candidate (for $ServiceName) is in use by: $owner"
+    }
+    throw "No available port found for $ServiceName in range $BasePort–$($BasePort + $MaxAttempts - 1)."
+}
+
 Write-Host "Installing dependencies..." -ForegroundColor Cyan
-Write-Host ""
 
 # Create virtual environment (prefer repo-root .venv, fall back to .uaitoolbox/.venv when .venv is locked)
 $primaryVenvPath = Join-Path $ProjectRoot ".venv"
@@ -209,6 +267,13 @@ try {
 }
 
 Write-Host ""
+Write-Host "Checking port availability..." -ForegroundColor Cyan
+Write-Host ""
+
+$ActualApiPort = Find-AvailablePort -BasePort $ApiPort -ServiceName "Prompt API"
+$ActualWebPort = Find-AvailablePort -BasePort $WebPort -ServiceName "Web Portal"
+
+Write-Host ""
 Write-Host "Starting services..." -ForegroundColor Cyan
 Write-Host ""
 
@@ -229,7 +294,7 @@ if (-not (Test-Path $logsDir)) {
 }
 
 # Start API in background
-Write-Host "  -> Starting API (port $ApiPort)..." -ForegroundColor Gray
+Write-Host "  -> Starting API (port $ActualApiPort)..." -ForegroundColor Gray
 $apiPath = Join-Path $ProjectRoot "apps\UnifiedPromptApp\services\prompt-api"
 $apiOutLog = Join-Path $logsDir "api.log"
 $apiErrLog = Join-Path $logsDir "api.err.log"
@@ -239,7 +304,7 @@ if ([string]::IsNullOrWhiteSpace($env:PYTHONPATH)) {
 } else {
     $env:PYTHONPATH = "$ProjectRoot;$env:PYTHONPATH"
 }
-$env:PROMPT_API_PORT = "$ApiPort"
+$env:PROMPT_API_PORT = "$ActualApiPort"
 
 $apiProc = Start-Process `
     -FilePath $venvPython `
@@ -253,12 +318,12 @@ $apiProc = Start-Process `
 Start-Sleep -Seconds 3
 
 # Start Web Portal in background
-Write-Host "  -> Starting Web Portal (port $WebPort)..." -ForegroundColor Gray
+Write-Host "  -> Starting Web Portal (port $ActualWebPort)..." -ForegroundColor Gray
 $webOutLog = Join-Path $logsDir "webapp.log"
 $webErrLog = Join-Path $logsDir "webapp.err.log"
 
-$env:PORT = "$WebPort"
-$env:NEXT_PUBLIC_API_BASE = "http://localhost:$ApiPort"
+$env:PORT = "$ActualWebPort"
+$env:NEXT_PUBLIC_API_BASE = "http://localhost:$ActualApiPort"
 
 # Prefer the Windows batch wrapper so Start-Process can launch it reliably.
 # (Get-Command npm) often resolves to npm.ps1, which is not a Win32 executable.
@@ -292,9 +357,9 @@ Start-Sleep -Seconds 5
 Write-Host ""
 Write-Host "UnifiedAIToolbox is running!" -ForegroundColor Green
 Write-Host ""
-Write-Host "  Web Portal:  http://localhost:$WebPort" -ForegroundColor Cyan
-Write-Host "  API Docs:    http://localhost:$ApiPort/docs" -ForegroundColor Cyan
-Write-Host "  Health:      http://localhost:$ApiPort/health" -ForegroundColor Cyan
+Write-Host "  Web Portal:  http://localhost:$ActualWebPort" -ForegroundColor Cyan
+Write-Host "  API Docs:    http://localhost:$ActualApiPort/docs" -ForegroundColor Cyan
+Write-Host "  Health:      http://localhost:$ActualApiPort/health" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "  Logs:        Get-Content logs\\*.log -Tail 50" -ForegroundColor Gray
 Write-Host ""
