@@ -776,7 +776,9 @@ class ServiceSettings(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_prefix="PROMPT_API_",
-        env_file=BASE_DIR / ".env",
+        # Load repo root .env first, then service-local .env (local overrides root).
+        # ROOT_DIR/.env is the canonical credentials file; BASE_DIR/.env may not exist.
+        env_file=(ROOT_DIR / ".env", BASE_DIR / ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -792,9 +794,15 @@ class ServiceSettings(BaseSettings):
     )
     bridge_dir: pathlib.Path = ROOT_DIR / "apps" / "orchestration-bridge"
     admin_token: Optional[str] = Field(default_factory=lambda: os.environ.get("PROMPT_API_ADMIN_TOKEN"))
+    # GITHUB_TOKEN has no PROMPT_API_ prefix — use validation_alias to map it directly.
+    github_token: Optional[str] = Field(default=None, validation_alias="GITHUB_TOKEN")
 
 
 settings = ServiceSettings()
+# Inject GITHUB_TOKEN into the process environment so os.environ.get("GITHUB_TOKEN")
+# works throughout the app (including ensure_github_token and all github_api endpoints).
+if settings.github_token and not os.environ.get("GITHUB_TOKEN"):
+    os.environ["GITHUB_TOKEN"] = settings.github_token
 settings.template_dir.mkdir(parents=True, exist_ok=True)
 settings.data_dir.mkdir(parents=True, exist_ok=True)
 
