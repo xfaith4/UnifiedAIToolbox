@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { X, ChevronRight, ChevronLeft, Home, BookOpen, PlayCircle, History, Settings, HelpCircle } from 'lucide-react'
 
 const STORAGE_KEY = 'utb_tour_dismissed_v1'
@@ -81,14 +81,11 @@ interface FirstLaunchTourProps {
 }
 
 export function FirstLaunchTour({ onOpenDocs }: FirstLaunchTourProps) {
-  const [visible, setVisible] = useState(false)
+  const [visible, setVisible] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return !localStorage.getItem(STORAGE_KEY)
+  })
   const [step, setStep] = useState(0)
-
-  // Only show on client; check localStorage
-  useEffect(() => {
-    const dismissed = localStorage.getItem(STORAGE_KEY)
-    if (!dismissed) setVisible(true)
-  }, [])
 
   const dismiss = (permanent = true) => {
     if (permanent) localStorage.setItem(STORAGE_KEY, '1')

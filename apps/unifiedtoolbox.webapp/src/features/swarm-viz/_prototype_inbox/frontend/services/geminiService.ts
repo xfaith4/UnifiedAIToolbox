@@ -1,7 +1,7 @@
 
 import { GoogleGenAI, Type } from '@google/genai';
 
-const ai = new GoogleGenAI({ apiKey: (process.env as any).API_KEY, vertexai: true });
+const ai = new GoogleGenAI({ apiKey: process.env['API_KEY'], vertexai: true });
 
 export const decomposeTask = async (task: string) => {
   try {

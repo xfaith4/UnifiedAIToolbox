@@ -17,7 +17,8 @@ function resolveOrchestratorBase(): string {
   return (raw || 'http://localhost:8000').replace(/\/$/, '')
 }
 
-export async function POST(req: Request, { params }: { params: { runId: string } }) {
+export async function POST(req: Request, { params: _params }: { params: Promise<{ runId: string }> }) {
+  const params = await _params
   const runId = decodeURIComponent(String(params?.runId || '')).trim()
   if (!runId) {
     return NextResponse.json({ error: { code: 'MISSING_RUN_ID', message: 'Missing runId' } }, { status: 400 })

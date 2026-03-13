@@ -62,14 +62,14 @@ function EventRow({ ev }: { ev: OrchestrationRunEvent }) {
 // ── "Last updated" text ───────────────────────────────────────────────────────
 
 function RelativeTime({ updatedAt }: { updatedAt: Date | null }) {
-  const [, setTick] = useState(0)
+  const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 5_000)
+    const id = setInterval(() => setNow(Date.now()), 5_000)
     return () => clearInterval(id)
   }, [])
 
   if (!updatedAt) return null
-  const s = Math.round((Date.now() - updatedAt.getTime()) / 1000)
+  const s = Math.round((now - updatedAt.getTime()) / 1000)
   const label = s < 5 ? 'just now' : `${s}s ago`
   return <span className="text-[10px] text-gray-600 tabular-nums">{label}</span>
 }

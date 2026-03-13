@@ -82,12 +82,12 @@ describe('healthChecks', () => {
 
   it('handles multiple checks', async () => {
     // Mock fetch with different status for different URLs
-    global.fetch = async (url: string | URL) => {
+    global.fetch = (async (url: string | URL) => {
       const urlStr = url.toString()
       if (urlStr.includes('api')) return { status: 200 } as Response
       if (urlStr.includes('web')) return { status: 200 } as Response
       return { status: 500 } as Response
-    }
+    }) as unknown as typeof fetch
 
     const results = await pollHealthChecks({
       checks: [

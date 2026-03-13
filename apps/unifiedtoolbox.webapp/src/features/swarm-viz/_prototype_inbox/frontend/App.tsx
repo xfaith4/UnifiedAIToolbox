@@ -60,7 +60,7 @@ const App: React.FC = () => {
 
     const decomposed = await decomposeTask(task);
     
-    const newSubTasks: SubTask[] = decomposed.map((t: any, i: number) => ({
+    const newSubTasks: SubTask[] = decomposed.map((t: { title: string; description: string }, i: number) => ({
       id: `task-${i}`,
       title: t.title,
       description: t.description,

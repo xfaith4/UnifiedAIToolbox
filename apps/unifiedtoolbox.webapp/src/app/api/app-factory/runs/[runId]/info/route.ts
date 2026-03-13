@@ -69,7 +69,8 @@ async function listFilesRelative(dir: string, baseDir: string): Promise<string[]
   return out.sort()
 }
 
-export async function GET(req: Request, { params }: { params: { runId: string } }) {
+export async function GET(req: Request, { params: _params }: { params: Promise<{ runId: string }> }) {
+  const params = await _params
   const runId = resolveRunId(params?.runId, req)
   if (!runId) {
     return NextResponse.json({ error: { code: 'MISSING_RUN_ID', message: 'Missing runId' } }, { status: 400 })

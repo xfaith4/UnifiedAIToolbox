@@ -434,7 +434,7 @@ export async function hardenRepo(options: {
       gateReport,
       config: { maxRepairCycles: cfg.maxRepairCycles, model: cfg.fixerModel, apiKey: cfg.apiKey! },
       onEvent: async (event) => {
-        await emit({ ...event })
+        await emit({ ...event } as EmitInput)
       },
       onCycle: async (cycle) => {
         await emit({ phase: 'repair', status: 'running', agent: 'Synthesizer', message: `Repair cycle ${cycle} running` })

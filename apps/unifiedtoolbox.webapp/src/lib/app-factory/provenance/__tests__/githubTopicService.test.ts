@@ -124,7 +124,7 @@ describe('githubTopicService', () => {
       )
 
       // Check that only 50 topics were sent
-      const fetchMock = global.fetch as jest.Mock
+      const fetchMock = global.fetch as ReturnType<typeof vi.fn>
       const callArgs = fetchMock.mock.calls[0]
       const body = JSON.parse(callArgs[1].body as string)
       expect(body.names.length).toBeLessThanOrEqual(50)
@@ -142,7 +142,7 @@ describe('githubTopicService', () => {
         [longTopic]
       )
 
-      const fetchMock = global.fetch as jest.Mock
+      const fetchMock = global.fetch as ReturnType<typeof vi.fn>
       const callArgs = fetchMock.mock.calls[0]
       const body = JSON.parse(callArgs[1].body as string)
       expect(body.names[0].length).toBeLessThanOrEqual(50)
@@ -159,7 +159,7 @@ describe('githubTopicService', () => {
         ['Test@Topic#123!']
       )
 
-      const fetchMock = global.fetch as jest.Mock
+      const fetchMock = global.fetch as ReturnType<typeof vi.fn>
       const callArgs = fetchMock.mock.calls[0]
       const body = JSON.parse(callArgs[1].body as string)
       // Should be normalized to only contain alphanumeric and hyphens
