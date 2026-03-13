@@ -42,8 +42,8 @@ describe('stripMarkdownCodeFencing', () => {
   })
 
   it('handles null and undefined gracefully', () => {
-    expect(stripMarkdownCodeFencing(null as any)).toBe(null)
-    expect(stripMarkdownCodeFencing(undefined as any)).toBe(undefined)
+    expect(stripMarkdownCodeFencing(null as unknown as string)).toBe(null)
+    expect(stripMarkdownCodeFencing(undefined as unknown as string)).toBe(undefined)
   })
 
   it('handles content with only opening fence', () => {
@@ -137,8 +137,8 @@ describe('cleanupArtifactContent', () => {
   })
 
   it('handles null and undefined gracefully', () => {
-    expect(cleanupArtifactContent(null as any)).toBe(null)
-    expect(cleanupArtifactContent(undefined as any)).toBe(undefined)
+    expect(cleanupArtifactContent(null as unknown as string)).toBe(null)
+    expect(cleanupArtifactContent(undefined as unknown as string)).toBe(undefined)
   })
 
   it('preserves content that does not need cleanup', () => {

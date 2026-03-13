@@ -66,11 +66,7 @@ const startRepoOrchestration: any = orchestratorApi?.startRepoOrchestration ?? (
   throw new Error('Repo orchestration API not available.')
 })
 const ORCHESTRATOR_API_BASE: string | undefined = orchestratorApi?.ORCHESTRATOR_API_BASE
-type GitHubRepo = {
-  full_name: string
-  default_branch?: string
-  appfactory?: { known?: boolean }
-}
+type GitHubRepo = import('@/lib/types/github').GitHubRepo
 type RepoOrchestrationResult = {
   runId?: string
   run_id?: string
@@ -233,9 +229,9 @@ const App: React.FC = () => {
     let cancelled = false
     setGithubReposLoading(true)
     void Promise.all([
-      getGithubStatus().then((s) => { if (!cancelled) setGithubEnvReady(Boolean(s?.authenticated)) }).catch(() => { }),
+      getGithubStatus().then((s: { authenticated?: boolean } | null) => { if (!cancelled) setGithubEnvReady(Boolean(s?.authenticated)) }).catch(() => { }),
       listAccessibleRepos(undefined, { includeAppfactory: true })
-        .then((repos) => {
+        .then((repos: GitHubRepo[]) => {
           if (!cancelled)
             setGithubRepos(
               [...repos].sort((a, b) => Number(Boolean(b.appfactory?.known)) - Number(Boolean(a.appfactory?.known)))
@@ -368,7 +364,7 @@ const App: React.FC = () => {
     try {
       const { cancel } = await startRepoOrchestration(
         { repo: repoUrl, goal: goal.trim(), options: { branch: branchValue, integration_branch: integBranch } },
-        async (event) => {
+        async (event: RepoOrchestrationEvent) => {
           setGithubEvents((prev) => [...prev, event])
           if (event.result) {
             const result = event.result as RepoOrchestrationResult

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, Suspense } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import {
@@ -919,7 +919,7 @@ function OverseerHistoryPanel({ insights }: { insights: PastRunInsight[] }) {
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
-export default function ConciergePage() {
+function ConciergePageContent() {
   const searchParams = useSearchParams()
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
@@ -1027,7 +1027,7 @@ export default function ConciergePage() {
 
     const proposalId = proposal.id
     let cancelled = false
-    let intervalId: ReturnType<typeof setInterval>
+    const timer: { id: ReturnType<typeof setInterval> | undefined } = { id: undefined }
 
     const poll = async () => {
       if (cancelled) return
@@ -1061,7 +1061,7 @@ export default function ConciergePage() {
           }
           if (TERMINAL_RUN_STATUSES.has(run.status)) {
             cancelled = true
-            clearInterval(intervalId)
+            clearInterval(timer.id)
             if (run.status === 'completed' || run.status === 'blocked_requirements' || run.status === 'needs_requirements') {
               if (run.verificationStatus === 'needs_requirements') {
                 updateDraftRun(proposalId, { runStatus: 'pending' })
@@ -1104,7 +1104,7 @@ export default function ConciergePage() {
       } catch (e) {
         if (isOrchestratorApiHttpError(e) && e.status === 404) {
           cancelled = true
-          clearInterval(intervalId)
+          clearInterval(timer.id)
           setRunStatus('failed')
           return
         }
@@ -1112,12 +1112,12 @@ export default function ConciergePage() {
       }
     }
 
-    intervalId = setInterval(poll, 3000)
+    timer.id = setInterval(poll, 3000)
     void poll()
 
     return () => {
       cancelled = true
-      clearInterval(intervalId)
+      clearInterval(timer.id)
     }
   }, [runId, proposal?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1445,5 +1445,13 @@ export default function ConciergePage() {
         </div>
       )}
     </div>
+  )
+}
+
+export default function ConciergePage() {
+  return (
+    <Suspense>
+      <ConciergePageContent />
+    </Suspense>
   )
 }

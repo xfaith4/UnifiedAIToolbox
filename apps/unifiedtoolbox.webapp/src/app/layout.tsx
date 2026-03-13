@@ -19,7 +19,7 @@ import {
   Brain,
   type LucideIcon,
 } from 'lucide-react'
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useMemo, useState, Suspense } from 'react'
 import { installUxInstrumentation, trackUxEvent } from '@/lib/ux/telemetry'
 import { UxDebugOverlay } from '@/components/ux/UxDebugOverlay'
 import { NAV_LABELS, ROUTES } from '@/lib/nav/navConfig'
@@ -88,11 +88,26 @@ const baseLinkClass =
 const inactiveLinkClass = 'text-gray-300 hover:bg-gray-800/70'
 const activeLinkClass = 'bg-gray-800/90 text-white font-medium shadow-inner'
 
+function UxDebugOverlayWithSearchParams() {
+  const searchParams = useSearchParams()
+  const uxDebugEnabled = useMemo(() => {
+    if (process.env.NODE_ENV === 'production') return false
+    const qsEnabled = searchParams.get('uxdebug') === '1'
+    const stored = typeof window !== 'undefined' ? window.localStorage.getItem('utb_uxdebug') === '1' : false
+
+    if (qsEnabled && typeof window !== 'undefined') {
+      window.localStorage.setItem('utb_uxdebug', '1')
+    }
+
+    return qsEnabled || stored
+  }, [searchParams])
+  return <UxDebugOverlay enabled={uxDebugEnabled} />
+}
+
 export default function RootLayout({ children }: { children: ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [docsOpen, setDocsOpen] = useState(false)
   const pathname = usePathname()
-  const searchParams = useSearchParams()
 
   const closeSidebar = useCallback(() => setSidebarOpen(false), [])
 
@@ -105,18 +120,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     trackUxEvent('page_view', { route: pathname })
   }, [pathname])
-
-  const uxDebugEnabled = useMemo(() => {
-    if (process.env.NODE_ENV === 'production') return false
-    const qsEnabled = searchParams.get('uxdebug') === '1'
-    const stored = typeof window !== 'undefined' ? window.localStorage.getItem('utb_uxdebug') === '1' : false
-
-    if (qsEnabled && typeof window !== 'undefined') {
-      window.localStorage.setItem('utb_uxdebug', '1')
-    }
-
-    return qsEnabled || stored
-  }, [searchParams])
 
   return (
     <html lang="en">
@@ -236,7 +239,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           </div>
         </div>
 
-        <UxDebugOverlay enabled={uxDebugEnabled} />
+        <Suspense fallback={null}>
+          <UxDebugOverlayWithSearchParams />
+        </Suspense>
 
         {/* Global docs hub — accessible from any page */}
         <DocsHub open={docsOpen} onClose={() => setDocsOpen(false)} />

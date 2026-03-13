@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useEffect, useMemo, useState, useCallback, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import type { AgentInstruction } from '@/lib/types/agents'
 import type { PromptItem } from '@/lib/types/prompts'
@@ -106,7 +106,7 @@ const SWARM_COST_BASELINE = {
 const SWARM_COST_MODELS = ['gpt-4o-mini', 'gpt-4-turbo', 'claude-3.5-sonnet'] as const
 const SWARM_LAUNCH_NOTE = 'Launching swarm via scripts/swarms…'
 
-export default function OrchestratorPage() {
+function OrchestratorPageContent() {
   const searchParams = useSearchParams()
 
   // Libraries
@@ -1666,3 +1666,11 @@ export default function OrchestratorPage() {
   )
 }
 
+
+export default function OrchestratorPage() {
+  return (
+    <Suspense>
+      <OrchestratorPageContent />
+    </Suspense>
+  )
+}

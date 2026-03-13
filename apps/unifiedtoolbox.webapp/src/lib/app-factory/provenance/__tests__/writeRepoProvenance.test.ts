@@ -22,6 +22,9 @@ describe('writeRepoProvenance', () => {
       stackId: 'node-next-app-npm',
       installCommand: 'npm install',
       buildCommand: 'npm run build',
+      requiredFilesAll: [],
+      codeFileExtensions: [],
+      forbiddenPatternsByExtension: {},
     }
 
     const result = await writeAppFactoryMetadata({
@@ -43,6 +46,9 @@ describe('writeRepoProvenance', () => {
       stackId: 'node-next-app-npm',
       installCommand: 'npm install',
       buildCommand: 'npm run build',
+      requiredFilesAll: [],
+      codeFileExtensions: [],
+      forbiddenPatternsByExtension: {},
     }
 
     await writeAppFactoryMetadata({
@@ -65,6 +71,9 @@ describe('writeRepoProvenance', () => {
       stackId: 'custom-stack',
       installCommand: 'pnpm install',
       buildCommand: 'pnpm build',
+      requiredFilesAll: [],
+      codeFileExtensions: [],
+      forbiddenPatternsByExtension: {},
     }
 
     const result = await writeAppFactoryMetadata({
@@ -88,6 +97,9 @@ describe('writeRepoProvenance', () => {
       stackId: 'node-next-app-npm',
       installCommand: 'npm install',
       buildCommand: 'npm run build',
+      requiredFilesAll: [],
+      codeFileExtensions: [],
+      forbiddenPatternsByExtension: {},
     }
 
     // Write initial metadata
@@ -114,6 +126,9 @@ describe('writeRepoProvenance', () => {
       stackId: 'python-fastapi-postgres',
       installCommand: 'pip install',
       buildCommand: 'python -m build',
+      requiredFilesAll: [],
+      codeFileExtensions: [],
+      forbiddenPatternsByExtension: {},
     }
 
     const result = await writeAppFactoryMetadata({
@@ -131,6 +146,9 @@ describe('writeRepoProvenance', () => {
       stackId: 'node-next-app-npm',
       installCommand: 'npm install',
       buildCommand: 'npm run build',
+      requiredFilesAll: [],
+      codeFileExtensions: [],
+      forbiddenPatternsByExtension: {},
     }
 
     const result = await writeAppFactoryMetadata({
@@ -157,6 +175,9 @@ describe('writeRepoProvenance', () => {
       stackId: 'node-next-app-npm',
       installCommand: 'npm install',
       buildCommand: 'npm run build',
+      requiredFilesAll: [],
+      codeFileExtensions: [],
+      forbiddenPatternsByExtension: {},
     }
 
     const result = await writeAppFactoryMetadata({
@@ -191,6 +212,9 @@ describe('writeRepoProvenance', () => {
       stackId: 'node-next-app-npm',
       installCommand: 'npm install',
       buildCommand: 'npm run build',
+      requiredFilesAll: [],
+      codeFileExtensions: [],
+      forbiddenPatternsByExtension: {},
     }
 
     // Should not throw even if GitHub API fails
@@ -218,6 +242,9 @@ describe('writeRepoProvenance', () => {
       stackId: 'node-next-app-npm',
       installCommand: 'npm install',
       buildCommand: 'npm run build',
+      requiredFilesAll: [],
+      codeFileExtensions: [],
+      forbiddenPatternsByExtension: {},
     }
 
     // No githubConfig provided - should work as before
@@ -249,6 +276,9 @@ describe('writeRepoProvenance', () => {
       stackId: 'node-next-app-npm',
       installCommand: 'npm install',
       buildCommand: 'npm run build',
+      requiredFilesAll: [],
+      codeFileExtensions: [],
+      forbiddenPatternsByExtension: {},
     }
 
     const result = await writeAppFactoryMetadata({

@@ -31,5 +31,5 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules", "src/app/engine/_source"]
+  "exclude": ["node_modules", "src/app/engine/_source", "src/features/swarm-viz/_prototype_inbox"]
 }

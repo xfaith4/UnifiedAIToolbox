@@ -21,6 +21,9 @@ describe('assembleRepo', () => {
       stackId: 'node-next-fastify-pnpm',
       installCommand: 'pnpm install',
       buildCommand: 'pnpm build',
+      requiredFilesAll: [],
+      codeFileExtensions: [],
+      forbiddenPatternsByExtension: {},
     }
 
     const result = await assembleRepo(tmpDir, contract)
@@ -41,6 +44,9 @@ describe('assembleRepo', () => {
       stackId: 'node-next-app-npm',
       installCommand: 'npm install',
       buildCommand: 'npm run build',
+      requiredFilesAll: [],
+      codeFileExtensions: [],
+      forbiddenPatternsByExtension: {},
     }
 
     const result = await assembleRepo(tmpDir, contract)
@@ -58,6 +64,9 @@ describe('assembleRepo', () => {
       stackId: 'node-next-app-npm',
       installCommand: 'npm install',
       buildCommand: 'npm run build',
+      requiredFilesAll: [],
+      codeFileExtensions: [],
+      forbiddenPatternsByExtension: {},
     }
 
     // Create next.config.mjs which will be skipped by ensureFile
@@ -80,6 +89,9 @@ describe('assembleRepo', () => {
       stackId: 'node-next-app-npm',
       installCommand: 'npm install',
       buildCommand: 'npm run build',
+      requiredFilesAll: [],
+      codeFileExtensions: [],
+      forbiddenPatternsByExtension: {},
     }
 
     const result = await assembleRepo(tmpDir, contract)
@@ -99,6 +111,9 @@ describe('assembleRepo', () => {
       stackId: 'unknown-stack',
       installCommand: 'npm install',
       buildCommand: 'npm run build',
+      requiredFilesAll: [],
+      codeFileExtensions: [],
+      forbiddenPatternsByExtension: {},
     }
 
     const result = await assembleRepo(tmpDir, contract)
@@ -113,6 +128,9 @@ describe('assembleRepo', () => {
       stackId: 'my-weird@stack!name#',
       installCommand: 'npm install',
       buildCommand: 'npm run build',
+      requiredFilesAll: [],
+      codeFileExtensions: [],
+      forbiddenPatternsByExtension: {},
     }
 
     await assembleRepo(tmpDir, contract)

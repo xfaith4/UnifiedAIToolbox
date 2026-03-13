@@ -16,6 +16,9 @@ const exampleContract: RepoContract = {
   typecheckCommand: 'npm run typecheck',
   lintCommand: 'npm run lint',
   testCommand: 'npm test',
+  requiredFilesAll: [],
+  codeFileExtensions: [],
+  forbiddenPatternsByExtension: {},
 }
 
 /**
