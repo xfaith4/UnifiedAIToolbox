@@ -229,6 +229,7 @@ export async function POST(req: Request) {
     const model = typeof request.model === 'string' && request.model.trim()
       ? request.model.trim()
       : null
+    const localPath = typeof request.local_path === 'string' ? request.local_path.trim() : ''
     const instruction = `Job type: ${jobType}\nRun ID: ${runId}`
 
     const psArgs = [
@@ -254,9 +255,24 @@ export async function POST(req: Request) {
     if (model) {
       psArgs.push('-Model', model)
     }
+    // When the user selects a local repo path, pass it as -RepoRoot so
+    // Unified-Orchestration.ps1 uses it as the working directory, and expose
+    // it via UAIT_LOCAL_REPO_PATH so MilestoneController can route it to
+    // the RepoContextBuilder stage.
+    if (localPath) {
+      psArgs.push('-RepoRoot', localPath)
+    }
+    const spawnEnv: Record<string, string> = {
+      ...(process.env as Record<string, string>),
+      UAIT_JOB_TYPE: jobType,
+      UAIT_REQUEST_PATH: requestPath,
+    }
+    if (localPath) {
+      spawnEnv['UAIT_LOCAL_REPO_PATH'] = localPath
+    }
     const child = spawn(psExe, psArgs, {
       cwd: repoRoot,
-      env: { ...process.env, UAIT_JOB_TYPE: jobType, UAIT_REQUEST_PATH: requestPath },
+      env: spawnEnv,
       // Detached pwsh launches on Windows can exit 0 immediately without running the script.
       detached: false,
       stdio: ['ignore', logFd, logFd],

@@ -48,7 +48,7 @@ export const NAV_LABELS = {
     agentLibrary: 'Agent Library',
     tooling: 'Tooling',          // was "MCP Library"
     playground: 'Playground',    // was "Orchestrator"
-    appFactory: 'App Factory',
+    appFactory: 'App Lifecycle',
     runs: 'Runs',
     knowledge: 'Knowledge',      // Phase 2 — Agent Knowledge Base
     reports: 'Reports',          // was "Milestones"
@@ -64,7 +64,7 @@ export const PAGE_TITLES = {
   agents: 'Agent Library',
   tooling: 'Tooling (MCP)',
   playground: 'Playground',
-  appFactory: 'App Factory',
+  appFactory: 'App Lifecycle',
   runs: 'Runs',
   knowledge: 'Knowledge',
   reports: 'Reports',

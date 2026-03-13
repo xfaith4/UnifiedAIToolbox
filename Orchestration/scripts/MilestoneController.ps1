@@ -1872,11 +1872,24 @@ $supervisorContext
         }
 
         $repoPathOverride = $null
+        # 1. Check contract's repo.local_path (set by contract_compiler from request.local_path)
         if ($script:Contract -and $script:Contract.repo) {
             $repoProps = @($script:Contract.repo.PSObject.Properties.Name)
             if ($repoProps -contains "local_path" -and $script:Contract.repo.local_path) {
                 $repoPathOverride = $script:Contract.repo.local_path
             }
+        }
+        # 2. Fallback: UAIT_LOCAL_REPO_PATH env var injected by the Next.js run launcher
+        if (-not $repoPathOverride -and $env:UAIT_LOCAL_REPO_PATH) {
+            $repoPathOverride = $env:UAIT_LOCAL_REPO_PATH
+        }
+        # 3. Fallback: local_path field in the raw request JSON
+        if (-not $repoPathOverride -and $script:Request) {
+            $rawLocalPath = $null
+            try {
+                $rawLocalPath = $script:Request.local_path
+            } catch { }
+            if ($rawLocalPath) { $repoPathOverride = [string]$rawLocalPath }
         }
 
         $repoContextResult = Invoke-RepoContextBuilder `

@@ -29,6 +29,7 @@ import PipelineStepper from './components/PipelineStepper';
 import RunFileModal from './components/RunFileModal';
 import JobTypeOverviewPanel from './components/JobTypeOverviewPanel';
 import MaintenanceRunPanel from './components/MaintenanceRunPanel';
+import LocalRepoPathPicker from './components/LocalRepoPathPicker';
 import RuntimeActivityDrawer from './components/RuntimeActivityDrawer';
 
 import useOrchestrator from './hooks/useOrchestrator';
@@ -126,6 +127,7 @@ const App: React.FC = () => {
   const [maintenanceStartError, setMaintenanceStartError] = useState<string | null>(null)
   const [maintenanceRunning, setMaintenanceRunning] = useState(false)
   const [maintenanceCanceling, setMaintenanceCanceling] = useState(false)
+  const [localRepoPath, setLocalRepoPath] = useState('')
   const { status: maintenanceStatus, error: maintenanceStatusError, loading: maintenanceStatusLoading } = useRunStatus(maintenanceRunId, { enabled: isMaintenance })
   const maintenanceError = maintenanceStartError || maintenanceStatusError
   const runtimeRunId = isMaintenance ? maintenanceRunId : pipeline?.runId || null
@@ -416,7 +418,8 @@ const App: React.FC = () => {
       return
     }
     if (isMaintenance) {
-      void startMaintenanceRun({ ...(requestPayload || {}), job_type: jobType, goal })
+      const localPathPayload = localRepoPath.trim() ? { local_path: localRepoPath.trim() } : {}
+      void startMaintenanceRun({ ...(requestPayload || {}), ...localPathPayload, job_type: jobType, goal })
       return
     }
     startOrchestration(goal, fileContent, seedArtifacts, runMode, { ...(requestPayload || {}), job_type: jobType });
@@ -573,6 +576,13 @@ const App: React.FC = () => {
               seedGoal={draftGoal}
             />
             <JobTypeOverviewPanel jobType={jobType} config={jobTypeConfig} />
+            {isMaintenance && (
+              <LocalRepoPathPicker
+                path={localRepoPath}
+                onChange={setLocalRepoPath}
+                disabled={maintenanceRunning}
+              />
+            )}
             {isGithubRepo ? (
               <GitHubRepoPanel
                 envReady={githubEnvReady}
