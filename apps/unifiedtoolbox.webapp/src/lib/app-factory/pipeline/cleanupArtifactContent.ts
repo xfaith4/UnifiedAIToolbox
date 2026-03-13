@@ -49,7 +49,7 @@ export function cleanupArtifactContent(content: string, fileName?: string): stri
   }
 
   // Apply markdown code fencing cleanup
-  let cleaned = stripMarkdownCodeFencing(content)
+  const cleaned = stripMarkdownCodeFencing(content)
 
   // Additional cleanup rules can be added here in the future
   // For example:
