@@ -64,12 +64,18 @@ export function narrateRunEvent(event: OrchestrationRunEvent): string | null {
 
   if (type === 'status') {
     switch (message.toLowerCase()) {
-      case 'queued':    return 'Run queued — waiting for an available worker...'
-      case 'running':   return 'Agents are now working on your goal.'
-      case 'completed': return 'Run completed successfully. Check the Playground for the full output.'
-      case 'failed':    return 'Run failed. Open the Playground to see the error log.'
-      case 'cancelled': return 'Run was cancelled.'
-      default:          return `Status update: ${message}`
+      case 'queued':
+        return 'Run queued. The monitor page will show activity as soon as a worker picks it up.'
+      case 'running':
+        return 'Agents are now working on your goal. Use the run monitor to follow live progress.'
+      case 'completed':
+        return 'Run completed successfully. Open the run monitor for the final status, artifacts, and follow-up actions.'
+      case 'failed':
+        return 'Run failed. Open the run monitor to inspect the failure details and event trail.'
+      case 'cancelled':
+        return 'Run was cancelled.'
+      default:
+        return `Status update: ${message}`
     }
   }
 

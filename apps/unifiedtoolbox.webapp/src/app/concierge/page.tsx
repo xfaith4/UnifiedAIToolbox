@@ -61,12 +61,83 @@ import {
   type RunContextStatus,
 } from '@/lib/services/runContextStore'
 import { buildRequirementsRequestPrompt } from '@/lib/concierge/requirementsLoop'
+import { buildKickoffRefinementMessage, getRunMonitorHref } from '@/lib/services/conciergeKickoff'
 import CurrentRunCard from '@/components/runs/CurrentRunCard'
 import LiveEventPanel from '@/components/runs/LiveEventPanel'
 
 function buildRequirementsRequestMessage(run: OrchestrationRun): string | null {
   const packet = run.requirementsRequest ?? run.sandboxReport?.requirementsRequest
   return buildRequirementsRequestPrompt(packet)
+}
+
+function renderChatInline(text: string, keyPrefix: string): React.ReactNode[] {
+  const nodes: React.ReactNode[] = []
+  const pattern = /\[([^\]]+)\]\(([^)]+)\)/g
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+
+  while ((match = pattern.exec(text)) !== null) {
+    const [fullMatch, label, href] = match
+    if (match.index > lastIndex) {
+      nodes.push(
+        <span key={`${keyPrefix}-text-${lastIndex}`}>
+          {text.slice(lastIndex, match.index)}
+        </span>,
+      )
+    }
+
+    const trimmedHref = href.trim()
+    if (trimmedHref.startsWith('/')) {
+      nodes.push(
+        <Link
+          key={`${keyPrefix}-link-${match.index}`}
+          href={trimmedHref}
+          className="font-medium text-blue-300 underline underline-offset-2 hover:text-blue-200"
+        >
+          {label}
+        </Link>,
+      )
+    } else if (/^https?:\/\//i.test(trimmedHref)) {
+      nodes.push(
+        <a
+          key={`${keyPrefix}-link-${match.index}`}
+          href={trimmedHref}
+          target="_blank"
+          rel="noreferrer"
+          className="font-medium text-blue-300 underline underline-offset-2 hover:text-blue-200"
+        >
+          {label}
+        </a>,
+      )
+    } else {
+      nodes.push(<span key={`${keyPrefix}-raw-${match.index}`}>{fullMatch}</span>)
+    }
+
+    lastIndex = match.index + fullMatch.length
+  }
+
+  if (lastIndex < text.length) {
+    nodes.push(<span key={`${keyPrefix}-tail`}>{text.slice(lastIndex)}</span>)
+  }
+
+  return nodes
+}
+
+function renderChatContent(content: string): React.ReactNode {
+  const lines = content.split('\n')
+  return (
+    <div className="space-y-2">
+      {lines.map((line, index) =>
+        line
+          ? (
+            <p key={`line-${index}`} className="break-words">
+              {renderChatInline(line, `line-${index}`)}
+            </p>
+          )
+          : <div key={`line-${index}`} className="h-1.5" aria-hidden="true" />
+      )}
+    </div>
+  )
 }
 
 // ── Risk badge ────────────────────────────────────────────────────────────────
@@ -348,14 +419,17 @@ function PreflightGate({
 // ── Run status indicator ───────────────────────────────────────────────────────
 function RunStatusIndicator({
   runId,
+  runMode,
   runStatus,
   verificationStatus,
 }: {
   runId: string
+  runMode?: string | null
   runStatus: string | null
   verificationStatus?: string | null
 }) {
   const status = runStatus ?? 'queued'
+  const monitorHref = getRunMonitorHref(runId, runMode)
   const isTerminal = TERMINAL_RUN_STATUSES.has(status)
   const isCompleted = status === 'completed'
   const isBlockedRequirements = status === 'blocked_requirements' || status === 'needs_requirements'
@@ -376,7 +450,7 @@ function RunStatusIndicator({
 
   return (
     <Link
-      href={`/runs/${encodeURIComponent(runId)}`}
+      href={monitorHref}
       className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs transition-colors ${cls}`}
     >
       {!isTerminal && <Radio size={12} className="animate-pulse" aria-hidden="true" />}
@@ -441,6 +515,7 @@ function ProposalPanel({
   const isRunning = proposal.status === 'running'
   const isCompleted = proposal.status === 'completed'
   const isMaintainJob = proposal.run_recipe?.jobType === 'maintain_existing_app'
+  const runMonitorHref = runId ? getRunMonitorHref(runId, proposal.run_recipe?.mode) : null
 
   return (
     <div className="flex flex-col rounded-2xl border border-gray-700 bg-gray-900 overflow-hidden">
@@ -653,7 +728,12 @@ function ProposalPanel({
             <>
               {runId ? (
                 <>
-                  <RunStatusIndicator runId={runId} runStatus={runStatus} verificationStatus={verificationStatus} />
+                  <RunStatusIndicator
+                    runId={runId}
+                    runMode={proposal.run_recipe?.mode}
+                    runStatus={runStatus}
+                    verificationStatus={verificationStatus}
+                  />
                   {toolPermissions.length > 0 && (
                     <ToolAuditView permissions={toolPermissions} />
                   )}
@@ -686,10 +766,10 @@ function ProposalPanel({
             </p>
             {runId && (
               <Link
-                href={`/runs/${encodeURIComponent(runId)}`}
+                href={runMonitorHref ?? `/runs/${encodeURIComponent(runId)}`}
                 className="flex items-center justify-between rounded-xl border border-blue-800 bg-blue-950/30 px-3 py-2 text-xs font-medium text-blue-200 hover:border-blue-600 hover:text-white transition-colors"
               >
-                View Run Details
+                Open Run Monitor
                 <ArrowRight size={13} aria-hidden="true" />
               </Link>
             )}
@@ -773,13 +853,13 @@ function ChatBubble({ message }: { message: ChatMessage }) {
         }
       </div>
       <div
-        className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
+        className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
           isUser
             ? 'rounded-tr-sm bg-blue-600 text-white'
             : 'rounded-tl-sm bg-gray-800 text-gray-200'
         }`}
       >
-        {displayContent}
+        {renderChatContent(displayContent)}
       </div>
     </div>
   )
@@ -1268,7 +1348,12 @@ function ConciergePageContent() {
         {
           id: `run_start_${Date.now()}`,
           role: 'assistant' as const,
-          content: `Run started (ID: \`${(run.id ?? '').slice(0, 20)}\`). I'll narrate progress here as events arrive.`,
+          content: buildKickoffRefinementMessage({
+            proposal,
+            draft,
+            runId: run.id,
+            toolPermissions: auditTools,
+          }),
           timestamp: now,
         },
       ])

@@ -22,6 +22,7 @@ import type { RunContextEntry, RunContextStatus } from '@/lib/services/runContex
 import { updateRunContextStatus } from '@/lib/services/runContextStore'
 import { fetchOrchestrationRun, isOrchestratorApiHttpError } from '@/lib/services/orchestratorApi'
 import { TERMINAL_RUN_STATUSES } from '@/lib/services/conciergeRunService'
+import { getRunMonitorHref } from '@/lib/services/conciergeKickoff'
 
 // ── App Factory run detection ─────────────────────────────────────────────────
 // App Factory runs use filesystem-backed storage; detected by ID prefix.
@@ -156,7 +157,7 @@ export default function CurrentRunCard({
 }: Props) {
   const safeRunId = entry.runId?.trim() ?? ''
   const runIdLabel = safeRunId ? safeRunId.slice(0, 16) : 'unknown-run'
-  const runHref = safeRunId ? `/runs/${encodeURIComponent(safeRunId)}` : '/runs'
+  const runHref = safeRunId ? getRunMonitorHref(safeRunId, entry.mode) : '/runs'
   const [liveStatus, setLiveStatus] = useState<string>(entry.status)
   const [endedAt, setEndedAt] = useState<string | undefined>()
   const [currentPhase, setCurrentPhase] = useState<string | undefined>()
@@ -344,7 +345,7 @@ export default function CurrentRunCard({
           className="flex items-center gap-1.5 rounded-lg border border-blue-800/60 bg-blue-950/30 px-2.5 py-1.5 text-xs font-medium text-blue-200 hover:bg-blue-950/60 hover:text-white transition-colors"
         >
           <ExternalLink size={12} aria-hidden="true" />
-          Open Run Details
+          Open Run Monitor
         </Link>
 
         {onViewEvents && (
