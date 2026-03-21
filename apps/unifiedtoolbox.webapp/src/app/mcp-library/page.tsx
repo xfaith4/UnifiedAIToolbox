@@ -382,11 +382,20 @@ export default function MCPLibraryPage() {
         <Typography variant="h4" component="h1">
           Tooling (MCP)
         </Typography>
-        <Tooltip title="Refresh registry">
-          <IconButton onClick={loadServers}>
-            <RefreshIcon />
-          </IconButton>
-        </Tooltip>
+        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+          <Button
+            size="small"
+            variant="outlined"
+            onClick={() => router.push('/mcp-library/audit')}
+          >
+            Audit Log
+          </Button>
+          <Tooltip title="Refresh registry">
+            <IconButton onClick={loadServers}>
+              <RefreshIcon />
+            </IconButton>
+          </Tooltip>
+        </Box>
       </Box>
 
       {error && (

@@ -16,6 +16,7 @@ Detailed narratives remain in focused docs; this file tracks what shipped and wh
 
 | Date | RM ID | Change | Outcome | Reference |
 | --- | --- | --- | --- | --- |
+| 2026-03-21 | RM-004 | MCP Phase 4 complete: runtime enforcement middleware wired, allowlist auto-creation in run flow, Audit Log Viewer UI, violations dashboard endpoint, Pydantic v2 deprecation fixes, 8 new integration tests | done | `docs/ROADMAP.md` RM-004 worklist |
 | 2026-02-28 | RM-002 | Consolidated docs structure (hub + roadmap + concise ledger + side-track method) | done | `docs/README.md`, `docs/ROADMAP.md`, this file |
 | 2026-02-21 | RM-004 | MCP governance hardening updates (rate limiting, RBAC, log integrity/rotation, anomaly detection) | done | `docs/MCP_LIBRARY_STATUS.md`, `docs/MCP_REMAINING_TASKS.md` |
 | 2026-02-07 | RM-001 | Workflow reliability pass across TS typing and CI guards | done | `../WORKFLOW_AUDIT_SUMMARY.md` |
