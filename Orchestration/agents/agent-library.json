@@ -310,15 +310,6 @@
                 "mustBeVisible": {
                   "type": "boolean"
                 },
-                "id": {
-                  "type": "string"
-                },
-                "description": {
-                  "type": "string"
-                },
-                "mustBeVisible": {
-                  "type": "boolean"
-                },
                 "observableEvidence": {
                   "type": "object",
                   "properties": {
@@ -330,24 +321,11 @@
                         "canvas",
                         "state"
                       ]
-                      "enum": [
-                        "dom",
-                        "svg",
-                        "canvas",
-                        "state"
-                      ]
                     },
                     "probe": {
                       "type": "string"
                     }
-                    "probe": {
-                      "type": "string"
-                    }
                   },
-                  "required": [
-                    "type",
-                    "probe"
-                  ]
                   "required": [
                     "type",
                     "probe"
@@ -379,18 +357,6 @@
                 "expectedVisibleEffect": {
                   "type": "string"
                 },
-                "id": {
-                  "type": "string"
-                },
-                "trigger": {
-                  "type": "string"
-                },
-                "userAction": {
-                  "type": "string"
-                },
-                "expectedVisibleEffect": {
-                  "type": "string"
-                },
                 "verification": {
                   "type": "object",
                   "properties": {
@@ -400,17 +366,7 @@
                     "expectedChangeProbe": {
                       "type": "string"
                     }
-                    "actionProbe": {
-                      "type": "string"
-                    },
-                    "expectedChangeProbe": {
-                      "type": "string"
-                    }
                   },
-                  "required": [
-                    "actionProbe",
-                    "expectedChangeProbe"
-                  ]
                   "required": [
                     "actionProbe",
                     "expectedChangeProbe"
@@ -443,18 +399,6 @@
                 "observableSignal": {
                   "type": "string"
                 },
-                "id": {
-                  "type": "string"
-                },
-                "name": {
-                  "type": "string"
-                },
-                "whatChangesOverTime": {
-                  "type": "string"
-                },
-                "observableSignal": {
-                  "type": "string"
-                },
                 "temporalEvidence": {
                   "type": "object",
                   "properties": {
@@ -468,22 +412,7 @@
                     "expectedDelta": {
                       "type": "string"
                     }
-                    "durationMs": {
-                      "type": "integer",
-                      "minimum": 1
-                    },
-                    "probe": {
-                      "type": "string"
-                    },
-                    "expectedDelta": {
-                      "type": "string"
-                    }
                   },
-                  "required": [
-                    "durationMs",
-                    "probe",
-                    "expectedDelta"
-                  ]
                   "required": [
                     "durationMs",
                     "probe",
@@ -514,21 +443,7 @@
                 "usedFor": {
                   "type": "string"
                 }
-                "name": {
-                  "type": "string"
-                },
-                "source": {
-                  "type": "string"
-                },
-                "usedFor": {
-                  "type": "string"
-                }
               },
-              "required": [
-                "name",
-                "source",
-                "usedFor"
-              ]
               "required": [
                 "name",
                 "source",
@@ -541,9 +456,6 @@
             "items": {
               "type": "string"
             }
-            "items": {
-              "type": "string"
-            }
           },
           "acceptance_tests": {
             "type": "array",
@@ -553,14 +465,8 @@
                 "testName": {
                   "type": "string"
                 },
-                "testName": {
-                  "type": "string"
-                },
                 "steps": {
                   "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
                   "items": {
                     "type": "string"
                   }
@@ -570,13 +476,7 @@
                   "items": {
                     "type": "string"
                   }
-                  "items": {
-                    "type": "string"
-                  }
                 },
-                "failureCondition": {
-                  "type": "string"
-                }
                 "failureCondition": {
                   "type": "string"
                 }
@@ -1950,15 +1850,6 @@
           "constraints": {
             "type": "object"
           }
-          "repo_path": {
-            "type": "string"
-          },
-          "ref": {
-            "type": "string"
-          },
-          "constraints": {
-            "type": "object"
-          }
         },
         "required": [
           "repo_path"
@@ -2044,9 +1935,6 @@
       "input_schema": {
         "type": "object",
         "properties": {
-          "repo_context": {
-            "type": "object"
-          }
           "repo_context": {
             "type": "object"
           }
