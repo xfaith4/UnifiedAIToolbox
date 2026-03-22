@@ -42,6 +42,28 @@ const formatValue = (value: unknown) => {
   return String(value)
 }
 
+const copyText = async (value: string) => {
+  try {
+    await navigator.clipboard.writeText(value)
+  } catch {
+    return
+  }
+}
+
+const openPath = async (absPath: string | undefined) => {
+  if (!absPath) return
+  try {
+    const res = await fetch('/api/open-path', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: absPath }),
+    })
+    if (!res.ok) throw new Error(`open-path failed (${res.status})`)
+  } catch {
+    await copyText(absPath)
+  }
+}
+
 const normalizeVerificationText = (value: string | undefined) =>
   String(value || '')
     .replace(/###\s*Contract Traceability/gi, 'Engineer.contract_traceability[]')
@@ -467,7 +489,16 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
           </Link>
         )}
         {artifact.filePath && (
-          <a className="underline" href={toFileUrl(artifact.filePath)} target="_blank" rel="noreferrer">
+          <a
+            className="underline"
+            href={toFileUrl(artifact.filePath)}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(event) => {
+              event.preventDefault()
+              void openPath(artifact.filePath)
+            }}
+          >
             Open file
           </a>
         )}
@@ -595,8 +626,8 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
     const failedGateCount = verificationFailures.length
     const requirementsRequest = orchRun.requirementsRequest ?? orchRun.sandboxReport?.requirementsRequest
 
-    const synthesisHtml = orchRun.runDir
-      ? toFileUrl(`${orchRun.runDir.replace(/\\/g, '/')}/Final_Synthesis.html`)
+    const synthesisHtmlPath = orchRun.runDir
+      ? `${orchRun.runDir.replace(/[\\\/]+$/, '')}${orchRun.runDir.includes('\\') ? '\\' : '/'}Final_Synthesis.html`
       : null
 
     return (
@@ -621,12 +652,16 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
           )}
           {isRunning && <span className="h-2 w-2 rounded-full bg-blue-400 animate-pulse" />}
           <div className="ml-auto flex items-center gap-2">
-            {synthesisHtml && (
+            {synthesisHtmlPath && (
               <a
-                href={synthesisHtml}
+                href={toFileUrl(synthesisHtmlPath)}
                 target="_blank"
                 rel="noreferrer"
                 className="rounded border border-current px-2 py-1 text-xs opacity-80 hover:opacity-100"
+                onClick={(event) => {
+                  event.preventDefault()
+                  void openPath(synthesisHtmlPath)
+                }}
               >
                 View Output →
               </a>
@@ -742,6 +777,10 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
                   href={toFileUrl(orchRun.runDir)}
                   target="_blank"
                   rel="noreferrer"
+                  onClick={(event) => {
+                    event.preventDefault()
+                    void openPath(orchRun.runDir)
+                  }}
                 >
                   Open failing artifacts
                 </a>
@@ -1080,7 +1119,16 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
               </a>
             )}
             {runDir && (
-              <a className="rounded border border-slate-700 px-2 py-1 hover:bg-slate-800/60" href={toFileUrl(runDir)} target="_blank" rel="noreferrer">
+              <a
+                className="rounded border border-slate-700 px-2 py-1 hover:bg-slate-800/60"
+                href={toFileUrl(runDir)}
+                target="_blank"
+                rel="noreferrer"
+                onClick={(event) => {
+                  event.preventDefault()
+                  void openPath(runDir)
+                }}
+              >
                 Open Run Folder
               </a>
             )}

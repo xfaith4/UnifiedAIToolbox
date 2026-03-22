@@ -39,6 +39,28 @@ const formatValue = (value: unknown) => {
   return String(value)
 }
 
+const copyText = async (value: string) => {
+  try {
+    await navigator.clipboard.writeText(value)
+  } catch {
+    return
+  }
+}
+
+const openPath = async (absPath: string | undefined) => {
+  if (!absPath) return
+  try {
+    const res = await fetch('/api/open-path', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: absPath }),
+    })
+    if (!res.ok) throw new Error(`open-path failed (${res.status})`)
+  } catch {
+    await copyText(absPath)
+  }
+}
+
 const JsonNode = ({
   label,
   value,
@@ -276,6 +298,10 @@ export default function ArtifactViewerPage({
                 href={toFileUrl(runDir)}
                 target="_blank"
                 rel="noreferrer"
+                onClick={(event) => {
+                  event.preventDefault()
+                  void openPath(runDir)
+                }}
               >
                 Open Run Folder
               </a>
@@ -286,6 +312,10 @@ export default function ArtifactViewerPage({
                 href={toFileUrl(selectedArtifact.filePath)}
                 target="_blank"
                 rel="noreferrer"
+                onClick={(event) => {
+                  event.preventDefault()
+                  void openPath(selectedArtifact.filePath)
+                }}
               >
                 Open Externally
               </a>
@@ -425,7 +455,16 @@ export default function ArtifactViewerPage({
                         </Link>
                       )}
                       {artifact.filePath && (
-                        <a className="underline" href={toFileUrl(artifact.filePath)} target="_blank" rel="noreferrer">
+                        <a
+                          className="underline"
+                          href={toFileUrl(artifact.filePath)}
+                          target="_blank"
+                          rel="noreferrer"
+                          onClick={(event) => {
+                            event.preventDefault()
+                            void openPath(artifact.filePath)
+                          }}
+                        >
                           Open file
                         </a>
                       )}

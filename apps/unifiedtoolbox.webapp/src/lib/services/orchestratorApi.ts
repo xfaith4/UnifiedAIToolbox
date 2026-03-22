@@ -153,17 +153,33 @@ export async function createOrchestrationRun(run: OrchestrationRun): Promise<Orc
       throw new Error(`Failed to launch orchestration (${res.status}): ${errorText}`)
     }
 
-    const payload = await res.json()
-    const manifest = payload.manifest as OrchestrationRun
+    const payload = (await res.json()) as Record<string, unknown>
+    const manifestRaw =
+      payload.manifest && typeof payload.manifest === 'object'
+        ? (payload.manifest as Record<string, unknown>)
+        : payload
+    const normalized = normalizeApiRun(manifestRaw)
+    const manifest: OrchestrationRun = {
+      ...run,
+      ...normalized,
+      id: normalized.id || run.id,
+      goal: normalized.goal || run.goal,
+      agents: normalized.agents && normalized.agents.length > 0 ? normalized.agents : run.agents,
+      runMode:
+        (typeof manifestRaw.run_mode === 'string' && manifestRaw.run_mode.trim()) ||
+        (typeof manifestRaw.runMode === 'string' && manifestRaw.runMode.trim())
+          ? normalized.runMode
+          : run.runMode,
+      promptId: normalized.promptId || run.promptId,
+      acceptanceChecks: normalized.acceptanceChecks ?? run.acceptanceChecks,
+      requestedAt: normalized.requestedAt || run.requestedAt,
+    }
 
     if (process.env.NODE_ENV === 'development') {
       console.debug(`[OrchestratorAPI] createOrchestrationRun ← api_run_id: ${manifest.id}, status: ${manifest.status}`)
     }
 
-    return {
-      ...manifest,
-      requestedAt: manifest.requestedAt,
-    }
+    return manifest
   } catch (error) {
     console.error('[OrchestratorAPI] Failed to create orchestration run:', error)
     
@@ -426,41 +442,52 @@ function normalizeApiRun(raw: Record<string, unknown>): OrchestrationRun {
   }
 
   return {
-    id: String(raw.run_id || raw.id || ''),
-    promptId: String(raw.prompt_id || ''),
+    id: String(raw.run_id || raw.runId || raw.id || ''),
+    promptId: String(raw.prompt_id || raw.promptId || ''),
     goal: raw.goal ? String(raw.goal) : undefined,
     agents: Array.isArray(raw.agents) ? raw.agents.map(String) : [],
     status: String(raw.status || 'unknown'),
-    rawStatus: raw.raw_status ? String(raw.raw_status) : undefined,
-    heartbeatStale: Boolean(raw.heartbeat_stale),
-    lastHeartbeatAt: raw.last_heartbeat_at ? String(raw.last_heartbeat_at) : undefined,
-    lastEventAt: raw.last_event_at ? String(raw.last_event_at) : undefined,
-    currentAgent: raw.current_agent ? String(raw.current_agent) : undefined,
-    currentStage: raw.current_stage ? String(raw.current_stage) : undefined,
+    rawStatus: raw.raw_status ? String(raw.raw_status) : raw.rawStatus ? String(raw.rawStatus) : undefined,
+    heartbeatStale: Boolean(raw.heartbeat_stale ?? raw.heartbeatStale),
+    lastHeartbeatAt: raw.last_heartbeat_at ? String(raw.last_heartbeat_at) : raw.lastHeartbeatAt ? String(raw.lastHeartbeatAt) : undefined,
+    lastEventAt: raw.last_event_at ? String(raw.last_event_at) : raw.lastEventAt ? String(raw.lastEventAt) : undefined,
+    currentAgent: raw.current_agent ? String(raw.current_agent) : raw.currentAgent ? String(raw.currentAgent) : undefined,
+    currentStage: raw.current_stage ? String(raw.current_stage) : raw.currentStage ? String(raw.currentStage) : undefined,
     lease: (raw.lease as OrchestrationRun['lease']) ?? undefined,
     mode: raw.mode as 'executed' | 'simulated' | undefined,
-    runMode: (raw.run_mode || 'default') as 'default' | 'codex-swarm' | 'multi-agent',
-    jobType: raw.job_type ? String(raw.job_type) : undefined,
-    appType: raw.app_type ? String(raw.app_type) : undefined,
-    requestedAt: raw.requested_at ? String(raw.requested_at) : undefined,
-    startedAt: raw.started_at ? String(raw.started_at) : undefined,
-    completedAt: raw.completed_at ? String(raw.completed_at) : undefined,
+    runMode: (raw.run_mode || raw.runMode || 'default') as 'default' | 'codex-swarm' | 'multi-agent',
+    jobType: raw.job_type ? String(raw.job_type) : raw.jobType ? String(raw.jobType) : undefined,
+    appType: raw.app_type ? String(raw.app_type) : raw.appType ? String(raw.appType) : undefined,
+    requestedAt: raw.requested_at ? String(raw.requested_at) : raw.requestedAt ? String(raw.requestedAt) : undefined,
+    startedAt: raw.started_at ? String(raw.started_at) : raw.startedAt ? String(raw.startedAt) : undefined,
+    completedAt: raw.completed_at ? String(raw.completed_at) : raw.completedAt ? String(raw.completedAt) : undefined,
     events,
     model: raw.model ? String(raw.model) : undefined,
     version: raw.version ? String(raw.version) : undefined,
-    reviewPolicy: raw.review_policy ? String(raw.review_policy) : undefined,
-    datasetId: raw.dataset_id ? String(raw.dataset_id) : undefined,
-    datasetName: raw.dataset_name ? String(raw.dataset_name) : undefined,
+    reviewPolicy: raw.review_policy ? String(raw.review_policy) : raw.reviewPolicy ? String(raw.reviewPolicy) : undefined,
+    datasetId: raw.dataset_id ? String(raw.dataset_id) : raw.datasetId ? String(raw.datasetId) : undefined,
+    datasetName: raw.dataset_name ? String(raw.dataset_name) : raw.datasetName ? String(raw.datasetName) : undefined,
     notes: raw.notes ? String(raw.notes) : undefined,
     output: raw.output ? String(raw.output) : undefined,
-    runDir: raw.run_dir ? String(raw.run_dir) : undefined,
-    errorDetail: raw.error_detail ? String(raw.error_detail) : undefined,
+    runDir: raw.run_dir ? String(raw.run_dir) : raw.runDir ? String(raw.runDir) : undefined,
+    errorDetail: raw.error_detail ? String(raw.error_detail) : raw.errorDetail ? String(raw.errorDetail) : undefined,
     tokens: raw.tokens as OrchestrationRun['tokens'],
     acceptanceChecks: Array.isArray(raw.acceptance_checks)
       ? (raw.acceptance_checks as string[])
-      : undefined,
-    verificationStatus: raw.verification_status ? String(raw.verification_status) as OrchestrationRun['verificationStatus'] : undefined,
-    loopIteration: typeof raw.loop_iteration === 'number' ? raw.loop_iteration : undefined,
+      : Array.isArray(raw.acceptanceChecks)
+        ? (raw.acceptanceChecks as string[])
+        : undefined,
+    verificationStatus: raw.verification_status
+      ? String(raw.verification_status) as OrchestrationRun['verificationStatus']
+      : raw.verificationStatus
+        ? String(raw.verificationStatus) as OrchestrationRun['verificationStatus']
+        : undefined,
+    loopIteration:
+      typeof raw.loop_iteration === 'number'
+        ? raw.loop_iteration
+        : typeof raw.loopIteration === 'number'
+          ? raw.loopIteration
+          : undefined,
     sandboxReport,
     requirementsRequest,
   }

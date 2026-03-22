@@ -45,6 +45,7 @@
 		},
 		"chat.mcp.gallery.enabled": true,
 		"chat.mcp.assisted.nuget.enabled": true,
-		"workbench.settings.alwaysShowAdvancedSettings": true
+		"workbench.settings.alwaysShowAdvancedSettings": true,
+		"testing.automaticallyOpenTestResults": "neverOpen"
 	}
 }
