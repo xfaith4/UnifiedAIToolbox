@@ -199,6 +199,10 @@ export function useRunEvents(runId: string | null | undefined, options: UseRunEv
       setConnectionStatus(reconnectAttempts > 0 ? 'reconnecting' : 'connecting')
       source = new EventSource(`/api/app-factory/runs/${encodeURIComponent(runId)}/events?${params.toString()}`)
 
+      // Track whether the server intentionally closed the stream (snapshot mode).
+      // When true, onerror should mark the connection closed rather than reconnect.
+      let snapshotDone = false
+
       source.onopen = () => {
         if (!active) return
         reconnectAttempts = 0
@@ -222,6 +226,12 @@ export function useRunEvents(runId: string | null | undefined, options: UseRunEv
         }
       })
 
+      // Server sends stream-end when it closes the connection intentionally (e.g. orchestrator
+      // snapshot with no live subscriber). Stop reconnecting so we don't loop.
+      source.addEventListener('stream-end', () => {
+        snapshotDone = true
+      })
+
       source.onmessage = (rawEvent) => {
         if (!active) return
         try {
@@ -234,6 +244,14 @@ export function useRunEvents(runId: string | null | undefined, options: UseRunEv
       source.onerror = () => {
         if (!active) return
         closeStream()
+
+        if (snapshotDone) {
+          // Planned close — the stream was a one-shot snapshot (e.g. orchestrator fallback).
+          // Mark the connection as closed and do not reconnect.
+          setConnectionStatus('closed')
+          return
+        }
+
         reconnectAttempts += 1
         setReconnectCount(reconnectAttempts)
         setConnectionStatus('reconnecting')

@@ -181,7 +181,9 @@ export async function GET(req: Request, { params: _params }: { params: Promise<{
       )
     }
 
-    // SSE mode with orchestrator fallback: emit buffered events then heartbeat
+    // SSE mode with orchestrator fallback: emit buffered events then close.
+    // We send a stream-end sentinel so the client knows this is a planned snapshot
+    // close (not a connection drop) and can stop reconnecting.
     const encoder = new TextEncoder()
     const orchStream = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -190,8 +192,9 @@ export async function GET(req: Request, { params: _params }: { params: Promise<{
           const frame = `id: ${event.ts}\nevent: run\ndata: ${JSON.stringify(event)}\n\n`
           controller.enqueue(encoder.encode(frame))
         }
-        // No live subscription available for orchestrator — send heartbeat and close
         controller.enqueue(encoder.encode(`event: heartbeat\ndata: {"ts":"${new Date().toISOString()}","runId":"${runId}","source":"orchestrator"}\n\n`))
+        // Signal planned close so the client does not reconnect
+        controller.enqueue(encoder.encode(`event: stream-end\ndata: {"reason":"snapshot","source":"orchestrator"}\n\n`))
         controller.close()
       },
     })

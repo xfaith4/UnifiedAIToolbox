@@ -1850,6 +1850,15 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             headers = get_security_headers()
             for key, value in headers.items():
                 response.headers[key] = value
+            # Swagger / ReDoc UI loads scripts and styles from cdn.jsdelivr.net — relax CSP for those routes only
+            if request.url.path in ("/docs", "/redoc"):
+                response.headers["Content-Security-Policy"] = (
+                    "default-src 'self' cdn.jsdelivr.net; "
+                    "img-src 'self' data: fastapi.tiangolo.com cdn.jsdelivr.net; "
+                    "script-src 'self' 'unsafe-inline' cdn.jsdelivr.net; "
+                    "style-src 'self' 'unsafe-inline' cdn.jsdelivr.net; "
+                    "frame-ancestors 'none'; object-src 'none'; base-uri 'self'"
+                )
         else:
             response.headers["X-Content-Type-Options"] = "nosniff"
             response.headers["X-Frame-Options"] = "DENY"

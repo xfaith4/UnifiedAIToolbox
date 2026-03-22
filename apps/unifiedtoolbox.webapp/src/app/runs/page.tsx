@@ -329,13 +329,14 @@ export default function RunsPage() {
   const hasQueuedRuns = apiRuns.some((r) => STATUS_QUEUED.has((r.status ?? '').toLowerCase()))
   const hasStuckRuns = apiRuns.some((r) => STATUS_STUCK.has((r.status ?? '').toLowerCase()) || r.heartbeatStale)
 
-  // Auto-disable refresh once the initial data is loaded and there are no active/queued runs
-  // to prevent endless background polling when nothing is in flight.
+  // Auto-disable refresh once nothing is actively processing.
+  // Queued runs (no worker assigned yet) and stuck runs don't change on their own, so there
+  // is no value in polling them continuously — the user can re-enable auto-refresh manually.
   useEffect(() => {
-    if (autoRefresh && !loading && !hasActiveRuns && !hasQueuedRuns) {
+    if (autoRefresh && !loading && !hasActiveRuns) {
       setAutoRefresh(false)
     }
-  }, [autoRefresh, loading, hasActiveRuns, hasQueuedRuns, setAutoRefresh])
+  }, [autoRefresh, loading, hasActiveRuns])
 
   const queuedApiRuns = apiRuns.filter((r) => isQueuedStatus(r.status))
   const queuedVisibleRuns = filteredApiRuns.filter((r) => isQueuedStatus(r.status))
