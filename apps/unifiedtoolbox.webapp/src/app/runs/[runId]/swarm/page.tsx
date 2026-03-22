@@ -34,7 +34,8 @@ function statusBadge(status: string | undefined): string {
   const value = (status || '').toLowerCase()
   if (value === 'succeeded' || value === 'completed') return 'border-emerald-700 bg-emerald-950/40 text-emerald-200'
   if (value === 'running' || value === 'queued') return 'border-blue-700 bg-blue-950/40 text-blue-200'
-  if (value === 'failed') return 'border-rose-700 bg-rose-950/40 text-rose-200'
+  if (value === 'failed' || value === 'error' || value.startsWith('error:')) return 'border-rose-700 bg-rose-950/40 text-rose-200'
+  if (value === 'stuck') return 'border-amber-700 bg-amber-950/40 text-amber-200'
   return 'border-slate-700 bg-slate-900/60 text-slate-200'
 }
 

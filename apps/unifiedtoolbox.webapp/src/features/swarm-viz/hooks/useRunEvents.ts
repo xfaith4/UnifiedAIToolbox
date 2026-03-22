@@ -13,6 +13,12 @@ const DEFAULT_LIMIT = 400
 const MAX_EVENTS = 1500
 const MAX_BACKOFF_MS = 15000
 
+function isTerminalStatus(status: string | undefined): boolean {
+  if (!status) return false
+  const s = status.toLowerCase()
+  return s === 'succeeded' || s === 'completed' || s === 'failed' || s === 'stuck' || s.startsWith('error:')
+}
+
 function toIso(ts: unknown): string {
   if (typeof ts === 'string' && ts.trim()) {
     const parsed = new Date(ts)
@@ -132,7 +138,7 @@ export function useRunEvents(runId: string | null | undefined, options: UseRunEv
       })
     }
 
-    const loadRunStatus = async () => {
+    const loadRunStatus = async (): Promise<RunStatusResponse | null> => {
       const statusParams = new URLSearchParams()
       if (attemptId) statusParams.set('attempt_id', attemptId)
       const statusQuery = statusParams.toString() ? `?${statusParams.toString()}` : ''
@@ -144,6 +150,7 @@ export function useRunEvents(runId: string | null | undefined, options: UseRunEv
       }
       const payload = (await response.json()) as RunStatusResponse
       if (active) setRunStatus(payload)
+      return payload
     }
 
     const loadHistory = async () => {
@@ -259,9 +266,13 @@ export function useRunEvents(runId: string | null | undefined, options: UseRunEv
       setEvents([])
 
       try {
-        await Promise.all([loadRunStatus(), loadHistory()])
+        const [resolvedStatus] = await Promise.all([loadRunStatus(), loadHistory()])
         if (!active) return
-        connect()
+        if (isTerminalStatus(resolvedStatus?.status)) {
+          setConnectionStatus('closed')
+        } else {
+          connect()
+        }
       } catch (err) {
         if (!active) return
         setConnectionStatus('error')

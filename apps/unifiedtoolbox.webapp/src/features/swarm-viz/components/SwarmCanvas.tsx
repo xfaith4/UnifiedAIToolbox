@@ -87,21 +87,21 @@ export default function SwarmCanvas({ agents, nodes, edges, phases, groupByPhase
       for (const phase of phaseOrder) {
         const column = phaseIndex.get(phase) || 0
         const x = 300 + column * 320
-        phaseAnchors.set(phase, { x, y: 70 })
+        phaseAnchors.set(phase, { x, y: 155 })
 
         const nodesInPhase = buckets.get(phase) || []
         nodesInPhase.forEach((node, row) => {
-          nodePoints.set(node.id, { x, y: 150 + row * 130 })
+          nodePoints.set(node.id, { x, y: 200 + row * 180 })
         })
       }
     } else {
       orderedNodes.forEach((node, idx) => {
         const col = idx % 4
         const row = Math.floor(idx / 4)
-        nodePoints.set(node.id, { x: 280 + col * 320, y: 150 + row * 130 })
+        nodePoints.set(node.id, { x: 280 + col * 320, y: 200 + row * 180 })
       })
       phaseOrder.forEach((phase, idx) => {
-        phaseAnchors.set(phase, { x: 280 + idx * 220, y: 70 })
+        phaseAnchors.set(phase, { x: 280 + idx * 220, y: 155 })
       })
     }
 
