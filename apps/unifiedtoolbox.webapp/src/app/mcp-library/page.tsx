@@ -129,7 +129,7 @@ export default function MCPLibraryPage() {
     setLoading(true)
     setError(null)
     try {
-      const response = await fetch('http://localhost:8000/api/mcp/servers/search', {
+      const response = await fetch('/api/mcp/servers/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -160,7 +160,7 @@ export default function MCPLibraryPage() {
   const loadCollections = async () => {
     setCollectionsLoading(true)
     try {
-      const response = await fetch('http://localhost:8000/api/mcp/collections')
+      const response = await fetch('/api/mcp/collections')
       if (!response.ok) throw new Error('Failed to load collections')
       const data = await response.json()
       setCollections(data.collections || [])
@@ -175,7 +175,7 @@ export default function MCPLibraryPage() {
   const loadInstallations = async () => {
     setInstallationsLoading(true)
     try {
-      const response = await fetch('http://localhost:8000/api/mcp/installs')
+      const response = await fetch('/api/mcp/installs')
       if (!response.ok) throw new Error('Failed to load installations')
       const data = await response.json()
       setInstallations(data.installs || [])
@@ -194,8 +194,7 @@ export default function MCPLibraryPage() {
     }
     
     try {
-      const response = await fetch('http://localhost:8000/api/mcp/collections', {
-        method: 'POST',
+      const response = await fetch('/api/mcp/collections', {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newCollection),
       })
@@ -215,7 +214,7 @@ export default function MCPLibraryPage() {
     if (!confirm('Are you sure you want to delete this collection?')) return
     
     try {
-      const response = await fetch(`http://localhost:8000/api/mcp/collections/${collectionId}`, {
+      const response = await fetch(`/api/mcp/collections/${collectionId}`, {
         method: 'DELETE',
       })
       
@@ -231,7 +230,7 @@ export default function MCPLibraryPage() {
     const action = currentStatus === 'enabled' ? 'disable' : 'enable'
     
     try {
-      const response = await fetch(`http://localhost:8000/api/mcp/installs/${installId}/${action}`, {
+      const response = await fetch(`/api/mcp/installs/${installId}/${action}`, {
         method: 'POST',
       })
       
@@ -247,7 +246,7 @@ export default function MCPLibraryPage() {
     if (!serverToInstall) return
     
     try {
-      const response = await fetch('http://localhost:8000/api/mcp/installs', {
+      const response = await fetch('/api/mcp/installs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
