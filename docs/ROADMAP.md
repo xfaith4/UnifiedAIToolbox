@@ -25,6 +25,7 @@ This file is the single roadmap source for active feature delivery.
 | RM-006 | Export hardening and artifact quality gates | done | next | Export remains accessible with clear risk signaling and contract/gate evidence |
 | RM-007 | Web deployment strategy for dynamic Next.js app | done | next | Target hosting chosen and deployment workflow aligned with API route requirements |
 | RM-008 | Run lifecycle control + lease/heartbeat safety | done | now/next | Canonical run state/lease model with cancel/force-cancel/requeue/stale-lease recovery and STUCK visibility |
+| RM-009 | App Factory Phase 1 — Closed Feedback Loop | done | next | Sandbox engine, acceptance-check evaluator, refinement loop controller, verify/refine API endpoints, and Run Detail Verification tab all delivered |
 
 ## Side-track policy
 
@@ -311,23 +312,60 @@ Every roadmap-impacting tradeoff gets a `DEC-###` record in `IMPLEMENTATION_SUMM
 
 ## RM-007 Worklist (Web deployment strategy for dynamic Next.js app)
 
-- [x] Confirm `output: 'export'` absent from `next.config.mjs` — dynamic routing preserved.  
+- [x] Confirm `output: 'export'` absent from `next.config.mjs` — dynamic routing preserved.
   Date: 2026-03-22  
   Ref: `apps/unifiedtoolbox.webapp/next.config.mjs`  
   Notes: no static export config present; app builds as a full Node.js server with API routes intact.
 
-- [x] CI workflow (`nextjs.yml`) builds and uploads `.next` as a deployable artefact.  
+- [x] CI workflow (`nextjs.yml`) builds and uploads `.next` as a deployable artefact.
   Date: pre-2026-03-22  
   Ref: `.github/workflows/nextjs.yml`  
   Notes: builds on push/PR; uploads `unified-webapp-next-build` artefact retained for 7 days; `NEXT_PUBLIC_API_BASE` env var wired.
 
-- [x] Clarify GitHub Pages scope: root static landing page only, not the Next.js web app.  
+- [x] Clarify GitHub Pages scope: root static landing page only, not the Next.js web app.
   Date: 2026-03-22  
   Ref: `.github/workflows/pages.yml`, `docs/web-deployment-strategy.md`  
   Notes: `pages.yml` deploys repo root (index.html, demo HTML); documented in deployment strategy doc so the distinction is explicit.
 
-- [x] Document deployment strategy, target hosting options, and required env vars.  
+- [x] Document deployment strategy, target hosting options, and required env vars.
   Date: 2026-03-22  
   Ref: `docs/web-deployment-strategy.md`  
   Notes: covers self-hosted Node.js, Vercel/Railway/Render options, run worker constraints, and all required env vars.
+
+## RM-009 Worklist (App Factory Phase 1 — Closed Feedback Loop)
+
+- [x] Sandbox Execution Engine: subprocess runner that evaluates acceptance checks and writes `sandbox_report.json`.  
+  Date: 2026-03-22  
+  Ref: `apps/unifiedtoolbox.webapp/src/lib/app-factory/sandbox/sandboxEngine.ts`  
+  Notes: executes shell-command checks via `spawnSync` with 30 s timeout and 8 KB output budget; emits `sandbox:*` events to `events.ndjson`; mirrors overseer event pattern.
+
+- [x] Acceptance Check Evaluator: maps natural-language check strings to evaluator type and shell command.  
+  Date: 2026-03-22  
+  Ref: `apps/unifiedtoolbox.webapp/src/lib/app-factory/sandbox/evaluateChecks.ts`  
+  Notes: regex rule table covers build/lint/test/HTTP-probe/commissioner-score checks; abstract checks deferred for manual or commissioner review; `aggregateStatus` utility derives overall `passed | failed | partial | deferred | pending`.
+
+- [x] Refinement Loop Controller: iterates sandbox evaluation up to `MAX_LOOP_ITERATIONS` (default 3).  
+  Date: 2026-03-22  
+  Ref: `apps/unifiedtoolbox.webapp/src/lib/app-factory/sandbox/refinementLoop.ts`  
+  Notes: emits `loop:iteration_N` / `loop:passed` / `loop:max_iterations` events; exits early on all-pass; agent re-execution triggered externally via `/refine` endpoint so loop controller stays stateless.
+
+- [x] Verify API endpoint: `POST /api/app-factory/runs/[runId]/verify` triggers single sandbox evaluation.  
+  Date: 2026-03-22  
+  Ref: `apps/unifiedtoolbox.webapp/src/app/api/app-factory/runs/[runId]/verify/route.ts`  
+  Notes: falls back to `request.json` acceptance checks when body omits them; `cwd` param validated to stay within repo root; `GET` variant reads existing `sandbox_report.json`.
+
+- [x] Refine API endpoint: `POST /api/app-factory/runs/[runId]/refine` runs the full refinement loop.  
+  Date: 2026-03-22  
+  Ref: `apps/unifiedtoolbox.webapp/src/app/api/app-factory/runs/[runId]/refine/route.ts`  
+  Notes: configurable `maxIterations` (capped at `MAX_LOOP_ITERATIONS * 2`) and `startIteration`; returns `exitReason`, `iterations`, and final `sandbox_report`.
+
+- [x] Run Detail UI — Verification tab: surfaces sandbox report per check with pass/fail/deferred badges.  
+  Date: 2026-03-22  
+  Ref: `apps/unifiedtoolbox.webapp/src/app/runs/[runId]/page.tsx`  
+  Notes: dual `Run State` + `Outcome` badges; "What failed" blocker panel; Verification tab shows per-check results and `verificationStatus` derived from `sandboxReport`.
+
+- [x] Refinement loop unit tests: 8 tests covering all exit reasons, event emission, and `startIteration` offset.  
+  Date: 2026-03-22  
+  Ref: `apps/unifiedtoolbox.webapp/src/lib/app-factory/sandbox/__tests__/refinementLoop.test.ts`  
+  Notes: tests use real temp directories and spawnSync to exercise full path; complements existing `evaluateChecks.test.ts` unit tests.
 

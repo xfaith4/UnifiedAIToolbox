@@ -19,9 +19,10 @@ runs end at `Final_Synthesis.html`; no verification, no shipping, no learning, n
 
 ---
 
-## Phase 1 — Closed Feedback Loop
+## Phase 1 — Closed Feedback Loop ✅
 
 > *"The run verifies its own output and retries on failure."*
+> **Status: Done** — Date: 2026-03-22 | Ref: RM-009 in `docs/ROADMAP.md`
 
 ### Problem
 A run produces a synthesis document and stops. Nothing checks whether the proposed code
