@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import path from 'path'
 import { randomUUID, timingSafeEqual } from 'crypto'
-import { spawn } from 'child_process'
+import { spawn, type ChildProcess, type StdioOptions } from 'child_process'
 import fs from 'fs'
 import { promises as fsp } from 'fs'
 import { getRunsRoot } from '@/lib/app-factory/runs/runStatus'
@@ -262,20 +262,22 @@ export async function POST(req: Request) {
     if (localPath) {
       psArgs.push('-RepoRoot', localPath)
     }
-    const spawnEnv: Record<string, string> = {
-      ...(process.env as Record<string, string>),
+    const spawnEnv: NodeJS.ProcessEnv = {
+      ...process.env,
       UAIT_JOB_TYPE: jobType,
       UAIT_REQUEST_PATH: requestPath,
     }
     if (localPath) {
       spawnEnv['UAIT_LOCAL_REPO_PATH'] = localPath
     }
-    const child = spawn(psExe, psArgs, {
+    const child: ChildProcess = spawn(psExe, psArgs, {
       cwd: repoRoot,
       env: spawnEnv,
       // Detached pwsh launches on Windows can exit 0 immediately without running the script.
       detached: false,
-      stdio: ['ignore', logFd, logFd],
+      // File descriptors (numbers) in the stdio array cause TypeScript overload intersection issues.
+      // Casting to StdioOptions selects the intended open-fd overload without losing runtime fidelity.
+      stdio: ['ignore', logFd, logFd] as StdioOptions,
     })
 
     child.on('error', (err) => {

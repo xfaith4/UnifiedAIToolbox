@@ -236,6 +236,10 @@ jobs:
         working-directory: apps/unifiedtoolbox.webapp
         run: npm run lint
 
+      - name: Type check
+        working-directory: apps/unifiedtoolbox.webapp
+        run: npm run typecheck
+
       - name: Run app-factory tests
         working-directory: apps/unifiedtoolbox.webapp
         run: npm run test
