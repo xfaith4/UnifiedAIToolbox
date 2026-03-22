@@ -10,7 +10,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
 
 from mcp_governance import storage
 from mcp_governance.models import Collection, InstallRecord, InstallStatus, Allowlist, AllowlistScope
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 def test_get_servers():
@@ -55,7 +55,7 @@ def test_collection_crud():
         server_ids=["local-filesystem"],
         tags=["test"],
         created_by="test-user",
-        created_at=datetime.utcnow()
+        created_at=datetime.now(timezone.utc).replace(tzinfo=None)
     )
     
     saved = storage.save_collection(collection)
@@ -90,7 +90,7 @@ def test_install_record_crud():
         install_id="test-install-1",
         server_id="local-filesystem",
         status=InstallStatus.ENABLED,
-        installed_at=datetime.utcnow(),
+        installed_at=datetime.now(timezone.utc).replace(tzinfo=None),
         installed_by="test-user"
     )
     
@@ -106,7 +106,7 @@ def test_install_record_crud():
     
     # Update status
     loaded.status = InstallStatus.DISABLED
-    loaded.disabled_at = datetime.utcnow()
+    loaded.disabled_at = datetime.now(timezone.utc).replace(tzinfo=None)
     storage.save_install_record(loaded)
     updated = storage.get_install_record("test-install-1")
     assert updated.status == InstallStatus.DISABLED
@@ -130,7 +130,7 @@ def test_allowlist_crud():
         denied_servers=[],
         denied_tools=[],
         created_by="test-user",
-        created_at=datetime.utcnow()
+        created_at=datetime.now(timezone.utc).replace(tzinfo=None)
     )
     
     saved = storage.save_allowlist(allowlist)

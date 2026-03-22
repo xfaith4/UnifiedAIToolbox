@@ -10,7 +10,7 @@ Tests the core policy evaluation logic including:
 """
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from mcp_governance.policy_engine import (
     DefaultPolicyEngine,
     PolicyDecision,
@@ -28,13 +28,13 @@ def sample_install_records():
             "install_id": "install-1",
             "server_id": "local-filesystem",
             "status": "enabled",
-            "installed_at": datetime.utcnow().isoformat(),
+            "installed_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
         },
         "postgres-sql": {
             "install_id": "install-2",
             "server_id": "postgres-sql",
             "status": "disabled",
-            "installed_at": datetime.utcnow().isoformat(),
+            "installed_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
         },
     }
 
@@ -91,7 +91,7 @@ def sample_allowlists():
             "allowed_tools": None,
             "denied_servers": [],
             "denied_tools": [],
-            "expires_at": (datetime.utcnow() - timedelta(hours=1)).isoformat(),
+            "expires_at": (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=1)).isoformat(),
         },
     }
 

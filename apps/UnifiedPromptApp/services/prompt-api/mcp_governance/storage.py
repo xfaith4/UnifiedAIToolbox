@@ -313,7 +313,7 @@ def save_collection(collection: Collection) -> Collection:
     collections.append(collection)
     
     # Save to file
-    data = {"collections": [c.dict() for c in collections]}
+    data = {"collections": [c.model_dump() for c in collections]}
     save_json_file(COLLECTIONS_FILE, data)
     
     return collection
@@ -327,7 +327,7 @@ def delete_collection(collection_id: str) -> bool:
     collections = [c for c in collections if c.collection_id != collection_id]
     
     if len(collections) < original_count:
-        data = {"collections": [c.dict() for c in collections]}
+        data = {"collections": [c.model_dump() for c in collections]}
         save_json_file(COLLECTIONS_FILE, data)
         return True
     
@@ -374,7 +374,7 @@ def save_install_record(record: InstallRecord) -> InstallRecord:
     installs.append(record)
     
     # Save to file
-    data = {"installs": [i.dict() for i in installs]}
+    data = {"installs": [i.model_dump() for i in installs]}
     save_json_file(INSTALLS_FILE, data)
     
     return record
@@ -388,7 +388,7 @@ def delete_install_record(install_id: str) -> bool:
     installs = [i for i in installs if i.install_id != install_id]
     
     if len(installs) < original_count:
-        data = {"installs": [i.dict() for i in installs]}
+        data = {"installs": [i.model_dump() for i in installs]}
         save_json_file(INSTALLS_FILE, data)
         return True
     
@@ -435,7 +435,7 @@ def save_allowlist(allowlist: Allowlist) -> Allowlist:
     allowlists.append(allowlist)
     
     # Save to file
-    data = {"allowlists": [a.dict() for a in allowlists]}
+    data = {"allowlists": [a.model_dump() for a in allowlists]}
     save_json_file(ALLOWLISTS_FILE, data)
     
     return allowlist
@@ -449,7 +449,7 @@ def delete_allowlist(allowlist_id: str) -> bool:
     allowlists = [a for a in allowlists if a.allowlist_id != allowlist_id]
     
     if len(allowlists) < original_count:
-        data = {"allowlists": [a.dict() for a in allowlists]}
+        data = {"allowlists": [a.model_dump() for a in allowlists]}
         save_json_file(ALLOWLISTS_FILE, data)
         return True
     
@@ -464,7 +464,7 @@ def log_audit_event(event: 'AuditEvent'):
     """Append an audit event to the JSONL log file."""
     from .models import AuditEvent
     ensure_data_dir()
-    event_dict = event.model_dump() if hasattr(event, "model_dump") else event.dict()
+    event_dict = event.model_dump()
     event_dict["timestamp"] = event.timestamp.isoformat()
     event_dict["signature_algorithm"] = AUDIT_SIGNATURE_ALGORITHM
     event_dict["signature_key_id"] = _audit_signing_key_id()

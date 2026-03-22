@@ -13,7 +13,7 @@ Default policy: DENY (fail-secure)
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 import re
@@ -391,7 +391,7 @@ class DefaultPolicyEngine(PolicyEngine):
                     if expires_at:
                         if isinstance(expires_at, str):
                             expires_at = datetime.fromisoformat(expires_at.replace('Z', '+00:00'))
-                        if datetime.utcnow() > expires_at:
+                        if datetime.now(timezone.utc).replace(tzinfo=None) > expires_at:
                             continue  # Expired, skip
                     
                     return allowlist

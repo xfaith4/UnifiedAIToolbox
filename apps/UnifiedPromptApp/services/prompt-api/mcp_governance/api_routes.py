@@ -11,7 +11,7 @@ Provides REST endpoints for:
 """
 
 from collections import deque
-from datetime import datetime
+from datetime import datetime, timezone
 import os
 import threading
 import time
@@ -445,7 +445,7 @@ async def get_server(
     install_record = storage.get_install_by_server(server_id)
     if install_record:
         server["installation_status"] = "installed"
-        server["install_record"] = install_record.dict()
+        server["install_record"] = install_record.model_dump()
     else:
         server["installation_status"] = "catalog"
         server["install_record"] = None
@@ -997,6 +997,104 @@ async def get_audit_anomalies(
 
 
 # ============================================================================
+# POLICY VIOLATIONS DASHBOARD (Phase 4.4)
+# ============================================================================
+
+class ViolationGroup(BaseModel):
+    """Aggregated policy violation stats for a server, tool, user, or run."""
+    group_key: str
+    group_type: str
+    denied_count: int
+    last_denied_at: Optional[datetime]
+    top_reasons: List[str]
+
+
+class ViolationsSummary(BaseModel):
+    """Summary of policy violations over a time window."""
+    window_start: datetime
+    window_end: datetime
+    total_denied: int
+    by_server: List[ViolationGroup]
+    by_tool: List[ViolationGroup]
+    by_user: List[ViolationGroup]
+
+
+@router.get("/violations", response_model=ViolationsSummary)
+async def get_violations_summary(
+    start_time: Optional[datetime] = Query(None),
+    end_time: Optional[datetime] = Query(None),
+    run_id: Optional[str] = Query(None),
+    top_n: int = Query(10, ge=1, le=100),
+    _: None = Depends(enforce_mcp_rate_limit),
+):
+    """
+    Get a summary of policy violations (denied tool calls).
+
+    Groups denied events by server, tool, and user and returns the top-N
+    offenders in each category.  Useful for identifying policy gaps and
+    recurring access-control issues.
+    """
+    from .models import AuditEventType
+
+    denied_events = storage.query_audit_events(
+        event_types=[AuditEventType.TOOL_CALL_DENIED.value],
+        run_id=run_id,
+        start_time=start_time,
+        end_time=end_time,
+        limit=5000,
+        offset=0,
+    )
+
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    window_start: datetime = denied_events[-1]["timestamp"] if denied_events else now
+    window_end: datetime = denied_events[0]["timestamp"] if denied_events else now
+
+    def _parse_ts(val: object) -> Optional[datetime]:
+        if isinstance(val, datetime):
+            return val
+        if isinstance(val, str):
+            try:
+                return datetime.fromisoformat(val.replace("Z", "+00:00")).replace(tzinfo=None)
+            except ValueError:
+                return None
+        return None
+
+    def _aggregate(key_field: str) -> List[ViolationGroup]:
+        buckets: Dict[str, Dict] = {}
+        for ev in denied_events:
+            key = str(ev.get(key_field) or "unknown")
+            if key not in buckets:
+                buckets[key] = {"count": 0, "last": None, "reasons": []}
+            buckets[key]["count"] += 1
+            ts = _parse_ts(ev.get("timestamp"))
+            if ts and (buckets[key]["last"] is None or ts > buckets[key]["last"]):
+                buckets[key]["last"] = ts
+            reason = ev.get("reason", "")
+            if reason and reason not in buckets[key]["reasons"]:
+                buckets[key]["reasons"].append(reason)
+        groups = [
+            ViolationGroup(
+                group_key=k,
+                group_type=key_field,
+                denied_count=v["count"],
+                last_denied_at=v["last"],
+                top_reasons=v["reasons"][:5],
+            )
+            for k, v in sorted(buckets.items(), key=lambda x: -x[1]["count"])
+        ]
+        return groups[:top_n]
+
+    return ViolationsSummary(
+        window_start=window_start,
+        window_end=window_end,
+        total_denied=len(denied_events),
+        by_server=_aggregate("server_id"),
+        by_tool=_aggregate("tool_name"),
+        by_user=_aggregate("user_id"),
+    )
+
+
+# ============================================================================
 # HEALTH CHECK
 # ============================================================================
 
@@ -1021,5 +1119,5 @@ async def health_check(
         status="healthy",
         policy_engine="operational",
         audit_logger="operational",
-        timestamp=datetime.utcnow()
+        timestamp=datetime.now(timezone.utc).replace(tzinfo=None)
     )
