@@ -1,12 +1,13 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
   bulkCancelOrchestrationRuns,
   fetchOrchestrationRuns,
   fetchOrchestrationQueueLimits,
   fetchRepoOrchestrationRuns,
+  isOrchestratorApiHttpError,
   ORCHESTRATOR_API_BASE,
 } from '@/lib/services/orchestratorApi'
 import { listLocalRuns } from '@/lib/services/orchestratorStore'
@@ -232,13 +233,19 @@ export default function RunsPage() {
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError]           = useState<string | null>(null)
   const isFirstLoadRef              = useRef(true)
+  const loadInFlightRef             = useRef(false)
 
   // ── Filter + auto-refresh ──────────────────────────────────────────────────
   const [activeFilter, setActiveFilter] = useState<FilterTab>('all')
   const [autoRefresh, setAutoRefresh]   = useState(false)
   const autoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const load = async () => {
+  const load = useCallback(async () => {
+    // Prevent concurrent in-flight loads (e.g. React StrictMode double-invocation or rapid HMR remounts).
+    // Without this guard, multiple simultaneous API calls saturate the rate limit and cause 429 errors.
+    if (loadInFlightRef.current) return
+    loadInFlightRef.current = true
+
     // Only blank the page on the very first load; subsequent refreshes update data silently.
     if (isFirstLoadRef.current) {
       setLoading(true)
@@ -261,9 +268,20 @@ export default function RunsPage() {
 
       const queuedIds = new Set(nextApiRuns.filter((r) => isQueuedStatus(r.status)).map((r) => r.id))
       setSelectedQueuedRunIds((prev) => prev.filter((id) => queuedIds.has(id)))
+
+      // Show a transient error only for non-rate-limit failures.
+      // Note: setError(null) above already cleared any prior error, so if all
+      // rejections are 429s the error state will remain null (no stale message shown).
+      const firstRealError = [api, repo, limits].find(
+        (r) => r.status === 'rejected' && !(isOrchestratorApiHttpError(r.reason) && r.reason.status === 429),
+      )
+      if (firstRealError && firstRealError.status === 'rejected') {
+        setError(String(firstRealError.reason))
+      }
     } catch (e) {
       setError(String(e))
     } finally {
+      loadInFlightRef.current = false
       if (isFirstLoadRef.current) {
         setLoading(false)
         isFirstLoadRef.current = false
@@ -271,11 +289,11 @@ export default function RunsPage() {
         setRefreshing(false)
       }
     }
-  }
+  }, [])
 
   useEffect(() => {
     void load()
-  }, [])
+  }, [load])
 
   // Auto-refresh every 10s when enabled
   useEffect(() => {
@@ -289,7 +307,7 @@ export default function RunsPage() {
     return () => {
       if (autoRefreshRef.current) clearInterval(autoRefreshRef.current)
     }
-  }, [autoRefresh])
+  }, [autoRefresh, load])
 
   // ── Filtered data ────────────────────────────────────────────────────────
 

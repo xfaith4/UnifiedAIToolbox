@@ -200,14 +200,21 @@ export async function fetchOrchestrationRuns(): Promise<OrchestrationRun[]> {
   
   try {
     const res = await fetch(`${API_BASE}/orchestrate/runs`)
-    if (!res.ok) throw new Error(`Failed to fetch runs (${res.status})`)
+    if (!res.ok) {
+      const text = await res.text().catch(() => 'unknown error')
+      throw new OrchestratorApiHttpError(`Failed to fetch runs (${res.status}): ${text}`, res.status)
+    }
     
     const payload = await res.json()
     const runs = payload.runs as Array<Record<string, unknown>>
     
     return runs.map((r) => normalizeApiRun(r))
   } catch (error) {
-    console.error('[OrchestratorAPI] Failed to fetch orchestration runs:', error)
+    if (error instanceof OrchestratorApiHttpError && error.status === 429) {
+      console.warn('[OrchestratorAPI] Rate-limited fetching runs (429). Will retry on next refresh.')
+    } else {
+      console.error('[OrchestratorAPI] Failed to fetch orchestration runs:', error)
+    }
     throw error
   }
 }
@@ -581,7 +588,7 @@ export async function fetchRepoOrchestrationRuns(): Promise<RepoOrchestrationRun
   const res = await fetch(`${API_BASE}/orchestrate/repo`)
   if (!res.ok) {
     const text = await res.text().catch(() => 'unknown error')
-    throw new Error(`Failed to fetch repo runs (${res.status}): ${text}`)
+    throw new OrchestratorApiHttpError(`Failed to fetch repo runs (${res.status}): ${text}`, res.status)
   }
   const payload = (await res.json()) as { runs?: Array<Record<string, unknown>> }
   const runs = Array.isArray(payload.runs) ? payload.runs : []
