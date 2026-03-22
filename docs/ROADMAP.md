@@ -17,13 +17,13 @@ This file is the single roadmap source for active feature delivery.
 
 | ID | Feature track | Status | Horizon | Definition of done |
 | --- | --- | --- | --- | --- |
-| RM-001 | Platform reliability (build, CI, launch, core typing) | in_progress | now | CI stable, local launch reproducible, high-impact type/build blockers closed |
+| RM-001 | Platform reliability (build, CI, launch, core typing) | done | now | CI stable, local launch reproducible, high-impact type/build blockers closed |
 | RM-002 | Documentation governance and concise project traceability | done | now | Canonical docs hub, roadmap IDs, implementation ledger, side-track method in use |
-| RM-003 | Concierge staged evolution (IA -> proposal -> execution narration) | in_progress | now/next | Stage-based PR flow complete with stable UX and run handoff |
+| RM-003 | Concierge staged evolution (IA -> proposal -> execution narration) | done | now/next | Stage-based PR flow complete with stable UX and run handoff |
 | RM-004 | MCP governance end-to-end (registry, policy, runtime enforcement) | done | now/next | MCP APIs/UI integrated with runtime enforcement and run-level audit visibility |
 | RM-005 | Run observability and reporting | done | next | Runs view provides reliable status, agent visibility, and decision/audit context |
-| RM-006 | Export hardening and artifact quality gates | in_progress | next | Export remains accessible with clear risk signaling and contract/gate evidence |
-| RM-007 | Web deployment strategy for dynamic Next.js app | planned | next | Target hosting chosen and deployment workflow aligned with API route requirements |
+| RM-006 | Export hardening and artifact quality gates | done | next | Export remains accessible with clear risk signaling and contract/gate evidence |
+| RM-007 | Web deployment strategy for dynamic Next.js app | done | next | Target hosting chosen and deployment workflow aligned with API route requirements |
 | RM-008 | Run lifecycle control + lease/heartbeat safety | done | now/next | Canonical run state/lease model with cancel/force-cancel/requeue/stale-lease recovery and STUCK visibility |
 
 ## Side-track policy
@@ -171,6 +171,18 @@ Every roadmap-impacting tradeoff gets a `DEC-###` record in `IMPLEMENTATION_SUMM
   Ref: run `local-2026-02-28-roadmap-rm008-sim-script`  
   Notes: `scripts/Simulate-RunLifecycle.ps1` now exercises queued->cancel and stale-lease recovery flow.
 
+## RM-001 Worklist (Platform reliability)
+
+- [x] Fix TypeScript overload intersection error in `runs/start/route.ts` (`spawn` env type + child process `never` reduction).  
+  Date: 2026-03-22  
+  Ref: `apps/unifiedtoolbox.webapp/src/app/api/app-factory/runs/start/route.ts`  
+  Notes: changed `spawnEnv` from `Record<string,string>` to `NodeJS.ProcessEnv`; added `ChildProcess` import and cast to resolve overload intersection that reduced to `never`. `tsc --noEmit` now clean.
+
+- [x] Add TypeScript typecheck step to CI (`lint-test-build.yml` unified_webapp job).  
+  Date: 2026-03-22  
+  Ref: `.github/workflows/lint-test-build.yml`  
+  Notes: added `npm run typecheck` between lint and test steps so type regressions fail CI before the build stage.
+
 ## RM-003 Worklist (Concierge staged evolution)
 
 - [x] Commissioner incomplete-input outcomes route to Concierge as `needs_requirements` (blocked, not failed).  
@@ -182,6 +194,36 @@ Every roadmap-impacting tradeoff gets a `DEC-###` record in `IMPLEMENTATION_SUMM
   Date: 2026-02-28  
   Ref: run `local-2026-02-28-roadmap-rm003-knowledge-loop-refactor`  
   Notes: added `knowledge_status` rubric + migration, updated Knowledge UI to show Learning badge as primary and Run result as secondary, and documented Concierge requirements loop contract.
+
+- [x] Stage 0: IA foundation — workflow nav, canonical routes, docs hub, first-launch tour.  
+  Date: pre-2026-03-22  
+  Ref: `apps/unifiedtoolbox.webapp/src/app/layout.tsx`, `src/components/docs/DocsHub.tsx`, `src/components/tour/FirstLaunchTour.tsx`  
+  Notes: sidebar renamed (Dashboard→Home, Orchestrator→Playground, Milestones→Reports) with canonical routes + redirects; DocsHub modal accessible everywhere; first-launch tour gates on `localStorage`.
+
+- [x] Stage 1: Concierge chat + Proposal artifact (generate, approve, edit, reject).  
+  Date: pre-2026-03-22  
+  Ref: `apps/unifiedtoolbox.webapp/src/app/concierge/page.tsx`, `src/lib/types/proposal.ts`, `src/lib/services/proposalStore.ts`  
+  Notes: chat UI with goal intake; Proposal schema (`goal`, `plan`, `recommended.*`, `risks`, `estimate`, `run_recipe`, `confidence`); Approve/Edit/Reject actions; proposals persisted via `proposalStore`.
+
+- [x] Stage 2: Proposal → Run Recipe mapping with prefill for Playground and App Factory.  
+  Date: pre-2026-03-22  
+  Ref: `src/lib/services/proposalStore.ts` (`createDraftRunFromProposal`), `src/lib/services/conciergeKickoff.ts`  
+  Notes: approved proposal produces a `DraftRun` (type + config); "Open in Playground" and "Open in App Factory" prefill via URL params.
+
+- [x] Stage 3: Start Run from proposal + Concierge narrates live run event stream.  
+  Date: pre-2026-03-22  
+  Ref: `src/lib/services/conciergeRunService.ts`, `src/components/runs/LiveEventPanel.tsx`  
+  Notes: `startOrchestratorRun` wires into existing orchestrator backend; `narrateRunEvent` translates raw SSE events to human-readable Concierge chat messages; `LiveEventPanel` renders streaming events inline.
+
+- [x] Stage 4: Tool enablement with scopes, least-privilege audit trail per run.  
+  Date: pre-2026-03-22  
+  Ref: `src/lib/types/toolPermission.ts`, `src/lib/services/toolPermissionStore.ts`, `ToolAuditView` in concierge page  
+  Notes: `ToolPermission` model with `scope` (read/write) and `pathAllowlist`; `inferToolAccess` derives permissions from proposal; per-run audit entries persisted via `saveToolAudit`; `ToolAuditView` panel frozen at run start.
+
+- [x] Stage 5: Concierge modes (Guided / Confident / Hands-off) with per-user persistence.  
+  Date: pre-2026-03-22  
+  Ref: `src/lib/types/conciergePreferences.ts`, `src/lib/services/userPreferencesStore.ts`  
+  Notes: `ConciergeMode` enum with `CONCIERGE_MODES` metadata; `getConciergeMode` / `setConciergeMode` persists to `localStorage`; mode selector shown in Concierge header; `Assumptions & Confidence` section in proposal rendering.
 
 ## RM-004 Worklist (MCP governance end-to-end)
 
@@ -234,4 +276,58 @@ Every roadmap-impacting tradeoff gets a `DEC-###` record in `IMPLEMENTATION_SUMM
   Date: 2026-03-21  
   Ref: `tests/test_mcp_governance_api.py`  
   Notes: 8 new integration tests covering violations endpoint and middleware enforce-then-log contract.
+
+## RM-006 Worklist (Export hardening and artifact quality gates)
+
+- [x] `buildExportBlockers` utility: maps normalization violations, contract failures, and gate step failures to typed `ExportBlocker` objects.  
+  Date: pre-2026-03-22  
+  Ref: `apps/unifiedtoolbox.webapp/src/lib/app-factory/pipeline/exportBlockers.ts`  
+  Notes: phase-tagged blockers (`normalize` / `contract` / `gates` / `repair`) with filePath, ruleId, message, lines, and snippet for actionable risk display.
+
+- [x] ExportModal: live blocker list with per-file risk display, confirm-before-export when validation failed.  
+  Date: pre-2026-03-22  
+  Ref: `apps/unifiedtoolbox.webapp/src/app/engine/_source/components/ExportModal.tsx`  
+  Notes: DEC-001 implemented — export accessible even after gate failure, gated by user confirmation; blocker panel shows ruleId, message, line numbers, and code snippets; copy-path button per blocker.
+
+- [x] Export API (`/api/app-factory/export`) returns `blockers[]` + HTTP 422 when hardening fails; UI reads and surfaces them.  
+  Date: pre-2026-03-22  
+  Ref: `apps/unifiedtoolbox.webapp/src/app/api/app-factory/export/route.ts`  
+  Notes: on `!result.passed`, response body includes `blockers`, `normalizationReport`, `gateReport`, and `patchLog` for transparent failure evidence.
+
+- [x] Validate endpoint (`/api/app-factory/validate`) runs full hardening pipeline and returns pipeline stage status + blockers without emitting a download.  
+  Date: pre-2026-03-22  
+  Ref: `apps/unifiedtoolbox.webapp/src/app/api/app-factory/validate/route.ts`  
+  Notes: separate validate-before-export flow; ExportModal calls validate first; repair cycles configurable via `maxRepairCycles`.
+
+- [x] Run export (`/api/app-factory/runs/[runId]/export`) includes quality gate evidence files in `quality-evidence/` folder inside the artifacts zip.  
+  Date: 2026-03-22  
+  Ref: `apps/unifiedtoolbox.webapp/src/app/api/app-factory/runs/[runId]/export/route.ts`  
+  Notes: artifacts-scope zip now includes `GATE_REPORT.md`, `REPO_CONTRACT.json`, `NORMALIZATION_REPORT.md`, and `PATCHLOG.md` from the run's `repo/` subdirectory (when present); emits `export.quality-evidence.included` progress event with file count.
+
+- [x] `exportBlockers` unit tests.  
+  Date: pre-2026-03-22  
+  Ref: `apps/unifiedtoolbox.webapp/src/lib/app-factory/pipeline/__tests__/exportBlockers.test.ts`  
+  Notes: covers normalization, contract, and gate failures mapping; repair-not-attempted sentinel.
+
+## RM-007 Worklist (Web deployment strategy for dynamic Next.js app)
+
+- [x] Confirm `output: 'export'` absent from `next.config.mjs` — dynamic routing preserved.  
+  Date: 2026-03-22  
+  Ref: `apps/unifiedtoolbox.webapp/next.config.mjs`  
+  Notes: no static export config present; app builds as a full Node.js server with API routes intact.
+
+- [x] CI workflow (`nextjs.yml`) builds and uploads `.next` as a deployable artefact.  
+  Date: pre-2026-03-22  
+  Ref: `.github/workflows/nextjs.yml`  
+  Notes: builds on push/PR; uploads `unified-webapp-next-build` artefact retained for 7 days; `NEXT_PUBLIC_API_BASE` env var wired.
+
+- [x] Clarify GitHub Pages scope: root static landing page only, not the Next.js web app.  
+  Date: 2026-03-22  
+  Ref: `.github/workflows/pages.yml`, `docs/web-deployment-strategy.md`  
+  Notes: `pages.yml` deploys repo root (index.html, demo HTML); documented in deployment strategy doc so the distinction is explicit.
+
+- [x] Document deployment strategy, target hosting options, and required env vars.  
+  Date: 2026-03-22  
+  Ref: `docs/web-deployment-strategy.md`  
+  Notes: covers self-hosted Node.js, Vercel/Railway/Render options, run worker constraints, and all required env vars.
 

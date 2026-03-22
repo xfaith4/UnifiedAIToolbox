@@ -166,6 +166,35 @@ export async function GET(req: Request, { params: _params }: { params: Promise<{
         const buf = await fs.readFile(manifestFile)
         zipObj.file('run_manifest.json', buf)
       }
+
+      // Add quality gate evidence files (from repo/ subdirectory if present)
+      // These report files let the recipient understand gate pass/fail before using artifacts.
+      const repoDir = path.join(runDir, 'repo')
+      const qualityEvidenceNames = [
+        'GATE_REPORT.md',
+        'REPO_CONTRACT.json',
+        'NORMALIZATION_REPORT.md',
+        'PATCHLOG.md',
+      ]
+      let gateEvidenceCount = 0
+      for (const name of qualityEvidenceNames) {
+        const filePath = path.join(repoDir, name)
+        if (await fileExists(filePath)) {
+          const buf = await fs.readFile(filePath)
+          zipObj.file(`quality-evidence/${name}`, buf)
+          gateEvidenceCount++
+        }
+      }
+      if (gateEvidenceCount > 0) {
+        await emitRunEvent({
+          runId,
+          stage: 'export',
+          phase: 'export',
+          type: 'step.progress',
+          message: 'export.quality-evidence.included',
+          data: { files_included: gateEvidenceCount },
+        })
+      }
       
       const arrayBuffer = await zipObj.generateAsync({ type: 'arraybuffer' })
       zip = Buffer.from(arrayBuffer)
