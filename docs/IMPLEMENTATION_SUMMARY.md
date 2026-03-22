@@ -7,17 +7,19 @@ Detailed narratives remain in focused docs; this file tracks what shipped and wh
 
 ## Current snapshot
 
-- All 8 RM-### roadmap items are now **done**.
+- All 9 RM-### roadmap items are now **done** (RM-001 through RM-009).
 - Canonical planning and traceability docs are defined in `docs/README.md` and `docs/ROADMAP.md`.
 - MCP governance is fully delivered through Phase 4 (runtime enforcement, audit viewer, violations dashboard).
 - Concierge Stages 0–5 are implemented: IA/nav, proposal chat, run recipe, live narration, tool audit, and modes.
 - Export hardening is complete: blockers surfaced in UI, gate evidence included in run artifact zips.
 - Web deployment strategy documented in `docs/web-deployment-strategy.md`; dynamic Node.js target confirmed.
+- App Factory Phase 1 (Closed Feedback Loop) is complete: sandbox engine, acceptance-check evaluator, refinement loop controller, verify/refine API endpoints, and Run Detail Verification tab delivered; 297 unit tests passing.
 
 ## Delivery log (main track)
 
 | Date | RM ID | Change | Outcome | Reference |
 | --- | --- | --- | --- | --- |
+| 2026-03-22 | RM-009 | App Factory Phase 1 (Closed Feedback Loop): sandbox engine, acceptance-check evaluator, refinement loop controller, verify/refine API endpoints, Run Detail Verification tab, and 8 refinement loop unit tests | done | `docs/ROADMAP.md` RM-009 worklist |
 | 2026-03-22 | RM-001, RM-003, RM-006, RM-007 | Platform reliability (TS fix + CI typecheck), Concierge stages 0-5 documented, export quality-evidence in run zip, web deployment strategy doc | done | `docs/ROADMAP.md` worklists |
 | 2026-03-21 | RM-004 | MCP Phase 4 complete: runtime enforcement middleware wired, allowlist auto-creation in run flow, Audit Log Viewer UI, violations dashboard endpoint, Pydantic v2 deprecation fixes, 8 new integration tests | done | `docs/ROADMAP.md` RM-004 worklist |
 | 2026-02-28 | RM-002 | Consolidated docs structure (hub + roadmap + concise ledger + side-track method) | done | `docs/README.md`, `docs/ROADMAP.md`, this file |
