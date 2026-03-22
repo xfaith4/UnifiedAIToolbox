@@ -121,10 +121,12 @@ function normalizeAgent(value: string | undefined, stage: string | undefined, me
 }
 
 function normalizeAgentStatus(status: string | undefined, type: string, message: string): SwarmAgentStatus {
+  if (type === 'agent:skipped') return 'skipped'
   const token = `${status || ''} ${type || ''} ${message || ''}`.toLowerCase()
   if (token.includes('fail') || token.includes('error') || token.includes('blocked')) return 'error'
   if (token.includes('running') || token.includes('retry') || token.includes('in_progress')) return 'working'
-  if (token.includes('success') || token.includes('succeed') || token.includes('complete') || token.includes('passed') || token.includes('skipped')) return 'complete'
+  if (token.includes('success') || token.includes('succeed') || token.includes('complete') || token.includes('passed')) return 'complete'
+  if (token.includes('skipped')) return 'skipped'
   return 'idle'
 }
 
@@ -181,6 +183,37 @@ function extractGateName(event: SwarmRunEvent): string | undefined {
   const gateMatch = event.message.match(/gate\s+([A-Za-z0-9_-]+)/i)
   if (gateMatch?.[1]) return gateMatch[1]
   return undefined
+}
+
+/**
+ * Extract a short, human-readable label from known POF error patterns
+ * instead of blindly slicing the raw message at 72 chars.
+ */
+function semanticErrorLabel(message: string): string {
+  const contractMatch = message.match(/Contract (?:validation |repair )?failed for (\w+)/i)
+  if (contractMatch) {
+    // Pull out the schema error if present after a dash separator
+    const detail = message.match(/—\s*(.{0,60})/)?.[1]
+    return detail ? `Contract failed: ${contractMatch[1]} — ${detail}` : `Contract failed: ${contractMatch[1]}`
+  }
+  if (message.includes('ConvertFrom-Json') || message.includes('Conversion from JSON failed')) {
+    return 'JSON parse error in agent-library'
+  }
+  const exitMatch = message.match(/orchestrator failed \(exit code (\d+)\)/i)
+  if (exitMatch) return `Orchestrator failed (exit ${exitMatch[1]})`
+  return message.length > 72 ? `${message.slice(0, 72)}...` : message
+}
+
+/**
+ * If an event's `type` field is in the form `agent:<Name>`, extract
+ * the canonical agent name so that unlisted agents (e.g. ConceptualModelContract)
+ * are still registered in the agent map and visible in the UI.
+ */
+function agentNameFromType(type: string): string | undefined {
+  if (!type.startsWith('agent:')) return undefined
+  const suffix = type.slice('agent:'.length).trim()
+  if (!suffix) return undefined
+  return AGENT_ALIAS[normalizeToken(suffix)] ?? formatName(suffix)
 }
 
 function isExportBlocked(event: SwarmRunEvent): boolean {
@@ -326,7 +359,9 @@ export function buildSwarmModel(events: SwarmRunEvent[], runStatus: RunStatusRes
     }
     prevPhaseNodeId = phaseNode.id
 
-    const agentName = normalizeAgent(event.agent, event.stage, event.message)
+    // Resolve agent name from event.agent/stage/message, then fall back to
+    // the event type suffix (e.g. "agent:ConceptualModelContract").
+    const agentName = normalizeAgent(event.agent, event.stage, event.message) ?? agentNameFromType(event.type)
     if (agentName) {
       const agentStatus = normalizeAgentStatus(event.status, event.type, event.message)
       const existing = agentMap.get(agentName) || {
@@ -336,7 +371,11 @@ export function buildSwarmModel(events: SwarmRunEvent[], runStatus: RunStatusRes
         known: knownAgents.has(agentName),
       }
 
-      existing.status = agentStatus
+      // Only upgrade status (never overwrite error/skipped with a lower-weight state)
+      const weight: Record<SwarmAgentStatus, number> = { error: 5, skipped: 4, working: 3, complete: 2, idle: 1 }
+      if ((weight[agentStatus] ?? 0) >= (weight[existing.status] ?? 0)) {
+        existing.status = agentStatus
+      }
       existing.phase = phase
       existing.lastEventTs = event.ts
       existing.lastMessage = event.message
@@ -391,7 +430,7 @@ export function buildSwarmModel(events: SwarmRunEvent[], runStatus: RunStatusRes
       ) {
         nodeId = `event:${shortHash(event.id)}`
         kind = 'event'
-        label = event.message.length > 72 ? `${event.message.slice(0, 72)}...` : event.message
+        label = semanticErrorLabel(event.message)
       }
     }
 

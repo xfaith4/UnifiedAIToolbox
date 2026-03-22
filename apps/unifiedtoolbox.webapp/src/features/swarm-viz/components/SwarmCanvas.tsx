@@ -35,6 +35,7 @@ function agentTone(status: SwarmAgent['status']): string {
   if (status === 'error') return 'border-rose-600/70 bg-rose-950/40 text-rose-100'
   if (status === 'working') return 'border-blue-600/70 bg-blue-950/40 text-blue-100'
   if (status === 'complete') return 'border-emerald-600/70 bg-emerald-950/40 text-emerald-100'
+  if (status === 'skipped') return 'border-slate-700/50 bg-slate-900/40 text-slate-500'
   return 'border-slate-700 bg-slate-900/70 text-slate-200'
 }
 
@@ -42,6 +43,7 @@ function statusDot(status: SwarmAgent['status']): string {
   if (status === 'error') return 'bg-rose-400'
   if (status === 'working') return 'bg-blue-400 animate-pulse'
   if (status === 'complete') return 'bg-emerald-400'
+  if (status === 'skipped') return 'bg-slate-600'
   return 'bg-slate-500'
 }
 

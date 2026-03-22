@@ -8,7 +8,7 @@ import ControlPanel from '@/features/swarm-viz/components/ControlPanel'
 import SwarmCanvas from '@/features/swarm-viz/components/SwarmCanvas'
 import { useRunEvents } from '@/features/swarm-viz/hooks/useRunEvents'
 import { buildSwarmModel } from '@/features/swarm-viz/model/swarmModel'
-import { fetchOrchestrationRun } from '@/lib/services/orchestratorApi'
+import { fetchOrchestrationRun, forceCancelOrchestrationRun, requeueOrchestrationRun } from '@/lib/services/orchestratorApi'
 import type { OrchestrationRun } from '@/lib/types/orchestrator'
 
 function safeDecode(value: string): string {
@@ -43,6 +43,7 @@ export default function RunSwarmPage({ params }: { params: Promise<{ runId: stri
   const { runId: rawRunId } = use(params)
   const runId = safeDecode(rawRunId)
   const [runSummary, setRunSummary] = useState<OrchestrationRun | null>(null)
+  const [actionPending, setActionPending] = useState<'retry' | 'cancel' | null>(null)
 
   const { events, runStatus, loading, error, connectionStatus, lastEventTs, reconnectCount, refresh } = useRunEvents(runId, {
     limit: 600,
@@ -69,6 +70,34 @@ export default function RunSwarmPage({ params }: { params: Promise<{ runId: stri
   const [selectedAgents, setSelectedAgents] = useState<string[]>([])
   const [selectedPhases, setSelectedPhases] = useState<string[]>([])
   const [resetSignal, setResetSignal] = useState(0)
+
+  const displayStatus = (runSummary?.status || runStatus?.status || '').toLowerCase()
+  const isTerminalError = displayStatus === 'stuck' || displayStatus.startsWith('error:') || displayStatus === 'failed'
+
+  const handleRetry = async () => {
+    setActionPending('retry')
+    try {
+      await requeueOrchestrationRun(runId)
+      await refresh()
+    } catch {
+      // Refresh anyway to reflect current state
+      await refresh()
+    } finally {
+      setActionPending(null)
+    }
+  }
+
+  const handleForceCancel = async () => {
+    setActionPending('cancel')
+    try {
+      await forceCancelOrchestrationRun(runId)
+      await refresh()
+    } catch {
+      await refresh()
+    } finally {
+      setActionPending(null)
+    }
+  }
 
   const availableAgents = useMemo(() => model.agents.map((agent) => agent.name), [model.agents])
   const availablePhases = model.phases
@@ -149,6 +178,11 @@ export default function RunSwarmPage({ params }: { params: Promise<{ runId: stri
           <span className={`rounded-full border px-2.5 py-1 font-medium ${statusBadge(runSummary?.status || runStatus?.status)}`}>
             {runSummary?.status || runStatus?.status || 'unknown'}
           </span>
+          {runSummary?.model && (
+            <span className="rounded-full border border-slate-700 bg-slate-900/80 px-2.5 py-1 font-mono text-slate-300">
+              {runSummary.model}
+            </span>
+          )}
           <span className="rounded-full border border-slate-700 bg-slate-900 px-2.5 py-1 text-slate-200">
             events: {events.length}
           </span>
@@ -166,6 +200,26 @@ export default function RunSwarmPage({ params }: { params: Promise<{ runId: stri
             <RefreshCw className="h-3.5 w-3.5" />
             Refresh
           </button>
+          {isTerminalError && (
+            <>
+              <button
+                type="button"
+                onClick={() => void handleRetry()}
+                disabled={actionPending !== null}
+                className="inline-flex items-center gap-1 rounded-full border border-blue-700 bg-blue-900/40 px-2.5 py-1 text-blue-200 hover:bg-blue-900/70 disabled:opacity-50"
+              >
+                {actionPending === 'retry' ? 'Retrying…' : 'Retry'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleForceCancel()}
+                disabled={actionPending !== null}
+                className="inline-flex items-center gap-1 rounded-full border border-rose-800 bg-rose-950/40 px-2.5 py-1 text-rose-300 hover:bg-rose-950/70 disabled:opacity-50"
+              >
+                {actionPending === 'cancel' ? 'Cancelling…' : 'Force Cancel'}
+              </button>
+            </>
+          )}
         </div>
       </div>
 

@@ -40,6 +40,7 @@ type OrchestratorRunRaw = {
   run_mode?: string
   job_type?: string
   events?: Array<Record<string, unknown>>
+  scratchpad?: Array<Record<string, unknown>>
 }
 
 function normalizeOrchestratorEvent(raw: Record<string, unknown>, runId: string): RunEvent {
@@ -56,10 +57,49 @@ function normalizeOrchestratorEvent(raw: Record<string, unknown>, runId: string)
   }
 }
 
+function scratchpadToEvents(scratchpad: Array<Record<string, unknown>>, runId: string): RunEvent[] {
+  const out: RunEvent[] = []
+  for (const entry of scratchpad) {
+    if (!entry || typeof entry !== 'object') continue
+    const ts = String(entry.timestamp ?? entry.ts ?? new Date().toISOString())
+    const agent = entry.agent ? String(entry.agent) : undefined
+
+    if (entry.contract_error) {
+      // Contract validation failure — emit a dedicated event so the Swarm View can render it as a named node
+      out.push({
+        ts,
+        runId,
+        type: 'contract:error',
+        agent,
+        message: `Contract failed: ${agent ?? 'agent'} — ${String(entry.contract_error)}`,
+        details: {
+          contract_error: String(entry.contract_error),
+          contract_failure_artifact: entry.contract_failure_artifact ? String(entry.contract_failure_artifact) : undefined,
+        },
+      })
+    } else if (entry.source === 'skipped' && agent) {
+      // Agent was skipped (e.g. maintenance_only, job_type mismatch) — distinct from 'complete'
+      out.push({
+        ts,
+        runId,
+        type: 'agent:skipped',
+        agent,
+        message: `${agent} skipped (${entry.reason ?? 'not applicable'})`,
+        details: { reason: entry.reason ? String(entry.reason) : undefined, source: 'skipped' },
+      })
+    }
+  }
+  return out
+}
+
 async function normalizeOrchestratorStatus(raw: OrchestratorRunRaw, runId: string): Promise<RunStatusResponse> {
   const rawEvents: RunEvent[] = Array.isArray(raw.events)
     ? raw.events.map((ev) => normalizeOrchestratorEvent(ev as Record<string, unknown>, runId))
     : []
+
+  // Inject synthetic events derived from the scratchpad (contract errors, skipped agents)
+  const scratchpad = Array.isArray(raw.scratchpad) ? raw.scratchpad : []
+  rawEvents.push(...scratchpadToEvents(scratchpad, runId))
 
   // Attempt model — load from side-store, derive from events if missing, tag
   const savedAttempts = await loadAttempts(runId)
@@ -73,10 +113,10 @@ async function normalizeOrchestratorStatus(raw: OrchestratorRunRaw, runId: strin
     status = 'queued'
   } else if (['succeeded', 'completed', 'success', 'done'].includes(rawStatus)) {
     status = 'succeeded'
-  } else if (['failed', 'error', 'cancelled', 'canceled'].includes(rawStatus)) {
+  } else if (['failed', 'error', 'cancelled', 'canceled', 'stuck'].includes(rawStatus)) {
     status = 'failed'
   } else {
-    // running, dispatching, in_progress, gating, stuck → running
+    // running, dispatching, in_progress, gating → running
     status = 'running'
   }
 

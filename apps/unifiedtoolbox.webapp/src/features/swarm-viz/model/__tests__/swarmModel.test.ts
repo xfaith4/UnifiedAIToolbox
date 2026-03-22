@@ -181,4 +181,97 @@ describe('buildSwarmModel', () => {
     const node = model.nodes.find((n) => n.id === `task:${taskId}`)
     expect(node?.status).toBe('error')
   })
+
+  // ── agentNameFromType ───────────────────────────────────────────────────────
+
+  it('registers an unknown agent from agent:* event type suffix', () => {
+    // ConceptualModelContract is not in KNOWN_AGENT_NAMES — it should be
+    // dynamically added when an event carries type "agent:ConceptualModelContract"
+    const events = [
+      makeEvent({ type: 'agent:ConceptualModelContract', message: 'running contract validation', status: 'running' }),
+    ]
+    const model = buildSwarmModel(events, null)
+    const agent = model.agents.find((a) => a.name === 'Conceptualmodelcontract' || a.name === 'ConceptualModelContract')
+    expect(agent).toBeDefined()
+  })
+
+  it('marks dynamically-registered agent as working when status signals it', () => {
+    const events = [
+      makeEvent({ type: 'agent:ConceptualModelContract', message: 'running contract', status: 'running' }),
+    ]
+    const model = buildSwarmModel(events, null)
+    // The agent name may be formatted — just check any non-known agent with working status exists
+    const dynamicAgent = model.agents.find((a) => !a.known && a.status === 'working')
+    expect(dynamicAgent).toBeDefined()
+  })
+
+  // ── agent:skipped event type ────────────────────────────────────────────────
+
+  it('marks agent as skipped when event type is agent:skipped', () => {
+    const events = [
+      makeEvent({ type: 'agent:skipped', agent: 'reviewgate', message: 'ReviewGate skipped (not applicable)', status: 'complete' }),
+    ]
+    const model = buildSwarmModel(events, null)
+    const reviewGate = model.agents.find((a) => a.name === 'ReviewGate')
+    expect(reviewGate?.status).toBe('skipped')
+  })
+
+  it('skipped status (weight 4) supersedes complete (weight 2) but not error (weight 5)', () => {
+    // complete then skipped → stays skipped
+    const events = [
+      makeEvent({ ts: '2026-03-22T19:46:01Z', type: 'info', agent: 'prpublisher', status: 'success', message: 'PRPublisher completed' }),
+      makeEvent({ ts: '2026-03-22T19:46:02Z', type: 'agent:skipped', agent: 'prpublisher', message: 'PRPublisher skipped' }),
+    ]
+    const modelA = buildSwarmModel(events, null)
+    const publisherA = modelA.agents.find((a) => a.name === 'PRPublisher')
+    expect(publisherA?.status).toBe('skipped')
+
+    // error then skipped → stays error (error weight 5 > skipped weight 4)
+    const events2 = [
+      makeEvent({ ts: '2026-03-22T19:46:01Z', type: 'error', agent: 'prpublisher', message: 'PRPublisher failed' }),
+      makeEvent({ ts: '2026-03-22T19:46:02Z', type: 'agent:skipped', agent: 'prpublisher', message: 'PRPublisher skipped' }),
+    ]
+    const modelB = buildSwarmModel(events2, null)
+    const publisherB = modelB.agents.find((a) => a.name === 'PRPublisher')
+    expect(publisherB?.status).toBe('error')
+  })
+
+  // ── semanticErrorLabel via contract:error events ────────────────────────────
+
+  it('creates a visible error node from a contract:error event', () => {
+    const events = [
+      makeEvent({
+        type: 'contract:error',
+        agent: 'ConceptualModelContract',
+        message: 'Contract failed: ConceptualModelContract — Required properties ["interpretation","representation"] are not present',
+        status: 'error',
+      }),
+    ]
+    const model = buildSwarmModel(events, null)
+    const errorNodes = model.nodes.filter((n) => n.status === 'error')
+    expect(errorNodes.length).toBeGreaterThan(0)
+  })
+
+  it('uses semanticErrorLabel to shorten contract failure messages', () => {
+    const longMessage =
+      'Contract validation failed for ConceptualModelContract after one repair retry. Artifact: path/to/artifact.json — Required properties ["interpretation"] are not present at \'\''
+    const events = [makeEvent({ type: 'error', message: longMessage, status: 'error' })]
+    const model = buildSwarmModel(events, null)
+    const errorNodes = model.nodes.filter((n) => n.status === 'error')
+    // Node label should be a short, readable form — not a raw 72-char slice
+    expect(errorNodes.some((n) => n.label.startsWith('Contract failed:'))).toBe(true)
+  })
+
+  it('uses semanticErrorLabel for JSON parse errors', () => {
+    const events = [
+      makeEvent({
+        type: 'error',
+        message: 'ConvertFrom-Json : Cannot convert the JSON string because a dictionary that was created from the pipeline is empty.',
+        status: 'error',
+      }),
+    ]
+    const model = buildSwarmModel(events, null)
+    const errorNodes = model.nodes.filter((n) => n.status === 'error')
+    expect(errorNodes.some((n) => n.label === 'JSON parse error in agent-library')).toBe(true)
+  })
 })

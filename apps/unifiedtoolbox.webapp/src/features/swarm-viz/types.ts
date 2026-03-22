@@ -31,7 +31,7 @@ export type SwarmRunEvent = {
   attemptId?: string
 }
 
-export type SwarmAgentStatus = 'idle' | 'working' | 'complete' | 'error'
+export type SwarmAgentStatus = 'idle' | 'working' | 'complete' | 'error' | 'skipped'
 
 export type SwarmAgent = {
   id: string
