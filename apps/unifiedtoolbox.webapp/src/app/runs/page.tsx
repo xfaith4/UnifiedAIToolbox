@@ -228,8 +228,10 @@ export default function RunsPage() {
   const [bulkCancelPending, setBulkCancelPending] = useState(false)
   const [bulkCancelMessage, setBulkCancelMessage] = useState<string | null>(null)
   const [bulkCancelError, setBulkCancelError] = useState<string | null>(null)
-  const [loading, setLoading]     = useState(true)
-  const [error, setError]         = useState<string | null>(null)
+  const [loading, setLoading]       = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [error, setError]           = useState<string | null>(null)
+  const isFirstLoadRef              = useRef(true)
 
   // ── Filter + auto-refresh ──────────────────────────────────────────────────
   const [activeFilter, setActiveFilter] = useState<FilterTab>('all')
@@ -237,7 +239,12 @@ export default function RunsPage() {
   const autoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const load = async () => {
-    setLoading(true)
+    // Only blank the page on the very first load; subsequent refreshes update data silently.
+    if (isFirstLoadRef.current) {
+      setLoading(true)
+    } else {
+      setRefreshing(true)
+    }
     setError(null)
     try {
       const [api, repo, limits] = await Promise.allSettled([
@@ -257,7 +264,12 @@ export default function RunsPage() {
     } catch (e) {
       setError(String(e))
     } finally {
-      setLoading(false)
+      if (isFirstLoadRef.current) {
+        setLoading(false)
+        isFirstLoadRef.current = false
+      } else {
+        setRefreshing(false)
+      }
     }
   }
 
@@ -298,6 +310,15 @@ export default function RunsPage() {
   const hasActiveRuns = apiRuns.some((r) => STATUS_ACTIVE.has((r.status ?? '').toLowerCase()))
   const hasQueuedRuns = apiRuns.some((r) => STATUS_QUEUED.has((r.status ?? '').toLowerCase()))
   const hasStuckRuns = apiRuns.some((r) => STATUS_STUCK.has((r.status ?? '').toLowerCase()) || r.heartbeatStale)
+
+  // Auto-disable refresh once the initial data is loaded and there are no active/queued runs
+  // to prevent endless background polling when nothing is in flight.
+  useEffect(() => {
+    if (autoRefresh && !loading && !hasActiveRuns && !hasQueuedRuns) {
+      setAutoRefresh(false)
+    }
+  }, [autoRefresh, loading, hasActiveRuns, hasQueuedRuns, setAutoRefresh])
+
   const queuedApiRuns = apiRuns.filter((r) => isQueuedStatus(r.status))
   const queuedVisibleRuns = filteredApiRuns.filter((r) => isQueuedStatus(r.status))
   const allVisibleQueuedSelected =
@@ -396,11 +417,11 @@ export default function RunsPage() {
           <button
             type="button"
             onClick={() => void load()}
-            disabled={loading}
+            disabled={loading || refreshing}
             className="flex items-center gap-1.5 rounded-xl border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-300 hover:text-white transition-colors disabled:opacity-50"
           >
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} aria-hidden="true" />
-            Refresh
+            <RefreshCw size={14} className={(loading || refreshing) ? 'animate-spin' : ''} aria-hidden="true" />
+            {refreshing ? 'Refreshing…' : 'Refresh'}
           </button>
         </div>
       </div>
