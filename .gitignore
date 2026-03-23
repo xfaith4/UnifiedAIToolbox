@@ -31,6 +31,7 @@ codex_out/
 swarm-output/
 runs/
 .uaitoolbox/
+apps/unifiedtoolbox.webapp/src/features/swarm-viz/_prototype_inbox/backend/.env.local
 !apps/unifiedtoolbox.webapp/src/app/runs/
 !apps/unifiedtoolbox.webapp/src/app/runs/**
 !apps/unifiedtoolbox.webapp/src/app/api/app-factory/runs/
