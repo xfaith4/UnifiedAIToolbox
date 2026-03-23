@@ -166,6 +166,7 @@ export default function CurrentRunCard({
 
   const isTerminal = TERMINAL_RUN_STATUSES.has(liveStatus)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const consecutiveErrorsRef = useRef(0)
 
   // Live duration counter — re-renders every 10s while non-terminal
   useEffect(() => {
@@ -232,6 +233,8 @@ export default function CurrentRunCard({
       if (completedAt) setEndedAt(completedAt)
       if (phase) setCurrentPhase(phase)
 
+      consecutiveErrorsRef.current = 0
+
       if (TERMINAL_RUN_STATUSES.has(next) || next === 'succeeded') {
         if (pollRef.current) {
           clearInterval(pollRef.current)
@@ -239,11 +242,20 @@ export default function CurrentRunCard({
         }
       }
     } catch (error) {
-      // Stop polling if the run no longer exists.
-      if (isOrchestratorApiHttpError(error) && error.status === 404) {
-        if (pollRef.current) {
-          clearInterval(pollRef.current)
-          pollRef.current = null
+      if (isOrchestratorApiHttpError(error)) {
+        if (error.status === 404) {
+          // Run no longer exists — stop polling permanently.
+          if (pollRef.current) {
+            clearInterval(pollRef.current)
+            pollRef.current = null
+          }
+        } else if (error.status >= 500) {
+          // Server error — stop after 3 consecutive failures to avoid hot loops.
+          consecutiveErrorsRef.current += 1
+          if (consecutiveErrorsRef.current >= 3 && pollRef.current) {
+            clearInterval(pollRef.current)
+            pollRef.current = null
+          }
         }
       }
       // Graceful degradation — keep showing last known status

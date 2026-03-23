@@ -1107,6 +1107,7 @@ function ConciergePageContent() {
 
     const proposalId = proposal.id
     let cancelled = false
+    let consecutiveErrors = 0
     const timer: { id: ReturnType<typeof setInterval> | undefined } = { id: undefined }
 
     const poll = async () => {
@@ -1114,6 +1115,7 @@ function ConciergePageContent() {
       try {
         const run = await fetchOrchestrationRun(runId)
         if (cancelled) return
+        consecutiveErrors = 0
 
         const events = run.events ?? []
         const newEvents = events.slice(seenEventCount.current)
@@ -1182,11 +1184,20 @@ function ConciergePageContent() {
           }
         }
       } catch (e) {
-        if (isOrchestratorApiHttpError(e) && e.status === 404) {
-          cancelled = true
-          clearInterval(timer.id)
-          setRunStatus('failed')
-          return
+        if (isOrchestratorApiHttpError(e)) {
+          if (e.status === 404) {
+            cancelled = true
+            clearInterval(timer.id)
+            setRunStatus('failed')
+            return
+          }
+          if (e.status >= 500) {
+            consecutiveErrors += 1
+            if (consecutiveErrors >= 3) {
+              cancelled = true
+              clearInterval(timer.id)
+            }
+          }
         }
         console.warn('[Concierge] Poll error:', e)
       }
