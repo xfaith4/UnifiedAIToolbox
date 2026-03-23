@@ -80,6 +80,7 @@ jobs:
         run: |
           $errors = @()
           Get-ChildItem -Path modules,scripts -Recurse -Include *.ps1,*.psm1 -File | ForEach-Object {
+            $parseErrors = $null
             [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$null, [ref]$parseErrors)
             if ($parseErrors) {
               $parseErrors | ForEach-Object {
