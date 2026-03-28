@@ -31,7 +31,7 @@ jobs:
       - name: Lint PowerShell
         shell: pwsh
         run: |
-          Invoke-ScriptAnalyzer -Path modules -Recurse -Severity Warning -EnableExit
+          Invoke-ScriptAnalyzer -Path modules -Recurse -Severity Error -EnableExit
 
       - name: Run PowerShell tests
         shell: pwsh
