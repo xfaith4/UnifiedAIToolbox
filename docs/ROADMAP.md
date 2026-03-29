@@ -1,6 +1,6 @@
 # Unified AI Toolbox Roadmap
 
-Last updated: 2026-02-28
+Last updated: 2026-03-29
 
 ## Purpose
 
@@ -173,6 +173,36 @@ Every roadmap-impacting tradeoff gets a `DEC-###` record in `IMPLEMENTATION_SUMM
   Notes: `scripts/Simulate-RunLifecycle.ps1` now exercises queued->cancel and stale-lease recovery flow.
 
 ## RM-001 Worklist (Platform reliability)
+
+- [x] P0 review remediation: stop promoting `OPENAI_API_KEY` into browser-exposed `NEXT_PUBLIC_*` variables.  
+  Date: 2026-03-29  
+  Ref: review `local-2026-03-29-review-pass-p0-browser-key`  
+  Notes: removed automatic server-key mirroring from the Windows launcher and Next.js config; browser-direct AI now requires an explicitly supplied browser key instead of reusing the server secret.
+
+- [ ] P1 review remediation: restore missing orchestration contract/request schemas or repoint `job_types.json` to the checked-in schema source.  
+  Date opened: 2026-03-29  
+  Ref: review `local-2026-03-29-review-pass`  
+  Notes: `build_new_app` and `maintain_existing_app` currently reference `contracts/*.json`, but the repository does not contain that directory; dry-run orchestration validation fails before execution.
+
+- [ ] P1 review remediation: add launcher readiness checks before printing success.  
+  Date opened: 2026-03-29  
+  Ref: review `local-2026-03-29-review-pass`  
+  Notes: `Start-Toolbox.ps1` currently prints a success banner after fixed sleeps and only notices startup failures later via process exit checks; add process and HTTP readiness validation with actionable log output.
+
+- [ ] P2 review remediation: align root Node workspace scripts with the actual repo topology.  
+  Date opened: 2026-03-29  
+  Ref: review `local-2026-03-29-review-pass`  
+  Notes: root `package.json` omits the main web app workspace and advertises repo-wide `lint`/`test` commands that currently fail because workspace scripts or installs are inconsistent.
+
+- [ ] P2 review remediation: expand default pytest discovery to include repo-level Python smoke tests.  
+  Date opened: 2026-03-29  
+  Ref: review `local-2026-03-29-review-pass`  
+  Notes: `pytest.ini` only collects prompt-api tests, leaving repo-root smoke/integration tests outside the default regression path.
+
+- [ ] P2 review remediation: replace brittle launcher source-text assertions with behavior-focused tests.  
+  Date opened: 2026-03-29  
+  Ref: review `local-2026-03-29-review-pass`  
+  Notes: launcher tests currently grep for stale implementation strings instead of validating startup invariants; move toward helper-level behavioral checks to reduce false failures.
 
 - [x] Fix TypeScript overload intersection error in `runs/start/route.ts` (`spawn` env type + child process `never` reduction).  
   Date: 2026-03-22  

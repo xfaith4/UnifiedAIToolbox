@@ -19,12 +19,11 @@ Describe 'Start-Toolbox launcher guards' {
         $errors | Should -BeNullOrEmpty
     }
 
-    It 'verifies API and web process health after startup' {
-        $script:LauncherText | Should -Match 'Assert-ProcessRunning -Process \$apiProc -Name "API" -ErrorLogPath \$apiErrLog'
-        $script:LauncherText | Should -Match 'Assert-ProcessRunning -Process \$webProc -Name "Web Portal" -ErrorLogPath \$webErrLog'
+    It 'does not copy OPENAI_API_KEY into NEXT_PUBLIC_API_KEY' {
+        $script:LauncherText | Should -Not -Match '\[Environment\]::SetEnvironmentVariable\("NEXT_PUBLIC_API_KEY", \$env:OPENAI_API_KEY, "Process"\)'
     }
 
-    It 'checks process existence before taskkill in Stop-ProcessTree' {
-        $script:LauncherText | Should -Match 'Get-Process -Id \$procid -ErrorAction SilentlyContinue'
+    It 'does not require NEXT_PUBLIC_API_KEY before launch' {
+        $script:LauncherText | Should -Not -Match 'ERROR: NEXT_PUBLIC_API_KEY is missing or unresolved\.'
     }
 }

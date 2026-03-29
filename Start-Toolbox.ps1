@@ -80,18 +80,6 @@ Get-Content $envFile | ForEach-Object {
     }
 }
 
-# If the browser key is missing/placeholder, reuse OPENAI_API_KEY for local runs.
-$browserKeyInvalid = [string]::IsNullOrWhiteSpace($env:NEXT_PUBLIC_API_KEY) -or (Test-IsEnvPlaceholder $env:NEXT_PUBLIC_API_KEY)
-$openAiKeyUsable = -not [string]::IsNullOrWhiteSpace($env:OPENAI_API_KEY) -and -not (Test-IsEnvPlaceholder $env:OPENAI_API_KEY)
-if ($browserKeyInvalid -and $openAiKeyUsable) {
-    [Environment]::SetEnvironmentVariable("NEXT_PUBLIC_API_KEY", $env:OPENAI_API_KEY, "Process")
-    $env:NEXT_PUBLIC_API_KEY = $env:OPENAI_API_KEY
-}
-if (([string]::IsNullOrWhiteSpace($env:NEXT_PUBLIC_OPENAI_API_KEY) -or (Test-IsEnvPlaceholder $env:NEXT_PUBLIC_OPENAI_API_KEY)) -and -not [string]::IsNullOrWhiteSpace($env:NEXT_PUBLIC_API_KEY)) {
-    [Environment]::SetEnvironmentVariable("NEXT_PUBLIC_OPENAI_API_KEY", $env:NEXT_PUBLIC_API_KEY, "Process")
-    $env:NEXT_PUBLIC_OPENAI_API_KEY = $env:NEXT_PUBLIC_API_KEY
-}
-
 # Check for OpenAI API key
 if (
     [string]::IsNullOrEmpty($env:OPENAI_API_KEY) -or
@@ -102,14 +90,9 @@ if (
     Write-Host "   Please edit .env and add a real OpenAI API key (not a placeholder like `$(`$OPENAI_API_KEY))." -ForegroundColor Red
     exit 1
 }
-if (
-    [string]::IsNullOrEmpty($env:NEXT_PUBLIC_API_KEY) -or
-    (Test-IsEnvPlaceholder $env:NEXT_PUBLIC_API_KEY) -or
-    $env:NEXT_PUBLIC_API_KEY -eq "sk-proj-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-) {
-    Write-Host "ERROR: NEXT_PUBLIC_API_KEY is missing or unresolved." -ForegroundColor Red
-    Write-Host "   Set NEXT_PUBLIC_API_KEY to a real key in .env (or set OPENAI_API_KEY and rerun)." -ForegroundColor Red
-    exit 1
+if ([string]::IsNullOrWhiteSpace($env:NEXT_PUBLIC_API_KEY) -and [string]::IsNullOrWhiteSpace($env:NEXT_PUBLIC_OPENAI_API_KEY)) {
+    Write-Host "WARNING: Browser AI features are disabled until you provide a dedicated NEXT_PUBLIC_* key." -ForegroundColor Yellow
+    Write-Host "   The launcher no longer mirrors OPENAI_API_KEY into browser-exposed variables." -ForegroundColor Yellow
 }
 
 $ApiPort = if ($env:API_PORT) { [int]$env:API_PORT } else { 8000 }

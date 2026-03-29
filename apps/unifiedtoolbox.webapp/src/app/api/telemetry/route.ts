@@ -1,12 +1,7 @@
 import { NextResponse } from 'next/server'
 import fs from 'node:fs/promises'
-import path from 'node:path'
 import { telemetryService } from '@/lib/services/telemetryService'
-
-function getRepoRoot() {
-  // process.cwd() is apps/unifiedtoolbox.webapp
-  return path.resolve(process.cwd(), '..', '..')
-}
+import { getUxTelemetryOutputDir, getUxTelemetryOutputFile } from '@/lib/ux/telemetryStorage'
 
 export async function GET(request: Request) {
   try {
@@ -32,9 +27,8 @@ export async function POST(req: Request) {
 
   try {
     const text = await req.text()
-    const repoRoot = getRepoRoot()
-    const outDir = path.join(repoRoot, 'artifacts', 'telemetry')
-    const outFile = path.join(outDir, 'web-ux-events.jsonl')
+    const outDir = getUxTelemetryOutputDir()
+    const outFile = getUxTelemetryOutputFile()
 
     await fs.mkdir(outDir, { recursive: true })
 

@@ -87,4 +87,9 @@ describe('getBrowserApiKeyFromEnv', () => {
     process.env.NEXT_PUBLIC_OPENAI_API_KEY = '${env:OPENAI_API_KEY}'
     expect(getBrowserApiKeyFromEnv()).toBe('')
   })
+
+  it('does not fall back to OPENAI_API_KEY when public keys are absent', () => {
+    process.env.OPENAI_API_KEY = 'sk-proj-server-secret'
+    expect(getBrowserApiKeyFromEnv()).toBe('')
+  })
 })
