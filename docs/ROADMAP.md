@@ -279,6 +279,26 @@ Every roadmap-impacting tradeoff gets a `DEC-###` record in `IMPLEMENTATION_SUMM
   Ref: `docs/information-architecture.md`  
   Notes: Documented current canonical IA, the transitional role of `/dashboard`, and the deliberate choice to improve coherence first without collapsing the existing execution surfaces into one page.
 
+- [x] Introduce a lightweight recipe model for prompt- and agent-led reuse.  
+  Date: 2026-04-05  
+  Ref: `apps/unifiedtoolbox.webapp/src/lib/types/recipes.ts`, `apps/unifiedtoolbox.webapp/src/lib/services/recipeStore.ts`  
+  Notes: Added a local-first recipe type/store that bundles prompt ids, agent names, tools, acceptance checks, and suggested launch defaults without changing backend contracts.
+
+- [x] Add “Use in Proposal” and “Use in Build” recipe actions to Prompt Library and Agent Library.  
+  Date: 2026-04-05  
+  Ref: `apps/unifiedtoolbox.webapp/src/app/prompts/page.tsx`, `apps/unifiedtoolbox.webapp/src/app/agents/page.tsx`  
+  Notes: Selected prompts and agents can now be converted into reusable recipes and launched directly into Concierge or App Lifecycle, establishing an in-context reuse path instead of leaving assets isolated in library screens.
+
+- [x] Make Concierge recipe-aware so proposals inherit recipe defaults.  
+  Date: 2026-04-05  
+  Ref: `apps/unifiedtoolbox.webapp/src/app/concierge/page.tsx`  
+  Notes: Concierge now loads recipes from query params, shows the active recipe in the UI, injects recipe context into proposal generation, and merges recipe prompts/agents/tools into saved proposals and run recipes.
+
+- [x] Support recipe-based prefills in Playground and App Lifecycle.  
+  Date: 2026-04-05  
+  Ref: `apps/unifiedtoolbox.webapp/src/app/orchestrator/page.tsx`, `apps/unifiedtoolbox.webapp/src/app/engine/_source/App.tsx`  
+  Notes: Build surfaces now accept `?recipe=` handoff and use recipe defaults to prefill goal, prompt, cast, and job-type hints while keeping final launch control with the user.
+
 ## RM-004 Worklist (MCP governance end-to-end)
 
 - [x] Phase 1 backend core: policy engine, storage, allowlist/collection/install/audit APIs (26 endpoints).  

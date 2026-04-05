@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useCallback, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import type { AgentInstruction } from '@/lib/types/agents'
 import type { PromptItem } from '@/lib/types/prompts'
+import type { Recipe } from '@/lib/types/recipes'
 import type {
   OrchestrationRun,
   OrchestrationForm,
@@ -36,6 +37,7 @@ import {
 } from '@/lib/services/orchestratorStore'
 import { runLocalSwarm } from '@/lib/services/swarmRunner'
 import AgentActivityTally from '@/components/orchestration/AgentActivityTally'
+import { getRecipe } from '@/lib/services/recipeStore'
 
 // Default agents for multi-agent orchestration
 const DEFAULT_ORCHESTRATOR_AGENTS: OrchestratorAgent[] = [
@@ -130,6 +132,7 @@ function OrchestratorPageContent() {
 
   // Draft prefill — set when navigating from an approved Concierge proposal
   const [draftProposalId, setDraftProposalId] = useState<string | null>(null)
+  const [activeRecipe, setActiveRecipe] = useState<Recipe | null>(null)
 
   // Run state
   const [runs, setRuns] = useState<OrchestrationRun[]>([])
@@ -241,6 +244,26 @@ function OrchestratorPageContent() {
     }))
     setSelectedAgents(draft.agents)
     setDraftProposalId(draft.proposalId)
+  }, [searchParams])
+
+  useEffect(() => {
+    const recipeId = searchParams.get('recipe')
+    if (!recipeId) {
+      setActiveRecipe(null)
+      return
+    }
+    const recipe = getRecipe(recipeId)
+    if (!recipe) return
+    setActiveRecipe(recipe)
+    setForm((prev) => ({
+      ...prev,
+      goal: recipe.suggestedGoal ?? prev.goal,
+      runMode: recipe.suggestedMode ?? prev.runMode,
+      promptId: recipe.promptIds[0] ?? prev.promptId,
+    }))
+    if (recipe.agentNames.length > 0) {
+      setSelectedAgents(recipe.agentNames)
+    }
   }, [searchParams])
 
   // Memoized selections
@@ -760,6 +783,31 @@ function OrchestratorPageContent() {
             onClick={() => setDraftProposalId(null)}
             className="shrink-0 text-blue-400 hover:text-blue-200"
             aria-label="Dismiss"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {activeRecipe && (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-violet-800/60 bg-violet-950/30 px-4 py-3 text-sm text-violet-200">
+          <div className="flex items-start gap-2">
+            <svg className="mt-0.5 h-4 w-4 shrink-0 text-violet-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h7m-7 4h10M5 4h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z" />
+            </svg>
+            <div>
+              <div className="font-semibold">Recipe prefill active: {activeRecipe.name}</div>
+              <div className="mt-1 text-xs text-violet-200/90">
+                {activeRecipe.promptTitles.length > 0 ? `Prompts: ${activeRecipe.promptTitles.join(', ')} · ` : ''}
+                {activeRecipe.agentNames.length > 0 ? `Agents: ${activeRecipe.agentNames.join(', ')}` : 'No cast preset'}
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setActiveRecipe(null)}
+            className="shrink-0 text-violet-300 hover:text-violet-100"
+            aria-label="Dismiss recipe prefill"
           >
             ✕
           </button>

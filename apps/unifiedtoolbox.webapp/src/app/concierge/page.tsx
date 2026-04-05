@@ -62,6 +62,12 @@ import {
 } from '@/lib/services/runContextStore'
 import { buildRequirementsRequestPrompt } from '@/lib/concierge/requirementsLoop'
 import { buildKickoffRefinementMessage, getRunMonitorHref } from '@/lib/services/conciergeKickoff'
+import type { Recipe } from '@/lib/types/recipes'
+import {
+  applyRecipeToProposal,
+  buildRecipeContextPrompt,
+  getRecipe,
+} from '@/lib/services/recipeStore'
 import CurrentRunCard from '@/components/runs/CurrentRunCard'
 import LiveEventPanel from '@/components/runs/LiveEventPanel'
 
@@ -1006,6 +1012,7 @@ function ConciergePageContent() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [proposal, setProposal] = useState<Proposal | null>(null)
+  const [activeRecipe, setActiveRecipe] = useState<Recipe | null>(null)
   const [draftCount, setDraftCount] = useState(0)
 
   // Run state
@@ -1061,6 +1068,23 @@ function ConciergePageContent() {
     () => new Set(proposal?.plan.steps.map((s) => s.tool).filter(Boolean) as string[] ?? []),
     [proposal]
   )
+
+  useEffect(() => {
+    const recipeId = searchParams.get('recipe')
+    if (!recipeId) {
+      setActiveRecipe(null)
+      return
+    }
+    const recipe = getRecipe(recipeId)
+    if (!recipe) return
+    setActiveRecipe(recipe)
+    setInput((current) => {
+      if (current.trim()) return current
+      return recipe.suggestedGoal
+        ? `Use the "${recipe.name}" recipe to ${recipe.suggestedGoal}`
+        : `Use the "${recipe.name}" recipe for this application workflow`
+    })
+  }, [searchParams])
 
   // Restore a saved proposal when navigating from the Runs page (?proposal=id)
   useEffect(() => {
@@ -1232,19 +1256,28 @@ function ConciergePageContent() {
     // ── Self-healing loop: preflight check on first user message ──────────────
     // Find similar past runs and inject their Overseer findings into the AI
     // system prompt so the Concierge can proactively guide the user (Options A/B).
-    let runHistoryContext: string | undefined
+    const contextBlocks: string[] = []
     const isFirstMessage = messages.filter((m) => m.role === 'user').length === 0
     if (isFirstMessage && allRuns.length > 0) {
       const insights = findSimilarRuns(text, allRuns)
       if (insights.length > 0) {
         setPreflight(insights)
         setPreflightDismissed(false)
-        runHistoryContext = buildRunHistoryPrompt(insights)
+        contextBlocks.push(buildRunHistoryPrompt(insights))
       }
+    }
+    if (activeRecipe) {
+      contextBlocks.push(buildRecipeContextPrompt(activeRecipe))
     }
 
     try {
-      const result = await sendConciergeMessage(messages, text, undefined, mode, runHistoryContext)
+      const result = await sendConciergeMessage(
+        messages,
+        text,
+        undefined,
+        mode,
+        contextBlocks.length > 0 ? contextBlocks.join('\n\n') : undefined
+      )
 
       const assistantMsg: ChatMessage = {
         id: `msg_${Date.now() + 1}`,
@@ -1255,7 +1288,10 @@ function ConciergePageContent() {
       setMessages((prev) => [...prev, assistantMsg])
 
       if (result.proposal) {
-        const saved = saveProposal(result.proposal)
+        const proposalWithRecipe = activeRecipe
+          ? applyRecipeToProposal(result.proposal, activeRecipe)
+          : result.proposal
+        const saved = saveProposal(proposalWithRecipe)
         setProposal(saved)
       }
     } catch (e) {
@@ -1409,6 +1445,36 @@ function ConciergePageContent() {
             </Link>
           )}
         </div>
+
+        {activeRecipe && (
+          <div className="border-b border-gray-800 bg-blue-950/20 px-4 py-3">
+            <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-blue-300">
+                  Active Recipe
+                </p>
+                <p className="mt-1 text-sm text-slate-200">
+                  {activeRecipe.name}
+                </p>
+                <p className="mt-1 text-xs leading-5 text-slate-400">
+                  {activeRecipe.description}
+                </p>
+                <p className="mt-2 text-[11px] text-slate-500">
+                  {activeRecipe.promptTitles.length > 0 ? `Prompts: ${activeRecipe.promptTitles.join(', ')} · ` : ''}
+                  {activeRecipe.agentNames.length > 0 ? `Agents: ${activeRecipe.agentNames.join(', ')} · ` : ''}
+                  {activeRecipe.tools.length > 0 ? `Tools: ${activeRecipe.tools.join(', ')}` : 'No tools preset'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveRecipe(null)}
+                className="shrink-0 text-xs text-blue-300 hover:text-blue-100"
+              >
+                Ignore recipe
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">

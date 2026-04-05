@@ -11,6 +11,16 @@ const safeGetDraftRun = (draftId: string) => {
     return null
   }
 }
+const safeGetRecipe = (recipeId: string) => {
+  try {
+    const req = (globalThis as any)?.require as undefined | ((id: string) => any)
+    const mod = req ? req('@/lib/services/recipeStore') : null
+    const fn = mod?.getRecipe as undefined | ((id: string) => any)
+    return fn ? fn(recipeId) : null
+  } catch {
+    return null
+  }
+}
 
 import Header from './components/Header';
 import GoalInput from './components/GoalInput';
@@ -164,6 +174,7 @@ const App: React.FC = () => {
   // Draft prefill from Concierge (?draft=<proposalId>)
   const [draftGoal, setDraftGoal] = useState<string | undefined>(undefined);
   const [draftProposalId, setDraftProposalId] = useState<string | null>(null);
+  const [recipeName, setRecipeName] = useState<string | null>(null);
 
   useEffect(() => {
     const draftId = searchParams.get('draft');
@@ -173,6 +184,19 @@ const App: React.FC = () => {
     setDraftGoal(draft.goal);
     setDraftProposalId(draft.proposalId);
     if (draft.jobType) setJobType(draft.jobType);
+  }, [searchParams]);
+
+  useEffect(() => {
+    const recipeId = searchParams.get('recipe');
+    if (!recipeId) {
+      setRecipeName(null);
+      return;
+    }
+    const recipe = safeGetRecipe(recipeId);
+    if (!recipe) return;
+    setRecipeName(recipe.name ?? null);
+    if (recipe.suggestedGoal) setDraftGoal(recipe.suggestedGoal);
+    if (recipe.suggestedJobType) setJobType(recipe.suggestedJobType);
   }, [searchParams]);
 
   useEffect(() => {
@@ -560,6 +584,24 @@ const App: React.FC = () => {
                   onClick={() => setDraftProposalId(null)}
                   className="shrink-0 text-blue-400 hover:text-blue-200"
                   aria-label="Dismiss"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+            {recipeName && (
+              <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-violet-800/60 bg-violet-950/30 px-4 py-3 text-sm text-violet-200">
+                <div className="flex items-center gap-2">
+                  <svg className="h-4 w-4 shrink-0 text-violet-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h7m-7 4h10M5 4h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z" />
+                  </svg>
+                  <span>Prefilled from recipe <span className="font-semibold">{recipeName}</span>.</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setRecipeName(null)}
+                  className="shrink-0 text-violet-300 hover:text-violet-100"
+                  aria-label="Dismiss recipe prefill"
                 >
                   ✕
                 </button>

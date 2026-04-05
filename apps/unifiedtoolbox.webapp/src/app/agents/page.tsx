@@ -1,6 +1,7 @@
 'use client'
 
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import {
   fetchAgentLibrary,
   normalizeAgent,
@@ -11,6 +12,7 @@ import {
 import type { AgentInstruction, AgentStatus } from '@/lib/types/agents'
 import { computeDiff, computeHash } from '@/lib/utils/textHelpers'
 import { trackUxEvent } from '@/lib/ux/telemetry'
+import { createOrUpdateRecipeFromAgent } from '@/lib/services/recipeStore'
 
 const statusLabels: Record<AgentStatus, string> = {
   draft: 'Draft',
@@ -329,6 +331,7 @@ function AgentDetailForm({
   onChange: (updater: (agent: AgentInstruction) => AgentInstruction) => void
   onDelete: () => void
 }) {
+  const router = useRouter()
   function update<K extends keyof AgentInstruction>(key: K, value: AgentInstruction[K]) {
     onChange((current) => ({
       ...current,
@@ -349,6 +352,7 @@ function AgentDetailForm({
   const [showDiff, setShowDiff] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [copyStatus, setCopyStatus] = useState('')
+  const [recipeStatus, setRecipeStatus] = useState('')
   const [canonicalHash, setCanonicalHash] = useState('')
   const [renderedHash, setRenderedHash] = useState('')
 
@@ -372,8 +376,53 @@ function AgentDetailForm({
   const promptAvailable = Boolean(canonicalPrompt)
   const renderablePrompt = finalPrompt
 
+  function handleRecipeLaunch(destination: '/concierge' | '/engine') {
+    const recipe = createOrUpdateRecipeFromAgent(agent)
+    setRecipeStatus(
+      destination === '/concierge'
+        ? `Recipe saved from "${agent.name}" and sent to Concierge.`
+        : `Recipe saved from "${agent.name}" and sent to App Lifecycle.`
+    )
+    setTimeout(() => setRecipeStatus(''), 3500)
+    router.push(`${destination}?recipe=${encodeURIComponent(recipe.id)}`)
+  }
+
   return (
     <div className="space-y-4">
+      <div className="rounded-2xl border border-blue-900/60 bg-blue-950/20 px-4 py-3">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-blue-300">
+              Recipe Actions
+            </p>
+            <p className="mt-1 text-sm text-slate-300">
+              Reuse this agent as part of a proposal or a guided build without rebuilding the cast from scratch.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="rounded-lg border border-blue-700/70 bg-blue-900/30 px-3 py-1.5 text-xs font-medium text-blue-100 hover:bg-blue-800/40"
+              onClick={() => handleRecipeLaunch('/concierge')}
+            >
+              Use in Proposal
+            </button>
+            <button
+              type="button"
+              className="rounded-lg border border-slate-700 bg-slate-800/70 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-700/80"
+              onClick={() => handleRecipeLaunch('/engine')}
+            >
+              Use in Build
+            </button>
+          </div>
+        </div>
+        {recipeStatus && (
+          <p className="mt-2 text-xs text-blue-200" aria-live="polite">
+            {recipeStatus}
+          </p>
+        )}
+      </div>
+
       <div className="flex items-center justify-between">
         <div>
           <label htmlFor="agent-name" className="text-xs uppercase tracking-wide text-slate-400">

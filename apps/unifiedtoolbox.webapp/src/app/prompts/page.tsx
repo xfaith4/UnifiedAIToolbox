@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import type {
   PromptHistoryEntry,
   PromptItem,
@@ -23,6 +24,7 @@ import {
   parsePromptImport,
   type PromptImportReport,
 } from '@/lib/services/promptImport'
+import { createOrUpdateRecipeFromPrompt } from '@/lib/services/recipeStore'
 
 export default function PromptsPage() {
   const [items, setItems] = useState<PromptItem[]>([])
@@ -467,6 +469,7 @@ function PromptEditor({
   onPersist: (prompt: PromptItem) => void
   onSave: (prompt: PromptItem) => void
 }) {
+  const router = useRouter()
   const [prompt, setPrompt] = useState(value)
   const [searchTerm, setSearchTerm] = useState('')
   const [draftDiffVisible, setDraftDiffVisible] = useState(true)
@@ -882,6 +885,17 @@ function PromptEditor({
   const actionSecondary =
     'rounded-lg border border-slate-700 bg-slate-900/40 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-slate-800/60 disabled:cursor-not-allowed disabled:opacity-60'
 
+  function handleRecipeLaunch(destination: '/concierge' | '/engine') {
+    const recipe = createOrUpdateRecipeFromPrompt(prompt)
+    showNotice(
+      'success',
+      destination === '/concierge'
+        ? `Recipe saved from "${prompt.title}" and sent to Concierge.`
+        : `Recipe saved from "${prompt.title}" and sent to App Lifecycle.`
+    )
+    router.push(`${destination}?recipe=${encodeURIComponent(recipe.id)}`)
+  }
+
   return (
     <div className="space-y-6 rounded-2xl border border-slate-800 bg-slate-900/50 p-6">
       <div className="sticky top-3 z-30 rounded-2xl border border-slate-800 bg-slate-950/70 p-3 backdrop-blur">
@@ -922,6 +936,20 @@ function PromptEditor({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className={actionSecondary}
+              onClick={() => handleRecipeLaunch('/concierge')}
+            >
+              Use in Proposal
+            </button>
+            <button
+              type="button"
+              className={actionSecondary}
+              onClick={() => handleRecipeLaunch('/engine')}
+            >
+              Use in Build
+            </button>
             <div
               className="flex overflow-hidden rounded-full border border-slate-700 bg-slate-900/50 text-[11px]"
               title="AI refinement sends prompt text to OpenAI. Do not include secrets unless you explicitly consent."
