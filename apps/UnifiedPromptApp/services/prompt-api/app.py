@@ -4794,6 +4794,30 @@ def orchestrate_run(
                     if contract is None:
                         return "failed", "ConceptualModelContract output not found", {}
 
+                    clarification_request = str(contract.get("clarification_request") or "").strip()
+                    if clarification_request:
+                        packet = _build_requirements_request_packet(
+                            {
+                                "summary": "ConceptualModelContract requested additional requirements before implementation can continue.",
+                                "blockers": [
+                                    {
+                                        "id": "req_1",
+                                        "question": clarification_request,
+                                        "why": "Required to convert intent into machine-verifiable acceptance criteria.",
+                                    }
+                                ],
+                            }
+                        )
+                        return (
+                            "needs_requirements",
+                            f"ConceptualModelContract requested clarification: {clarification_request}",
+                            {
+                                "requirements_request": packet,
+                                "blocking_agent": "ConceptualModelContract",
+                                "clarification_request": clarification_request,
+                            },
+                        )
+
                     contract_errors = _validate_conceptual_model_contract(contract)
                     if contract_errors:
                         return (

@@ -124,7 +124,7 @@ function Write-AgentStatus {
 
     # Append to status log as JSON lines with error handling
     try {
-        $jsonLine = $statusObj | ConvertTo-Json -Compress -ErrorAction Stop
+        $jsonLine = $statusObj | ConvertTo-Json -Compress -Depth 20 -ErrorAction Stop
         
         # Validate the JSON is not empty
         if ([string]::IsNullOrWhiteSpace($jsonLine)) {
@@ -140,6 +140,156 @@ function Write-AgentStatus {
         Add-Content -Path $errorLogPath -Value "$(Get-Date -Format 'o'): $errorMsg"
         Write-Host "⚠️ $errorMsg" -ForegroundColor Yellow
     }
+}
+
+function Write-PofEvent {
+    param(
+        [Parameter(Mandatory = $true)][string]$Type,
+        [Parameter(Mandatory = $true)][string]$Message,
+        [AllowNull()][hashtable]$Data = $null,
+        [AllowNull()][string]$Stage = $null
+    )
+
+    $eventPath = Join-Path $OutDir "events.ndjson"
+    $eventRecord = @{
+        ts      = (Get-Date).ToUniversalTime().ToString("o")
+        type    = $Type
+        message = $Message
+    }
+    if (-not [string]::IsNullOrWhiteSpace($Stage)) {
+        $eventRecord.stage = $Stage
+    }
+    if ($Data) {
+        $eventRecord.data = $Data
+    }
+
+    $eventRecord | ConvertTo-Json -Compress -Depth 40 | Add-Content -Path $eventPath
+}
+
+function Update-PofRunState {
+    param(
+        [Parameter(Mandatory = $true)][string]$Status,
+        [AllowNull()][string]$CurrentStage = $null,
+        [AllowNull()][hashtable]$RequirementsRequest = $null,
+        [string[]]$Warnings = @(),
+        [string[]]$Errors = @(),
+        [switch]$Complete
+    )
+
+    $statePath = Join-Path $OutDir "run_state.json"
+    $now = (Get-Date).ToUniversalTime().ToString("o")
+    $state = @{}
+
+    if (Test-Path -LiteralPath $statePath) {
+        try {
+            $existing = Get-Content -Raw -LiteralPath $statePath | ConvertFrom-Json -Depth 40 -AsHashtable
+            if ($existing -is [hashtable]) {
+                $state = $existing
+            }
+        }
+        catch {
+            $state = @{}
+        }
+    }
+
+    if (-not $state.ContainsKey('run_id')) { $state.run_id = $RunId }
+    if (-not $state.ContainsKey('goal')) { $state.goal = $Goal }
+    if (-not $state.ContainsKey('job_type')) { $state.job_type = $EffectiveJobType }
+    if (-not $state.ContainsKey('app_type')) { $state.app_type = $EffectiveAppType }
+    if (-not $state.ContainsKey('started_at')) { $state.started_at = $now }
+
+    $state.status = $Status
+    $state.updated_at = $now
+    if (-not [string]::IsNullOrWhiteSpace($CurrentStage)) {
+        $state.current_stage = $CurrentStage
+    }
+    if ($RequirementsRequest) {
+        $state.requirements_request = $RequirementsRequest
+    }
+    if ($Warnings.Count -gt 0) {
+        $existingWarnings = @()
+        if ($state.ContainsKey('warnings') -and $state.warnings) {
+            $existingWarnings = @($state.warnings | ForEach-Object { [string]$_ })
+        }
+        $state.warnings = @($existingWarnings + $Warnings | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+    }
+    if ($Errors.Count -gt 0) {
+        $existingErrors = @()
+        if ($state.ContainsKey('errors') -and $state.errors) {
+            $existingErrors = @($state.errors | ForEach-Object { [string]$_ })
+        }
+        $state.errors = @($existingErrors + $Errors | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+    }
+    if ($Complete) {
+        $state.ended_at = $now
+    }
+
+    $state | ConvertTo-Json -Depth 40 | Set-Content -LiteralPath $statePath -Encoding UTF8
+}
+
+function New-RequirementsRequestPacket {
+    param(
+        [Parameter(Mandatory = $true)][string]$Question,
+        [Parameter(Mandatory = $true)][string]$AgentName
+    )
+
+    $cleanQuestion = if ([string]::IsNullOrWhiteSpace($Question)) {
+        "Provide the missing product requirements needed to continue implementation."
+    } else {
+        $Question.Trim()
+    }
+
+    return @{
+        summary = "${AgentName} requires additional requirements before implementation can continue."
+        blockers = @(
+            @{
+                id       = "req_1"
+                question = $cleanQuestion
+                why      = "Required to convert intent into machine-verifiable acceptance criteria."
+                defaults = @()
+            }
+        )
+        proposed_acceptance_tests = @()
+    }
+}
+
+function Write-PofRequirementsRequestArtifacts {
+    param(
+        [Parameter(Mandatory = $true)][string]$AgentName,
+        [Parameter(Mandatory = $true)][string]$Question,
+        [Parameter(Mandatory = $true)][hashtable]$RequirementsRequest
+    )
+
+    $requirementsPath = Join-Path $OutDir "requirements_request.json"
+    $sandboxReportPath = Join-Path $OutDir "sandbox_report.json"
+
+    $RequirementsRequest | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $requirementsPath -Encoding UTF8
+
+    $details = "${AgentName} requested clarification before a valid conceptual contract could be produced."
+    $sandboxReport = @{
+        generated_at             = (Get-Date).ToUniversalTime().ToString("o")
+        verification_status      = "needs_requirements"
+        loop_iteration           = 0
+        checks                   = @(
+            @{
+                check     = "Conceptual model contract requires sufficient requirements."
+                evaluator = "conceptual_model_contract"
+                result    = "needs_requirements"
+                details   = $details
+                data      = @{
+                    blocking_agent       = $AgentName
+                    clarification_text   = $Question
+                    requirements_request = $RequirementsRequest
+                }
+            }
+        )
+        passed_count             = 0
+        failed_count             = 0
+        needs_requirements_count = 1
+        deferred_count           = 0
+        requirements_request     = $RequirementsRequest
+    }
+    $sandboxReport | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $sandboxReportPath -Encoding UTF8
 }
 
 function Get-AgentContractDefinition {
@@ -539,6 +689,8 @@ function Resolve-AgentOutputWithContract {
     )
 
     $check = Assert-AgentContractOutput -AgentName $AgentName -RawOutput $Output
+    $checkClarificationNeeded = $check.ContainsKey('clarification_needed') -and [bool]$check['clarification_needed']
+    $checkClarificationText = if ($check.ContainsKey('clarification_text')) { [string]$check['clarification_text'] } else { $null }
     if ($check.ok) {
         return @{
             Output              = $(if ($check.normalized_json) { $check.normalized_json } else { $Output })
@@ -547,8 +699,8 @@ function Resolve-AgentOutputWithContract {
             RepairAttempted     = $false
             RepairSucceeded     = $false
             FailureArtifact     = $null
-            ClarificationNeeded = [bool]$check.clarification_needed
-            ClarificationText   = $check.clarification_text
+            ClarificationNeeded = $checkClarificationNeeded
+            ClarificationText   = $checkClarificationText
         }
     }
 
@@ -588,6 +740,8 @@ $(if ($check.normalized_json) { $check.normalized_json } else { $Output })
     }
 
     $recheck = Assert-AgentContractOutput -AgentName $AgentName -RawOutput $repaired
+    $recheckClarificationNeeded = $recheck.ContainsKey('clarification_needed') -and [bool]$recheck['clarification_needed']
+    $recheckClarificationText = if ($recheck.ContainsKey('clarification_text')) { [string]$recheck['clarification_text'] } else { $null }
     if (-not $recheck.ok) {
         $artifact = Write-ContractFailureArtifact `
             -AgentName $AgentName `
@@ -608,8 +762,8 @@ $(if ($check.normalized_json) { $check.normalized_json } else { $Output })
         RepairAttempted     = $true
         RepairSucceeded     = $true
         FailureArtifact     = $null
-        ClarificationNeeded = [bool]$recheck.clarification_needed
-        ClarificationText   = $recheck.clarification_text
+        ClarificationNeeded = $recheckClarificationNeeded
+        ClarificationText   = $recheckClarificationText
     }
 }
 
@@ -826,6 +980,8 @@ try {
     $EffectiveJobType = Resolve-EffectiveJobType -GoalText $Goal -RequestedJobType $JobType
     $EffectiveAppType = Resolve-EffectiveAppType -GoalText $Goal -RequestedAppType $AppType
     $IsMaintenanceRun = $EffectiveJobType -eq "maintain_existing_app"
+    Update-PofRunState -Status "running" -CurrentStage "agent_activity"
+    Write-PofEvent -Type "status" -Message "running" -Stage "agent_activity"
 
     Write-Host "JobType: $EffectiveJobType | AppType: $EffectiveAppType" -ForegroundColor DarkCyan
 
@@ -1072,6 +1228,7 @@ Stack Trace: $($_.ScriptStackTrace)
         } -ThrottleLimit 4   # Adjust for API concurrency limits
 
         # --- Collect and merge results (serial, in parent) -----------------
+        $requirementsBlocker = $null
         foreach ($r in $Results) {
             if (-not $r.Ok -or [string]::IsNullOrWhiteSpace($r.Output)) {
                 Write-Host "⚠️ No response from $($r.Agent)" -ForegroundColor Red
@@ -1087,6 +1244,46 @@ Stack Trace: $($_.ScriptStackTrace)
             Write-Log -Agent $r.Agent -Content $finalOutput
             $Context += "`n`n[$($r.Agent) Output]:`n$finalOutput"
             $AgentOutputs[$r.Agent] = $finalOutput
+
+            if ($r.Agent -eq "ConceptualModelContract" -and $validated.ClarificationNeeded) {
+                $requirementsRequest = New-RequirementsRequestPacket -Question $validated.ClarificationText -AgentName $r.Agent
+                Write-AgentStatus -Agent $r.Agent -Status "blocked_requirements" -ExtraData @{
+                    reason               = "clarification_request"
+                    clarification_text   = $validated.ClarificationText
+                    requirements_request = $requirementsRequest
+                }
+                Write-PofRequirementsRequestArtifacts `
+                    -AgentName $r.Agent `
+                    -Question $validated.ClarificationText `
+                    -RequirementsRequest $requirementsRequest
+                Update-PofRunState `
+                    -Status "blocked_requirements" `
+                    -CurrentStage "requirements" `
+                    -RequirementsRequest $requirementsRequest `
+                    -Warnings @("$($r.Agent) requested clarification before implementation could continue.") `
+                    -Complete
+                Write-PofEvent `
+                    -Type "requirements:blocked" `
+                    -Message "$($r.Agent) requested clarification before implementation could continue." `
+                    -Stage "requirements" `
+                    -Data @{
+                        agent                = $r.Agent
+                        clarification_text   = $validated.ClarificationText
+                        requirements_request = $requirementsRequest
+                    }
+
+                $requirementsBlocker = @{
+                    AgentName           = $r.Agent
+                    ClarificationText   = $validated.ClarificationText
+                    RequirementsRequest = $requirementsRequest
+                }
+            }
+        }
+
+        if ($requirementsBlocker) {
+            Write-Host "⚠️ Requirements clarification needed from $($requirementsBlocker.AgentName). Pausing orchestration." -ForegroundColor Yellow
+            $Context += "`n`n[Requirements Request]:`n$($requirementsBlocker.RequirementsRequest | ConvertTo-Json -Depth 20)"
+            break
         }
 
         # --- Run Synthesizer sequentially ----------------------------------
