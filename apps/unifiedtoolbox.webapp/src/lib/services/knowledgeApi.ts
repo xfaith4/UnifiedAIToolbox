@@ -23,7 +23,54 @@ export interface KnowledgeEntry {
     prevention_patches?: Array<{ target: string; change: string; artifact_ref?: string }>
     regression_checks?: string[]
     questions_needed?: string[]
+    corrective_actions?: Array<{
+      type?: string
+      agent?: string
+      status?: string
+      summary?: string
+      question?: string
+      response?: string | null
+      requested_at?: string | null
+      responded_at?: string | null
+      resolved_by?: string | null
+      answers?: Array<{ blocker_id?: string; question?: string; answer: string }>
+    }>
+    instruction_adjustments?: Array<{
+      agent?: string
+      suggestion: string
+      timestamp?: string | null
+      source?: string
+    }>
   }
+  checkpoint_history?: Array<{
+    id?: string
+    agent?: string
+    question?: string
+    status?: string
+    response?: string | null
+    requested_at?: string | null
+    responded_at?: string | null
+    resolved_by?: string | null
+    answers?: Array<{ blocker_id?: string; question?: string; answer: string }>
+  }>
+  corrective_actions?: Array<{
+    type?: string
+    agent?: string
+    status?: string
+    summary?: string
+    question?: string
+    response?: string | null
+    requested_at?: string | null
+    responded_at?: string | null
+    resolved_by?: string | null
+    answers?: Array<{ blocker_id?: string; question?: string; answer: string }>
+  }>
+  instruction_adjustments?: Array<{
+    agent?: string
+    suggestion: string
+    timestamp?: string | null
+    source?: string
+  }>
   agents: string[]
   model: string
   synthesis_present: boolean
@@ -103,8 +150,13 @@ function normalizeKnowledgeEntry(entry: KnowledgeEntry): KnowledgeEntry {
           prevention_patches: Array.isArray(entry.learning.prevention_patches) ? entry.learning.prevention_patches : [],
           regression_checks: Array.isArray(entry.learning.regression_checks) ? entry.learning.regression_checks : [],
           questions_needed: Array.isArray(entry.learning.questions_needed) ? entry.learning.questions_needed : [],
+          corrective_actions: Array.isArray(entry.learning.corrective_actions) ? entry.learning.corrective_actions : [],
+          instruction_adjustments: Array.isArray(entry.learning.instruction_adjustments) ? entry.learning.instruction_adjustments : [],
         }
       : undefined,
+    checkpoint_history: Array.isArray(entry.checkpoint_history) ? entry.checkpoint_history : [],
+    corrective_actions: Array.isArray(entry.corrective_actions) ? entry.corrective_actions : [],
+    instruction_adjustments: Array.isArray(entry.instruction_adjustments) ? entry.instruction_adjustments : [],
   }
 }
 

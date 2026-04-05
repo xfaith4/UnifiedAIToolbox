@@ -340,6 +340,11 @@ export default function RunSwarmPage({ params }: { params: Promise<{ runId: stri
                   <div className="text-xs text-amber-200/80">
                     Concierge will restate the blocker packet so you can answer it without reconstructing context by hand.
                   </div>
+                  {(runSummary?.checkpoints?.length ?? 0) > 0 && (
+                    <div className="text-xs text-slate-400">
+                      Run Detail also shows the checkpoint history and any learning-agent instruction adjustments captured for the next run.
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

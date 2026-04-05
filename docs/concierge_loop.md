@@ -36,4 +36,6 @@ Minimum shape:
 - Concierge surfaces blockers as a concise “What I need next” packet.
 - Run Detail shows “Needs requirements” as non-failure outcome and provides structured answer fields for each blocker.
 - Once answers are submitted, the run returns to `queued` on the same `run_id` with a resume context derived from the checkpoint answers.
+- Run Detail also exposes checkpoint history and learning-agent instruction adjustments so operators can see what changed before the resumed attempt.
 - Knowledge system records learning from blocked runs and can still mark learning as `pass` if prevention patches + regression checks are present.
+- Knowledge context for future similar runs includes corrective actions and minor instruction adjustments captured from prior repairs.

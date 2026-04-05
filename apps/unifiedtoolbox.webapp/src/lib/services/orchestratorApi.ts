@@ -433,6 +433,106 @@ function normalizeApiRun(raw: Record<string, unknown>): OrchestrationRun {
             : undefined,
         }))
     : undefined
+  const correctiveActions = Array.isArray(raw.corrective_actions)
+    ? raw.corrective_actions
+        .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'))
+        .map((item) => ({
+          type: String(item.type || 'requirements_checkpoint'),
+          agent: item.agent ? String(item.agent) : undefined,
+          status: item.status ? String(item.status) : undefined,
+          summary: String(item.summary || ''),
+          question: item.question ? String(item.question) : undefined,
+          response: item.response == null ? null : String(item.response),
+          requestedAt:
+            item.requested_at == null && item.requestedAt == null ? null : String(item.requested_at || item.requestedAt),
+          respondedAt:
+            item.responded_at == null && item.respondedAt == null ? null : String(item.responded_at || item.respondedAt),
+          resolvedBy:
+            item.resolved_by == null && item.resolvedBy == null ? null : String(item.resolved_by || item.resolvedBy),
+          answers: Array.isArray(item.answers)
+            ? item.answers
+                .filter((entry): entry is Record<string, unknown> => Boolean(entry && typeof entry === 'object'))
+                .map((entry) => ({
+                  blockerId: entry.blocker_id ? String(entry.blocker_id) : entry.blockerId ? String(entry.blockerId) : undefined,
+                  question: entry.question ? String(entry.question) : undefined,
+                  answer: String(entry.answer || ''),
+                }))
+            : undefined,
+        }))
+        .filter((item) => item.summary.trim().length > 0)
+    : undefined
+  const agentImprovements = Array.isArray(raw.agent_improvements)
+    ? raw.agent_improvements
+        .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'))
+        .map((item) => ({
+          agent: String(item.agent || 'unknown'),
+          suggestion: String(item.suggestion || ''),
+          timestamp: item.timestamp == null ? null : String(item.timestamp),
+          source: item.source ? String(item.source) : undefined,
+        }))
+        .filter((item) => item.suggestion.trim().length > 0)
+    : undefined
+  const appProduction = raw.app_production && typeof raw.app_production === 'object'
+    ? {
+        status: String((raw.app_production as Record<string, unknown>).status || 'insufficient_evidence'),
+        deliveryReadiness: String(
+          (raw.app_production as Record<string, unknown>).delivery_readiness
+          || (raw.app_production as Record<string, unknown>).deliveryReadiness
+          || 'insufficient_evidence'
+        ),
+        appDir:
+          (raw.app_production as Record<string, unknown>).app_dir
+            ? String((raw.app_production as Record<string, unknown>).app_dir)
+            : (raw.app_production as Record<string, unknown>).appDir
+              ? String((raw.app_production as Record<string, unknown>).appDir)
+              : undefined,
+        reportArtifact:
+          (raw.app_production as Record<string, unknown>).report_artifact
+            ? String((raw.app_production as Record<string, unknown>).report_artifact)
+            : (raw.app_production as Record<string, unknown>).reportArtifact
+              ? String((raw.app_production as Record<string, unknown>).reportArtifact)
+              : undefined,
+        summaryArtifact:
+          (raw.app_production as Record<string, unknown>).summary_artifact
+            ? String((raw.app_production as Record<string, unknown>).summary_artifact)
+            : (raw.app_production as Record<string, unknown>).summaryArtifact
+              ? String((raw.app_production as Record<string, unknown>).summaryArtifact)
+              : undefined,
+        passedCount: Number(
+          (raw.app_production as Record<string, unknown>).passed_count
+          || (raw.app_production as Record<string, unknown>).passedCount
+          || 0
+        ),
+        failedCount: Number(
+          (raw.app_production as Record<string, unknown>).failed_count
+          || (raw.app_production as Record<string, unknown>).failedCount
+          || 0
+        ),
+        skippedCount: Number(
+          (raw.app_production as Record<string, unknown>).skipped_count
+          || (raw.app_production as Record<string, unknown>).skippedCount
+          || 0
+        ),
+        checks: Array.isArray((raw.app_production as Record<string, unknown>).checks)
+          ? ((raw.app_production as Record<string, unknown>).checks as unknown[])
+              .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'))
+              .map((item) => ({
+                name: String(item.name || 'check'),
+                status: String(item.status || 'unknown'),
+                summary: item.summary ? String(item.summary) : undefined,
+                command: item.command == null ? null : String(item.command),
+                exitCode:
+                  typeof item.exit_code === 'number'
+                    ? item.exit_code
+                    : typeof item.exitCode === 'number'
+                      ? item.exitCode
+                      : null,
+                logArtifact:
+                  item.log_artifact ? String(item.log_artifact) : item.logArtifact ? String(item.logArtifact) : null,
+              }))
+          : [],
+      }
+    : undefined
   const sandboxReport = rawSandboxReport
     ? {
         generatedAt: String(rawSandboxReport.generated_at || rawSandboxReport.generatedAt || ''),
@@ -525,6 +625,10 @@ function normalizeApiRun(raw: Record<string, unknown>): OrchestrationRun {
     sandboxReport,
     requirementsRequest,
     checkpoints,
+    correctiveActions,
+    agentImprovements,
+    generatedAppFiles: Array.isArray(raw.generated_app_files) ? raw.generated_app_files.map(String) : undefined,
+    appProduction,
   }
 }
 

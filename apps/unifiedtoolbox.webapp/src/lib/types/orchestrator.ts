@@ -21,6 +21,51 @@ export interface CheckpointRecord {
   }>
 }
 
+export interface CorrectiveActionRecord {
+  type: string
+  agent?: string
+  status?: string
+  summary: string
+  question?: string
+  response?: string | null
+  requestedAt?: string | null
+  respondedAt?: string | null
+  resolvedBy?: string | null
+  answers?: Array<{
+    blockerId?: string
+    question?: string
+    answer: string
+  }>
+}
+
+export interface AgentImprovementRecord {
+  agent: string
+  suggestion: string
+  timestamp?: string | null
+  source?: string
+}
+
+export interface AppProductionCheck {
+  name: string
+  status: string
+  summary?: string
+  command?: string | null
+  exitCode?: number | null
+  logArtifact?: string | null
+}
+
+export interface AppProductionReport {
+  status: string
+  deliveryReadiness: string
+  appDir?: string
+  reportArtifact?: string
+  summaryArtifact?: string
+  passedCount: number
+  failedCount: number
+  skippedCount: number
+  checks: AppProductionCheck[]
+}
+
 // ── Phase 1: Verification / Sandbox types ─────────────────────────────────────
 
 export type VerificationResult = 'passed' | 'failed' | 'deferred' | 'needs_requirements'
@@ -136,6 +181,10 @@ export interface OrchestrationRun {
   sandboxReport?: SandboxReport
   requirementsRequest?: RequirementsRequest
   checkpoints?: CheckpointRecord[]
+  correctiveActions?: CorrectiveActionRecord[]
+  agentImprovements?: AgentImprovementRecord[]
+  generatedAppFiles?: string[]
+  appProduction?: AppProductionReport
 
   // Output
   output?: string
@@ -297,4 +346,3 @@ export interface RepoOrchestrationRunSummary {
   requestedAt?: string
   reportSummary?: RepoRunReportSummary | null
 }
-

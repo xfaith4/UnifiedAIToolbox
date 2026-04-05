@@ -5013,14 +5013,46 @@ def orchestrate_run(
                 generated_app_files = []
                 print(f"[orchestrate] Failed to materialize Engineer artifacts: {e}", file=sys.stderr)
             if generated_app_files:
+                app_production = None
+                generated_root = out_dir / "generated_app"
+                if ORCHESTRATOR_LOGGING_AVAILABLE and generated_root.exists():
+                    try:
+                        generated_logs_dir = out_dir / "logs" / "generated_app"
+                        verifier = OrchestratorVerifier(generated_root, log_dir=generated_logs_dir)
+                        gate_results = {
+                            "lint_result": verifier.verify_lint(),
+                            "build_result": verifier.verify_build(),
+                            "unit_test_result": verifier.verify_unit_tests(),
+                            "smoke_test_result": verifier.verify_smoke_tests(),
+                            "docker_compose_valid": verifier.verify_docker_compose(),
+                        }
+                        app_production = _summarize_app_production_gates(gate_results, out_dir, generated_root)
+                        json_path, md_path = _write_app_production_artifacts(out_dir, app_production)
+                        app_production["report_artifact"] = _to_relpath(json_path, out_dir)
+                        app_production["summary_artifact"] = _to_relpath(md_path, out_dir)
+                    except Exception as e:
+                        print(f"[orchestrate] Failed to verify generated_app artifacts: {e}", file=sys.stderr)
+
                 _append_events([{
                     "ts": now_iso(),
                     "type": "artifact:generated_app",
                     "message": f"Generated {len(generated_app_files)} app file(s) under generated_app/.",
                 }])
+                if app_production:
+                    _append_events([{
+                        "ts": now_iso(),
+                        "type": "verify:generated_app",
+                        "message": (
+                            f"Generated app verification {app_production['status']}: "
+                            f"{app_production['passed_count']} passed, "
+                            f"{app_production['failed_count']} failed, "
+                            f"{app_production['skipped_count']} skipped."
+                        ),
+                    }])
                 _update_manifest(lambda d: {
                     **d,
                     "generated_app_files": generated_app_files,
+                    "app_production": app_production or d.get("app_production"),
                 })
 
             data = safe_json_load(path, context=f"execute_complete:{run_id}")
@@ -5269,6 +5301,10 @@ def _normalize_learning_payload(value: Any) -> Dict[str, Any]:
         learning["regression_checks"] = []
     if "questions_needed" in learning and not isinstance(learning.get("questions_needed"), list):
         learning["questions_needed"] = []
+    if not isinstance(learning.get("corrective_actions"), list):
+        learning["corrective_actions"] = []
+    if not isinstance(learning.get("instruction_adjustments"), list):
+        learning["instruction_adjustments"] = []
     return learning
 
 
@@ -5334,6 +5370,7 @@ def _build_learning_payload(
     commissioner_payload: Optional[Dict[str, Any]],
     critic_payload: Optional[Dict[str, Any]],
     researcher_payload: Optional[Dict[str, Any]],
+    instruction_adjustments: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     verification_status = str(manifest.get("verification_status") or "pending").strip().lower()
     run_status = str(manifest.get("status") or "unknown").strip().lower()
@@ -5341,6 +5378,13 @@ def _build_learning_payload(
     checks = sandbox_report.get("checks") if isinstance(sandbox_report.get("checks"), list) else []
     failed_checks = [c for c in checks if isinstance(c, dict) and str(c.get("result") or "").lower() == "failed"]
     deferred_checks = [c for c in checks if isinstance(c, dict) and str(c.get("result") or "").lower() == "deferred"]
+    checkpoint_history = _normalize_checkpoint_history(manifest)
+    corrective_actions = _build_corrective_actions_from_manifest(manifest)
+    normalized_instruction_adjustments = [
+        adjustment
+        for adjustment in (instruction_adjustments or [])
+        if isinstance(adjustment, dict) and str(adjustment.get("suggestion") or "").strip()
+    ]
 
     if verification_status in {"needs_requirements", "blocked_requirements"}:
         classification = "requirements_gap"
@@ -5363,6 +5407,14 @@ def _build_learning_payload(
         blockers = requirements_request.get("blockers")
         if isinstance(blockers, list) and blockers:
             evidence.append(f"requirements_request_blockers:{len(blockers)}")
+    if checkpoint_history:
+        evidence.append(f"checkpoint_history:{len(checkpoint_history)}")
+    if corrective_actions:
+        evidence.append(f"corrective_actions:{len(corrective_actions)}")
+        for action in corrective_actions[:2]:
+            evidence.append(f"checkpoint_resolved:{action.get('agent')}:{action.get('status')}")
+    for adjustment in normalized_instruction_adjustments[:2]:
+        evidence.append(f"instruction_adjustment:{adjustment.get('agent')}")
 
     events = manifest.get("events") if isinstance(manifest.get("events"), list) else []
     overseer_warnings = [
@@ -5467,6 +5519,26 @@ def _build_learning_payload(
         )
         regression_checks.append("Knowledge context includes top similar runs with actionable guidance")
 
+    if corrective_actions:
+        prevention_patches.append(
+            {
+                "target": "operator_run_history",
+                "change": "Persist resolved requirements checkpoints and answers as part of the run's corrective-action trail.",
+                "artifact_ref": "checkpoints[]",
+            }
+        )
+        regression_checks.append("Run history shows answered requirements checkpoints and resume lineage")
+
+    if normalized_instruction_adjustments:
+        prevention_patches.append(
+            {
+                "target": "learning_agent",
+                "change": "Carry minor agent instruction adjustments forward for similar future runs instead of relearning the same repair.",
+                "artifact_ref": "agent_improvements.json",
+            }
+        )
+        regression_checks.append("Knowledge context includes instruction adjustments for similar runs")
+
     if not evidence:
         questions_needed.append("Provide concrete evidence (logs/checks/events) supporting the inferred root cause.")
 
@@ -5480,6 +5552,8 @@ def _build_learning_payload(
         "questions_needed": questions_needed,
         "context_facts": researcher_facts[:3],
         "critic_blockers": critic_blockers[:3],
+        "corrective_actions": corrective_actions[:5],
+        "instruction_adjustments": normalized_instruction_adjustments[:5],
     }
 
 
@@ -5492,6 +5566,8 @@ def _build_learning_failure_payload(error_message: str) -> Dict[str, Any]:
         "prevention_patches": [],
         "regression_checks": [],
         "questions_needed": [],
+        "corrective_actions": [],
+        "instruction_adjustments": [],
     }
 
 
@@ -5540,6 +5616,111 @@ def _kb_parse_agent_json(out_dir: pathlib.Path, agent_name: str) -> Optional[Dic
     return _parse_agent_json_from_run_dir(out_dir, agent_name)
 
 
+def _load_agent_improvements(out_dir: pathlib.Path) -> List[Dict[str, Any]]:
+    path = out_dir / "agent_improvements.json"
+    if not path.exists():
+        return []
+    loaded = safe_json_load(path, default=[], context=f"agent_improvements:{out_dir.name}")
+    if not isinstance(loaded, list):
+        return []
+
+    improvements: List[Dict[str, Any]] = []
+    for item in loaded:
+        if not isinstance(item, dict):
+            continue
+        suggestion = str(item.get("suggestion") or "").strip()
+        if not suggestion:
+            continue
+        improvements.append(
+            {
+                "agent": str(item.get("agent") or "unknown").strip() or "unknown",
+                "suggestion": suggestion,
+                "timestamp": str(item.get("timestamp") or "").strip() or None,
+                "source": str(item.get("source") or "commissioner").strip() or "commissioner",
+            }
+        )
+    return improvements
+
+
+def _normalize_checkpoint_history(manifest: Dict[str, Any]) -> List[Dict[str, Any]]:
+    raw_checkpoints = manifest.get("checkpoints")
+    if not isinstance(raw_checkpoints, list):
+        return []
+
+    checkpoints: List[Dict[str, Any]] = []
+    for index, item in enumerate(raw_checkpoints):
+        if not isinstance(item, dict):
+            continue
+
+        answers: List[Dict[str, Any]] = []
+        raw_answers = item.get("answers")
+        if isinstance(raw_answers, list):
+            for answer in raw_answers:
+                if not isinstance(answer, dict):
+                    continue
+                question = str(answer.get("question") or "").strip()
+                answer_text = str(answer.get("answer") or "").strip()
+                blocker_id = str(answer.get("blocker_id") or answer.get("blockerId") or "").strip() or None
+                if not question and not answer_text:
+                    continue
+                answers.append(
+                    {
+                        "blocker_id": blocker_id,
+                        "question": question or None,
+                        "answer": answer_text,
+                    }
+                )
+
+        response_value = item.get("response")
+        response_text = None if response_value is None else str(response_value).strip() or None
+        checkpoints.append(
+            {
+                "id": str(item.get("id") or item.get("checkpoint_id") or f"checkpoint_{index + 1}").strip(),
+                "agent": str(item.get("agent") or "unknown").strip() or "unknown",
+                "question": str(item.get("question") or "").strip(),
+                "options": [str(v) for v in item.get("options", [])] if isinstance(item.get("options"), list) else [],
+                "default_option": str(item.get("default_option") or item.get("defaultOption") or "").strip(),
+                "requested_at": str(item.get("requested_at") or item.get("requestedAt") or "").strip() or None,
+                "response": response_text,
+                "responded_at": str(item.get("responded_at") or item.get("respondedAt") or "").strip() or None,
+                "resolved_by": str(item.get("resolved_by") or item.get("resolvedBy") or "").strip() or None,
+                "status": str(item.get("status") or "").strip() or None,
+                "answers": answers,
+            }
+        )
+    return checkpoints
+
+
+def _build_corrective_actions_from_manifest(manifest: Dict[str, Any]) -> List[Dict[str, Any]]:
+    actions: List[Dict[str, Any]] = []
+    for checkpoint in _normalize_checkpoint_history(manifest):
+        response_text = str(checkpoint.get("response") or "").strip()
+        answers = checkpoint.get("answers") if isinstance(checkpoint.get("answers"), list) else []
+        if not response_text and not answers:
+            continue
+
+        if answers:
+            summary = f"{checkpoint.get('agent')}: answered {len(answers)} requirement blocker(s) to resume execution."
+        else:
+            summary = f"{checkpoint.get('agent')}: resolved checkpoint and resumed execution."
+
+        actions.append(
+            {
+                "type": "requirements_checkpoint",
+                "agent": checkpoint.get("agent"),
+                "status": checkpoint.get("status") or "answered",
+                "summary": summary,
+                "question": checkpoint.get("question"),
+                "response": response_text or None,
+                "requested_at": checkpoint.get("requested_at"),
+                "responded_at": checkpoint.get("responded_at"),
+                "resolved_by": checkpoint.get("resolved_by"),
+                "answers": answers,
+            }
+        )
+    return actions
+
+
 def ingest_run_knowledge(run_id: str, out_dir: pathlib.Path, manifest_path: pathlib.Path) -> None:
     """
     Extract structured learning from a completed run and append it to the knowledge base.
@@ -5556,8 +5737,11 @@ def ingest_run_knowledge(run_id: str, out_dir: pathlib.Path, manifest_path: path
         comm = _kb_parse_agent_json(out_dir, "Commissioner")
         critic = _kb_parse_agent_json(out_dir, "Critic")
         researcher = _kb_parse_agent_json(out_dir, "Researcher")
+        instruction_adjustments = _load_agent_improvements(out_dir)
+        checkpoint_history = _normalize_checkpoint_history(manifest)
+        corrective_actions = _build_corrective_actions_from_manifest(manifest)
 
-        learning = _build_learning_payload(manifest, comm, critic, researcher)
+        learning = _build_learning_payload(manifest, comm, critic, researcher, instruction_adjustments)
         knowledge_status, knowledge_score = _derive_knowledge_status_for_entry({"learning": learning})
 
         entry: Dict[str, Any] = {
@@ -5572,6 +5756,9 @@ def ingest_run_knowledge(run_id: str, out_dir: pathlib.Path, manifest_path: path
             "learning": learning,
             "agents": manifest.get("agents", []),
             "model": manifest.get("model", ""),
+            "checkpoint_history": checkpoint_history,
+            "corrective_actions": corrective_actions,
+            "instruction_adjustments": instruction_adjustments,
             "synthesis_present": (
                 (out_dir / "Final_Synthesis.html").exists()
                 or (out_dir / "Final_Synthesis.txt").exists()
@@ -5630,6 +5817,9 @@ def ingest_run_knowledge(run_id: str, out_dir: pathlib.Path, manifest_path: path
                 "knowledge_status": "fail",
                 "knowledge_score": 0,
                 "learning": _build_learning_failure_payload(str(_e)),
+                "checkpoint_history": _normalize_checkpoint_history(fallback_manifest),
+                "corrective_actions": _build_corrective_actions_from_manifest(fallback_manifest),
+                "instruction_adjustments": [],
                 "agents": fallback_manifest.get("agents", []),
                 "model": fallback_manifest.get("model", ""),
                 "synthesis_present": False,
@@ -5694,6 +5884,26 @@ def build_knowledge_context(goal: str) -> str:
         warnings = e.get("overseer_warnings", [])
         if warnings:
             lines.append(f"  Overseer warnings: {warnings[0][:150]}")
+        raw_corrective_actions = e.get("corrective_actions") if isinstance(e.get("corrective_actions"), list) else []
+        corrective_actions = [
+            str(action.get("summary") or "").strip()
+            for action in raw_corrective_actions
+            if isinstance(action, dict) and str(action.get("summary") or "").strip()
+        ]
+        if corrective_actions:
+            lines.append(f"  Corrective actions: {'; '.join(corrective_actions[:2])[:220]}")
+        instruction_adjustments = []
+        raw_instruction_adjustments = e.get("instruction_adjustments") if isinstance(e.get("instruction_adjustments"), list) else []
+        for adjustment in raw_instruction_adjustments:
+            if not isinstance(adjustment, dict):
+                continue
+            suggestion = str(adjustment.get("suggestion") or "").strip()
+            if not suggestion:
+                continue
+            agent_name = str(adjustment.get("agent") or "unknown").strip() or "unknown"
+            instruction_adjustments.append(f"{agent_name}: {suggestion}")
+        if instruction_adjustments:
+            lines.append(f"  Instruction adjustments: {'; '.join(instruction_adjustments[:2])[:220]}")
         lines.append("")
     lines.append("[END KNOWLEDGE CONTEXT — address the patterns above in this run]")
     return "\n".join(lines)
@@ -5795,6 +6005,12 @@ def get_orchestration_run(run_id: str):
     try:
         data = safe_json_load(path, context=f"get_run:{run_id}")
         data["run_id"] = data.get("run_id") or run_id
+        run_dir_value = str(data.get("run_dir") or "").strip()
+        out_dir = pathlib.Path(run_dir_value) if run_dir_value else BRIDGE_RUN_DIR / run_id
+        if out_dir.exists():
+            data["agent_improvements"] = _load_agent_improvements(out_dir)
+            if "corrective_actions" not in data:
+                data["corrective_actions"] = _build_corrective_actions_from_manifest(data)
         log_path = BRIDGE_RUN_DIR / f"{run_id}.log"
         if log_path.exists():
             log_text = log_path.read_text(encoding="utf-8")
@@ -6875,6 +7091,161 @@ def _build_verification_commands(results: Optional[Dict[str, Any]], run_dir: pat
             )
 
     return commands
+
+
+def _summarize_app_production_gates(
+    results: Optional[Dict[str, Any]],
+    out_dir: pathlib.Path,
+    app_dir: pathlib.Path,
+) -> Dict[str, Any]:
+    mapping = {
+        "lint_result": "lint",
+        "build_result": "build",
+        "unit_test_result": "unit_tests",
+        "smoke_test_result": "smoke_tests",
+        "docker_compose_valid": "docker_compose",
+    }
+
+    checks: List[Dict[str, Any]] = []
+    passed_count = 0
+    failed_count = 0
+    skipped_count = 0
+
+    if not isinstance(results, dict):
+        return {
+            "status": "insufficient_evidence",
+            "delivery_readiness": "insufficient_evidence",
+            "app_dir": _to_relpath(app_dir, out_dir),
+            "checks": checks,
+            "passed_count": passed_count,
+            "failed_count": failed_count,
+            "skipped_count": skipped_count,
+        }
+
+    for key, name in mapping.items():
+        value = results.get(key)
+        check: Dict[str, Any] = {"name": name}
+
+        if value is None:
+            skipped_count += 1
+            check.update(
+                {
+                    "status": "skipped",
+                    "summary": "No applicable config or script was found for this check.",
+                }
+            )
+            checks.append(check)
+            continue
+
+        if isinstance(value, dict):
+            passed = bool(value.get("passed") if "passed" in value else value.get("success"))
+            status_value = "passed" if passed else "failed"
+            if passed:
+                passed_count += 1
+            else:
+                failed_count += 1
+
+            log_artifact = None
+            if value.get("log_path"):
+                log_artifact = _to_relpath(pathlib.Path(str(value["log_path"])), out_dir)
+
+            summary = str(value.get("output") or value.get("report") or value.get("error") or "").strip()
+            if len(summary) > 240:
+                summary = summary[:240].rstrip() + "..."
+
+            check.update(
+                {
+                    "status": status_value,
+                    "summary": summary or ("Check passed." if passed else "Check failed."),
+                    "command": value.get("command") or value.get("executed") or value.get("cmd"),
+                    "exit_code": value.get("exit_code"),
+                    "log_artifact": log_artifact,
+                }
+            )
+            checks.append(check)
+            continue
+
+        if isinstance(value, bool):
+            if value:
+                passed_count += 1
+            else:
+                failed_count += 1
+            check.update(
+                {
+                    "status": "passed" if value else "failed",
+                    "summary": "Boolean gate result returned." if value else "Boolean gate result failed.",
+                }
+            )
+            checks.append(check)
+            continue
+
+        skipped_count += 1
+        check.update({"status": "skipped", "summary": "Gate result was not in a recognized format."})
+        checks.append(check)
+
+    has_executable_proof = any(
+        check.get("name") in {"build", "unit_tests", "smoke_tests"} and check.get("status") == "passed"
+        for check in checks
+    )
+
+    if failed_count > 0:
+        status = "repair_needed"
+        delivery_readiness = "repair_needed"
+    elif has_executable_proof:
+        status = "verified"
+        delivery_readiness = "verified"
+    else:
+        status = "insufficient_evidence"
+        delivery_readiness = "insufficient_evidence"
+
+    return {
+        "status": status,
+        "delivery_readiness": delivery_readiness,
+        "app_dir": _to_relpath(app_dir, out_dir),
+        "checks": checks,
+        "passed_count": passed_count,
+        "failed_count": failed_count,
+        "skipped_count": skipped_count,
+    }
+
+
+def _write_app_production_artifacts(
+    out_dir: pathlib.Path,
+    app_production: Dict[str, Any],
+) -> Tuple[pathlib.Path, pathlib.Path]:
+    json_path = out_dir / "generated_app_verification.json"
+    md_path = out_dir / "generated_app_verification.md"
+    json_path.write_text(json.dumps(app_production, indent=2), encoding="utf-8")
+
+    lines = [
+        "# Generated App Verification",
+        "",
+        f"- Status: `{app_production.get('status')}`",
+        f"- Delivery readiness: `{app_production.get('delivery_readiness')}`",
+        f"- App dir: `{app_production.get('app_dir')}`",
+        f"- Passed: {app_production.get('passed_count', 0)}",
+        f"- Failed: {app_production.get('failed_count', 0)}",
+        f"- Skipped: {app_production.get('skipped_count', 0)}",
+        "",
+        "## Checks",
+    ]
+
+    for check in app_production.get("checks", []):
+        if not isinstance(check, dict):
+            continue
+        status = check.get("status") or "unknown"
+        summary = str(check.get("summary") or "").strip()
+        command = check.get("command")
+        lines.append(f"- **{check.get('name', 'check')}**: {status}")
+        if command:
+            lines.append(f"  - command: `{command}`")
+        if summary:
+            lines.append(f"  - summary: {summary}")
+        if check.get("log_artifact"):
+            lines.append(f"  - log: `{check['log_artifact']}`")
+
+    md_path.write_text("\n".join(lines), encoding="utf-8")
+    return json_path, md_path
 
 
 def _write_verification_artifacts(run_dir: pathlib.Path, commands: List[Dict[str, Any]]) -> Tuple[pathlib.Path, pathlib.Path]:

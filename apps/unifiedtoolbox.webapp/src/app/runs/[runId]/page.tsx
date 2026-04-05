@@ -686,6 +686,37 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
             : 'border-rose-700 bg-rose-900/30 text-rose-100'
     const failedGateCount = verificationFailures.length
     const requirementsRequest = orchRun.requirementsRequest ?? orchRun.sandboxReport?.requirementsRequest
+    const checkpointHistory = orchRun.checkpoints ?? []
+    const correctiveActions = (orchRun.correctiveActions?.length ? orchRun.correctiveActions : checkpointHistory
+      .filter((checkpoint) => Boolean(checkpoint.response) || (checkpoint.answers?.length ?? 0) > 0)
+      .map((checkpoint) => ({
+        type: 'requirements_checkpoint',
+        agent: checkpoint.agent,
+        status: checkpoint.status,
+        summary:
+          (checkpoint.answers?.length ?? 0) > 0
+            ? `${checkpoint.agent}: answered ${checkpoint.answers?.length ?? 0} blocker(s) to resume execution.`
+            : `${checkpoint.agent}: resolved checkpoint and resumed execution.`,
+        question: checkpoint.question,
+        response: checkpoint.response,
+        requestedAt: checkpoint.requestedAt,
+        respondedAt: checkpoint.respondedAt,
+        resolvedBy: checkpoint.resolvedBy,
+        answers: checkpoint.answers,
+      })))
+    const agentImprovements = orchRun.agentImprovements ?? []
+    const appProduction = orchRun.appProduction
+    const appProductionBasePath = orchRun.runDir
+      ? orchRun.runDir.replace(/[\\\/]+$/, '')
+      : null
+    const appProductionReportPath =
+      appProductionBasePath && appProduction?.reportArtifact
+        ? `${appProductionBasePath}${orchRun.runDir?.includes('\\') ? '\\' : '/'}${appProduction.reportArtifact.replace(/^[/\\]+/, '')}`
+        : null
+    const appProductionSummaryPath =
+      appProductionBasePath && appProduction?.summaryArtifact
+        ? `${appProductionBasePath}${orchRun.runDir?.includes('\\') ? '\\' : '/'}${appProduction.summaryArtifact.replace(/^[/\\]+/, '')}`
+        : null
 
     const synthesisHtmlPath = orchRun.runDir
       ? `${orchRun.runDir.replace(/[\\\/]+$/, '')}${orchRun.runDir.includes('\\') ? '\\' : '/'}Final_Synthesis.html`
@@ -938,6 +969,86 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
             </div>
           </div>
         )}
+        {(checkpointHistory.length > 0 || agentImprovements.length > 0) && (
+          <div className="grid gap-4 lg:grid-cols-2">
+            {checkpointHistory.length > 0 && (
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">Corrective Actions</div>
+                    <div className="mt-1 text-sm text-slate-200">Checkpoint and requirements history for this run</div>
+                  </div>
+                  <div className="text-[11px] text-slate-500">
+                    {correctiveActions.length} resolved
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  {checkpointHistory.map((checkpoint) => (
+                    <div key={checkpoint.id} className="rounded-xl border border-slate-800 bg-slate-950/40 p-3 text-xs text-slate-300 space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-semibold text-slate-100">{checkpoint.agent}</span>
+                        <span className="rounded border border-slate-700 bg-slate-900/70 px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-300">
+                          {checkpoint.status ?? (checkpoint.response ? 'answered' : 'pending')}
+                        </span>
+                        {checkpoint.respondedAt && (
+                          <span className="text-[11px] text-slate-500">
+                            {new Date(checkpoint.respondedAt).toLocaleString()}
+                          </span>
+                        )}
+                      </div>
+                      <div><span className="font-semibold text-slate-200">Question:</span> {checkpoint.question}</div>
+                      {Array.isArray(checkpoint.answers) && checkpoint.answers.length > 0 && (
+                        <div className="space-y-1">
+                          <div className="font-semibold text-slate-200">Answered blockers</div>
+                          <div className="space-y-1">
+                            {checkpoint.answers.map((answer, idx) => (
+                              <div key={`${checkpoint.id}-answer-${idx}`} className="rounded-lg border border-slate-800 bg-slate-900/50 px-2 py-1.5">
+                                <div className="text-slate-400">{answer.question ?? answer.blockerId ?? `Answer ${idx + 1}`}</div>
+                                <div className="mt-1 text-slate-200">{answer.answer}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {checkpoint.response && (
+                        <div><span className="font-semibold text-slate-200">Resume note:</span> {checkpoint.response}</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {agentImprovements.length > 0 && (
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4 space-y-3">
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">Learning Agent Adjustments</div>
+                  <div className="mt-1 text-sm text-slate-200">Minor instruction changes captured for the next similar run</div>
+                </div>
+                <div className="space-y-3">
+                  {agentImprovements.map((improvement, idx) => (
+                    <div key={`${improvement.agent}-${idx}`} className="rounded-xl border border-blue-900/40 bg-blue-950/20 p-3 text-xs text-slate-300 space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-semibold text-blue-200">{improvement.agent}</span>
+                        {improvement.source && (
+                          <span className="rounded border border-blue-900/50 bg-blue-950/40 px-2 py-0.5 text-[10px] uppercase tracking-wide text-blue-300">
+                            {improvement.source}
+                          </span>
+                        )}
+                        {improvement.timestamp && (
+                          <span className="text-[11px] text-slate-500">{new Date(improvement.timestamp).toLocaleString()}</span>
+                        )}
+                      </div>
+                      <div>{improvement.suggestion}</div>
+                    </div>
+                  ))}
+                </div>
+                <div className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2 text-[11px] text-slate-400">
+                  These adjustments are also ingested into Knowledge so similar future runs inherit the repair instead of relearning it.
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {isError && (
           <div className="rounded-2xl border border-rose-800 bg-rose-950/30 p-4 text-xs text-rose-200 space-y-3">
@@ -1009,6 +1120,99 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
                 </ul>
               </details>
             )}
+          </div>
+        )}
+
+        {appProduction && (
+          <div className="rounded-2xl border border-cyan-700/50 bg-cyan-950/20 p-4 space-y-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-cyan-300">App Production</div>
+                <div className="mt-1 text-sm text-cyan-100">
+                  Generated app verification for the materialized `generated_app/` output.
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2 text-[11px]">
+                <span className="rounded border border-cyan-700/60 bg-cyan-900/30 px-2 py-1 text-cyan-100">
+                  Status: {appProduction.status}
+                </span>
+                <span className="rounded border border-slate-700 bg-slate-900/50 px-2 py-1 text-slate-200">
+                  Delivery readiness: {appProduction.deliveryReadiness}
+                </span>
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-4 text-xs">
+              <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-3 text-slate-200">
+                <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Passed</div>
+                {appProduction.passedCount}
+              </div>
+              <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-3 text-slate-200">
+                <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Failed</div>
+                {appProduction.failedCount}
+              </div>
+              <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-3 text-slate-200">
+                <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Skipped</div>
+                {appProduction.skippedCount}
+              </div>
+              <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-3 text-slate-200">
+                <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">App dir</div>
+                <code>{appProduction.appDir ?? 'generated_app'}</code>
+              </div>
+            </div>
+            <div className="space-y-2">
+              {appProduction.checks.map((check) => (
+                <div key={check.name} className="rounded-xl border border-slate-800 bg-slate-900/50 p-3 text-xs text-slate-300 space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold text-slate-100">{check.name}</span>
+                    <span className={`rounded border px-2 py-0.5 text-[10px] uppercase tracking-wide ${
+                      check.status === 'passed'
+                        ? 'border-emerald-700 bg-emerald-900/30 text-emerald-100'
+                        : check.status === 'failed'
+                          ? 'border-rose-700 bg-rose-900/30 text-rose-100'
+                          : 'border-slate-700 bg-slate-900/70 text-slate-300'
+                    }`}>
+                      {check.status}
+                    </span>
+                    {check.exitCode != null && (
+                      <span className="text-[11px] text-slate-500">exit {check.exitCode}</span>
+                    )}
+                  </div>
+                  {check.command && <div><span className="font-semibold text-slate-200">Command:</span> <code>{check.command}</code></div>}
+                  {check.summary && <div><span className="font-semibold text-slate-200">Summary:</span> {check.summary}</div>}
+                  {check.logArtifact && <div><span className="font-semibold text-slate-200">Log:</span> <code>{check.logArtifact}</code></div>}
+                </div>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-2 text-[11px]">
+              {appProductionReportPath && (
+                <a
+                  className="rounded border border-cyan-700/60 bg-cyan-900/30 px-2 py-1 text-cyan-100 hover:bg-cyan-900/50"
+                  href={toFileUrl(appProductionReportPath)}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(event) => {
+                    event.preventDefault()
+                    void openPath(appProductionReportPath)
+                  }}
+                >
+                  Open JSON report
+                </a>
+              )}
+              {appProductionSummaryPath && (
+                <a
+                  className="rounded border border-slate-700 bg-slate-900/40 px-2 py-1 text-slate-200 hover:bg-slate-800/60"
+                  href={toFileUrl(appProductionSummaryPath)}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(event) => {
+                    event.preventDefault()
+                    void openPath(appProductionSummaryPath)
+                  }}
+                >
+                  Open summary
+                </a>
+              )}
+            </div>
           </div>
         )}
 

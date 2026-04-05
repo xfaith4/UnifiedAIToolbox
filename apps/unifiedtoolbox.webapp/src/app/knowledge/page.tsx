@@ -62,6 +62,10 @@ function EntryCard({ entry, similarity }: { entry: KnowledgeEntry; similarity?: 
   const hasBlockers = (entry.critic_blockers?.length ?? 0) > 0
   const hasWarnings = (entry.overseer_warnings?.length ?? 0) > 0
   const hasImprovements = (entry.commissioner_improvements?.length ?? 0) > 0
+  const correctiveActions = (entry.corrective_actions?.length ? entry.corrective_actions : entry.learning?.corrective_actions) ?? []
+  const instructionAdjustments = (entry.instruction_adjustments?.length ? entry.instruction_adjustments : entry.learning?.instruction_adjustments) ?? []
+  const hasCorrectiveActions = correctiveActions.length > 0
+  const hasInstructionAdjustments = instructionAdjustments.length > 0
   const preventionPatches = entry.learning?.prevention_patches ?? []
   const regressionChecks = entry.learning?.regression_checks ?? []
   const topPatchSummaries = preventionPatches.slice(0, 2).map((p) => p.change)
@@ -109,7 +113,7 @@ function EntryCard({ entry, similarity }: { entry: KnowledgeEntry; similarity?: 
         <div className="mt-1.5 space-y-1">
           <p className="text-xs text-gray-400 italic">{entry.commissioner_recommendation}</p>
           <p className="text-[11px] text-gray-500">
-            What changed: {preventionPatches.length} prevention patch{preventionPatches.length === 1 ? '' : 'es'} · {regressionChecks.length} regression check{regressionChecks.length === 1 ? '' : 's'}
+            What changed: {preventionPatches.length} prevention patch{preventionPatches.length === 1 ? '' : 'es'} · {regressionChecks.length} regression check{regressionChecks.length === 1 ? '' : 's'} · {correctiveActions.length} corrective action{correctiveActions.length === 1 ? '' : 's'} · {instructionAdjustments.length} instruction adjustment{instructionAdjustments.length === 1 ? '' : 's'}
           </p>
         </div>
       )}
@@ -154,6 +158,41 @@ function EntryCard({ entry, similarity }: { entry: KnowledgeEntry; similarity?: 
                   <li key={i} className="text-yellow-300">{imp}</li>
                 ))}
               </ul>
+            </div>
+          )}
+          {hasCorrectiveActions && (
+            <div>
+              <p className="font-semibold text-gray-400 mb-1">Corrective actions</p>
+              <div className="space-y-2">
+                {correctiveActions.map((action, i) => (
+                  <div key={i} className="rounded-lg border border-amber-900/40 bg-amber-950/20 p-2 space-y-1">
+                    <div className="text-amber-200">{action.summary ?? 'Resolved checkpoint action'}</div>
+                    {action.question && <div className="text-gray-400">Prompted by: {action.question}</div>}
+                    {Array.isArray(action.answers) && action.answers.length > 0 && (
+                      <ul className="list-disc list-inside space-y-0.5 text-gray-300">
+                        {action.answers.slice(0, 3).map((answer, answerIndex) => (
+                          <li key={answerIndex}>
+                            {(answer.question ?? answer.blocker_id ?? 'Answer').toString()}: {answer.answer}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {hasInstructionAdjustments && (
+            <div>
+              <p className="font-semibold text-gray-400 mb-1">Instruction adjustments for next runs</p>
+              <div className="space-y-2">
+                {instructionAdjustments.map((adjustment, i) => (
+                  <div key={i} className="rounded-lg border border-blue-900/40 bg-blue-950/20 p-2 space-y-1">
+                    <div className="text-blue-200">{adjustment.agent ?? 'Unknown agent'}</div>
+                    <div className="text-gray-300">{adjustment.suggestion}</div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
           {hasBlockers && (

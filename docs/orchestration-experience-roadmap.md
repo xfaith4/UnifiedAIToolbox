@@ -302,6 +302,43 @@ Success measures:
 - reduced effort to resume dormant work
 - stronger continuity across related build efforts
 
+### Phase 6: Application production loop
+
+Outcome:
+The system moves from orchestrated planning to verifiably functioning application output.
+
+Deliverables:
+
+- add generated-app production gates as a first-class run concept
+- verify install/build/test/smoke steps against the materialized app, not just the orchestration wrapper
+- route failing evidence into targeted repair loops
+- define delivery readiness states for `build_new_app` runs
+- expose gate evidence clearly to both operators and learning systems
+
+Success measures:
+
+- higher percentage of `build_new_app` runs that end with runnable apps
+- lower rate of “files generated, app not actually working”
+- improved operator confidence in completion claims
+
+### Phase 7: Delivery and deployment readiness
+
+Outcome:
+Runs end with outputs that are handoff-ready, not merely internally coherent.
+
+Deliverables:
+
+- package source, evidence, and readiness summary together
+- add preview/screenshot or demo proof where relevant
+- document deployment assumptions and runtime requirements
+- make the final synthesis cite concrete gate evidence, not just agent narrative
+
+Success measures:
+
+- fewer manual steps after orchestration before review or handoff
+- stronger trust in exported deliverables
+- faster path from run completion to human acceptance
+
 ## UX backlog themes
 
 ### High-priority cleanup
@@ -348,6 +385,12 @@ Success measures:
 - redesign runs around chapter-based storytelling
 - connect knowledge back into proposal and recipe generation
 - add story threads spanning proposals, runs, and lessons
+
+### Next 120 days
+
+- add generated-app production gates and readiness states
+- prove install/build/smoke for common web app stacks
+- route failing app-production gates into targeted repair loops
 
 ## Success metrics
 

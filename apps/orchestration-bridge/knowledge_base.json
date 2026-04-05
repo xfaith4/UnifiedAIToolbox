@@ -54,7 +54,9 @@
       ],
       "critic_blockers": [
         "Missing detailed specifications for comparison criteria."
-      ]
+      ],
+      "corrective_actions": [],
+      "instruction_adjustments": []
     },
     "agents": [
       "Supervisor",
@@ -138,7 +140,9 @@
       ],
       "critic_blockers": [
         "No maintenance contract context provided for ongoing support and updates."
-      ]
+      ],
+      "corrective_actions": [],
+      "instruction_adjustments": []
     },
     "agents": [
       "Supervisor",
@@ -232,7 +236,9 @@
     "learning": {
       "evidence": [],
       "prevention_patches": [],
-      "regression_checks": []
+      "regression_checks": [],
+      "corrective_actions": [],
+      "instruction_adjustments": []
     },
     "knowledge_status": "needs_info",
     "knowledge_score": 3.0
@@ -294,7 +300,9 @@
     "learning": {
       "evidence": [],
       "prevention_patches": [],
-      "regression_checks": []
+      "regression_checks": [],
+      "corrective_actions": [],
+      "instruction_adjustments": []
     },
     "knowledge_status": "needs_info",
     "knowledge_score": 3.0
@@ -352,7 +360,9 @@
     "learning": {
       "evidence": [],
       "prevention_patches": [],
-      "regression_checks": []
+      "regression_checks": [],
+      "corrective_actions": [],
+      "instruction_adjustments": []
     },
     "knowledge_status": "needs_info",
     "knowledge_score": 3.0
@@ -416,7 +426,9 @@
     "learning": {
       "evidence": [],
       "prevention_patches": [],
-      "regression_checks": []
+      "regression_checks": [],
+      "corrective_actions": [],
+      "instruction_adjustments": []
     },
     "knowledge_status": "needs_info",
     "knowledge_score": 3.0
@@ -479,7 +491,9 @@
     "learning": {
       "evidence": [],
       "prevention_patches": [],
-      "regression_checks": []
+      "regression_checks": [],
+      "corrective_actions": [],
+      "instruction_adjustments": []
     },
     "knowledge_status": "needs_info",
     "knowledge_score": 3.0
@@ -535,7 +549,9 @@
     "learning": {
       "evidence": [],
       "prevention_patches": [],
-      "regression_checks": []
+      "regression_checks": [],
+      "corrective_actions": [],
+      "instruction_adjustments": []
     },
     "knowledge_status": "needs_info",
     "knowledge_score": 3.0

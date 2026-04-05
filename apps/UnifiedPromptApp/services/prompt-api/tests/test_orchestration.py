@@ -448,3 +448,108 @@ class TestOrchestrateRun:
 
         assert (out_dir / "requirements_answers.json").exists()
         assert not (out_dir / "checkpoint_pending.json").exists()
+
+    def test_get_run_exposes_corrective_actions_and_agent_improvements(self, cleanup_test_runs):
+        run_id = f"test_run_history_{app.now_iso().replace(':', '-')}"
+        manifest_path = app.BRIDGE_RUN_DIR / f"{run_id}.json"
+        out_dir = app.BRIDGE_RUN_DIR / run_id
+        out_dir.mkdir(parents=True, exist_ok=True)
+        now = app.now_iso()
+
+        manifest = {
+            "run_id": run_id,
+            "status": "completed",
+            "requested_at": now,
+            "run_dir": str(out_dir),
+            "events": [],
+            "verification_status": "passed",
+            "checkpoints": [
+                {
+                    "id": "requirements-test-2",
+                    "agent": "ConceptualModelContract",
+                    "question": "Which metrics should the comparison emphasize?",
+                    "requested_at": now,
+                    "response": "Requirements answers: Focus on workflow depth, reuse, and validation rigor.",
+                    "responded_at": now,
+                    "resolved_by": "human",
+                    "status": "answered",
+                    "answers": [
+                        {
+                            "blocker_id": "req_metrics",
+                            "question": "Which metrics should the comparison emphasize?",
+                            "answer": "Focus on workflow depth, reuse, and validation rigor.",
+                        }
+                    ],
+                }
+            ],
+            "lease": None,
+        }
+        manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        (out_dir / "agent_improvements.json").write_text(
+            json.dumps(
+                [
+                    {
+                        "agent": "ConceptualModelContract",
+                        "suggestion": "Ask for comparison metrics and target interactions before drafting the contract.",
+                        "timestamp": now,
+                    }
+                ],
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+
+        res = client.get(f"/orchestrate/run/{run_id}")
+        assert res.status_code == 200
+        body = res.json()
+        assert len(body.get("corrective_actions") or []) == 1
+        assert (body.get("corrective_actions") or [])[0]["agent"] == "ConceptualModelContract"
+        assert len(body.get("agent_improvements") or []) == 1
+        assert (body.get("agent_improvements") or [])[0]["suggestion"].startswith("Ask for comparison metrics")
+
+    def test_get_run_exposes_app_production_summary(self, cleanup_test_runs):
+        run_id = f"test_app_production_{app.now_iso().replace(':', '-')}"
+        manifest_path = app.BRIDGE_RUN_DIR / f"{run_id}.json"
+        out_dir = app.BRIDGE_RUN_DIR / run_id
+        out_dir.mkdir(parents=True, exist_ok=True)
+        now = app.now_iso()
+
+        manifest = {
+            "run_id": run_id,
+            "status": "completed",
+            "requested_at": now,
+            "run_dir": str(out_dir),
+            "events": [],
+            "verification_status": "passed",
+            "generated_app_files": ["generated_app/package.json", "generated_app/src/main.jsx"],
+            "app_production": {
+                "status": "repair_needed",
+                "delivery_readiness": "repair_needed",
+                "app_dir": "generated_app",
+                "report_artifact": "generated_app_verification.json",
+                "summary_artifact": "generated_app_verification.md",
+                "passed_count": 1,
+                "failed_count": 1,
+                "skipped_count": 3,
+                "checks": [
+                    {
+                        "name": "build",
+                        "status": "failed",
+                        "summary": "Build failed because dependencies were not installed.",
+                        "command": "npm run build",
+                        "exit_code": 1,
+                        "log_artifact": "logs/generated_app/build.log",
+                    }
+                ],
+            },
+            "lease": None,
+        }
+        manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+        res = client.get(f"/orchestrate/run/{run_id}")
+        assert res.status_code == 200
+        body = res.json()
+        assert (body.get("app_production") or {}).get("status") == "repair_needed"
+        checks = (body.get("app_production") or {}).get("checks") or []
+        assert len(checks) == 1
+        assert checks[0]["name"] == "build"

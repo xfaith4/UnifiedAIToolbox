@@ -1,6 +1,6 @@
 # Unified AI Toolbox Roadmap
 
-Last updated: 2026-03-29
+Last updated: 2026-04-05
 
 ## Purpose
 
@@ -26,7 +26,8 @@ This file is the single roadmap source for active feature delivery.
 | RM-007 | Web deployment strategy for dynamic Next.js app | done | next | Target hosting chosen and deployment workflow aligned with API route requirements |
 | RM-008 | Run lifecycle control + lease/heartbeat safety | done | now/next | Canonical run state/lease model with cancel/force-cancel/requeue/stale-lease recovery and STUCK visibility |
 | RM-009 | App Factory Phase 1 — Closed Feedback Loop | done | next | Sandbox engine, acceptance-check evaluator, refinement loop controller, verify/refine API endpoints, and Run Detail Verification tab all delivered |
-| RM-010 | Orchestration experience unification (story-led UX, recipe reuse, cast assembly) | planned | next | Product narrative unified from intake through run review; prompts/agents/tools reusable in-context; run experience organized around story, chapters, and lessons |
+| RM-010 | Orchestration experience unification (story-led UX, recipe reuse, cast assembly) | in_progress | next | Product narrative unified from intake through run review; prompts/agents/tools reusable in-context; run experience organized around story, chapters, and lessons |
+| RM-011 | App production loop (generated app verification, repair routing, functioning-app completion) | in_progress | next | `build_new_app` runs produce a materialized app with executable gate evidence, targeted repair routing, and a deliverable that is verifiably runnable |
 
 ## Side-track policy
 
@@ -298,6 +299,43 @@ Every roadmap-impacting tradeoff gets a `DEC-###` record in `IMPLEMENTATION_SUMM
   Date: 2026-04-05  
   Ref: `apps/unifiedtoolbox.webapp/src/app/orchestrator/page.tsx`, `apps/unifiedtoolbox.webapp/src/app/engine/_source/App.tsx`  
   Notes: Build surfaces now accept `?recipe=` handoff and use recipe defaults to prefill goal, prompt, cast, and job-type hints while keeping final launch control with the user.
+
+- [x] Surface corrective actions and learning-agent instruction adjustments to both operators and future similar runs.  
+  Date: 2026-04-05  
+  Ref: `apps/UnifiedPromptApp/services/prompt-api/app.py`, `apps/unifiedtoolbox.webapp/src/app/runs/[runId]/page.tsx`, `apps/unifiedtoolbox.webapp/src/app/knowledge/page.tsx`  
+  Notes: Run detail and Knowledge now expose checkpoint history, answered blocker details, and bounded instruction-adjustment suggestions; similar-run knowledge context carries those adjustments forward.
+
+## RM-011 Worklist (App production loop)
+
+- [x] Document the optimal application-production path and future-agent continuation plan.  
+  Date: 2026-04-05  
+  Ref: `docs/application-production-path.md`, `docs/future-agent-handoff-app-production.md`  
+  Notes: Added a canonical path from intent to functioning app and a detailed, repo-grounded continuation plan for future coding agents.
+
+- [x] Persist generated-app production gate summaries for `build_new_app` runs and surface them in Run Detail.  
+  Date: 2026-04-05  
+  Ref: `apps/UnifiedPromptApp/services/prompt-api/app.py`, `apps/unifiedtoolbox.webapp/src/app/runs/[runId]/page.tsx`  
+  Notes: `generated_app/` now receives an explicit production-gate summary (lint/build/tests/smoke/compose), stored in the run manifest and shown to operators as the first step toward functioning-app verification.
+
+- [ ] Add deterministic install/build/dev-start gate execution for generated web apps.  
+  Date opened: 2026-04-05  
+  Ref: `docs/future-agent-handoff-app-production.md`  
+  Notes: Current slice executes verifier checks only when the required project scripts/configs exist. The next step is a deliberate dependency install and dev-start proof for generated apps, with evidence artifacts and timeouts.
+
+- [ ] Route failing generated-app gates into targeted repair loops instead of leaving them as informational summaries.  
+  Date opened: 2026-04-05  
+  Ref: `docs/future-agent-handoff-app-production.md`  
+  Notes: Failed build/test/smoke checks should produce agent-specific repair tasks with evidence attached, not just operator-visible warnings.
+
+- [ ] Add demo-mode / UX smoke verification for frontend app briefs.  
+  Date opened: 2026-04-05  
+  Ref: `docs/application-production-path.md`  
+  Notes: Frontend runs need section-presence, interaction, and responsive-UX proof beyond package/build success.
+
+- [ ] Package delivery readiness as a first-class run outcome.  
+  Date opened: 2026-04-05  
+  Ref: `docs/application-production-path.md`  
+  Notes: A run should end with a clear readiness state such as `repair_needed`, `verified`, or `ready_for_delivery`, backed by build/smoke evidence and artifact completeness.
 
 ## RM-004 Worklist (MCP governance end-to-end)
 
