@@ -62,10 +62,12 @@ Relevant file:
 
 The repo already has a verifier that can run:
 
+- dependency install
 - lint
 - build
 - unit tests
 - smoke tests
+- bounded dev-server proof
 - docker compose validation
 
 Relevant file:
@@ -119,11 +121,21 @@ If you are continuing from this document, do the work in this order:
 
 1. Persist an explicit production-gate summary for `generated_app/`.
 2. Surface that summary in Run Detail.
-3. Add deterministic install/build proof for generated web apps.
+3. Add deterministic install/build/dev-start proof for generated web apps.
 4. Route failed gates into targeted repair tasks.
 5. Add runtime and UX smoke evidence.
 
 Do not jump straight to automatic repair loops without first making gate evidence explicit and operator-visible.
+
+## Completed slices from the current session
+
+These items are already done:
+
+- `generated_app/` now receives a summarized production-gate report in the run manifest
+- Run Detail surfaces `app_production` evidence to operators
+- Node project verification now detects package manager, runs install deterministically, and attempts bounded dev-server proof
+- generated-app summaries mark downstream executable checks as skipped when install fails, preserving clearer causal evidence
+- failed generated-app gates now emit structured repair targets with owner, priority, evidence, and blocked-check lineage
 
 ## The first slice should stay small
 
@@ -203,6 +215,31 @@ Suggested semantics:
 - Prefer adding new manifest fields and report artifacts over changing legacy fields in-place.
 - Keep implementation slices disciplined. The repo is large and already has drift.
 
+## Review-driven findings you should not rediscover
+
+The deterministic gate hardening established these repo-grounded truths:
+
+- `install` is a prerequisite gate for most generated web app checks
+- skipped downstream checks are valid evidence and should remain explicit
+- dev-server proof needs framework-aware launch behavior plus environment fallback
+- package-manager detection belongs in the shared verifier so every consumer sees the same command strategy
+
+If you find yourself re-adding generic build/test/dev failures after an install failure, you are regressing the current design.
+
+## Design implications for the next slice
+
+The next repair-routing phase should use the hardened gate model as input:
+
+- route `install` failures as root-cause repair tasks
+- do not independently route gates that were only skipped because prerequisites failed
+- preserve `failed` vs `skipped` semantics in any repair summary, learning artifact, or operator UI
+- assume the app-production verifier is now the canonical place for package-manager-aware command selection
+
+The remaining gap is execution:
+
+- the repo can now derive and display repair targets
+- it does not yet automatically execute those repairs and re-run only the affected gates
+
 ## Known environment limitations from the current session
 
 - `npm run typecheck` for the web app is usable.
@@ -227,6 +264,8 @@ You are closer to done when:
 - Run Detail can tell an operator whether the generated app passed any meaningful checks
 - the run manifest contains structured app-production evidence
 - future repair logic has concrete gate failures to consume
+
+The next agent should treat the above three bullets as already satisfied at the informational level. The remaining work is to convert failed app-production evidence into repair routing and re-verification, not to re-implement summary visibility.
 
 ## Canonical docs to keep updated
 

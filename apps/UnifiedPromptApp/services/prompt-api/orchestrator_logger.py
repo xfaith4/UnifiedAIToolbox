@@ -411,10 +411,13 @@ class OrchestratorLogger:
     
     def log_verification(
         self,
+        normalization_result: Optional[Dict[str, Any]] = None,
+        install_result: Optional[Dict[str, Any]] = None,
         lint_result: Optional[Dict[str, Any]] = None,
         build_result: Optional[Dict[str, Any]] = None,
         unit_test_result: Optional[Dict[str, Any]] = None,
         smoke_test_result: Optional[Dict[str, Any]] = None,
+        dev_server_result: Optional[Dict[str, Any]] = None,
         docker_compose_valid: Optional[bool] = None,
         paths_to_full_logs: Optional[List[str]] = None,
     ) -> bool:
@@ -422,10 +425,13 @@ class OrchestratorLogger:
         Log verification results.
         
         Args:
+            normalization_result: Artifact normalization result dict
+            install_result: Dependency installation result dict
             lint_result: Linting result dict with passed, output, log_path
             build_result: Build result dict
             unit_test_result: Unit test result dict
             smoke_test_result: Smoke test result dict
+            dev_server_result: Dev server startup result dict
             docker_compose_valid: Docker Compose validation result
             paths_to_full_logs: Paths to detailed log files
             
@@ -436,10 +442,13 @@ class OrchestratorLogger:
             verification = Verification(
                 run_id=self.run_id,
                 timestamp=datetime.now(timezone.utc).isoformat(),
+                normalization_result=normalization_result,
+                install_result=VerificationResult(**install_result) if install_result else None,
                 lint_result=VerificationResult(**lint_result) if lint_result else None,
                 build_result=VerificationResult(**build_result) if build_result else None,
                 unit_test_result=VerificationResult(**unit_test_result) if unit_test_result else None,
                 smoke_test_result=VerificationResult(**smoke_test_result) if smoke_test_result else None,
+                dev_server_result=VerificationResult(**dev_server_result) if dev_server_result else None,
                 docker_compose_valid=docker_compose_valid,
                 paths_to_full_logs=paths_to_full_logs or [],
             )

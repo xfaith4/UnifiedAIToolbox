@@ -88,6 +88,37 @@ Examples:
 - `npm run dev` with bounded timeout and health probe
 - framework-specific start script
 
+## Hardening findings from deterministic gates
+
+The first deterministic gate pass produced a few architectural lessons that should now be treated as settled design constraints:
+
+- dependency installation is a prerequisite gate, not just another check
+- downstream checks must be able to report `skipped` when a prerequisite gate fails
+- dev-server proof cannot assume one universal CLI shape across frontend stacks
+- Node verification must be package-manager-aware instead of assuming `npm`
+
+These findings came directly from hardening the shared verifier for real generated-app evaluation.
+
+## Dependencies for reliable app-production proof
+
+The current app-production path depends on:
+
+- the relevant package manager binary being available on the worker (`npm`, `pnpm`, `yarn`, or `bun`)
+- local loopback networking so bounded health probes can reach a started dev server
+- bounded execution windows and log capture for every gate
+- stable prerequisite semantics so repair routing can distinguish root-cause failures from skipped downstream work
+
+If these dependencies are not present, the operator should see that absence as evidence quality loss, not as a misleading app failure.
+
+## Design implications
+
+The next phases should build on these constraints:
+
+- repair routing should treat `install` as an upstream dependency for `lint`, `build`, `unit_tests`, `smoke_tests`, and `dev_server`
+- repair prompts should prefer root-cause evidence and avoid assigning skipped gates as independent failures
+- runtime proof should use framework-aware launch strategies with environment fallback instead of hardcoding one command pattern
+- operator UI should preserve the distinction between `failed` and `skipped`, because that distinction is now meaningful orchestration state rather than presentation detail
+
 ### Layer 4: Behavior proof
 
 Verify the app does the brief’s core job.
@@ -159,6 +190,12 @@ Deliverables:
 - attach build/test logs to repair prompts
 - re-run only the needed repair stage where possible
 
+Current implementation status:
+
+- structured repair targets are now derived from failed generated-app gates
+- repair routing is surfaced to operators and preserved for learning context
+- automatic repair execution and scoped re-verification are still pending
+
 ### Phase D: Runtime + UX smoke
 
 Goal:
@@ -197,4 +234,7 @@ As of 2026-04-05:
 - requirements checkpoints and learning loops are in place
 - corrective actions and instruction adjustments are surfaced
 - the next active track is the app-production loop
-- the first implementation slice is to verify `generated_app/` explicitly and surface the result in Run Detail
+- `build_new_app` runs now verify `generated_app/` explicitly and surface the result in Run Detail
+- generated web apps now receive deterministic install and dev-start proof when Node project metadata is present
+- failed generated-app gates now emit structured repair routing for operators and learning
+- the next implementation slice is automatic repair execution and re-verification from those routed targets

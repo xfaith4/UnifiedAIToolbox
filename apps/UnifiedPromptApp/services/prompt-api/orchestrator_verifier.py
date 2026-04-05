@@ -13,6 +13,10 @@ import logging
 import subprocess
 import json
 import os
+import socket
+import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple
 
@@ -45,6 +49,7 @@ class OrchestratorVerifier:
         cwd: Optional[Path] = None,
         timeout: int = 300,
         log_name: Optional[str] = None,
+        env: Optional[Dict[str, str]] = None,
     ) -> Tuple[bool, str, Optional[str], int]:
         """
         Run a shell command and capture output.
@@ -68,6 +73,7 @@ class OrchestratorVerifier:
                 capture_output=True,
                 text=True,
                 timeout=timeout,
+                env={**os.environ, **(env or {})},
             )
             
             success = result.returncode == 0
@@ -91,13 +97,251 @@ class OrchestratorVerifier:
                 log_path = str(self.log_dir / f"{log_name}.log")
                 Path(log_path).write_text(error_msg, encoding='utf-8')
             return False, error_msg, log_path, -1
-            
         except Exception as e:
             error_msg = f"Command failed: {e}"
             if log_name:
                 log_path = str(self.log_dir / f"{log_name}.log")
                 Path(log_path).write_text(error_msg, encoding='utf-8')
             return False, error_msg, log_path, -1
+
+    def _load_package_json(self) -> Optional[Dict[str, Any]]:
+        package_json = self.run_dir / "package.json"
+        if not package_json.exists():
+            return None
+        try:
+            return json.loads(package_json.read_text(encoding="utf-8"))
+        except Exception:
+            return None
+
+    def _get_package_scripts(self, pkg: Optional[Dict[str, Any]] = None) -> Dict[str, str]:
+        pkg = pkg or self._load_package_json() or {}
+        scripts = pkg.get("scripts") or {}
+        if not isinstance(scripts, dict):
+            return {}
+        return {str(key): str(value) for key, value in scripts.items()}
+
+    def _detect_node_package_manager(self, pkg: Optional[Dict[str, Any]] = None) -> str:
+        pkg = pkg or self._load_package_json() or {}
+        package_manager = str(pkg.get("packageManager") or "").strip().lower()
+        for candidate in ("pnpm", "yarn", "bun", "npm"):
+            if package_manager == candidate or package_manager.startswith(f"{candidate}@"):
+                return candidate
+
+        if (self.run_dir / "pnpm-lock.yaml").exists():
+            return "pnpm"
+        if (self.run_dir / "yarn.lock").exists():
+            return "yarn"
+        if (self.run_dir / "bun.lockb").exists() or (self.run_dir / "bun.lock").exists():
+            return "bun"
+        return "npm"
+
+    def _get_package_script_command(
+        self,
+        script_name: str,
+        extra_args: Optional[List[str]] = None,
+    ) -> Optional[List[str]]:
+        pkg = self._load_package_json()
+        if not pkg:
+            return None
+        if script_name not in self._get_package_scripts(pkg):
+            return None
+
+        package_manager = self._detect_node_package_manager(pkg)
+        extra_args = extra_args or []
+        if package_manager == "yarn":
+            return ["yarn", "run", script_name, *extra_args]
+        if package_manager == "pnpm":
+            return ["pnpm", "run", script_name, *(["--"] + extra_args if extra_args else [])]
+        if package_manager == "bun":
+            return ["bun", "run", script_name, *(["--"] + extra_args if extra_args else [])]
+        return ["npm", "run", script_name, *(["--"] + extra_args if extra_args else [])]
+
+    def _get_install_command(self, pkg: Optional[Dict[str, Any]] = None) -> Optional[List[str]]:
+        pkg = pkg or self._load_package_json()
+        if not pkg:
+            return None
+
+        package_manager = self._detect_node_package_manager(pkg)
+        has_lock = any(
+            (self.run_dir / lockfile).exists()
+            for lockfile in ("package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lockb", "bun.lock")
+        )
+
+        if package_manager == "pnpm":
+            return ["pnpm", "install", "--frozen-lockfile"] if has_lock else ["pnpm", "install"]
+        if package_manager == "yarn":
+            return ["yarn", "install", "--frozen-lockfile"] if has_lock else ["yarn", "install"]
+        if package_manager == "bun":
+            return ["bun", "install", "--frozen-lockfile"] if has_lock else ["bun", "install"]
+        command = ["npm", "install", "--no-audit", "--no-fund"]
+        if has_lock:
+            command = ["npm", "ci", "--no-audit", "--no-fund"]
+        return command
+
+    def _find_available_port(self, host: str = "127.0.0.1") -> int:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            probe.bind((host, 0))
+            return int(probe.getsockname()[1])
+
+    def _is_port_available(self, port: int, host: str = "127.0.0.1") -> bool:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            try:
+                probe.bind((host, port))
+                return True
+            except OSError:
+                return False
+
+    def _read_short_log_output(self, log_path: Path) -> str:
+        try:
+            output = log_path.read_text(encoding="utf-8")
+        except Exception as exc:
+            return f"Unable to read log output: {exc}"
+        short_output = output[:500]
+        if len(output) > 500:
+            short_output += "\n... (truncated)"
+        return short_output
+
+    def _wait_for_http_server(self, url: str, process: subprocess.Popen, timeout: int = 45) -> bool:
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if process.poll() is not None:
+                return False
+            try:
+                with urllib.request.urlopen(url, timeout=2):
+                    return True
+            except urllib.error.HTTPError:
+                return True
+            except Exception:
+                time.sleep(1)
+        return False
+
+    def _wait_for_any_http_server(
+        self,
+        urls: List[str],
+        process: subprocess.Popen,
+        timeout: int = 45,
+    ) -> Optional[str]:
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if process.poll() is not None:
+                return None
+            for url in urls:
+                try:
+                    with urllib.request.urlopen(url, timeout=2):
+                        return url
+                except urllib.error.HTTPError:
+                    return url
+                except Exception:
+                    continue
+            time.sleep(1)
+        return None
+
+    def _terminate_process(self, process: subprocess.Popen) -> None:
+        if process.poll() is not None:
+            return
+        try:
+            process.terminate()
+            process.wait(timeout=10)
+        except Exception:
+            try:
+                process.kill()
+                process.wait(timeout=5)
+            except Exception:
+                pass
+
+    def _make_skipped_result(self, summary: str, command: Optional[List[str]] = None) -> Dict[str, Any]:
+        return {
+            "status": "skipped",
+            "summary": summary,
+            "command": " ".join(command) if command else None,
+            "exit_code": None,
+            "log_path": None,
+        }
+
+    def _resolve_dev_server_plan(self, script_name: str, pkg: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        pkg = pkg or self._load_package_json() or {}
+        scripts = self._get_package_scripts(pkg)
+        script_body = scripts.get(script_name, "").lower()
+        port = self._find_available_port("127.0.0.1")
+        command = self._get_package_script_command(script_name) or []
+        host = "127.0.0.1"
+
+        supports_next_flags = "next " in script_body or script_body.startswith("next")
+        supports_vite_style_flags = any(
+            token in script_body
+            for token in ("vite", "astro", "svelte-kit", "storybook", "webpack serve", "webpack-dev-server")
+        )
+        supports_port_only_flags = "serve " in script_body or script_body.startswith("serve")
+
+        candidate_ports = [port]
+        for default_port in (3000, 3001, 4173, 5173, 5174, 8080):
+            if default_port != port and self._is_port_available(default_port, host):
+                candidate_ports.append(default_port)
+
+        if supports_next_flags:
+            command = [
+                *command,
+                *(["--hostname", host, "--port", str(port)] if command else []),
+            ]
+            candidate_ports = [port]
+        elif supports_vite_style_flags:
+            command = [
+                *command,
+                *(["--host", host, "--port", str(port)] if command else []),
+            ]
+            candidate_ports = [port]
+        elif supports_port_only_flags:
+            command = [
+                *command,
+                *(["--listen", str(port)] if command else []),
+            ]
+            candidate_ports = [port]
+
+        probe_urls = [f"http://{host}:{candidate_port}" for candidate_port in candidate_ports]
+        env = {
+            "HOST": host,
+            "HOSTNAME": host,
+            "PORT": str(port),
+            "BROWSER": "none",
+            "CI": "true",
+            "NO_COLOR": "1",
+        }
+        return {
+            "command": command,
+            "port": port,
+            "env": env,
+            "probe_urls": probe_urls,
+        }
+
+    def verify_install(self) -> Optional[Dict[str, Any]]:
+        """
+        Install dependencies for Node apps when package metadata is present.
+
+        Returns:
+            Dict with passed, output, log_path or None if no installable app found
+        """
+        pkg = self._load_package_json()
+        command = self._get_install_command(pkg)
+        if not command:
+            return None
+
+        passed, output, log_path, returncode = self._run_command(
+            command,
+            log_name="install",
+            timeout=900,
+            env={
+                "CI": "true",
+                "NO_COLOR": "1",
+                "BROWSER": "none",
+            },
+        )
+        return {
+            "passed": passed,
+            "output": output,
+            "log_path": log_path,
+            "command": " ".join(command),
+            "exit_code": returncode,
+        }
     
     def verify_lint(self) -> Optional[Dict[str, Any]]:
         """
@@ -107,12 +351,24 @@ class OrchestratorVerifier:
             Dict with passed, output, log_path or None if no linter found
         """
         # Check for common linter configs
+        lint_command = self._get_package_script_command("lint")
+        if lint_command:
+            passed, output, log_path, returncode = self._run_command(
+                lint_command,
+                log_name="lint",
+                timeout=180,
+            )
+            return {
+                "passed": passed,
+                "output": output,
+                "log_path": log_path,
+                "command": " ".join(lint_command),
+                "exit_code": returncode,
+            }
+
         lint_configs = [
-            (".eslintrc.js", ["npm", "run", "lint"]),
-            (".eslintrc.json", ["npm", "run", "lint"]),
             ("pyproject.toml", ["pylint", "."]),
             (".pylintrc", ["pylint", "."]),
-            ("tslint.json", ["npm", "run", "lint"]),
         ]
         
         for config_file, command in lint_configs:
@@ -140,8 +396,22 @@ class OrchestratorVerifier:
             Dict with passed, output, log_path or None if no build found
         """
         # Check for common build configs
+        build_command = self._get_package_script_command("build")
+        if build_command:
+            passed, output, log_path, returncode = self._run_command(
+                build_command,
+                log_name="build",
+                timeout=600,
+            )
+            return {
+                "passed": passed,
+                "output": output,
+                "log_path": log_path,
+                "command": " ".join(build_command),
+                "exit_code": returncode,
+            }
+
         build_configs = [
-            ("package.json", ["npm", "run", "build"]),
             ("Makefile", ["make", "build"]),
             ("pyproject.toml", ["python", "-m", "build"]),
             ("go.mod", ["go", "build", "./..."]),
@@ -150,16 +420,6 @@ class OrchestratorVerifier:
         
         for config_file, command in build_configs:
             if (self.run_dir / config_file).exists():
-                # Special check for npm: ensure build script exists
-                if config_file == "package.json":
-                    try:
-                        with open(self.run_dir / "package.json") as f:
-                            pkg = json.load(f)
-                            if "build" not in pkg.get("scripts", {}):
-                                continue
-                    except Exception:
-                        continue
-                
                 passed, output, log_path, returncode = self._run_command(
                     command,
                     log_name="build",
@@ -183,8 +443,22 @@ class OrchestratorVerifier:
             Dict with passed, output, log_path or None if no tests found
         """
         # Check for common test configs
+        test_command = self._get_package_script_command("test")
+        if test_command:
+            passed, output, log_path, returncode = self._run_command(
+                test_command,
+                log_name="unit_tests",
+                timeout=600,
+            )
+            return {
+                "passed": passed,
+                "output": output,
+                "log_path": log_path,
+                "command": " ".join(test_command),
+                "exit_code": returncode,
+            }
+
         test_configs = [
-            ("package.json", ["npm", "test"]),
             ("pytest.ini", ["pytest"]),
             ("pyproject.toml", ["pytest"]),
             ("go.mod", ["go", "test", "./..."]),
@@ -193,16 +467,6 @@ class OrchestratorVerifier:
         
         for config_file, command in test_configs:
             if (self.run_dir / config_file).exists():
-                # Special check for npm: ensure test script exists
-                if config_file == "package.json":
-                    try:
-                        with open(self.run_dir / "package.json") as f:
-                            pkg = json.load(f)
-                            if "test" not in pkg.get("scripts", {}):
-                                continue
-                    except Exception:
-                        continue
-                
                 passed, output, log_path, returncode = self._run_command(
                     command,
                     log_name="unit_tests",
@@ -226,24 +490,28 @@ class OrchestratorVerifier:
             Dict with passed, output, log_path or None if no smoke tests found
         """
         # Check for smoke test scripts
+        smoke_command = self._get_package_script_command("smoke")
+        if smoke_command:
+            passed, output, log_path, returncode = self._run_command(
+                smoke_command,
+                log_name="smoke_tests",
+                timeout=300,
+            )
+            return {
+                "passed": passed,
+                "output": output,
+                "log_path": log_path,
+                "command": " ".join(smoke_command),
+                "exit_code": returncode,
+            }
+
         smoke_scripts = [
             ("smoke.sh", ["bash", "smoke.sh"]),
             ("smoke.py", ["python", "smoke.py"]),
-            ("package.json", ["npm", "run", "smoke"]),
         ]
         
         for script_file, command in smoke_scripts:
             if (self.run_dir / script_file).exists():
-                # Special check for npm: ensure smoke script exists
-                if script_file == "package.json":
-                    try:
-                        with open(self.run_dir / "package.json") as f:
-                            pkg = json.load(f)
-                            if "smoke" not in pkg.get("scripts", {}):
-                                continue
-                    except Exception:
-                        continue
-                
                 passed, output, log_path, returncode = self._run_command(
                     command,
                     log_name="smoke_tests",
@@ -258,6 +526,81 @@ class OrchestratorVerifier:
                 }
         
         return None
+
+    def verify_dev_server(self) -> Optional[Dict[str, Any]]:
+        """
+        Start a local dev server and confirm it responds over HTTP.
+
+        Returns:
+            Dict with passed, output, log_path or None if no dev/start script found
+        """
+        pkg = self._load_package_json()
+        if not pkg:
+            return None
+
+        scripts = self._get_package_scripts(pkg)
+        script_name = "dev" if "dev" in scripts else "start" if "start" in scripts else None
+        if not script_name:
+            return None
+
+        plan = self._resolve_dev_server_plan(script_name, pkg)
+        command = list(plan.get("command") or [])
+        if not command:
+            return None
+
+        log_path = self.log_dir / "dev_server.log"
+        env = dict(plan.get("env") or {})
+        probe_urls = [str(url) for url in (plan.get("probe_urls") or [])]
+        process: Optional[subprocess.Popen] = None
+        try:
+            with open(log_path, "w", encoding="utf-8") as log_file:
+                process = subprocess.Popen(
+                    command,
+                    cwd=self.run_dir,
+                    stdout=log_file,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    env={**os.environ, **env},
+                )
+                ready_url = self._wait_for_any_http_server(
+                    probe_urls,
+                    process,
+                    timeout=45,
+                )
+
+            output = self._read_short_log_output(log_path)
+            if ready_url:
+                return {
+                    "passed": True,
+                    "output": output or f"Dev server responded on {ready_url}",
+                    "log_path": str(log_path),
+                    "command": " ".join(command),
+                    "exit_code": 0,
+                }
+
+            exit_code = process.poll() if process else -1
+            target_summary = ", ".join(probe_urls) if probe_urls else "configured probe targets"
+            summary = output or f"Dev server did not become reachable on {target_summary}"
+            return {
+                "passed": False,
+                "output": summary,
+                "log_path": str(log_path),
+                "command": " ".join(command),
+                "exit_code": exit_code if exit_code is not None else -1,
+            }
+        except Exception as e:
+            if not log_path.exists():
+                log_path.write_text(f"Dev server verification failed: {e}", encoding="utf-8")
+            return {
+                "passed": False,
+                "output": f"Dev server verification failed: {e}",
+                "log_path": str(log_path),
+                "command": " ".join(command),
+                "exit_code": -1,
+            }
+        finally:
+            if process is not None:
+                self._terminate_process(process)
     
     def verify_docker_compose(self) -> Optional[Dict[str, Any]]:
         """
@@ -343,19 +686,46 @@ class OrchestratorVerifier:
         Returns:
             Dict containing all verification results and log paths
         """
+        install_result = self.verify_install()
+        install_failed = isinstance(install_result, dict) and not bool(install_result.get("passed"))
+
         results = {
             "normalization_result": self.run_normalization(),
-            "lint_result": self.verify_lint(),
-            "build_result": self.verify_build(),
-            "unit_test_result": self.verify_unit_tests(),
-            "smoke_test_result": self.verify_smoke_tests(),
+            "install_result": install_result,
+            "lint_result": (
+                self._make_skipped_result("Lint skipped because dependency installation failed.")
+                if install_failed else self.verify_lint()
+            ),
+            "build_result": (
+                self._make_skipped_result("Build skipped because dependency installation failed.")
+                if install_failed else self.verify_build()
+            ),
+            "unit_test_result": (
+                self._make_skipped_result("Unit tests skipped because dependency installation failed.")
+                if install_failed else self.verify_unit_tests()
+            ),
+            "smoke_test_result": (
+                self._make_skipped_result("Smoke tests skipped because dependency installation failed.")
+                if install_failed else self.verify_smoke_tests()
+            ),
+            "dev_server_result": (
+                self._make_skipped_result("Dev server proof skipped because dependency installation failed.")
+                if install_failed else self.verify_dev_server()
+            ),
             "docker_compose_valid": self.verify_docker_compose(),
             "paths_to_full_logs": [],
         }
         
         # Collect all log paths
         log_paths = []
-        for key in ["lint_result", "build_result", "unit_test_result", "smoke_test_result"]:
+        for key in [
+            "install_result",
+            "lint_result",
+            "build_result",
+            "unit_test_result",
+            "smoke_test_result",
+            "dev_server_result",
+        ]:
             result = results[key]
             if result and result.get("log_path"):
                 log_paths.append(result["log_path"])

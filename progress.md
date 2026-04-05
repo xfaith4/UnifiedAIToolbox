@@ -20,3 +20,13 @@
   - report artifacts written as `generated_app_verification.json` and `.md`
   - Run Detail renders the production-gate summary for operators
 - Added API regression coverage for `app_production` payload exposure.
+- Implemented the next RM-011 slice:
+  - `OrchestratorVerifier` now detects Node package managers for script/install execution
+  - generated-app verification now runs deterministic dependency install and bounded dev-server proof
+  - generated-app summaries explicitly mark downstream checks as skipped when install fails
+- Extended verification schema/logger compatibility for install/dev-start gate data.
+- Added focused regression tests for verifier command selection, dev-server proof, and skipped-gate summarization.
+- Completed a review-driven hardening pass:
+  - dev-server proof now uses framework-aware launch heuristics plus environment fallback
+  - prerequisite install failure now suppresses lint as well as downstream build/test/runtime checks
+  - failing generated-app gates now emit structured repair targets for operators and learning

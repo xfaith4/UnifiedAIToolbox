@@ -717,6 +717,15 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
       appProductionBasePath && appProduction?.summaryArtifact
         ? `${appProductionBasePath}${orchRun.runDir?.includes('\\') ? '\\' : '/'}${appProduction.summaryArtifact.replace(/^[/\\]+/, '')}`
         : null
+    const appProductionRepairs = orchRun.appProductionRepairs
+    const appProductionRepairReportPath =
+      appProductionBasePath && appProductionRepairs?.reportArtifact
+        ? `${appProductionBasePath}${orchRun.runDir?.includes('\\') ? '\\' : '/'}${appProductionRepairs.reportArtifact.replace(/^[/\\]+/, '')}`
+        : null
+    const appProductionRepairSummaryPath =
+      appProductionBasePath && appProductionRepairs?.summaryArtifact
+        ? `${appProductionBasePath}${orchRun.runDir?.includes('\\') ? '\\' : '/'}${appProductionRepairs.summaryArtifact.replace(/^[/\\]+/, '')}`
+        : null
 
     const synthesisHtmlPath = orchRun.runDir
       ? `${orchRun.runDir.replace(/[\\\/]+$/, '')}${orchRun.runDir.includes('\\') ? '\\' : '/'}Final_Synthesis.html`
@@ -1210,6 +1219,82 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
                   }}
                 >
                   Open summary
+                </a>
+              )}
+            </div>
+          </div>
+        )}
+
+        {appProductionRepairs && appProductionRepairs.items.length > 0 && (
+          <div className="rounded-2xl border border-amber-700/50 bg-amber-950/20 p-4 space-y-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-amber-300">Repair Routing</div>
+                <div className="mt-1 text-sm text-amber-100">
+                  Failed generated-app gates have been converted into structured repair targets with root-cause ordering.
+                </div>
+              </div>
+              <div className="rounded border border-amber-700/60 bg-amber-900/30 px-2 py-1 text-[11px] text-amber-100">
+                Status: {appProductionRepairs.status}
+              </div>
+            </div>
+            <div className="space-y-2">
+              {appProductionRepairs.items.map((item) => (
+                <div key={item.id} className="rounded-xl border border-slate-800 bg-slate-900/50 p-3 text-xs text-slate-300 space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold text-slate-100">{item.gate}</span>
+                    <span className="rounded border border-amber-700 bg-amber-900/30 px-2 py-0.5 text-[10px] uppercase tracking-wide text-amber-100">
+                      {item.priority}
+                    </span>
+                    <span className="text-[11px] text-slate-400">Owner: {item.agent}</span>
+                    {item.exitCode != null && (
+                      <span className="text-[11px] text-slate-500">exit {item.exitCode}</span>
+                    )}
+                  </div>
+                  <div><span className="font-semibold text-slate-200">Route:</span> {item.summary}</div>
+                  {item.failureSummary && <div><span className="font-semibold text-slate-200">Failure:</span> {item.failureSummary}</div>}
+                  {item.command && <div><span className="font-semibold text-slate-200">Command:</span> <code>{item.command}</code></div>}
+                  {item.logArtifact && <div><span className="font-semibold text-slate-200">Log:</span> <code>{item.logArtifact}</code></div>}
+                  {item.blockedChecks && item.blockedChecks.length > 0 && (
+                    <div><span className="font-semibold text-slate-200">Blocked checks:</span> {item.blockedChecks.join(', ')}</div>
+                  )}
+                  {item.recommendedActions && item.recommendedActions.length > 0 && (
+                    <ul className="list-disc pl-4 space-y-1 text-slate-300">
+                      {item.recommendedActions.map((action) => (
+                        <li key={action}>{action}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-2 text-[11px]">
+              {appProductionRepairReportPath && (
+                <a
+                  className="rounded border border-amber-700/60 bg-amber-900/30 px-2 py-1 text-amber-100 hover:bg-amber-900/50"
+                  href={toFileUrl(appProductionRepairReportPath)}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(event) => {
+                    event.preventDefault()
+                    void openPath(appProductionRepairReportPath)
+                  }}
+                >
+                  Open repair JSON
+                </a>
+              )}
+              {appProductionRepairSummaryPath && (
+                <a
+                  className="rounded border border-slate-700 bg-slate-900/40 px-2 py-1 text-slate-200 hover:bg-slate-800/60"
+                  href={toFileUrl(appProductionRepairSummaryPath)}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(event) => {
+                    event.preventDefault()
+                    void openPath(appProductionRepairSummaryPath)
+                  }}
+                >
+                  Open repair summary
                 </a>
               )}
             </div>

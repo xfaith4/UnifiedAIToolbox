@@ -66,6 +66,27 @@ export interface AppProductionReport {
   checks: AppProductionCheck[]
 }
 
+export interface AppProductionRepairTarget {
+  id: string
+  gate: string
+  agent: string
+  priority: string
+  summary: string
+  failureSummary?: string
+  command?: string | null
+  exitCode?: number | null
+  logArtifact?: string | null
+  blockedChecks?: string[]
+  recommendedActions?: string[]
+}
+
+export interface AppProductionRepairPlan {
+  status: string
+  reportArtifact?: string
+  summaryArtifact?: string
+  items: AppProductionRepairTarget[]
+}
+
 // ── Phase 1: Verification / Sandbox types ─────────────────────────────────────
 
 export type VerificationResult = 'passed' | 'failed' | 'deferred' | 'needs_requirements'
@@ -185,6 +206,7 @@ export interface OrchestrationRun {
   agentImprovements?: AgentImprovementRecord[]
   generatedAppFiles?: string[]
   appProduction?: AppProductionReport
+  appProductionRepairs?: AppProductionRepairPlan
 
   // Output
   output?: string

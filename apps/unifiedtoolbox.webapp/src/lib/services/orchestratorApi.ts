@@ -533,6 +533,55 @@ function normalizeApiRun(raw: Record<string, unknown>): OrchestrationRun {
           : [],
       }
     : undefined
+  const appProductionRepairs = raw.app_production_repairs && typeof raw.app_production_repairs === 'object'
+    ? {
+        status: String((raw.app_production_repairs as Record<string, unknown>).status || 'not_needed'),
+        reportArtifact:
+          (raw.app_production_repairs as Record<string, unknown>).report_artifact
+            ? String((raw.app_production_repairs as Record<string, unknown>).report_artifact)
+            : (raw.app_production_repairs as Record<string, unknown>).reportArtifact
+              ? String((raw.app_production_repairs as Record<string, unknown>).reportArtifact)
+              : undefined,
+        summaryArtifact:
+          (raw.app_production_repairs as Record<string, unknown>).summary_artifact
+            ? String((raw.app_production_repairs as Record<string, unknown>).summary_artifact)
+            : (raw.app_production_repairs as Record<string, unknown>).summaryArtifact
+              ? String((raw.app_production_repairs as Record<string, unknown>).summaryArtifact)
+              : undefined,
+        items: Array.isArray((raw.app_production_repairs as Record<string, unknown>).items)
+          ? ((raw.app_production_repairs as Record<string, unknown>).items as unknown[])
+              .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'))
+              .map((item) => ({
+                id: String(item.id || `repair-${String(item.gate || 'gate')}`),
+                gate: String(item.gate || 'gate'),
+                agent: String(item.agent || 'Engineer'),
+                priority: String(item.priority || 'medium'),
+                summary: String(item.summary || ''),
+                failureSummary:
+                  item.failure_summary ? String(item.failure_summary) : item.failureSummary ? String(item.failureSummary) : undefined,
+                command: item.command == null ? null : String(item.command),
+                exitCode:
+                  typeof item.exit_code === 'number'
+                    ? item.exit_code
+                    : typeof item.exitCode === 'number'
+                      ? item.exitCode
+                      : null,
+                logArtifact:
+                  item.log_artifact ? String(item.log_artifact) : item.logArtifact ? String(item.logArtifact) : null,
+                blockedChecks: Array.isArray(item.blocked_checks)
+                  ? item.blocked_checks.map((entry) => String(entry))
+                  : Array.isArray(item.blockedChecks)
+                    ? item.blockedChecks.map((entry) => String(entry))
+                    : undefined,
+                recommendedActions: Array.isArray(item.recommended_actions)
+                  ? item.recommended_actions.map((entry) => String(entry))
+                  : Array.isArray(item.recommendedActions)
+                    ? item.recommendedActions.map((entry) => String(entry))
+                    : undefined,
+              }))
+          : [],
+      }
+    : undefined
   const sandboxReport = rawSandboxReport
     ? {
         generatedAt: String(rawSandboxReport.generated_at || rawSandboxReport.generatedAt || ''),
@@ -629,6 +678,7 @@ function normalizeApiRun(raw: Record<string, unknown>): OrchestrationRun {
     agentImprovements,
     generatedAppFiles: Array.isArray(raw.generated_app_files) ? raw.generated_app_files.map(String) : undefined,
     appProduction,
+    appProductionRepairs,
   }
 }
 

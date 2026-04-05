@@ -5014,22 +5014,47 @@ def orchestrate_run(
                 print(f"[orchestrate] Failed to materialize Engineer artifacts: {e}", file=sys.stderr)
             if generated_app_files:
                 app_production = None
+                app_production_repairs = None
                 generated_root = out_dir / "generated_app"
                 if ORCHESTRATOR_LOGGING_AVAILABLE and generated_root.exists():
                     try:
                         generated_logs_dir = out_dir / "logs" / "generated_app"
                         verifier = OrchestratorVerifier(generated_root, log_dir=generated_logs_dir)
+                        install_result = verifier.verify_install()
+                        install_failed = isinstance(install_result, dict) and not bool(install_result.get("passed"))
                         gate_results = {
-                            "lint_result": verifier.verify_lint(),
-                            "build_result": verifier.verify_build(),
-                            "unit_test_result": verifier.verify_unit_tests(),
-                            "smoke_test_result": verifier.verify_smoke_tests(),
+                            "install_result": install_result,
+                            "lint_result": (
+                                _make_skipped_gate_result("Lint skipped because dependency installation failed.")
+                                if install_failed else verifier.verify_lint()
+                            ),
+                            "build_result": (
+                                _make_skipped_gate_result("Build skipped because dependency installation failed.")
+                                if install_failed else verifier.verify_build()
+                            ),
+                            "unit_test_result": (
+                                _make_skipped_gate_result("Unit tests skipped because dependency installation failed.")
+                                if install_failed else verifier.verify_unit_tests()
+                            ),
+                            "smoke_test_result": (
+                                _make_skipped_gate_result("Smoke tests skipped because dependency installation failed.")
+                                if install_failed else verifier.verify_smoke_tests()
+                            ),
+                            "dev_server_result": (
+                                _make_skipped_gate_result("Dev server proof skipped because dependency installation failed.")
+                                if install_failed else verifier.verify_dev_server()
+                            ),
                             "docker_compose_valid": verifier.verify_docker_compose(),
                         }
                         app_production = _summarize_app_production_gates(gate_results, out_dir, generated_root)
                         json_path, md_path = _write_app_production_artifacts(out_dir, app_production)
                         app_production["report_artifact"] = _to_relpath(json_path, out_dir)
                         app_production["summary_artifact"] = _to_relpath(md_path, out_dir)
+                        app_production_repairs = _derive_app_production_repair_plan(app_production)
+                        if app_production_repairs.get("items"):
+                            repair_json_path, repair_md_path = _write_app_production_repair_artifacts(out_dir, app_production_repairs)
+                            app_production_repairs["report_artifact"] = _to_relpath(repair_json_path, out_dir)
+                            app_production_repairs["summary_artifact"] = _to_relpath(repair_md_path, out_dir)
                     except Exception as e:
                         print(f"[orchestrate] Failed to verify generated_app artifacts: {e}", file=sys.stderr)
 
@@ -5049,10 +5074,19 @@ def orchestrate_run(
                             f"{app_production['skipped_count']} skipped."
                         ),
                     }])
+                if app_production_repairs and app_production_repairs.get("items"):
+                    _append_events([{
+                        "ts": now_iso(),
+                        "type": "repair:generated_app_route",
+                        "message": (
+                            f"Generated app repair routing prepared {len(app_production_repairs['items'])} target(s)."
+                        ),
+                    }])
                 _update_manifest(lambda d: {
                     **d,
                     "generated_app_files": generated_app_files,
                     "app_production": app_production or d.get("app_production"),
+                    "app_production_repairs": app_production_repairs or d.get("app_production_repairs"),
                 })
 
             data = safe_json_load(path, context=f"execute_complete:{run_id}")
@@ -5380,6 +5414,8 @@ def _build_learning_payload(
     deferred_checks = [c for c in checks if isinstance(c, dict) and str(c.get("result") or "").lower() == "deferred"]
     checkpoint_history = _normalize_checkpoint_history(manifest)
     corrective_actions = _build_corrective_actions_from_manifest(manifest)
+    app_production_repairs_payload = manifest.get("app_production_repairs") if isinstance(manifest.get("app_production_repairs"), dict) else {}
+    app_production_repairs = app_production_repairs_payload.get("items") if isinstance(app_production_repairs_payload.get("items"), list) else []
     normalized_instruction_adjustments = [
         adjustment
         for adjustment in (instruction_adjustments or [])
@@ -5413,6 +5449,11 @@ def _build_learning_payload(
         evidence.append(f"corrective_actions:{len(corrective_actions)}")
         for action in corrective_actions[:2]:
             evidence.append(f"checkpoint_resolved:{action.get('agent')}:{action.get('status')}")
+    if app_production_repairs:
+        evidence.append(f"app_production_repairs:{len(app_production_repairs)}")
+        for repair in app_production_repairs[:2]:
+            if isinstance(repair, dict):
+                evidence.append(f"repair_target:{repair.get('gate')}:{repair.get('agent')}")
     for adjustment in normalized_instruction_adjustments[:2]:
         evidence.append(f"instruction_adjustment:{adjustment.get('agent')}")
 
@@ -5538,6 +5579,15 @@ def _build_learning_payload(
             }
         )
         regression_checks.append("Knowledge context includes instruction adjustments for similar runs")
+    if app_production_repairs:
+        prevention_patches.append(
+            {
+                "target": "app_production_loop",
+                "change": "Preserve structured repair targets for failed generated-app gates so future runs inherit root-cause-aware repair guidance.",
+                "artifact_ref": "app_production_repairs.items",
+            }
+        )
+        regression_checks.append("Generated-app failures emit structured repair targets with root-cause ordering")
 
     if not evidence:
         questions_needed.append("Provide concrete evidence (logs/checks/events) supporting the inferred root cause.")
@@ -5758,6 +5808,7 @@ def ingest_run_knowledge(run_id: str, out_dir: pathlib.Path, manifest_path: path
             "model": manifest.get("model", ""),
             "checkpoint_history": checkpoint_history,
             "corrective_actions": corrective_actions,
+            "app_production_repairs": app_production_repairs_payload,
             "instruction_adjustments": instruction_adjustments,
             "synthesis_present": (
                 (out_dir / "Final_Synthesis.html").exists()
@@ -5819,6 +5870,7 @@ def ingest_run_knowledge(run_id: str, out_dir: pathlib.Path, manifest_path: path
                 "learning": _build_learning_failure_payload(str(_e)),
                 "checkpoint_history": _normalize_checkpoint_history(fallback_manifest),
                 "corrective_actions": _build_corrective_actions_from_manifest(fallback_manifest),
+                "app_production_repairs": fallback_manifest.get("app_production_repairs") if isinstance(fallback_manifest.get("app_production_repairs"), dict) else {},
                 "instruction_adjustments": [],
                 "agents": fallback_manifest.get("agents", []),
                 "model": fallback_manifest.get("model", ""),
@@ -5881,6 +5933,18 @@ def build_knowledge_context(goal: str) -> str:
         improvements = e.get("commissioner_improvements", [])
         if improvements:
             lines.append(f"  Required improvements: {'; '.join(str(v) for v in improvements[:2])}")
+        repair_targets = (
+            e.get("app_production_repairs", {}).get("items")
+            if isinstance(e.get("app_production_repairs"), dict)
+            else []
+        )
+        if isinstance(repair_targets, list) and repair_targets:
+            first_target = repair_targets[0]
+            if isinstance(first_target, dict):
+                lines.append(
+                    "  App-production repair: "
+                    f"{str(first_target.get('gate') or 'gate')} -> {str(first_target.get('agent') or 'Engineer')}"
+                )
         warnings = e.get("overseer_warnings", [])
         if warnings:
             lines.append(f"  Overseer warnings: {warnings[0][:150]}")
@@ -6457,6 +6521,9 @@ def _gate_status(result: Any) -> str:
     if isinstance(result, bool):
         return "passed" if result else "failed"
     if isinstance(result, dict):
+        explicit_status = str(result.get("status") or "").strip().lower()
+        if explicit_status in {"passed", "failed", "skipped"}:
+            return explicit_status
         return "passed" if result.get("passed") else "failed"
     return "failed"
 
@@ -7064,10 +7131,14 @@ def _build_verification_commands(results: Optional[Dict[str, Any]], run_dir: pat
         if value is None:
             continue
         if isinstance(value, dict):
+            explicit_status = str(value.get("status") or "").strip().lower()
             cmd = value.get("command") or value.get("executed") or value.get("cmd")
             exit_code = value.get("exit_code")
             if exit_code is None:
-                exit_code = 0 if value.get("passed") else 1
+                if explicit_status == "skipped":
+                    exit_code = None
+                else:
+                    exit_code = 0 if value.get("passed") else 1
             log_path = value.get("log_path")
             log_artifact = None
             if log_path:
@@ -7093,16 +7164,25 @@ def _build_verification_commands(results: Optional[Dict[str, Any]], run_dir: pat
     return commands
 
 
+def _make_skipped_gate_result(summary: str) -> Dict[str, Any]:
+    return {
+        "status": "skipped",
+        "summary": summary,
+    }
+
+
 def _summarize_app_production_gates(
     results: Optional[Dict[str, Any]],
     out_dir: pathlib.Path,
     app_dir: pathlib.Path,
 ) -> Dict[str, Any]:
     mapping = {
+        "install_result": "install",
         "lint_result": "lint",
         "build_result": "build",
         "unit_test_result": "unit_tests",
         "smoke_test_result": "smoke_tests",
+        "dev_server_result": "dev_server",
         "docker_compose_valid": "docker_compose",
     }
 
@@ -7138,6 +7218,27 @@ def _summarize_app_production_gates(
             continue
 
         if isinstance(value, dict):
+            status_value = str(value.get("status") or "").strip().lower()
+            if status_value == "skipped" or bool(value.get("skipped")):
+                skipped_count += 1
+                log_artifact = None
+                if value.get("log_path"):
+                    log_artifact = _to_relpath(pathlib.Path(str(value["log_path"])), out_dir)
+                summary = str(value.get("summary") or value.get("output") or "Check skipped.").strip()
+                if len(summary) > 240:
+                    summary = summary[:240].rstrip() + "..."
+                check.update(
+                    {
+                        "status": "skipped",
+                        "summary": summary,
+                        "command": value.get("command") or value.get("executed") or value.get("cmd"),
+                        "exit_code": value.get("exit_code"),
+                        "log_artifact": log_artifact,
+                    }
+                )
+                checks.append(check)
+                continue
+
             passed = bool(value.get("passed") if "passed" in value else value.get("success"))
             status_value = "passed" if passed else "failed"
             if passed:
@@ -7184,7 +7285,7 @@ def _summarize_app_production_gates(
         checks.append(check)
 
     has_executable_proof = any(
-        check.get("name") in {"build", "unit_tests", "smoke_tests"} and check.get("status") == "passed"
+        check.get("name") in {"build", "unit_tests", "smoke_tests", "dev_server"} and check.get("status") == "passed"
         for check in checks
     )
 
@@ -7243,6 +7344,159 @@ def _write_app_production_artifacts(
             lines.append(f"  - summary: {summary}")
         if check.get("log_artifact"):
             lines.append(f"  - log: `{check['log_artifact']}`")
+
+    md_path.write_text("\n".join(lines), encoding="utf-8")
+    return json_path, md_path
+
+
+def _derive_app_production_repair_plan(app_production: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    if not isinstance(app_production, dict):
+        return {"status": "not_needed", "items": []}
+
+    checks = app_production.get("checks") if isinstance(app_production.get("checks"), list) else []
+    failed_checks = [check for check in checks if isinstance(check, dict) and str(check.get("status") or "").lower() == "failed"]
+    skipped_checks = [check for check in checks if isinstance(check, dict) and str(check.get("status") or "").lower() == "skipped"]
+
+    guidance = {
+        "install": {
+            "agent": "Engineer",
+            "priority": "high",
+            "summary": "Repair the generated app dependency manifest and installation path before any downstream verification reruns.",
+            "recommended_actions": [
+                "Inspect package manager selection, lockfile consistency, and missing or incompatible dependencies.",
+                "Fix package.json scripts or dependency declarations that prevent a deterministic install.",
+            ],
+        },
+        "lint": {
+            "agent": "Engineer",
+            "priority": "medium",
+            "summary": "Repair static analysis or configuration issues before rerunning quality gates.",
+            "recommended_actions": [
+                "Inspect the failing lint log and correct code style or configuration drift.",
+                "Confirm lint scripts align with the generated stack and file layout.",
+            ],
+        },
+        "build": {
+            "agent": "Engineer",
+            "priority": "high",
+            "summary": "Repair compile-time or bundling failures blocking a runnable application artifact.",
+            "recommended_actions": [
+                "Inspect the failing build log and fix missing imports, syntax errors, or stack misconfiguration.",
+                "Re-run the build gate after patching to confirm the app can compile cleanly.",
+            ],
+        },
+        "unit_tests": {
+            "agent": "Engineer",
+            "priority": "medium",
+            "summary": "Repair broken unit-test expectations or runtime assumptions in the generated app.",
+            "recommended_actions": [
+                "Inspect failing test cases and align implementation with the intended feature contract.",
+                "Patch unstable or incorrect test setup only when the implementation is already correct.",
+            ],
+        },
+        "smoke_tests": {
+            "agent": "Engineer",
+            "priority": "high",
+            "summary": "Repair critical app behaviors that are failing coarse smoke validation.",
+            "recommended_actions": [
+                "Focus on the exact interaction or route reported in the smoke failure log.",
+                "Prefer minimal targeted patches that restore the expected user path before broad refactors.",
+            ],
+        },
+        "dev_server": {
+            "agent": "Engineer",
+            "priority": "high",
+            "summary": "Repair launch/runtime configuration so the generated app can start and answer a local health probe.",
+            "recommended_actions": [
+                "Inspect startup logs for port, host, or runtime boot failures.",
+                "Align dev/start scripts with the generated stack so the app can run under bounded local execution.",
+            ],
+        },
+        "docker_compose": {
+            "agent": "Engineer",
+            "priority": "medium",
+            "summary": "Repair container orchestration configuration so deployment packaging remains viable.",
+            "recommended_actions": [
+                "Inspect the compose validation output and fix invalid service, volume, or build settings.",
+                "Keep compose changes aligned with the generated runtime contract instead of masking broken app behavior.",
+            ],
+        },
+    }
+
+    skipped_by_install = [
+        str(check.get("name") or "").strip()
+        for check in skipped_checks
+        if "installation failed" in str(check.get("summary") or "").lower()
+    ]
+
+    items: List[Dict[str, Any]] = []
+    for failed in failed_checks:
+        gate = str(failed.get("name") or "gate").strip() or "gate"
+        gate_guidance = guidance.get(gate, {
+            "agent": "Engineer",
+            "priority": "medium",
+            "summary": "Repair the generated-app verification failure and rerun the affected gate.",
+            "recommended_actions": [
+                "Inspect the recorded evidence and patch the generated app accordingly.",
+            ],
+        })
+        blocked_checks = skipped_by_install if gate == "install" else []
+        items.append(
+            {
+                "id": f"app-production-{gate}",
+                "gate": gate,
+                "agent": gate_guidance["agent"],
+                "priority": gate_guidance["priority"],
+                "summary": gate_guidance["summary"],
+                "failure_summary": str(failed.get("summary") or "").strip() or "Gate failed.",
+                "command": failed.get("command"),
+                "exit_code": failed.get("exit_code"),
+                "log_artifact": failed.get("log_artifact"),
+                "blocked_checks": blocked_checks,
+                "recommended_actions": gate_guidance["recommended_actions"],
+            }
+        )
+
+    return {
+        "status": "actionable" if items else "not_needed",
+        "items": items,
+    }
+
+
+def _write_app_production_repair_artifacts(
+    out_dir: pathlib.Path,
+    repair_plan: Dict[str, Any],
+) -> Tuple[pathlib.Path, pathlib.Path]:
+    json_path = out_dir / "generated_app_repairs.json"
+    md_path = out_dir / "generated_app_repairs.md"
+    json_path.write_text(json.dumps(repair_plan, indent=2), encoding="utf-8")
+
+    lines = [
+        "# Generated App Repair Routing",
+        "",
+        f"- Status: `{repair_plan.get('status')}`",
+        f"- Repair targets: {len(repair_plan.get('items') or [])}",
+        "",
+        "## Targets",
+    ]
+
+    for item in repair_plan.get("items", []):
+        if not isinstance(item, dict):
+            continue
+        lines.append(f"- **{item.get('gate', 'gate')}** -> `{item.get('agent', 'Engineer')}` ({item.get('priority', 'medium')})")
+        if item.get("summary"):
+            lines.append(f"  - summary: {item['summary']}")
+        if item.get("failure_summary"):
+            lines.append(f"  - failure: {item['failure_summary']}")
+        if item.get("command"):
+            lines.append(f"  - command: `{item['command']}`")
+        if item.get("log_artifact"):
+            lines.append(f"  - log: `{item['log_artifact']}`")
+        blocked_checks = item.get("blocked_checks") if isinstance(item.get("blocked_checks"), list) else []
+        if blocked_checks:
+            lines.append(f"  - blocked checks: {', '.join(str(v) for v in blocked_checks)}")
+        for action in item.get("recommended_actions", []) if isinstance(item.get("recommended_actions"), list) else []:
+            lines.append(f"  - action: {action}")
 
     md_path.write_text("\n".join(lines), encoding="utf-8")
     return json_path, md_path

@@ -10,10 +10,12 @@
   - records verifier output for some paths, but the main `build_new_app` run flow does not yet expose a dedicated production-gate summary for the generated app
   - now stores checkpoint/corrective-action / instruction-adjustment artifacts from previous work in this session
 - `apps/UnifiedPromptApp/services/prompt-api/orchestrator_verifier.py` already supports:
+  - dependency install
   - lint
   - build
   - unit tests
   - smoke tests
+  - bounded dev-server proof
   - docker compose validation
 - `Run Detail` currently surfaces requirements checkpoints and learning adjustments, but not yet an explicit “generated app verification / production readiness” panel for `build_new_app`.
 
@@ -42,3 +44,9 @@
 - Added backend production-gate summary generation for `generated_app/` in Prompt API.
 - Added operator surfacing for `app_production` in Run Detail.
 - Deliberately did **not** change overall run completion semantics yet; the new gate summary is informative groundwork for the later repair-routing phase.
+- Added deterministic Node install/dev-start execution and package-manager-aware script resolution.
+- Added explicit skipped-gate semantics so downstream app-production checks can reflect prerequisite failure cleanly.
+- Review-driven hardening findings:
+  - dev-server proof needs framework-aware launch heuristics instead of one universal `--host/--port` assumption
+  - install failure is a root-cause prerequisite and should suppress lint as well as downstream runtime gates
+  - failed generated-app gates are now ready to feed structured repair routing instead of remaining passive evidence

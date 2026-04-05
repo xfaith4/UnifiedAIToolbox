@@ -97,9 +97,13 @@ class ArtifactManifest(BaseModel):
 
 class VerificationResult(BaseModel):
     """Result of a verification check."""
-    passed: bool = Field(..., description="Whether check passed")
+    passed: Optional[bool] = Field(None, description="Whether check passed")
     output: str = Field(default="", description="Short output or error message")
     log_path: Optional[str] = Field(None, description="Path to full log file")
+    status: Optional[str] = Field(None, description="Explicit check status such as passed, failed, or skipped")
+    summary: Optional[str] = Field(None, description="Human-readable summary when output is not sufficient")
+    command: Optional[str] = Field(None, description="Command executed for the check")
+    exit_code: Optional[int] = Field(None, description="Exit code when available")
 
 
 class Verification(BaseModel):
@@ -107,9 +111,11 @@ class Verification(BaseModel):
     run_id: str = Field(..., description="Associated run ID")
     timestamp: str = Field(..., description="ISO-8601 timestamp")
     normalization_result: Optional[Dict[str, Any]] = Field(None, description="Normalization result")
+    install_result: Optional[VerificationResult] = Field(None, description="Dependency installation result")
     lint_result: Optional[VerificationResult] = Field(None, description="Linting result")
     build_result: Optional[VerificationResult] = Field(None, description="Build result")
     unit_test_result: Optional[VerificationResult] = Field(None, description="Unit test result")
     smoke_test_result: Optional[VerificationResult] = Field(None, description="Smoke test result")
+    dev_server_result: Optional[VerificationResult] = Field(None, description="Dev server startup result")
     docker_compose_valid: Optional[bool] = Field(None, description="Docker Compose validation")
     paths_to_full_logs: List[str] = Field(default_factory=list, description="Paths to detailed logs")

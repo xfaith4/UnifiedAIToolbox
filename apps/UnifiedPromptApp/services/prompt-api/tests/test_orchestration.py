@@ -542,6 +542,28 @@ class TestOrchestrateRun:
                     }
                 ],
             },
+            "app_production_repairs": {
+                "status": "actionable",
+                "report_artifact": "generated_app_repairs.json",
+                "summary_artifact": "generated_app_repairs.md",
+                "items": [
+                    {
+                        "id": "app-production-build",
+                        "gate": "build",
+                        "agent": "Engineer",
+                        "priority": "high",
+                        "summary": "Repair compile-time failures before rerunning the build gate.",
+                        "failure_summary": "Build failed because dependencies were not installed.",
+                        "command": "npm run build",
+                        "exit_code": 1,
+                        "log_artifact": "logs/generated_app/build.log",
+                        "blocked_checks": [],
+                        "recommended_actions": [
+                            "Inspect the failing build log.",
+                        ],
+                    }
+                ],
+            },
             "lease": None,
         }
         manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
@@ -553,3 +575,7 @@ class TestOrchestrateRun:
         checks = (body.get("app_production") or {}).get("checks") or []
         assert len(checks) == 1
         assert checks[0]["name"] == "build"
+        repairs = (body.get("app_production_repairs") or {}).get("items") or []
+        assert len(repairs) == 1
+        assert repairs[0]["gate"] == "build"
+        assert repairs[0]["agent"] == "Engineer"

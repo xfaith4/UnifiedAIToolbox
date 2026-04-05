@@ -317,15 +317,15 @@ Every roadmap-impacting tradeoff gets a `DEC-###` record in `IMPLEMENTATION_SUMM
   Ref: `apps/UnifiedPromptApp/services/prompt-api/app.py`, `apps/unifiedtoolbox.webapp/src/app/runs/[runId]/page.tsx`  
   Notes: `generated_app/` now receives an explicit production-gate summary (lint/build/tests/smoke/compose), stored in the run manifest and shown to operators as the first step toward functioning-app verification.
 
-- [ ] Add deterministic install/build/dev-start gate execution for generated web apps.  
-  Date opened: 2026-04-05  
-  Ref: `docs/future-agent-handoff-app-production.md`  
-  Notes: Current slice executes verifier checks only when the required project scripts/configs exist. The next step is a deliberate dependency install and dev-start proof for generated apps, with evidence artifacts and timeouts.
+- [x] Add deterministic install/build/dev-start gate execution for generated web apps.  
+  Date: 2026-04-05  
+  Ref: `apps/UnifiedPromptApp/services/prompt-api/orchestrator_verifier.py`, `apps/UnifiedPromptApp/services/prompt-api/app.py`  
+  Notes: The shared verifier now detects Node package managers, executes dependency installation with bounded commands, and proves dev-server startup with a local health probe. Generated-app summaries explicitly mark downstream gates as skipped when install fails, so operators see prerequisite failure instead of misleading follow-on build/test noise.
 
 - [ ] Route failing generated-app gates into targeted repair loops instead of leaving them as informational summaries.  
   Date opened: 2026-04-05  
   Ref: `docs/future-agent-handoff-app-production.md`  
-  Notes: Failed build/test/smoke checks should produce agent-specific repair tasks with evidence attached, not just operator-visible warnings.
+  Notes: Failed gates should produce agent-specific repair tasks with evidence attached, while honoring prerequisite semantics introduced by deterministic app-production proof. In particular, `install` is now a root-cause gate and downstream `skipped` checks should not be routed as independent failures. Structured repair targets are now emitted in the run manifest and Run Detail; the remaining work is automatic repair execution and re-verification.
 
 - [ ] Add demo-mode / UX smoke verification for frontend app briefs.  
   Date opened: 2026-04-05  
