@@ -1,5 +1,95 @@
 [
   {
+    "run_id": "Create_an_interactive_web_application_that_compares_typical_AI_usage_with_advanced_orchestrated_AI_workflows.2026-04-05T16-54-10Z",
+    "ingested_at": "2026-04-05T16:54:34Z",
+    "goal": "Create an interactive web application that compares typical AI usage with advanced orchestrated AI workflows.",
+    "goal_tokens": [
+      "create",
+      "interactive",
+      "application",
+      "that",
+      "compares",
+      "typical",
+      "usage",
+      "with",
+      "advanced",
+      "orchestrated",
+      "workflows"
+    ],
+    "status": "running",
+    "verification_status": "needs_requirements",
+    "knowledge_status": "pass",
+    "knowledge_score": 8.3,
+    "learning": {
+      "classification": "requirements_gap",
+      "what_broke": "Requirements were incomplete for machine-verifiable implementation.",
+      "root_cause": "Commissioner detected unresolved requirement gaps and requested follow-up inputs.",
+      "evidence": [
+        "deferred_check:deferred_code_execution:Requires code execution \u2014 deferred to Phase 4 (Artifact Pipeline).",
+        "deferred_check:deferred_code_execution:Requires code execution \u2014 deferred to Phase 4 (Artifact Pipeline).",
+        "requirements_request_blockers:1",
+        "critic_blocker:Missing detailed specifications for comparison criteria."
+      ],
+      "prevention_patches": [
+        {
+          "target": "commissioner_evaluator",
+          "change": "Route incomplete requirements to needs_requirements with structured blockers instead of failed.",
+          "artifact_ref": "sandbox_report.requirements_request"
+        },
+        {
+          "target": "concierge_ui",
+          "change": "Render blockers as concise follow-up questions with defaults for fast-path responses.",
+          "artifact_ref": "requirements_request.blockers"
+        }
+      ],
+      "regression_checks": [
+        "Commissioner low-score + resolvable blockers yields verification_status=needs_requirements",
+        "Concierge receives blockers/questions payload and keeps run non-failure"
+      ],
+      "questions_needed": [],
+      "context_facts": [
+        "Problem: Users need a way to visually compare typical AI usage against advanced orchestrated AI workflows to understand differences in efficiency and capabilities.",
+        "Success criteria: The application should allow users to input parameters for both typical and advanced AI workflows, visualize the comparisons through interactive charts, and provide insights on performance metrics.",
+        "Constraints: Platform: Web; Language: JavaScript/TypeScript; Repo: GitHub; Environment: Browser-based; Time: TBD based on scope."
+      ],
+      "critic_blockers": [
+        "Missing detailed specifications for comparison criteria."
+      ]
+    },
+    "agents": [
+      "Supervisor",
+      "Engineer",
+      "Critic"
+    ],
+    "model": "gpt-5.2",
+    "synthesis_present": true,
+    "commissioner_score": null,
+    "commissioner_recommendation": null,
+    "commissioner_rationale": "",
+    "commissioner_improvements": [],
+    "critic_blockers": [
+      "Missing detailed specifications for comparison criteria."
+    ],
+    "critic_ratings": {
+      "completeness": 10,
+      "feasibility": 0,
+      "quality": 0
+    },
+    "researcher_facts": [
+      "Problem: Users need a way to visually compare typical AI usage against advanced orchestrated AI workflows to understand differences in efficiency and capabilities.",
+      "Success criteria: The application should allow users to input parameters for both typical and advanced AI workflows, visualize the comparisons through interactive charts, and provide insights on performance metrics.",
+      "Constraints: Platform: Web; Language: JavaScript/TypeScript; Repo: GitHub; Environment: Browser-based; Time: TBD based on scope.",
+      "Option A: Use React with D3.js for visualization. (Pros: Strong community support, rich ecosystem; Cons: Steeper learning curve for D3.js; When to choose: If rich interactive visualizations are a priority.)",
+      "Option B: Use Vue.js with Chart.js for visualization. (Pros: Easier to learn, simpler integration; Cons: Less flexibility than D3.js; When to choose: If rapid development is prioritized with decent visualizations.)"
+    ],
+    "overseer_warnings": [],
+    "acceptance_checks_summary": {
+      "passed": 0,
+      "failed": 0,
+      "deferred": 5
+    }
+  },
+  {
     "run_id": "Build_a_local-first_interactive_3D_visualization_of_the_golden_ratio_using_modern_web_technologies.2026-02-28T23-33-02Z",
     "ingested_at": "2026-02-28T23:34:49Z",
     "goal": "Build a local-first, interactive 3D visualization of the golden ratio (\u03c6) using modern web technologies.",
