@@ -6,6 +6,7 @@ This index is the canonical map of documentation in the Unified AI Toolbox repos
 
 - **Roadmap (single source of truth):** `docs/roadmap.md`
 - **Information architecture:** `docs/information-architecture.md`
+- **Orchestration experience roadmap:** `docs/orchestration-experience-roadmap.md`
 
 ## Apps and services
 

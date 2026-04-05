@@ -26,6 +26,7 @@ This file is the single roadmap source for active feature delivery.
 | RM-007 | Web deployment strategy for dynamic Next.js app | done | next | Target hosting chosen and deployment workflow aligned with API route requirements |
 | RM-008 | Run lifecycle control + lease/heartbeat safety | done | now/next | Canonical run state/lease model with cancel/force-cancel/requeue/stale-lease recovery and STUCK visibility |
 | RM-009 | App Factory Phase 1 — Closed Feedback Loop | done | next | Sandbox engine, acceptance-check evaluator, refinement loop controller, verify/refine API endpoints, and Run Detail Verification tab all delivered |
+| RM-010 | Orchestration experience unification (story-led UX, recipe reuse, cast assembly) | planned | next | Product narrative unified from intake through run review; prompts/agents/tools reusable in-context; run experience organized around story, chapters, and lessons |
 
 ## Side-track policy
 
@@ -398,4 +399,3 @@ Every roadmap-impacting tradeoff gets a `DEC-###` record in `IMPLEMENTATION_SUMM
   Date: 2026-03-22  
   Ref: `apps/unifiedtoolbox.webapp/src/lib/app-factory/sandbox/__tests__/refinementLoop.test.ts`  
   Notes: tests use real temp directories and spawnSync to exercise full path; complements existing `evaluateChecks.test.ts` unit tests.
-
