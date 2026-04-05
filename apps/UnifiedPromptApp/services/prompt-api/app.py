@@ -3392,8 +3392,9 @@ class OrchestrationRequest(BaseModel):
 
 class CheckpointResponseRequest(BaseModel):
     """Phase 3: Payload for responding to a mid-run human checkpoint."""
-    response: str                        # selected option or free-text answer
+    response: Optional[str] = None       # selected option or free-text answer
     agent: Optional[str] = None          # which agent requested the checkpoint (for validation)
+    answers: List[Dict[str, str]] = Field(default_factory=list)
 
 
 class BulkRunCancelRequest(BaseModel):
@@ -4638,7 +4639,8 @@ def orchestrate_run(
                 if manifest.get("contract_path"):
                     args += ["-ContractPath", str(manifest.get("contract_path"))]
                 notes = manifest.get("notes")
-                instruction_parts = [p for p in [knowledge_ctx, notes] if p]
+                resume_context = manifest.get("resume_context")
+                instruction_parts = [p for p in [knowledge_ctx, resume_context, notes] if p]
                 if instruction_parts:
                     args += ["-Instruction", "\n\n".join(instruction_parts)]
                 args += [
@@ -5906,12 +5908,144 @@ def bulk_cancel_orchestration_runs(
     }
 
 
+def _load_pending_checkpoint_record(
+    run_id: str,
+    manifest: Dict[str, Any],
+    checkpoint_pending_path: pathlib.Path,
+) -> Dict[str, Any]:
+    if checkpoint_pending_path.exists():
+        pending = safe_json_load(checkpoint_pending_path, default={}, context="checkpoint_pending")
+        if isinstance(pending, dict):
+            return pending
+
+    requirements_request = manifest.get("requirements_request")
+    if isinstance(requirements_request, dict):
+        blockers = requirements_request.get("blockers") if isinstance(requirements_request.get("blockers"), list) else []
+        first_question = ""
+        if blockers:
+            first = blockers[0] if isinstance(blockers[0], dict) else {}
+            first_question = str(first.get("question") or "").strip()
+        if first_question:
+            return {
+                "checkpoint_id": f"requirements-{run_id}",
+                "run_id": run_id,
+                "kind": "requirements",
+                "agent": "ConceptualModelContract",
+                "summary": str(requirements_request.get("summary") or "").strip(),
+                "question": first_question,
+                "options": ["Provide explicit requirements answers", "Revise the goal and resume"],
+                "default_option": "Provide explicit requirements answers",
+                "requested_at": now_iso(),
+                "requirements_request": requirements_request,
+            }
+
+    raise HTTPException(status_code=409, detail="No active checkpoint pending for this run")
+
+
+def _normalize_checkpoint_answers(
+    pending: Dict[str, Any],
+    body: CheckpointResponseRequest,
+) -> Tuple[str, List[Dict[str, str]]]:
+    blockers = []
+    requirements_request = pending.get("requirements_request")
+    if isinstance(requirements_request, dict):
+        raw_blockers = requirements_request.get("blockers")
+        if isinstance(raw_blockers, list):
+            blockers = [b for b in raw_blockers if isinstance(b, dict)]
+    blocker_lookup = {
+        str(blocker.get("id") or f"req_{idx + 1}"): str(blocker.get("question") or "").strip()
+        for idx, blocker in enumerate(blockers)
+    }
+
+    normalized_answers: List[Dict[str, str]] = []
+    for idx, raw in enumerate(body.answers):
+        if not isinstance(raw, dict):
+            continue
+        answer = str(raw.get("answer") or "").strip()
+        if not answer:
+            continue
+        blocker_id = str(raw.get("blocker_id") or raw.get("id") or f"req_{idx + 1}").strip()
+        question = str(raw.get("question") or blocker_lookup.get(blocker_id) or "").strip()
+        normalized_answers.append(
+            {
+                "blocker_id": blocker_id,
+                "question": question,
+                "answer": answer,
+            }
+        )
+
+    if normalized_answers:
+        lines = ["Requirements answers:"]
+        for item in normalized_answers:
+            if item["question"]:
+                lines.append(f"- {item['question']}")
+                lines.append(f"  Answer: {item['answer']}")
+            else:
+                lines.append(f"- Answer: {item['answer']}")
+        return "\n".join(lines), normalized_answers
+
+    response_text = str(body.response or "").strip()
+    if not response_text:
+        raise HTTPException(status_code=400, detail="Provide either response text or structured answers")
+
+    normalized_answers = [
+        {
+            "blocker_id": str(blockers[0].get("id") or "req_1") if blockers else "req_1",
+            "question": str(blockers[0].get("question") or "").strip() if blockers else str(pending.get("question") or "").strip(),
+            "answer": response_text,
+        }
+    ]
+    return response_text, normalized_answers
+
+
+def _build_resume_requirements_context(
+    pending: Dict[str, Any],
+    normalized_answers: List[Dict[str, str]],
+) -> str:
+    lines = [
+        "[REQUIREMENTS CHECKPOINT RESUME]",
+        "The previous attempt paused because the conceptual contract could not be completed safely.",
+        "Treat the following answers as authoritative requirements for the resumed run.",
+        "",
+    ]
+    summary = str(pending.get("summary") or "").strip()
+    if summary:
+        lines.append(f"Summary: {summary}")
+        lines.append("")
+
+    for item in normalized_answers:
+        question = item.get("question") or item.get("blocker_id") or "Requirement"
+        answer = item.get("answer") or ""
+        lines.append(f"- {question}")
+        lines.append(f"  Answer: {answer}")
+
+    requirements_request = pending.get("requirements_request")
+    if isinstance(requirements_request, dict):
+        proposed_tests = requirements_request.get("proposed_acceptance_tests")
+        if isinstance(proposed_tests, list) and proposed_tests:
+            lines.append("")
+            lines.append("Proposed acceptance tests to preserve while resuming:")
+            for test in proposed_tests:
+                test_text = str(test).strip()
+                if test_text:
+                    lines.append(f"- {test_text}")
+
+    lines.extend([
+        "",
+        "Resume from the requirements checkpoint.",
+        "Do not ask the same requirements questions again unless the answers are contradictory.",
+    ])
+    return "\n".join(lines)
+
+
 @app.post("/orchestrate/run/{run_id}/checkpoint")
 def respond_to_checkpoint(run_id: str, body: CheckpointResponseRequest):
     """
-    Phase 3: Submit a human response to a mid-run checkpoint.
-    Writes checkpoint_response.json to the run_dir so the Overseer
-    can detect it and resolve the checkpoint.
+    Submit a human response to a checkpoint.
+
+    Active checkpoints are resolved in-place for the Overseer to pick up.
+    Blocked requirements checkpoints are resumed on the same run lineage by
+    queuing the run with an appended resume context.
     """
     run_path = BRIDGE_RUN_DIR / f"{run_id}.json"
     if not run_path.exists():
@@ -5929,42 +6063,128 @@ def respond_to_checkpoint(run_id: str, body: CheckpointResponseRequest):
     out_dir = pathlib.Path(run_dir)
     checkpoint_pending_path = out_dir / "checkpoint_pending.json"
     checkpoint_response_path = out_dir / "checkpoint_response.json"
+    requirements_answers_path = out_dir / "requirements_answers.json"
 
-    if not checkpoint_pending_path.exists():
-        raise HTTPException(status_code=409, detail="No active checkpoint pending for this run")
-    if checkpoint_response_path.exists():
-        raise HTTPException(status_code=409, detail="Checkpoint already responded to")
+    pending = _load_pending_checkpoint_record(run_id, manifest, checkpoint_pending_path)
 
     # Validate agent if provided
     if body.agent:
-        try:
-            pending = json.loads(checkpoint_pending_path.read_text(encoding="utf-8"))
-            if pending.get("agent") != body.agent:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Checkpoint is from agent '{pending.get('agent')}', not '{body.agent}'",
-                )
-        except HTTPException:
-            raise
-        except Exception:
-            pass  # ignore parse errors here; Overseer is authoritative
+        pending_agent = str(pending.get("agent") or "").strip()
+        if pending_agent and pending_agent != body.agent:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Checkpoint is from agent '{pending_agent}', not '{body.agent}'",
+            )
 
-    # Write response file — Overseer will pick this up within 3s
+    response_text, normalized_answers = _normalize_checkpoint_answers(pending, body)
+    resolved_at = now_iso()
     response_payload = {
-        "response": body.response,
+        "response": response_text,
         "resolved_by": "human",
-        "resolved_at": now_iso(),
+        "resolved_at": resolved_at,
+        "answers": normalized_answers,
     }
+
+    status_value = str(manifest.get("status") or "").strip().lower()
+    is_active_checkpoint = status_value in ORCH_RUNNING_STATUSES and checkpoint_pending_path.exists()
+
+    if is_active_checkpoint:
+        if checkpoint_response_path.exists():
+            raise HTTPException(status_code=409, detail="Checkpoint already responded to")
+        try:
+            checkpoint_response_path.write_text(json.dumps(response_payload, indent=2), encoding="utf-8")
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Failed to write checkpoint response: {exc}")
+
+        return {
+            "status": "accepted",
+            "run_id": run_id,
+            "response": response_text,
+            "message": "Checkpoint response queued. Run will resume within a few seconds.",
+        }
+
+    resume_context = _build_resume_requirements_context(pending, normalized_answers)
+    checkpoint_id = str(pending.get("checkpoint_id") or pending.get("id") or f"requirements-{run_id}").strip()
+
     try:
-        checkpoint_response_path.write_text(json.dumps(response_payload, indent=2), encoding="utf-8")
+        requirements_answers_path.write_text(json.dumps(response_payload, indent=2), encoding="utf-8")
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Failed to write checkpoint response: {exc}")
+        raise HTTPException(status_code=500, detail=f"Failed to write requirements answers: {exc}")
+
+    def _apply(data: Dict[str, Any]) -> Dict[str, Any]:
+        data["status"] = "queued"
+        data["cancel_requested"] = False
+        data["started_at"] = None
+        data["completed_at"] = None
+        data["lease"] = None
+        data["verification_status"] = "pending"
+        data["sandbox_report"] = None
+        data["requirements_request"] = None
+        data["resume_context"] = resume_context
+        data["requirements_answers"] = normalized_answers
+        checkpoints = data.get("checkpoints")
+        if not isinstance(checkpoints, list):
+            checkpoints = []
+            data["checkpoints"] = checkpoints
+
+        updated = False
+        for cp in checkpoints:
+            if not isinstance(cp, dict):
+                continue
+            if str(cp.get("id") or "").strip() == checkpoint_id:
+                cp["response"] = response_text
+                cp["answers"] = normalized_answers
+                cp["responded_at"] = resolved_at
+                cp["resolved_by"] = "human"
+                cp["status"] = "answered"
+                updated = True
+                break
+        if not updated:
+            checkpoints.append(
+                {
+                    "id": checkpoint_id,
+                    "agent": str(pending.get("agent") or "ConceptualModelContract"),
+                    "question": str(pending.get("question") or "").strip(),
+                    "options": pending.get("options") if isinstance(pending.get("options"), list) else [],
+                    "default_option": str(pending.get("default_option") or ""),
+                    "requested_at": str(pending.get("requested_at") or now_iso()),
+                    "response": response_text,
+                    "answers": normalized_answers,
+                    "responded_at": resolved_at,
+                    "resolved_by": "human",
+                    "status": "answered",
+                }
+            )
+
+        data.setdefault("events", []).append(
+            {"ts": resolved_at, "type": "checkpoint:resolved", "message": f"Requirements checkpoint answered: {response_text[:160]}"}
+        )
+        data["events"].append({"ts": resolved_at, "type": "status", "message": "queued (resume_requirements)"})
+        return data
+
+    _update_manifest_atomic(run_path, _apply)
+
+    try:
+        checkpoint_pending_path.unlink(missing_ok=True)
+        checkpoint_response_path.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+    with _orch_run_state_lock:
+        _orch_run_state[run_id] = {
+            "cancel_event": threading.Event(),
+            "process": None,
+            "future": None,
+            "created_at": resolved_at,
+            "worker_id": None,
+        }
 
     return {
-        "status": "accepted",
+        "status": "queued",
         "run_id": run_id,
-        "response": body.response,
-        "message": "Checkpoint response queued. Run will resume within a few seconds.",
+        "response": response_text,
+        "answers": normalized_answers,
+        "message": "Requirements accepted. The run has been queued to resume on the same run id.",
     }
 
 

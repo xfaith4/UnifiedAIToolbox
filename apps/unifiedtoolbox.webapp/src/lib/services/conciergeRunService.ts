@@ -70,6 +70,9 @@ export function narrateRunEvent(event: OrchestrationRunEvent): string | null {
         return 'Agents are now working on your goal. Use the run monitor to follow live progress.'
       case 'completed':
         return 'Run completed successfully. Open the run monitor for the final status, artifacts, and follow-up actions.'
+      case 'blocked_requirements':
+      case 'needs_requirements':
+        return 'Run paused for requirements. Answer the blocker questions to resume the same run.'
       case 'failed':
         return 'Run failed. Open the run monitor to inspect the failure details and event trail.'
       case 'cancelled':

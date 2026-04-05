@@ -166,6 +166,10 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
   const [cancelMessage, setCancelMessage] = useState<string | null>(null)
   const [cancelError, setCancelError] = useState<string | null>(null)
   const [selectedAttemptId, setSelectedAttemptId] = useState<string | null>(null)
+  const [checkpointAnswers, setCheckpointAnswers] = useState<Record<string, string>>({})
+  const [checkpointPending, setCheckpointPending] = useState(false)
+  const [checkpointError, setCheckpointError] = useState<string | null>(null)
+  const [checkpointMessage, setCheckpointMessage] = useState<string | null>(null)
   const [buildInfo, setBuildInfo] = useState<{
     runDir: string
     artifactsDir: string
@@ -348,6 +352,20 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
     }
   }, [runId])
 
+  useEffect(() => {
+    const requirementsRequest = orchRun?.requirementsRequest ?? orchRun?.sandboxReport?.requirementsRequest
+    const blockers = requirementsRequest?.blockers ?? []
+    if (blockers.length === 0) return
+
+    setCheckpointAnswers((current) => {
+      const next: Record<string, string> = {}
+      for (const blocker of blockers) {
+        next[blocker.id] = current[blocker.id] ?? blocker.defaults?.[0] ?? ''
+      }
+      return next
+    })
+  }, [orchRun])
+
   const commands = report?.verification?.commands ?? []
   const passedCommands = commands.filter((cmd) => cmd?.exit_code === 0).length
   const failedCommands = commands.filter((cmd) => cmd?.exit_code !== 0 && cmd?.exit_code !== null && cmd?.exit_code !== undefined).length
@@ -476,6 +494,49 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
       setCancelError(err instanceof Error ? err.message : 'Failed to requeue run.')
     } finally {
       setRequeuePending(false)
+    }
+  }
+
+  const handleSubmitCheckpointAnswers = async (
+    requirementsRequest: NonNullable<OrchestrationRun['requirementsRequest']>
+  ) => {
+    const blockers = requirementsRequest.blockers ?? []
+    const answers = blockers.map((blocker) => ({
+      blocker_id: blocker.id,
+      question: blocker.question,
+      answer: String(checkpointAnswers[blocker.id] || '').trim(),
+    }))
+
+    const missing = answers.filter((item) => !item.answer)
+    if (missing.length > 0) {
+      setCheckpointError('Answer every blocker question before resuming the run.')
+      return
+    }
+
+    setCheckpointPending(true)
+    setCheckpointError(null)
+    setCheckpointMessage(null)
+    try {
+      const res = await fetch(`/api/runs/${encodeURIComponent(runId)}/checkpoint`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          agent: 'ConceptualModelContract',
+          answers,
+        }),
+      })
+      const result = (await res.json()) as { message?: string; error?: { message?: string } }
+      if (!res.ok) {
+        throw new Error(result.error?.message || result.message || 'Failed to submit checkpoint answers.')
+      }
+
+      setCheckpointMessage(result.message || 'Requirements accepted. The run is queued to resume.')
+      const refreshed = await fetchOrchestrationRun(runId)
+      setOrchRun(refreshed)
+    } catch (err) {
+      setCheckpointError(err instanceof Error ? err.message : 'Failed to submit checkpoint answers.')
+    } finally {
+      setCheckpointPending(false)
     }
   }
 
@@ -820,6 +881,22 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
                   {item.defaults && item.defaults.length > 0 && (
                     <div><span className="font-semibold">Defaults:</span> {item.defaults.join(' | ')}</div>
                   )}
+                  <div className="mt-3 space-y-1">
+                    <label htmlFor={`checkpoint-answer-${item.id}`} className="block font-semibold text-amber-50">
+                      Your answer
+                    </label>
+                    <textarea
+                      id={`checkpoint-answer-${item.id}`}
+                      value={checkpointAnswers[item.id] ?? ''}
+                      onChange={(event) => {
+                        const value = event.target.value
+                        setCheckpointAnswers((current) => ({ ...current, [item.id]: value }))
+                      }}
+                      rows={3}
+                      className="w-full rounded-lg border border-amber-700/60 bg-slate-950/70 px-3 py-2 text-xs text-slate-100 outline-none ring-0 placeholder:text-slate-500 focus:border-amber-500"
+                      placeholder={item.defaults?.[0] ? `Example: ${item.defaults[0]}` : 'Provide the requirement needed to resume execution.'}
+                    />
+                  </div>
                 </div>
               ))}
             </div>
@@ -833,6 +910,32 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
                 </ul>
               </div>
             )}
+            {checkpointError && (
+              <div className="rounded-xl border border-rose-800/70 bg-rose-950/30 px-3 py-2 text-rose-200">
+                {checkpointError}
+              </div>
+            )}
+            {checkpointMessage && (
+              <div className="rounded-xl border border-emerald-700/70 bg-emerald-950/30 px-3 py-2 text-emerald-200">
+                {checkpointMessage}
+              </div>
+            )}
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => void handleSubmitCheckpointAnswers(requirementsRequest)}
+                disabled={checkpointPending}
+                className="rounded border border-amber-600 bg-amber-500/15 px-3 py-1.5 text-xs font-semibold text-amber-50 hover:bg-amber-500/25 disabled:opacity-50"
+              >
+                {checkpointPending ? 'Submitting answers…' : 'Submit Answers & Resume Run'}
+              </button>
+              <Link
+                href={`/concierge?run=${encodeURIComponent(runId)}`}
+                className="rounded border border-slate-700 bg-slate-900/30 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-800/60"
+              >
+                Answer in Concierge Instead
+              </Link>
+            </div>
           </div>
         )}
 

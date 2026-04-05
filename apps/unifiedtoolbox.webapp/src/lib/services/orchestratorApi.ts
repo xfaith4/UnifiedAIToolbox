@@ -406,6 +406,33 @@ function normalizeApiRun(raw: Record<string, unknown>): OrchestrationRun {
     }
   }
   const requirementsRequest = normalizeRequirementsRequest(rawRequirementsRequest)
+  const checkpoints = Array.isArray(raw.checkpoints)
+    ? raw.checkpoints
+        .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'))
+        .map((item, idx) => ({
+          id: String(item.id || item.checkpoint_id || `checkpoint_${idx + 1}`),
+          agent: String(item.agent || 'unknown'),
+          question: String(item.question || ''),
+          options: Array.isArray(item.options) ? item.options.map(String) : [],
+          defaultOption: String(item.default_option || item.defaultOption || ''),
+          requestedAt: String(item.requested_at || item.requestedAt || ''),
+          response: item.response == null ? null : String(item.response),
+          respondedAt: item.responded_at == null && item.respondedAt == null ? null : String(item.responded_at || item.respondedAt),
+          resolvedBy: item.resolved_by == null && item.resolvedBy == null
+            ? null
+            : String(item.resolved_by || item.resolvedBy) as 'human' | 'timeout',
+          status: item.status ? String(item.status) : undefined,
+          answers: Array.isArray(item.answers)
+            ? item.answers
+                .filter((entry): entry is Record<string, unknown> => Boolean(entry && typeof entry === 'object'))
+                .map((entry) => ({
+                  blockerId: entry.blocker_id ? String(entry.blocker_id) : entry.blockerId ? String(entry.blockerId) : undefined,
+                  question: entry.question ? String(entry.question) : undefined,
+                  answer: String(entry.answer || ''),
+                }))
+            : undefined,
+        }))
+    : undefined
   const sandboxReport = rawSandboxReport
     ? {
         generatedAt: String(rawSandboxReport.generated_at || rawSandboxReport.generatedAt || ''),
@@ -497,6 +524,7 @@ function normalizeApiRun(raw: Record<string, unknown>): OrchestrationRun {
           : undefined,
     sandboxReport,
     requirementsRequest,
+    checkpoints,
   }
 }
 

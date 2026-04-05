@@ -358,3 +358,93 @@ class TestOrchestrateRun:
         run_res = client.get(f"/orchestrate/run/{run_id}")
         assert run_res.status_code == 200
         assert run_res.json().get("status") == "queued"
+
+    def test_checkpoint_response_resumes_blocked_requirements_run(self, cleanup_test_runs):
+        run_id = f"test_checkpoint_resume_{app.now_iso().replace(':', '-')}"
+        manifest_path = app.BRIDGE_RUN_DIR / f"{run_id}.json"
+        out_dir = app.BRIDGE_RUN_DIR / run_id
+        out_dir.mkdir(parents=True, exist_ok=True)
+        now = app.now_iso()
+
+        requirements_request = {
+            "summary": "ConceptualModelContract requires more detail.",
+            "blockers": [
+                {
+                    "id": "req_1",
+                    "question": "Which frontend stack should be used?",
+                    "why": "Needed to produce a valid implementation contract.",
+                    "defaults": ["React + Vite"],
+                }
+            ],
+            "proposed_acceptance_tests": ["App loads locally with npm run dev."],
+        }
+        checkpoint_pending = {
+            "checkpoint_id": "requirements-test-1",
+            "run_id": run_id,
+            "kind": "requirements",
+            "agent": "ConceptualModelContract",
+            "summary": "ConceptualModelContract requires additional requirements before implementation can continue.",
+            "question": "Which frontend stack should be used?",
+            "options": ["Provide explicit requirements answers", "Revise the goal and resume"],
+            "default_option": "Provide explicit requirements answers",
+            "requested_at": now,
+            "requirements_request": requirements_request,
+        }
+        (out_dir / "checkpoint_pending.json").write_text(json.dumps(checkpoint_pending, indent=2), encoding="utf-8")
+
+        manifest = {
+            "run_id": run_id,
+            "status": "blocked_requirements",
+            "requested_at": now,
+            "run_dir": str(out_dir),
+            "events": [],
+            "requirements_request": requirements_request,
+            "verification_status": "needs_requirements",
+            "checkpoints": [
+                {
+                    "id": "requirements-test-1",
+                    "agent": "ConceptualModelContract",
+                    "question": "Which frontend stack should be used?",
+                    "options": ["Provide explicit requirements answers", "Revise the goal and resume"],
+                    "default_option": "Provide explicit requirements answers",
+                    "requested_at": now,
+                    "response": None,
+                    "responded_at": None,
+                    "resolved_by": None,
+                }
+            ],
+            "lease": None,
+        }
+        manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+        res = client.post(
+            f"/orchestrate/run/{run_id}/checkpoint",
+            json={
+                "agent": "ConceptualModelContract",
+                "answers": [
+                    {
+                        "blocker_id": "req_1",
+                        "question": "Which frontend stack should be used?",
+                        "answer": "Use React with Vite and plain CSS.",
+                    }
+                ],
+            },
+        )
+        assert res.status_code == 200
+        body = res.json()
+        assert body.get("status") == "queued"
+        assert "same run id" in str(body.get("message") or "")
+
+        updated = json.loads(manifest_path.read_text(encoding="utf-8"))
+        assert updated.get("status") == "queued"
+        assert updated.get("verification_status") == "pending"
+        assert updated.get("sandbox_report") is None
+        assert updated.get("requirements_request") is None
+        assert "resume_context" in updated
+        assert "Use React with Vite and plain CSS." in updated["resume_context"]
+        assert updated["checkpoints"][0]["resolved_by"] == "human"
+        assert updated["checkpoints"][0]["status"] == "answered"
+        assert updated["checkpoints"][0]["response"].startswith("Requirements answers:")
+
+        assert (out_dir / "requirements_answers.json").exists()
+        assert not (out_dir / "checkpoint_pending.json").exists()

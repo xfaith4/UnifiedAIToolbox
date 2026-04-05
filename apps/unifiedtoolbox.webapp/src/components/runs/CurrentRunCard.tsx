@@ -73,6 +73,21 @@ const STATUS_CONFIG: Record<string, StatusConfig> = {
     cls: 'bg-purple-950/40 text-purple-300 border-purple-800',
     icon: <AlertTriangle size={11} aria-hidden="true" />,
   },
+  awaiting_input: {
+    label: 'Awaiting Input',
+    cls: 'bg-amber-950/40 text-amber-300 border-amber-800',
+    icon: <AlertTriangle size={11} aria-hidden="true" />,
+  },
+  blocked_requirements: {
+    label: 'Needs Requirements',
+    cls: 'bg-amber-950/40 text-amber-300 border-amber-800',
+    icon: <AlertTriangle size={11} aria-hidden="true" />,
+  },
+  needs_requirements: {
+    label: 'Needs Requirements',
+    cls: 'bg-amber-950/40 text-amber-300 border-amber-800',
+    icon: <AlertTriangle size={11} aria-hidden="true" />,
+  },
   completed: {
     label: 'Completed',
     cls: 'bg-emerald-950/40 text-emerald-300 border-emerald-700',

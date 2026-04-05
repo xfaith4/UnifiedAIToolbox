@@ -302,7 +302,7 @@ export default function RunSwarmPage({ params }: { params: Promise<{ runId: stri
                     Requirements needed to continue this run
                   </div>
                   <p className="text-amber-100/90">
-                    Swarm View shows where execution stopped. Answer the blocker questions first, then requeue the run from Run Detail.
+                    Swarm View shows where execution stopped. Answer the blocker questions in Run Detail or Concierge, and the same run will be queued to resume with those answers.
                   </p>
                   {requirementsRequest?.summary && (
                     <p className="text-amber-50/90">{requirementsRequest.summary}</p>

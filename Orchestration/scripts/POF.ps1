@@ -253,17 +253,45 @@ function New-RequirementsRequestPacket {
     }
 }
 
-function Write-PofRequirementsRequestArtifacts {
+function New-PofRequirementsCheckpointRecord {
     param(
         [Parameter(Mandatory = $true)][string]$AgentName,
         [Parameter(Mandatory = $true)][string]$Question,
         [Parameter(Mandatory = $true)][hashtable]$RequirementsRequest
     )
 
+    $checkpointId = "requirements-{0}" -f ([Guid]::NewGuid().ToString("N"))
+    $requestedAt = (Get-Date).ToUniversalTime().ToString("o")
+
+    return @{
+        checkpoint_id        = $checkpointId
+        run_id               = $RunId
+        kind                 = "requirements"
+        agent                = $AgentName
+        summary              = "${AgentName} requires additional requirements before implementation can continue."
+        question             = $Question
+        options              = @("Provide explicit requirements answers", "Revise the goal and resume")
+        default_option       = "Provide explicit requirements answers"
+        requested_at         = $requestedAt
+        status               = "awaiting_user"
+        requirements_request = $RequirementsRequest
+    }
+}
+
+function Write-PofRequirementsCheckpointArtifacts {
+    param(
+        [Parameter(Mandatory = $true)][string]$AgentName,
+        [Parameter(Mandatory = $true)][string]$Question,
+        [Parameter(Mandatory = $true)][hashtable]$RequirementsRequest,
+        [Parameter(Mandatory = $true)][hashtable]$CheckpointRecord
+    )
+
     $requirementsPath = Join-Path $OutDir "requirements_request.json"
+    $checkpointPath = Join-Path $OutDir "checkpoint_pending.json"
     $sandboxReportPath = Join-Path $OutDir "sandbox_report.json"
 
     $RequirementsRequest | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $requirementsPath -Encoding UTF8
+    $CheckpointRecord | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $checkpointPath -Encoding UTF8
 
     $details = "${AgentName} requested clarification before a valid conceptual contract could be produced."
     $sandboxReport = @{
@@ -994,7 +1022,8 @@ try {
         Write-Host "`nIteration $i/$MaxIterations" -ForegroundColor Yellow
 
         # --- Agent Pipeline -------------------------------------------------
-        # Phase 1 (parallel): contributor agents
+        # Phase 0 (sequential gate): ConceptualModelContract
+        # Phase 1 (parallel): contributor agents after the contract is valid
         # Phase 2 (sequential): Synthesizer
         # Phase 3 (sequential): ValidationAuditor
         # Phase 4 (sequential): Commissioner
@@ -1006,9 +1035,12 @@ try {
         $Supervisor = $Agents | Where-Object { $_.name -eq "Supervisor" }
         $Historian = $Agents | Where-Object { $_.name -eq "Historian" }
         $Phase1Agents = $Agents | Where-Object { $_.name -notin @("Commissioner", "Synthesizer", "ValidationAuditor", "Supervisor", "Historian") }
+        $ContractAgents = @($Phase1Agents | Where-Object { $_.name -eq "ConceptualModelContract" })
+        $Phase1Agents = @($Phase1Agents | Where-Object { $_.name -ne "ConceptualModelContract" })
 
         # Track per-iteration outputs by agent name for downstream Supervisor/Historian inputs.
         $AgentOutputs = @{}
+        $requirementsBlocker = $null
 
         $repoContextAgents = @($Phase1Agents | Where-Object { $_.name -eq "RepoContextBuilder" })
         $maintenanceFallbackAgents = @($Phase1Agents | Where-Object { $_.name -in @("ReviewGate", "PRPublisher") })
@@ -1073,6 +1105,89 @@ try {
             Write-AgentStatus -Agent $maintenanceAgent.name -Status "complete" -ExtraData @{ source = "fallback"; warning = $reason }
             $Context += "`n`n[$($maintenanceAgent.name) Output]:`n$finalOutput"
             $AgentOutputs[$maintenanceAgent.name] = $finalOutput
+        }
+
+        foreach ($ContractAgent in $ContractAgents) {
+            Write-AgentStatus -Agent $ContractAgent.name -Status "working"
+
+            $systemPrompt = Get-AgentSystemPrompt -Agent $ContractAgent -BaseInstruction $Instruction -EffectiveAppType $EffectiveAppType -EffectiveJobType $EffectiveJobType
+            $Messages = @(
+                @{ role = "system"; content = $systemPrompt },
+                @{ role = "user"; content = $Context }
+            )
+
+            $Output = Invoke-OpenAIRequest -Messages $Messages -AgentName $ContractAgent.name
+            if (-not $Output) {
+                Write-AgentStatus -Agent $ContractAgent.name -Status "error"
+                throw "ConceptualModelContract returned no output. Cannot continue without a validated contract."
+            }
+
+            $validated = Resolve-AgentOutputWithContract `
+                -AgentName $ContractAgent.name `
+                -Output $Output `
+                -SystemPrompt $systemPrompt `
+                -UserPrompt $Context
+
+            $finalOutput = [string]$validated.Output
+            Write-Log -Agent $ContractAgent.name -Content $finalOutput
+            $AgentOutputs[$ContractAgent.name] = $finalOutput
+
+            if ($validated.ClarificationNeeded) {
+                $requirementsRequest = New-RequirementsRequestPacket -Question $validated.ClarificationText -AgentName $ContractAgent.name
+                $checkpointRecord = New-PofRequirementsCheckpointRecord `
+                    -AgentName $ContractAgent.name `
+                    -Question $validated.ClarificationText `
+                    -RequirementsRequest $requirementsRequest
+
+                Write-AgentStatus -Agent $ContractAgent.name -Status "blocked_requirements" -ExtraData @{
+                    reason               = "clarification_request"
+                    clarification_text   = $validated.ClarificationText
+                    checkpoint           = $true
+                    checkpoint_id        = $checkpointRecord.checkpoint_id
+                    question             = $validated.ClarificationText
+                    options              = $checkpointRecord.options
+                    default              = $checkpointRecord.default_option
+                    requirements_request = $requirementsRequest
+                }
+                Write-PofRequirementsCheckpointArtifacts `
+                    -AgentName $ContractAgent.name `
+                    -Question $validated.ClarificationText `
+                    -RequirementsRequest $requirementsRequest `
+                    -CheckpointRecord $checkpointRecord
+                Update-PofRunState `
+                    -Status "blocked_requirements" `
+                    -CurrentStage "checkpoint" `
+                    -RequirementsRequest $requirementsRequest `
+                    -Warnings @("$($ContractAgent.name) requested clarification before implementation could continue.") `
+                    -Complete
+                Write-PofEvent `
+                    -Type "checkpoint:pending" `
+                    -Message "$($ContractAgent.name) requested clarification before implementation could continue." `
+                    -Stage "checkpoint" `
+                    -Data @{
+                        agent                = $ContractAgent.name
+                        checkpoint_id        = $checkpointRecord.checkpoint_id
+                        clarification_text   = $validated.ClarificationText
+                        requirements_request = $requirementsRequest
+                    }
+
+                $requirementsBlocker = @{
+                    AgentName           = $ContractAgent.name
+                    ClarificationText   = $validated.ClarificationText
+                    RequirementsRequest = $requirementsRequest
+                    CheckpointRecord    = $checkpointRecord
+                }
+                break
+            }
+
+            Write-AgentStatus -Agent $ContractAgent.name -Status "complete"
+            $Context += "`n`n[$($ContractAgent.name) Output]:`n$finalOutput"
+        }
+
+        if ($requirementsBlocker) {
+            Write-Host "⚠️ Requirements clarification needed from $($requirementsBlocker.AgentName). Pausing orchestration before downstream agents start." -ForegroundColor Yellow
+            $Context += "`n`n[Requirements Request]:`n$($requirementsBlocker.RequirementsRequest | ConvertTo-Json -Depth 20)"
+            break
         }
 
         # --- Prepare work items --------------------------------------------
@@ -1228,7 +1343,6 @@ Stack Trace: $($_.ScriptStackTrace)
         } -ThrottleLimit 4   # Adjust for API concurrency limits
 
         # --- Collect and merge results (serial, in parent) -----------------
-        $requirementsBlocker = $null
         foreach ($r in $Results) {
             if (-not $r.Ok -or [string]::IsNullOrWhiteSpace($r.Output)) {
                 Write-Host "⚠️ No response from $($r.Agent)" -ForegroundColor Red

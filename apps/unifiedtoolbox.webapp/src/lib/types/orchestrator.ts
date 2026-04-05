@@ -13,6 +13,12 @@ export interface CheckpointRecord {
   response: string | null      // null = not yet answered
   respondedAt: string | null
   resolvedBy: 'human' | 'timeout' | null
+  status?: string
+  answers?: Array<{
+    blockerId?: string
+    question?: string
+    answer: string
+  }>
 }
 
 // ── Phase 1: Verification / Sandbox types ─────────────────────────────────────
@@ -129,6 +135,7 @@ export interface OrchestrationRun {
   loopIteration?: number
   sandboxReport?: SandboxReport
   requirementsRequest?: RequirementsRequest
+  checkpoints?: CheckpointRecord[]
 
   // Output
   output?: string
