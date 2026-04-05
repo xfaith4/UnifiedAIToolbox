@@ -10,7 +10,7 @@ describe('navConfig — ROUTES', () => {
   })
 
   it('canonical routes match expected values', () => {
-    expect(ROUTES.home).toBe('/dashboard')
+    expect(ROUTES.home).toBe('/')
     expect(ROUTES.playground).toBe('/orchestrator')
     expect(ROUTES.reports).toBe('/milestones')
     expect(ROUTES.runs).toBe('/runs')
@@ -20,8 +20,9 @@ describe('navConfig — ROUTES', () => {
 
 describe('navConfig — ROUTE_ALIASES', () => {
   it('legacy aliases redirect to correct canonical routes', () => {
-    expect(ROUTE_ALIASES['/home']).toBe('/dashboard')
-    expect(ROUTE_ALIASES['/overview']).toBe('/dashboard')
+    expect(ROUTE_ALIASES['/home']).toBe('/')
+    expect(ROUTE_ALIASES['/overview']).toBe('/')
+    expect(ROUTE_ALIASES['/dashboard']).toBe('/')
     expect(ROUTE_ALIASES['/playground']).toBe('/orchestrator')
     expect(ROUTE_ALIASES['/reports']).toBe('/milestones')
   })

@@ -6,7 +6,7 @@
 
 // ── Canonical routes (what the sidebar links to) ────────────────────────────
 export const ROUTES = {
-  home: '/dashboard',          // canonical; /home redirects here
+  home: '/',                   // canonical; /home and /overview redirect here
   concierge: '/concierge',     // new Phase 1 — Concierge chat + Proposal
   prompts: '/prompts',
   agents: '/agents',
@@ -26,6 +26,7 @@ export type RouteKey = keyof typeof ROUTES
 export const ROUTE_ALIASES: Record<string, string> = {
   '/home': ROUTES.home,
   '/overview': ROUTES.home,
+  '/dashboard': ROUTES.home,
   '/playground': ROUTES.playground,
   '/reports': ROUTES.reports,
 }

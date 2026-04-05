@@ -22,22 +22,16 @@ import {
 import { type ReactNode, useCallback, useEffect, useMemo, useState, Suspense } from 'react'
 import { installUxInstrumentation, trackUxEvent } from '@/lib/ux/telemetry'
 import { UxDebugOverlay } from '@/components/ux/UxDebugOverlay'
-import { NAV_LABELS, ROUTES } from '@/lib/nav/navConfig'
+import { NAV_LABELS, ROUTES, ROUTE_ALIASES } from '@/lib/nav/navConfig'
 import { DocsHub } from '@/components/docs/DocsHub'
 import { FirstLaunchTour } from '@/components/tour/FirstLaunchTour'
+import { RouteStoryBanner } from '@/components/navigation/RouteStoryBanner'
 
 // ── Active-path helper ────────────────────────────────────────────────────────
 // Treats redirect aliases as active for their canonical route.
-const ACTIVE_ALIASES: Record<string, string> = {
-  '/home': '/dashboard',
-  '/overview': '/dashboard',
-  '/playground': '/orchestrator',
-  '/reports': '/milestones',
-}
-
 function isNavItemActive(pathname: string, href: string): boolean {
   if (pathname === href) return true
-  const canonical = ACTIVE_ALIASES[pathname]
+  const canonical = ROUTE_ALIASES[pathname]
   return canonical === href
 }
 
@@ -135,13 +129,15 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             {/* Mobile top bar */}
             <div className="flex items-center justify-between border-b border-gray-800 bg-gray-900 px-4 py-3 md:hidden">
               <div className="flex items-center gap-2">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-purple-600">
-                  <Sparkles size={20} className="text-white" />
-                </div>
-                <div>
-                  <div className="font-semibold">AI Toolbox</div>
-                  <div className="text-[10px] text-gray-400">Unified Web App</div>
-                </div>
+                <Link href={ROUTES.home} className="flex items-center gap-2">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-purple-600">
+                    <Sparkles size={20} className="text-white" />
+                  </div>
+                  <div>
+                    <div className="font-semibold">AI Toolbox</div>
+                    <div className="text-[10px] text-gray-400">Unified Web App</div>
+                  </div>
+                </Link>
               </div>
               <div className="flex items-center gap-2">
                 <button
@@ -178,7 +174,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               className={`fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-gray-800 bg-gray-900 p-4 transition-transform duration-200 ease-out md:static md:z-auto md:w-full md:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
             >
               {/* Logo */}
-              <div className="mb-6 hidden items-center gap-2 md:flex">
+              <Link href={ROUTES.home} className="mb-6 hidden items-center gap-2 md:flex">
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-purple-600">
                   <Sparkles size={20} className="text-white" />
                 </div>
@@ -186,7 +182,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                   <div className="font-semibold">AI Toolbox</div>
                   <div className="text-[10px] text-gray-400">Unified Web App</div>
                 </div>
-              </div>
+              </Link>
 
               {/* Nav sections */}
               <nav className="flex-1 space-y-5" aria-label="Main navigation">
@@ -233,7 +229,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               </div>
             </aside>
 
-            <main id="main-content" className="bg-gray-950 p-4 md:p-6">
+            <main id="main-content" className="space-y-6 bg-gray-950 p-4 md:p-6">
+              <RouteStoryBanner />
               {children}
             </main>
           </div>

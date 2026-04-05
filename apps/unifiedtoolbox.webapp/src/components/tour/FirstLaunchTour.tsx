@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { X, ChevronRight, ChevronLeft, Home, BookOpen, PlayCircle, History, Settings, HelpCircle } from 'lucide-react'
 
-const STORAGE_KEY = 'utb_tour_dismissed_v1'
+const STORAGE_KEY = 'utb_tour_dismissed_v2'
 
 // ── Tour steps ────────────────────────────────────────────────────────────────
 interface TourStep {
@@ -16,31 +16,31 @@ interface TourStep {
 const STEPS: TourStep[] = [
   {
     title: 'Welcome to Unified AI Toolbox',
-    body: 'This quick tour walks you through the 4-stage workflow so you can get results fast. Takes about 30 seconds.',
+    body: 'This quick tour walks you through the story-led workflow so you can move from idea to execution without guessing which surface to open next. Takes about 30 seconds.',
     icon: Home,
     iconColor: 'text-blue-400',
   },
   {
-    title: 'Home — see your health at a glance',
-    body: 'The Home page shows real-time telemetry: token usage, costs, agent distribution, and prompt quality. Start here to understand the state of your system.',
+    title: 'Home — orient the next chapter',
+    body: 'Home is now the narrative front door. Start a proposal, jump into a build, or review the current chapter before you dive into telemetry or execution detail.',
     icon: Home,
     iconColor: 'text-blue-400',
   },
   {
-    title: 'Build — create your AI assets',
-    body: 'Prompt Library, Agent Library, and Tooling (MCP) live here. Build reusable prompts, define agents with roles and missions, and register MCP tool servers.',
+    title: 'Build reusable recipes',
+    body: 'Prompt Library, Agent Library, and Tooling (MCP) work best as one recipe system. Shape reusable prompts, define the cast, and control which tools they can reach.',
     icon: BookOpen,
     iconColor: 'text-purple-400',
   },
   {
-    title: 'Run — launch orchestrations',
-    body: 'Playground lets you enter a goal, pick agents, and launch a multi-agent swarm. App Factory is for structured app-build pipelines. Both feed into Runs.',
+    title: 'Run the work in the right mode',
+    body: 'Concierge helps you frame a proposal first. Playground is the flexible orchestration surface, while App Lifecycle is for guided application-build and maintenance flows.',
     icon: PlayCircle,
     iconColor: 'text-emerald-400',
   },
   {
-    title: 'Observe — inspect what happened',
-    body: 'Runs shows every orchestration\'s evidence trail. Reports provides aggregate analytics: trends, quality gates, and milestone progress.',
+    title: 'Observe what happened and what changed',
+    body: 'Runs gives you the evidence trail for each chapter. Knowledge captures what should be promoted into future proposals, while Reports remains the telemetry and trend layer.',
     icon: History,
     iconColor: 'text-amber-400',
   },

@@ -26,7 +26,7 @@ export default function GlobalError({
       <div className="mx-auto max-w-2xl rounded-3xl border border-slate-800 bg-slate-900/60 p-6">
         <h1 className="text-2xl font-semibold">Something went wrong</h1>
         <p className="mt-2 text-sm text-slate-300">
-          The portal hit an unexpected error. You can retry, or return to the dashboard.
+          The portal hit an unexpected error. You can retry, or return to Home.
         </p>
 
         <pre className="mt-4 overflow-auto rounded-2xl border border-slate-800 bg-slate-950/60 p-4 text-xs text-slate-200">
@@ -42,10 +42,10 @@ export default function GlobalError({
             Try again
           </button>
           <Link
-            href="/dashboard"
+            href="/"
             className="rounded-lg border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800"
           >
-            Go to dashboard
+            Go to Home
           </Link>
         </div>
       </div>

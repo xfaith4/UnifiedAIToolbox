@@ -95,14 +95,12 @@ export function DocsHub({ open, onClose }: DocsHubProps) {
           {/* What this does */}
           <Section icon={BookOpen} title="What this does">
             <p className="text-sm text-gray-300 leading-relaxed">
-              Unified AI Toolbox lets you <strong className="text-white">build</strong> reusable
-              prompts, agents, and tools; <strong className="text-white">run</strong> multi-agent
-              orchestrations; <strong className="text-white">observe</strong> every run&apos;s evidence
-              trail; and <strong className="text-white">configure</strong> API keys and preferences —
-              all from one place.
+              Unified AI Toolbox helps you turn an idea into an application chapter:
+              define the intent, assemble the cast, run the work, and learn from the result.
+              Prompts, agents, tools, runs, and memory are different surfaces on the same workflow.
             </p>
-            <div className="mt-3 grid grid-cols-5 gap-1 text-center text-[11px]">
-              {['Build', 'Run', 'Observe', 'Configure'].map((stage, i) => (
+            <div className="mt-3 grid grid-cols-4 gap-1 text-center text-[11px]">
+              {['Intent', 'Cast', 'Run', 'Learn'].map((stage, i) => (
                 <div key={stage} className="flex items-center gap-1">
                   {i > 0 && <span className="text-gray-600">→</span>}
                   <span className="rounded-lg bg-gray-800 px-2 py-1 font-medium text-gray-200">
@@ -148,23 +146,23 @@ export function DocsHub({ open, onClose }: DocsHubProps) {
             <ol className="space-y-2 text-sm text-gray-300">
               <li className="flex gap-2">
                 <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[11px] font-bold text-white">1</span>
-                <span>Go to <strong className="text-white">Build → Prompt Library</strong> and create or import a prompt.</span>
+                <span>Start at <strong className="text-white">Home</strong> or <strong className="text-white">Concierge</strong> and frame the application goal as a proposal.</span>
               </li>
               <li className="flex gap-2">
                 <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[11px] font-bold text-white">2</span>
-                <span>Go to <strong className="text-white">Build → Agent Library</strong> and create an agent that binds your prompt.</span>
+                <span>Use <strong className="text-white">Prompt Library</strong>, <strong className="text-white">Agent Library</strong>, and <strong className="text-white">Tooling</strong> to shape reusable building blocks when the proposal needs them.</span>
               </li>
               <li className="flex gap-2">
                 <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[11px] font-bold text-white">3</span>
-                <span>Go to <strong className="text-white">Run → Playground</strong>, enter a goal, pick your agents, and launch.</span>
+                <span>Launch execution in <strong className="text-white">Playground</strong> for flexible orchestration or <strong className="text-white">App Lifecycle</strong> for guided build and maintenance flows.</span>
               </li>
               <li className="flex gap-2">
                 <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[11px] font-bold text-white">4</span>
-                <span>Check <strong className="text-white">Observe → Runs</strong> to inspect the evidence trail of each orchestration.</span>
+                <span>Review the evidence trail in <strong className="text-white">Runs</strong> and promote useful patterns into <strong className="text-white">Knowledge</strong>.</span>
               </li>
               <li className="flex gap-2">
                 <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[11px] font-bold text-white">5</span>
-                <span>Review trends and gates in <strong className="text-white">Observe → Reports</strong>.</span>
+                <span>Use <strong className="text-white">Reports</strong> and telemetry when you need portfolio-level trend and quality context.</span>
               </li>
             </ol>
           </Section>

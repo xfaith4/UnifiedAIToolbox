@@ -257,6 +257,28 @@ Every roadmap-impacting tradeoff gets a `DEC-###` record in `IMPLEMENTATION_SUMM
   Ref: `src/lib/types/conciergePreferences.ts`, `src/lib/services/userPreferencesStore.ts`  
   Notes: `ConciergeMode` enum with `CONCIERGE_MODES` metadata; `getConciergeMode` / `setConciergeMode` persists to `localStorage`; mode selector shown in Concierge header; `Assumptions & Confidence` section in proposal rendering.
 
+## RM-010 Worklist (Orchestration experience unification)
+
+- [x] Make `/` the canonical Home route and replace the placeholder welcome screen with a story-led front door.  
+  Date: 2026-04-05  
+  Ref: `apps/unifiedtoolbox.webapp/src/app/page.tsx`, `apps/unifiedtoolbox.webapp/src/lib/nav/navConfig.ts`  
+  Notes: Home now frames the product as an application-building story. The canonical Home route is `/`; `/home` and `/overview` redirect there, while `/dashboard` remains available as telemetry continuity during the transition.
+
+- [x] Add shared route-aware workflow guidance across the main product surfaces.  
+  Date: 2026-04-05  
+  Ref: `apps/unifiedtoolbox.webapp/src/components/navigation/RouteStoryBanner.tsx`, `apps/unifiedtoolbox.webapp/src/app/layout.tsx`  
+  Notes: Major routes now describe their role in the workflow and link to the likely next step. This deliberately avoids broad per-page rewrites while improving orientation immediately.
+
+- [x] Align tour, docs-hub, and fallback navigation with the story-led workflow.  
+  Date: 2026-04-05  
+  Ref: `apps/unifiedtoolbox.webapp/src/components/tour/FirstLaunchTour.tsx`, `apps/unifiedtoolbox.webapp/src/components/docs/DocsHub.tsx`, `apps/unifiedtoolbox.webapp/src/app/error.tsx`  
+  Notes: Supporting product copy now explains the flow as intent -> cast -> run -> learn. Error and not-found screens return users to Home instead of the old dashboard-first route.
+
+- [x] Restore the missing information architecture document with Phase 0 decisions and follow-ups.  
+  Date: 2026-04-05  
+  Ref: `docs/information-architecture.md`  
+  Notes: Documented current canonical IA, the transitional role of `/dashboard`, and the deliberate choice to improve coherence first without collapsing the existing execution surfaces into one page.
+
 ## RM-004 Worklist (MCP governance end-to-end)
 
 - [x] Phase 1 backend core: policy engine, storage, allowlist/collection/install/audit APIs (26 endpoints).  

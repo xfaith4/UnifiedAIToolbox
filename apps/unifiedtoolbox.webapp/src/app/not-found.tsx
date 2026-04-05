@@ -8,10 +8,10 @@ export default function NotFound() {
         This route doesn’t exist in the Unified AI Toolbox portal.
       </p>
       <Link
-        href="/dashboard"
+        href="/"
         className="mt-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500"
       >
-        Go to dashboard
+        Go to Home
       </Link>
     </div>
   )
