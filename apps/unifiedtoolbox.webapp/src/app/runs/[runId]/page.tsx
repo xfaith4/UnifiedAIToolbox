@@ -804,7 +804,7 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
           </div>
         )}
         {outcomeLabel === 'Needs requirements' && requirementsRequest && (
-          <div className="rounded-2xl border border-amber-700/60 bg-amber-950/20 p-4 text-xs text-amber-100 space-y-3">
+          <div id="requirements-request" className="rounded-2xl border border-amber-700/60 bg-amber-950/20 p-4 text-xs text-amber-100 space-y-3">
             <div className="flex items-center justify-between gap-3">
               <div className="font-semibold text-amber-100">Requirements request</div>
               <div className="text-[11px] text-amber-200">Run is blocked pending requirements, not failed.</div>

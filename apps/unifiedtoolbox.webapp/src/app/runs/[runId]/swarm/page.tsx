@@ -2,13 +2,14 @@
 
 import { use, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { Activity, ArrowLeft, Network, RefreshCw } from 'lucide-react'
+import { Activity, AlertTriangle, ArrowLeft, Network, RefreshCw } from 'lucide-react'
 import ActivityLog from '@/features/swarm-viz/components/ActivityLog'
 import ControlPanel from '@/features/swarm-viz/components/ControlPanel'
 import SwarmCanvas from '@/features/swarm-viz/components/SwarmCanvas'
 import { useRunEvents } from '@/features/swarm-viz/hooks/useRunEvents'
 import { buildSwarmModel } from '@/features/swarm-viz/model/swarmModel'
 import { fetchOrchestrationRun, forceCancelOrchestrationRun, requeueOrchestrationRun } from '@/lib/services/orchestratorApi'
+import { getRunContext } from '@/lib/services/runContextStore'
 import type { OrchestrationRun } from '@/lib/types/orchestrator'
 
 function safeDecode(value: string): string {
@@ -34,6 +35,7 @@ function statusBadge(status: string | undefined): string {
   const value = (status || '').toLowerCase()
   if (value === 'succeeded' || value === 'completed') return 'border-emerald-700 bg-emerald-950/40 text-emerald-200'
   if (value === 'running' || value === 'queued') return 'border-blue-700 bg-blue-950/40 text-blue-200'
+  if (value === 'blocked_requirements' || value === 'needs_requirements') return 'border-amber-700 bg-amber-950/40 text-amber-200'
   if (value === 'failed' || value === 'error' || value.startsWith('error:')) return 'border-rose-700 bg-rose-950/40 text-rose-200'
   if (value === 'stuck') return 'border-amber-700 bg-amber-950/40 text-amber-200'
   return 'border-slate-700 bg-slate-900/60 text-slate-200'
@@ -43,6 +45,7 @@ export default function RunSwarmPage({ params }: { params: Promise<{ runId: stri
   const { runId: rawRunId } = use(params)
   const runId = safeDecode(rawRunId)
   const [runSummary, setRunSummary] = useState<OrchestrationRun | null>(null)
+  const [proposalId, setProposalId] = useState<string | null>(null)
   const [actionPending, setActionPending] = useState<'retry' | 'cancel' | null>(null)
 
   const { events, runStatus, loading, error, connectionStatus, lastEventTs, reconnectCount, refresh } = useRunEvents(runId, {
@@ -50,6 +53,8 @@ export default function RunSwarmPage({ params }: { params: Promise<{ runId: stri
   })
   useEffect(() => {
     let active = true
+    const context = getRunContext(runId)
+    setProposalId(context?.proposalId ?? null)
     void fetchOrchestrationRun(runId)
       .then((run) => {
         if (active) setRunSummary(run)
@@ -73,6 +78,15 @@ export default function RunSwarmPage({ params }: { params: Promise<{ runId: stri
 
   const displayStatus = (runSummary?.status || runStatus?.status || '').toLowerCase()
   const isTerminalError = displayStatus === 'stuck' || displayStatus.startsWith('error:') || displayStatus === 'failed'
+  const requirementsRequest = runSummary?.requirementsRequest ?? runSummary?.sandboxReport?.requirementsRequest
+  const isRequirementsBlocked =
+    displayStatus === 'blocked_requirements'
+    || displayStatus === 'needs_requirements'
+    || runSummary?.verificationStatus === 'needs_requirements'
+  const runDetailHref = `/runs/${encodeURIComponent(runId)}#requirements-request`
+  const conciergeHref = proposalId
+    ? `/concierge?proposal=${encodeURIComponent(proposalId)}&run=${encodeURIComponent(runId)}`
+    : `/concierge?run=${encodeURIComponent(runId)}`
 
   const handleRetry = async () => {
     setActionPending('retry')
@@ -278,6 +292,58 @@ export default function RunSwarmPage({ params }: { params: Promise<{ runId: stri
               </div>
             </div>
           </div>
+
+          {isRequirementsBlocked && (
+            <div className="rounded-2xl border border-amber-700/60 bg-amber-950/20 p-4 text-sm text-amber-100">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="max-w-3xl space-y-2">
+                  <div className="flex items-center gap-2 font-semibold text-amber-100">
+                    <AlertTriangle className="h-4 w-4" />
+                    Requirements needed to continue this run
+                  </div>
+                  <p className="text-amber-100/90">
+                    Swarm View shows where execution stopped. Answer the blocker questions first, then requeue the run from Run Detail.
+                  </p>
+                  {requirementsRequest?.summary && (
+                    <p className="text-amber-50/90">{requirementsRequest.summary}</p>
+                  )}
+                  {(requirementsRequest?.blockers?.length ?? 0) > 0 && (
+                    <div className="space-y-2 pt-1 text-xs">
+                      {requirementsRequest?.blockers?.slice(0, 2).map((blocker) => (
+                        <div key={blocker.id} className="rounded-xl border border-amber-700/50 bg-amber-950/30 p-3">
+                          <div><span className="font-semibold">Question:</span> {blocker.question}</div>
+                          {blocker.why && <div className="mt-1 text-amber-100/80"><span className="font-semibold">Why:</span> {blocker.why}</div>}
+                        </div>
+                      ))}
+                      {(requirementsRequest?.blockers?.length ?? 0) > 2 && (
+                        <div className="text-amber-200/80">
+                          Open Run Detail to review the remaining {(requirementsRequest?.blockers?.length ?? 0) - 2} question(s).
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex min-w-[220px] flex-col gap-2">
+                  <Link
+                    href={runDetailHref}
+                    className="inline-flex items-center justify-center rounded-xl border border-amber-600 bg-amber-500/15 px-3 py-2 text-sm font-medium text-amber-50 hover:bg-amber-500/25"
+                  >
+                    Review Questions in Run Detail
+                  </Link>
+                  <Link
+                    href={conciergeHref}
+                    className="inline-flex items-center justify-center rounded-xl border border-slate-700 bg-slate-900/70 px-3 py-2 text-sm font-medium text-slate-100 hover:border-slate-600 hover:bg-slate-800/80"
+                  >
+                    Answer in Concierge
+                  </Link>
+                  <div className="text-xs text-amber-200/80">
+                    Concierge will restate the blocker packet so you can answer it without reconstructing context by hand.
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="min-h-0 flex-1">
             <SwarmCanvas

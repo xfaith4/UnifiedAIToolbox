@@ -56,6 +56,7 @@ import {
 } from '@/lib/services/runHistoryAnalyzer'
 import {
   saveRunContext,
+  getRunContext,
   listRecentRunContexts,
   type RunContextEntry,
   type RunContextStatus,
@@ -1094,6 +1095,59 @@ function ConciergePageContent() {
     if (saved) {
       setProposal(saved)
       setMessages(saved.conversation)
+    }
+  }, [searchParams])
+
+  useEffect(() => {
+    const requirementsRunId = searchParams.get('run')
+    if (!requirementsRunId) return
+
+    let cancelled = false
+
+    const restoreRequirementsContext = async () => {
+      const context = getRunContext(requirementsRunId)
+      const linkedProposalId = searchParams.get('proposal') || context?.proposalId
+      if (linkedProposalId) {
+        const saved = getProposal(linkedProposalId)
+        if (!cancelled && saved) {
+          setProposal(saved)
+          setMessages(saved.conversation)
+        }
+      }
+
+      try {
+        const run = await fetchOrchestrationRun(requirementsRunId)
+        if (cancelled) return
+
+        setRunId(run.id)
+        setRunStatus(run.status ?? null)
+        setRunVerificationStatus(run.verificationStatus ?? null)
+        if (context) setLastRunEntry(context)
+
+        const needsInfoMsg = buildRequirementsRequestMessage(run)
+        if (!needsInfoMsg) return
+
+        setMessages((prev) => {
+          if (prev.some((message) => message.content === needsInfoMsg)) return prev
+          return [
+            ...prev,
+            {
+              id: `run_req_handoff_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+              role: 'assistant' as const,
+              content: needsInfoMsg,
+              timestamp: new Date().toISOString(),
+            },
+          ]
+        })
+      } catch {
+        // Keep Concierge usable even if the run can no longer be fetched.
+      }
+    }
+
+    void restoreRequirementsContext()
+
+    return () => {
+      cancelled = true
     }
   }, [searchParams])
 
