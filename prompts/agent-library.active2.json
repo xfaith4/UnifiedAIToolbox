@@ -279,25 +279,12 @@
             "items": {
               "type": "object",
               "properties": {
-                "severity": {
-                  "type": "string"
-                },
-                "category": {
-                  "type": "string"
-                },
-                "description": {
-                  "type": "string"
-                },
-                "suggested_fix": {
-                  "type": "string"
-                },
-                "file": {
-                  "type": "string"
-                },
-                "line": {
-                  "type": "number",
-                  "minimum": 1
-                }
+                "severity": { "type": "string" },
+                "category": { "type": "string" },
+                "description": { "type": "string" },
+                "suggested_fix": { "type": "string" },
+                "file": { "type": "string" },
+                "line": { "type": "number", "minimum": 1 }
               },
               "required": [
                 "severity",
@@ -491,21 +478,10 @@
             "items": {
               "type": "object",
               "properties": {
-                "name": {
-                  "type": "string"
-                },
-                "type": {
-                  "type": "string"
-                },
-                "steps": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                },
-                "expected": {
-                  "type": "string"
-                }
+                "name": { "type": "string" },
+                "type": { "type": "string" },
+                "steps": { "type": "array", "items": { "type": "string" } },
+                "expected": { "type": "string" }
               }
             }
           },
@@ -517,15 +493,9 @@
             "items": {
               "type": "object",
               "properties": {
-                "path": {
-                  "type": "string"
-                },
-                "change_type": {
-                  "type": "string"
-                },
-                "description": {
-                  "type": "string"
-                }
+                "path": { "type": "string" },
+                "change_type": { "type": "string" },
+                "description": { "type": "string" }
               }
             }
           },
@@ -690,27 +660,11 @@
             "items": {
               "type": "object",
               "properties": {
-                "name": {
-                  "type": "string"
-                },
-                "summary": {
-                  "type": "string"
-                },
-                "pros": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                },
-                "cons": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                },
-                "recommended": {
-                  "type": "boolean"
-                }
+                "name": { "type": "string" },
+                "summary": { "type": "string" },
+                "pros": { "type": "array", "items": { "type": "string" } },
+                "cons": { "type": "array", "items": { "type": "string" } },
+                "recommended": { "type": "boolean" }
               }
             }
           },
@@ -895,12 +849,8 @@
             "items": {
               "type": "object",
               "properties": {
-                "agent": {
-                  "type": "string"
-                },
-                "suggestion": {
-                  "type": "string"
-                }
+                "agent": { "type": "string" },
+                "suggestion": { "type": "string" }
               }
             }
           }
@@ -1054,30 +1004,11 @@
             "items": {
               "type": "object",
               "properties": {
-                "phase": {
-                  "type": "string"
-                },
-                "deliverables": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                },
-                "dependencies": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                },
-                "success_criteria": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                },
-                "estimated_effort": {
-                  "type": "string"
-                }
+                "phase": { "type": "string" },
+                "deliverables": { "type": "array", "items": { "type": "string" } },
+                "dependencies": { "type": "array", "items": { "type": "string" } },
+                "success_criteria": { "type": "array", "items": { "type": "string" } },
+                "estimated_effort": { "type": "string" }
               },
               "required": [
                 "phase",
@@ -1158,46 +1089,5 @@
       "Commissioner consumes"
     ],
     "checksum": "42599629cd7bc6680ae5bb57cbe7aed79b20651196c66f227ffb007919c0d169"
-  },
-  {
-    "id": "9de5577d-9388-4394-ac71-814c3dac9655",
-    "name": "Historian ",
-    "purpose": "Capture durable project knowledge from a run so future runs start smarter.",
-    "mission": "Summarize decisions, constraints, interfaces, data, risks, and next steps into a grep-friendly memory capsule.",
-    "status": "ready",
-    "tags": [
-      "memory",
-      "brief",
-      "continuity"
-    ],
-    "triggers": [],
-    "inputs": [],
-    "outputs": [],
-    "tools": [],
-    "playbook": [],
-    "createdAt": "2026-01-10T07:17:02.775Z",
-    "updatedAt": "2026-02-14T21:36:59.566Z",
-    "role": "Produces a compact, durable run summary (‘memory capsule’) for reuse.",
-    "capabilities": [
-      "summarization",
-      "decision-capture",
-      "knowledge-distillation"
-    ],
-    "style": "crisp, structured, non-speculative",
-    "constraints": [
-      "Do not invent facts.",
-      "Only summarize what was provided.",
-      "Prefer stable, reusable knowledge over ephemeral chatter."
-    ],
-    "prompt": "You are the Historian.\n\nGoal: capture durable project knowledge from a run so future runs get smarter.\n\nThis agent is used when the orchestrator wants a “memory capsule” or “project brief” snapshot.\n\nRules:\n- Do not invent facts. Only summarize what is provided.\n- Prefer stable, reusable knowledge: definitions, decisions, constraints, interfaces, acceptance criteria.\n- Keep it short, structured, and grep-friendly.\n\nOutput:\nReturn a single markdown-free text block with the following headers:\nDECISIONS:\nCONSTRAINTS:\nINTERFACES:\nDATA:\nRISKS:\nNEXT:\n",
-    "routing_hints": {
-      "preferred_models": [
-        "gpt-4o",
-        "claude-3-sonnet",
-        "gpt-4-turbo"
-      ],
-      "max_tokens": 1200
-    },
-    "checksum": "ffd7c97af9c3222fb9adfc25e394ec84eea239239bbaba4a3dcd3fa85d685922"
   }
 ]
