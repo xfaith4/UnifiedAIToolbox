@@ -462,6 +462,27 @@ function Assert-AgentContractOutput {
         return @{ ok = $false; error = $msg; errors = @($msg); schema = $schema; normalized_json = $null }
     }
 
+    $parsed = $normalized.parsed
+
+    # If the agent output is a clarification_request, treat it as a valid bypass:
+    # the agent is signalling that its inputs are insufficient to proceed.
+    $propNames = @($parsed.PSObject.Properties.Name)
+    if ($propNames.Count -eq 1 -and $propNames[0] -eq "clarification_request") {
+        $clarificationText = $parsed.clarification_request
+        if (-not [string]::IsNullOrWhiteSpace($clarificationText)) {
+            Write-Log -Agent $AgentName -Content "Clarification requested: $clarificationText"
+            return @{
+                ok                   = $true
+                error                = $null
+                errors               = @()
+                schema               = $schema
+                normalized_json      = $normalized.json
+                clarification_needed = $true
+                clarification_text   = $clarificationText
+            }
+        }
+    }
+
     try {
         $schemaJson = $schema | ConvertTo-Json -Depth 60
         $null = Test-Json -Json $normalized.json -Schema $schemaJson -ErrorAction Stop
@@ -520,12 +541,14 @@ function Resolve-AgentOutputWithContract {
     $check = Assert-AgentContractOutput -AgentName $AgentName -RawOutput $Output
     if ($check.ok) {
         return @{
-            Output = $(if ($check.normalized_json) { $check.normalized_json } else { $Output })
-            ContractOk = $true
-            ContractError = $null
-            RepairAttempted = $false
-            RepairSucceeded = $false
-            FailureArtifact = $null
+            Output              = $(if ($check.normalized_json) { $check.normalized_json } else { $Output })
+            ContractOk          = $true
+            ContractError       = $null
+            RepairAttempted     = $false
+            RepairSucceeded     = $false
+            FailureArtifact     = $null
+            ClarificationNeeded = [bool]$check.clarification_needed
+            ClarificationText   = $check.clarification_text
         }
     }
 
@@ -579,12 +602,14 @@ $(if ($check.normalized_json) { $check.normalized_json } else { $Output })
 
     Write-Host "✅ Contract repair succeeded for $AgentName" -ForegroundColor Green
     return @{
-        Output = $(if ($recheck.normalized_json) { $recheck.normalized_json } else { $repaired })
-        ContractOk = $true
-        ContractError = $null
-        RepairAttempted = $true
-        RepairSucceeded = $true
-        FailureArtifact = $null
+        Output              = $(if ($recheck.normalized_json) { $recheck.normalized_json } else { $repaired })
+        ContractOk          = $true
+        ContractError       = $null
+        RepairAttempted     = $true
+        RepairSucceeded     = $true
+        FailureArtifact     = $null
+        ClarificationNeeded = [bool]$recheck.clarification_needed
+        ClarificationText   = $recheck.clarification_text
     }
 }
 
