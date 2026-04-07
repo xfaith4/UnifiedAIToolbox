@@ -132,6 +132,7 @@ const App: React.FC = () => {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<'live' | string>('live');
   const [viewMode, setViewMode] = useState<'clusters' | 'graph'>('clusters');
+  const [sidePanelMinimized, setSidePanelMinimized] = useState(false);
   const [elapsedTime, setElapsedTime] = useState<number>(0);
   const [maintenanceRunId, setMaintenanceRunId] = useState<string | null>(null)
   const [maintenanceStartError, setMaintenanceStartError] = useState<string | null>(null)
@@ -146,6 +147,7 @@ const App: React.FC = () => {
 
   // GitHub Repo Orchestration state
   const [githubEnvReady, setGithubEnvReady] = useState(false)
+  const [githubEnvStatusMessage, setGithubEnvStatusMessage] = useState<string | null>(null)
   const [githubRepos, setGithubRepos] = useState<GitHubRepo[]>([])
   const [githubReposLoading, setGithubReposLoading] = useState(false)
   const [selectedGithubRepo, setSelectedGithubRepo] = useState<GitHubRepo | null>(null)
@@ -254,8 +256,28 @@ const App: React.FC = () => {
     if (!isGithubRepo) return
     let cancelled = false
     setGithubReposLoading(true)
+    setGithubEnvStatusMessage(null)
+    setGithubError(null)
     void Promise.all([
-      getGithubStatus().then((s: { authenticated?: boolean } | null) => { if (!cancelled) setGithubEnvReady(Boolean(s?.authenticated)) }).catch(() => { }),
+      getGithubStatus()
+        .then((s: { authenticated?: boolean } | null) => {
+          if (cancelled) return
+          setGithubEnvReady(Boolean(s?.authenticated))
+          if (!s) {
+            setGithubEnvStatusMessage(`Unable to verify GitHub credentials. Could not reach ${ORCHESTRATOR_API_BASE}/github/status.`)
+            return
+          }
+          if (!s.authenticated) {
+            setGithubEnvStatusMessage('No GitHub token detected by the orchestrator process. Configure GITHUB_TOKEN in the environment used to start the API service.')
+            return
+          }
+          setGithubEnvStatusMessage(null)
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setGithubEnvStatusMessage(`Unable to verify GitHub credentials. Could not reach ${ORCHESTRATOR_API_BASE}/github/status.`)
+          }
+        }),
       listAccessibleRepos(undefined, { includeAppfactory: true })
         .then((repos: GitHubRepo[]) => {
           if (!cancelled)
@@ -263,7 +285,12 @@ const App: React.FC = () => {
               [...repos].sort((a, b) => Number(Boolean(b.appfactory?.known)) - Number(Boolean(a.appfactory?.known)))
             )
         })
-        .catch(() => { }),
+        .catch((err: unknown) => {
+          if (!cancelled) {
+            const msg = err instanceof Error ? err.message : String(err)
+            setGithubError(msg)
+          }
+        }),
     ]).finally(() => { if (!cancelled) setGithubReposLoading(false) })
     return () => { cancelled = true }
   }, [isGithubRepo])
@@ -309,7 +336,7 @@ const App: React.FC = () => {
   const tasks = displayedSession?.tasks || [];
   const selectedTask = useMemo(() => tasks.find(t => t.id === selectedTaskId) || null, [tasks, selectedTaskId]);
   const graphPaneHeightPx = useMemo(() => {
-    // Let graph runs breathe as task count grows while keeping a sane upper bound.
+    // Clusters-mode only: let the panel breathe as task count grows.
     const taskCount = Math.max(tasks.length, 1)
     const estimated = 480 + taskCount * 20
     return Math.max(560, Math.min(1200, estimated))
@@ -628,6 +655,7 @@ const App: React.FC = () => {
             {isGithubRepo ? (
               <GitHubRepoPanel
                 envReady={githubEnvReady}
+                envStatusMessage={githubEnvStatusMessage}
                 repos={githubRepos}
                 reposLoading={githubReposLoading}
                 selectedRepo={selectedGithubRepo}
@@ -674,18 +702,25 @@ const App: React.FC = () => {
             )}
             {!isGithubRepo && (
               <div
-                className={`flex min-h-[28rem] ${viewMode === 'graph'
-                  ? 'overflow-hidden'
-                  : 'h-auto overflow-visible'
-                  }`}
-                style={viewMode === 'graph' ? { height: `${graphPaneHeightPx}px` } : undefined}
+                className={viewMode === 'graph'
+                  ? 'relative overflow-hidden'
+                  : 'flex min-h-[28rem] h-auto overflow-visible'
+                }
+                style={viewMode === 'graph'
+                  ? { height: 'max(800px, calc(100vh - 320px))' }
+                  : { height: `${graphPaneHeightPx}px` }
+                }
               >
-                <div className="flex-1 min-h-0 flex flex-col min-w-0">
+                {/* Inner content wrapper — fills full area in graph mode, flex child in clusters mode */}
+                <div className={viewMode === 'graph' ? 'absolute inset-0 flex flex-col' : 'flex-1 min-h-0 flex flex-col min-w-0'}>
                   <RunMonitorPanel
                     tasks={tasks}
                     isOrchestrating={isMaintenance ? maintenanceRunning : isOrchestrating}
                     viewMode={viewMode}
-                    onChangeViewMode={setViewMode}
+                    onChangeViewMode={(mode) => {
+                      setViewMode(mode);
+                      if (mode !== 'graph') setSidePanelMinimized(false);
+                    }}
                   />
                   <div className={viewMode === 'graph' ? 'flex-1 min-h-0' : 'min-h-[16rem]'}>
                     {viewMode === 'graph' ? (
@@ -703,10 +738,14 @@ const App: React.FC = () => {
                     )}
                   </div>
                 </div>
+                {/* SidePanel: floating overlay in graph mode, flex sibling in clusters mode */}
                 <SidePanel
                   task={selectedTask}
                   clearSelection={handleClearSelection}
                   onShowDefinitions={() => setShowDefinitions(true)}
+                  isOverlay={viewMode === 'graph'}
+                  minimized={sidePanelMinimized}
+                  onToggleMinimize={() => setSidePanelMinimized(v => !v)}
                 />
               </div>
             )}

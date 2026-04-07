@@ -9,6 +9,7 @@ import type { RepoOrchestrationEvent, RepoOrchestrationResult } from '@/lib/type
 
 interface GitHubRepoPanelProps {
   envReady: boolean
+  envStatusMessage?: string | null
   repos: GitHubRepo[]
   reposLoading: boolean
   selectedRepo: GitHubRepo | null
@@ -433,6 +434,7 @@ async function openPath(absPath: string | null | undefined): Promise<void> {
 // ── Main component ────────────────────────────────────────────────────────────
 export default function GitHubRepoPanel({
   envReady,
+  envStatusMessage,
   repos,
   reposLoading,
   selectedRepo,
@@ -477,7 +479,11 @@ export default function GitHubRepoPanel({
         {/* Token / env status */}
         {!envReady && !reposLoading && repos.length === 0 && (
           <div className="rounded-lg border border-amber-700/60 bg-amber-900/20 px-3 py-2 text-sm text-amber-200">
-            No GitHub token detected. Configure <code className="text-amber-100">GITHUB_TOKEN</code> in the Orchestrator environment to use this mode.
+            {envStatusMessage ?? (
+              <>
+                No GitHub token detected. Configure <code className="text-amber-100">GITHUB_TOKEN</code> in the Orchestrator environment to use this mode.
+              </>
+            )}
           </div>
         )}
 
