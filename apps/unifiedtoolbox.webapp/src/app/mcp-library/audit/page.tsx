@@ -41,7 +41,8 @@ import {
 } from '@mui/icons-material'
 import { useRouter } from 'next/navigation'
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
+const _envBase = (process.env.NEXT_PUBLIC_API_BASE ?? process.env.NEXT_PUBLIC_PROMPT_API_BASE ?? process.env.NEXT_PUBLIC_API_URL ?? '').trim()
+const API_BASE = (_envBase || 'http://localhost:8000').replace(/\/$/, '')
 
 // ---------------------------------------------------------------------------
 // Types

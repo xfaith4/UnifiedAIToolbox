@@ -1,6 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+
+const _envBase = (process.env.NEXT_PUBLIC_API_BASE ?? process.env.NEXT_PUBLIC_PROMPT_API_BASE ?? '').trim()
+const API_BASE = (_envBase || 'http://localhost:8000').replace(/\/$/, '')
 import {
   Box,
   TextField,
@@ -104,7 +107,7 @@ export default function MCPLibraryPage() {
     status: '',
     installation_status: '',
   })
-  
+
   // Collections state
   const [collections, setCollections] = useState<MCPCollection[]>([])
   const [collectionsLoading, setCollectionsLoading] = useState(false)
@@ -115,11 +118,11 @@ export default function MCPLibraryPage() {
     server_ids: [] as string[],
     tags: [] as string[],
   })
-  
+
   // Installations state
   const [installations, setInstallations] = useState<MCPInstallation[]>([])
   const [installationsLoading, setInstallationsLoading] = useState(false)
-  
+
   // Install dialog state
   const [showInstallDialog, setShowInstallDialog] = useState(false)
   const [serverToInstall, setServerToInstall] = useState<MCPServer | null>(null)
@@ -129,7 +132,7 @@ export default function MCPLibraryPage() {
     setLoading(true)
     setError(null)
     try {
-      const response = await fetch('http://localhost:8000/api/mcp/servers/search', {
+      const response = await fetch(`${API_BASE}/api/mcp/servers/search`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -160,7 +163,7 @@ export default function MCPLibraryPage() {
   const loadCollections = async () => {
     setCollectionsLoading(true)
     try {
-      const response = await fetch('http://localhost:8000/api/mcp/collections')
+      const response = await fetch(`${API_BASE}/api/mcp/collections`)
       if (!response.ok) throw new Error('Failed to load collections')
       const data = await response.json()
       setCollections(data.collections || [])
@@ -175,7 +178,7 @@ export default function MCPLibraryPage() {
   const loadInstallations = async () => {
     setInstallationsLoading(true)
     try {
-      const response = await fetch('http://localhost:8000/api/mcp/installs')
+      const response = await fetch(`${API_BASE}/api/mcp/installs`)
       if (!response.ok) throw new Error('Failed to load installations')
       const data = await response.json()
       setInstallations(data.installs || [])
@@ -192,16 +195,16 @@ export default function MCPLibraryPage() {
       setError('Collection name is required')
       return
     }
-    
+
     try {
-      const response = await fetch('http://localhost:8000/api/mcp/collections', {
+      const response = await fetch(`${API_BASE}/api/mcp/collections`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newCollection),
       })
-      
+
       if (!response.ok) throw new Error('Failed to create collection')
-      
+
       setShowCreateCollection(false)
       setNewCollection({ name: '', description: '', server_ids: [], tags: [] })
       loadCollections()
@@ -213,12 +216,12 @@ export default function MCPLibraryPage() {
 
   const handleDeleteCollection = async (collectionId: string) => {
     if (!confirm('Are you sure you want to delete this collection?')) return
-    
+
     try {
-      const response = await fetch(`http://localhost:8000/api/mcp/collections/${collectionId}`, {
+      const response = await fetch(`${API_BASE}/api/mcp/collections/${collectionId}`, {
         method: 'DELETE',
       })
-      
+
       if (!response.ok) throw new Error('Failed to delete collection')
       loadCollections()
     } catch (err) {
@@ -229,12 +232,12 @@ export default function MCPLibraryPage() {
 
   const handleToggleInstall = async (installId: string, currentStatus: string) => {
     const action = currentStatus === 'enabled' ? 'disable' : 'enable'
-    
+
     try {
-      const response = await fetch(`http://localhost:8000/api/mcp/installs/${installId}/${action}`, {
+      const response = await fetch(`${API_BASE}/api/mcp/installs/${installId}/${action}`, {
         method: 'POST',
       })
-      
+
       if (!response.ok) throw new Error(`Failed to ${action} installation`)
       loadInstallations()
     } catch (err) {
@@ -245,9 +248,9 @@ export default function MCPLibraryPage() {
 
   const handleInstallServer = async () => {
     if (!serverToInstall) return
-    
+
     try {
-      const response = await fetch('http://localhost:8000/api/mcp/installs', {
+      const response = await fetch(`${API_BASE}/api/mcp/installs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -256,16 +259,16 @@ export default function MCPLibraryPage() {
           notes: installNotes || undefined,
         }),
       })
-      
+
       if (!response.ok) throw new Error('Failed to install server')
-      
+
       setShowInstallDialog(false)
       setServerToInstall(null)
       setInstallNotes('')
-      
+
       // Refresh servers to update installation status
       await loadServers()
-      
+
       // Show success message
       setError(null)
       alert(`Successfully installed ${serverToInstall.name}`)
@@ -314,10 +317,10 @@ export default function MCPLibraryPage() {
 
   const renderServerCard = (server: MCPServer) => (
     <Grid item xs={12} sm={6} md={4} key={server.server_id}>
-      <Card 
-        sx={{ 
-          height: '100%', 
-          display: 'flex', 
+      <Card
+        sx={{
+          height: '100%',
+          display: 'flex',
           flexDirection: 'column',
           '&:hover': { boxShadow: 6 }
         }}
@@ -330,7 +333,7 @@ export default function MCPLibraryPage() {
             </Typography>
           </Box>
 
-          <Chip 
+          <Chip
             label={server.installation_status}
             color={getStatusColor(server.installation_status)}
             size="small"
@@ -356,15 +359,15 @@ export default function MCPLibraryPage() {
         </CardContent>
 
         <CardActions>
-          <Button 
-            size="small" 
+          <Button
+            size="small"
             onClick={() => router.push(`/mcp-library/${server.server_id}`)}
           >
             View Details
           </Button>
           {server.installation_status === 'catalog' && (
-            <Button 
-              size="small" 
+            <Button
+              size="small"
               color="primary"
               onClick={() => openInstallDialog(server)}
             >
@@ -460,9 +463,9 @@ export default function MCPLibraryPage() {
               </Grid>
 
               <Grid item xs={12} md={2}>
-                <Button 
-                  fullWidth 
-                  variant="contained" 
+                <Button
+                  fullWidth
+                  variant="contained"
                   onClick={handleSearch}
                   disabled={loading}
                 >
@@ -545,8 +548,8 @@ export default function MCPLibraryPage() {
                       <Button size="small" startIcon={<EditIcon />}>
                         Edit
                       </Button>
-                      <Button 
-                        size="small" 
+                      <Button
+                        size="small"
                         color="error"
                         startIcon={<DeleteIcon />}
                         onClick={() => handleDeleteCollection(collection.collection_id)}
@@ -561,8 +564,8 @@ export default function MCPLibraryPage() {
           )}
 
           {/* Create Collection Dialog */}
-          <Dialog 
-            open={showCreateCollection} 
+          <Dialog
+            open={showCreateCollection}
             onClose={() => setShowCreateCollection(false)}
             maxWidth="md"
             fullWidth
@@ -598,8 +601,8 @@ export default function MCPLibraryPage() {
                 <TextField
                   label="Tags (comma-separated)"
                   placeholder="e.g., data-analysis, web-automation"
-                  onChange={(e) => setNewCollection({ 
-                    ...newCollection, 
+                  onChange={(e) => setNewCollection({
+                    ...newCollection,
                     tags: e.target.value.split(',').map(t => t.trim()).filter(Boolean)
                   })}
                   fullWidth
@@ -657,7 +660,7 @@ export default function MCPLibraryPage() {
                           )}
                         </TableCell>
                         <TableCell>
-                          <Chip 
+                          <Chip
                             label={install.status}
                             color={install.status === 'enabled' ? 'success' : 'default'}
                             size="small"
@@ -689,8 +692,8 @@ export default function MCPLibraryPage() {
       )}
 
       {/* Install Server Dialog */}
-      <Dialog 
-        open={showInstallDialog} 
+      <Dialog
+        open={showInstallDialog}
         onClose={() => setShowInstallDialog(false)}
         maxWidth="sm"
         fullWidth
