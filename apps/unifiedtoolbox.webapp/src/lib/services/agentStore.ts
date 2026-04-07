@@ -70,13 +70,34 @@ async function loadFromLocalStorage(): Promise<AgentInstruction[] | null> {
   }
 }
 
-export async function fetchAgentLibrary(options?: { signal?: AbortSignal }): Promise<AgentInstruction[]> {
-  const local = await loadFromLocalStorage()
-  if (local && local.length > 0) {
-    return local
+function mergeAgentLibraries(local: AgentInstruction[], defaults: AgentInstruction[]): AgentInstruction[] {
+  const byId = new Map<string, AgentInstruction>()
+
+  for (const agent of defaults) {
+    byId.set(agent.id, agent)
   }
 
+  // Keep local edits authoritative for matching IDs while still appending newly introduced defaults.
+  for (const agent of local) {
+    byId.set(agent.id, agent)
+  }
+
+  return Array.from(byId.values())
+}
+
+export async function fetchAgentLibrary(options?: { signal?: AbortSignal }): Promise<AgentInstruction[]> {
+  const local = await loadFromLocalStorage()
   const defaults = await fetchDefaultAgents(options?.signal)
+
+  if (local && local.length > 0) {
+    if (defaults.length === 0) {
+      return local
+    }
+    const merged = mergeAgentLibraries(local, defaults)
+    saveToLocalStorage(merged)
+    return merged
+  }
+
   if (defaults.length > 0) {
     saveToLocalStorage(defaults)
   }

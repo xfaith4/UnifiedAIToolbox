@@ -3,6 +3,7 @@
 Purpose: Inventory recent GitHub Integration UI V2 + artifact contract + preflight error changes and track remaining gaps.
 
 ## Inventory (recent changes)
+
 From `git diff --stat` and untracked additions:
 - `.gitignore`
 - `apps/UnifiedPromptApp/services/prompt-api/app.py`
@@ -16,6 +17,7 @@ From `git diff --stat` and untracked additions:
 - `docs/examples/REPORT.sample.json`
 
 ## Placeholder/TODO Scan (within scope)
+
 Global repo scan includes placeholder text in templates, demos, and archived docs. No production-path TODO/FIXME found in:
 - GitHub Integration UI (`apps/unifiedtoolbox.webapp/src/app/github/`)
 - Artifact viewer (`apps/unifiedtoolbox.webapp/src/app/runs/`)
@@ -23,7 +25,9 @@ Global repo scan includes placeholder text in templates, demos, and archived doc
 - Prompt API repo orchestration pipeline (`apps/UnifiedPromptApp/services/prompt-api/app.py`)
 
 ## Behavior Checklist
+
 ### Intended vs Implemented
+
 - Artifact contract always emits `REPORT.md` + `REPORT.json`: **Implemented**
 - Artifacts indexed with metadata in manifest/result: **Implemented**
 - Preflight errors classified with friendly payloads: **Implemented**
@@ -31,6 +35,7 @@ Global repo scan includes placeholder text in templates, demos, and archived doc
 - GitHub UI uses dashboard width + timeline + action bar: **Implemented (behind flag)**
 
 ### Issues Found → Resolution
+
 - Preflight error codes mismatched requirements (`NETWORK`/`AUTH`): **Fixed**
 - No long-path detection on Windows: **Fixed**
 - Missing report generation when only JSON exists: **Fixed**
@@ -39,9 +44,11 @@ Global repo scan includes placeholder text in templates, demos, and archived doc
 - Viewer route was ignored by `.gitignore` (`runs/`, `artifacts/`): **Fixed with explicit unignore**
 
 ## Manual Repro Status
+
 Not executed in this environment (UI requires a running web app + API). Use checklist below.
 
 ### How to Reproduce (local)
+
 1. Start API:
    - `cd apps/UnifiedPromptApp/services/prompt-api`
    - `python app.py`
@@ -57,9 +64,11 @@ Not executed in this environment (UI requires a running web app + API). Use chec
    - Create a repo folder inside the run dir before cloning and retry the orchestration.
 
 ## Punch List (Remaining)
+
 - Run full UI + API validation per checklist above.
 - Capture a real screenshot/GIF (current asset is a static SVG mock).
 
 ## Automated Checks Run
+
 - `python -m pytest apps/orchestration-bridge/tests/test_github_services.py -k "clone_repository or preflight or classify"` (passed)
 - `pnpm -v` (failed: `pnpm` not available in PATH)
