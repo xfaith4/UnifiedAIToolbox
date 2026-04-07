@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, Suspense } from 'react'
 import Link from 'next/link'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Send,
   Bot,
@@ -1007,6 +1007,7 @@ function OverseerHistoryPanel({ insights }: { insights: PastRunInsight[] }) {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 function ConciergePageContent() {
+  const router = useRouter()
   const searchParams = useSearchParams()
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
@@ -1368,12 +1369,28 @@ function ConciergePageContent() {
     }
   }
 
-  const handleApprove = () => {
+  const handleApprove = async () => {
     if (!proposal) return
     const updated = updateProposalStatus(proposal.id, 'approved')
     if (updated) {
       createDraftRunFromProposal(updated)
       setProposal(updated)
+
+      const approvalsRequired = updated.approvals.required.length > 0
+      if (approvalsRequired) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `approval_${Date.now()}`,
+            role: 'assistant',
+            content: 'Proposal approved. Confirm the required approvals in the right panel, then click Start Run to launch orchestration.',
+            timestamp: new Date().toISOString(),
+          },
+        ])
+        return
+      }
+
+      await handleStartRun({ approvedProposal: updated, autoNavigate: true })
     }
   }
 
@@ -1393,9 +1410,11 @@ function ConciergePageContent() {
     if (proposal?.id) updateDraftRun(proposal.id, { toolPermissions: perms })
   }
 
-  const handleStartRun = async () => {
-    if (!proposal) return
-    const draft = getDraftRun(proposal.id)
+  const handleStartRun = async (options?: { approvedProposal?: Proposal; autoNavigate?: boolean }) => {
+    const activeProposal = options?.approvedProposal ?? proposal
+    if (!activeProposal) return
+
+    const draft = getDraftRun(activeProposal.id)
     if (!draft) {
       setStartRunError('Draft config not found. Try re-approving the proposal.')
       return
@@ -1411,8 +1430,8 @@ function ConciergePageContent() {
         p.enabled ? { ...p, enabledAt: now } : p
       )
       const audit: ToolAuditEntry = {
-        id: proposal.id,
-        proposalId: proposal.id,
+        id: activeProposal.id,
+        proposalId: activeProposal.id,
         runId: run.id,
         startedAt: now,
         tools: auditTools,
@@ -1426,7 +1445,7 @@ function ConciergePageContent() {
         runStatus: 'running',
         toolPermissions: auditTools,
       })
-      const updated = updateProposalStatus(proposal.id, 'running')
+      const updated = updateProposalStatus(activeProposal.id, 'running')
       if (updated) setProposal(updated)
 
       seenEventCount.current = 0
@@ -1440,7 +1459,7 @@ function ConciergePageContent() {
         startedAt: now,
         mode: draft.mode,
         status: (run.status ?? 'queued') as RunContextStatus,
-        proposalId: proposal.id,
+        proposalId: activeProposal.id,
       })
       setLastRunEntry(contextEntry)
 
@@ -1450,7 +1469,7 @@ function ConciergePageContent() {
           id: `run_start_${Date.now()}`,
           role: 'assistant' as const,
           content: buildKickoffRefinementMessage({
-            proposal,
+            proposal: activeProposal,
             draft,
             runId: run.id,
             toolPermissions: auditTools,
@@ -1458,6 +1477,10 @@ function ConciergePageContent() {
           timestamp: now,
         },
       ])
+
+      if (options?.autoNavigate ?? true) {
+        router.push(getRunMonitorHref(run.id, draft.mode))
+      }
     } catch (e) {
       setStartRunError(String(e))
     } finally {

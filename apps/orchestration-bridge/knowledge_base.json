@@ -1,5 +1,51 @@
 [
   {
+    "run_id": "Create_an_interactive_web_application_that_compares_typical_AI_usage_with_advanced_orchestrated_AI_workflows.2026-04-05T21-40-59Z",
+    "ingested_at": "2026-04-05T21:41:03Z",
+    "goal": "Create an interactive web application that compares typical AI usage with advanced orchestrated AI workflows.",
+    "goal_tokens": [
+      "create",
+      "interactive",
+      "application",
+      "that",
+      "compares",
+      "typical",
+      "usage",
+      "with",
+      "advanced",
+      "orchestrated",
+      "workflows"
+    ],
+    "status": "running",
+    "verification_status": "needs_requirements",
+    "knowledge_status": "fail",
+    "knowledge_score": 0,
+    "learning": {
+      "classification": "knowledge_generation_failure",
+      "what_broke": "Knowledge artifact generation crashed.",
+      "root_cause": "name 'app_production_repairs_payload' is not defined",
+      "evidence": [
+        "name 'app_production_repairs_payload' is not defined"
+      ],
+      "prevention_patches": [],
+      "regression_checks": [],
+      "questions_needed": [],
+      "corrective_actions": [],
+      "instruction_adjustments": []
+    },
+    "checkpoint_history": [],
+    "corrective_actions": [],
+    "app_production_repairs": {},
+    "instruction_adjustments": [],
+    "agents": [
+      "Supervisor",
+      "Engineer",
+      "Critic"
+    ],
+    "model": "gpt-5.2",
+    "synthesis_present": false
+  },
+  {
     "run_id": "Create_an_interactive_web_application_that_compares_typical_AI_usage_with_advanced_orchestrated_AI_workflows.2026-04-05T16-54-10Z",
     "ingested_at": "2026-04-05T16:54:34Z",
     "goal": "Create an interactive web application that compares typical AI usage with advanced orchestrated AI workflows.",
