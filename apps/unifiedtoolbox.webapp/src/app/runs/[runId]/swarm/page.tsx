@@ -54,21 +54,31 @@ export default function RunSwarmPage({ params }: { params: Promise<{ runId: stri
   const { events, runStatus, loading, error, connectionStatus, lastEventTs, reconnectCount, refresh } = useRunEvents(runId, {
     limit: 600,
   })
+
   useEffect(() => {
     let active = true
     const context = getRunContext(runId)
     setProposalId(context?.proposalId ?? null)
-    void fetchOrchestrationRun(runId)
-      .then((run) => {
+
+    const syncRunSummary = async () => {
+      try {
+        const run = await fetchOrchestrationRun(runId)
         if (active) setRunSummary(run)
-      })
-      .catch(() => {
+      } catch {
         if (active) setRunSummary(null)
-      })
+      }
+    }
+
+    void syncRunSummary()
+    const interval = window.setInterval(() => {
+      void syncRunSummary()
+    }, 5000)
+
     return () => {
       active = false
+      window.clearInterval(interval)
     }
-  }, [runId])
+  }, [runId, runStatus?.status])
 
   const model = useMemo(() => buildSwarmModel(events, runStatus), [events, runStatus])
 
@@ -84,16 +94,42 @@ export default function RunSwarmPage({ params }: { params: Promise<{ runId: stri
   const isCompleted = displayStatus === 'succeeded' || displayStatus === 'completed'
   const isTerminal = isTerminalError || isCompleted
   const requirementsRequest = runSummary?.requirementsRequest ?? runSummary?.sandboxReport?.requirementsRequest
+  const latestRequirementSignal = useMemo(() => {
+    const requirementEvents = [...events].reverse().filter((event) => {
+      const token = `${event.type} ${event.status || ''} ${event.message}`.toLowerCase()
+      return token.includes('blocked_requirements')
+        || token.includes('needs_requirements')
+        || token.includes('clarification_request')
+        || token.includes('requirements')
+    })
+    return requirementEvents[0] || null
+  }, [events])
+
+  const inferredRequirementsBlocked = Boolean(
+    latestRequirementSignal
+    || model.nodes.some((node) => {
+      if (node.status !== 'blocked') return false
+      const token = `${node.label} ${node.message || ''}`.toLowerCase()
+      return token.includes('requirement') || token.includes('decision lock') || token.includes('conceptualmodelcontract')
+    }),
+  )
+
   const isRequirementsBlocked =
     displayStatus === 'blocked_requirements'
     || displayStatus === 'needs_requirements'
     || runSummary?.verificationStatus === 'needs_requirements'
+    || inferredRequirementsBlocked
   const isRunning = !isTerminal && !isRequirementsBlocked && events.length > 0
   const runDetailHref = `/runs/${encodeURIComponent(runId)}#requirements-request`
   const conciergeHref = proposalId
     ? `/concierge?proposal=${encodeURIComponent(proposalId)}&run=${encodeURIComponent(runId)}`
     : `/concierge?run=${encodeURIComponent(runId)}`
   const runDirPath = runSummary?.runDir
+  const blockerContextSummary = requirementsRequest?.summary
+    || latestRequirementSignal?.message
+    || runSummary?.errorDetail
+    || null
+  const blockerContextAvailable = Boolean(blockerContextSummary)
 
   const copyAllContext = async () => {
     const sections: string[] = []
@@ -352,6 +388,72 @@ export default function RunSwarmPage({ params }: { params: Promise<{ runId: stri
         />
 
         <div className="flex min-h-0 flex-col gap-4">
+          {(isRequirementsBlocked || isTerminalError) && (
+            <div className={`rounded-2xl border p-4 text-sm space-y-3 ${
+              isRequirementsBlocked
+                ? 'border-amber-700/60 bg-amber-950/20 text-amber-100'
+                : 'border-rose-700/60 bg-rose-950/20 text-rose-100'
+            }`}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="font-semibold">
+                  {isRequirementsBlocked ? 'Execution blocked: missing requirements' : 'Execution failed: remediation required'}
+                </div>
+                <span className="rounded-full border border-current/40 bg-black/20 px-2 py-0.5 text-[10px] uppercase tracking-wide">
+                  {runSummary?.status || runStatus?.status || 'unknown'}
+                </span>
+              </div>
+
+              <div className="text-xs leading-relaxed">
+                {blockerContextAvailable
+                  ? blockerContextSummary
+                  : 'No structured blocker context was returned by the backend. Use Copy Context and Concierge to capture missing requirements, then resume this run.'}
+              </div>
+
+              {latestRequirementSignal && (
+                <div className="text-[11px] opacity-80">
+                  Last blocking signal at {new Date(latestRequirementSignal.ts).toLocaleTimeString()} from {latestRequirementSignal.agent || 'workflow'}.
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <Link
+                  href={runDetailHref}
+                  className="rounded-lg border border-current/50 bg-black/20 px-3 py-1.5 font-medium hover:bg-black/35"
+                >
+                  Open Run Detail
+                </Link>
+                <Link
+                  href={conciergeHref}
+                  className="rounded-lg border border-current/50 bg-black/20 px-3 py-1.5 font-medium hover:bg-black/35"
+                >
+                  Open Concierge
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => void copyAllContext()}
+                  className="rounded-lg border border-current/50 bg-black/20 px-3 py-1.5 font-medium hover:bg-black/35"
+                >
+                  {copiedAll ? 'Copied!' : 'Copy Context'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void refresh()}
+                  className="rounded-lg border border-current/50 bg-black/20 px-3 py-1.5 font-medium hover:bg-black/35"
+                >
+                  Refresh Status
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleRetry()}
+                  disabled={actionPending !== null}
+                  className="rounded-lg border border-current/50 bg-black/20 px-3 py-1.5 font-medium hover:bg-black/35 disabled:opacity-50"
+                >
+                  {actionPending === 'retry' ? 'Requeueing…' : 'Requeue Run'}
+                </button>
+              </div>
+            </div>
+          )}
+
           {error && (
             <div className="rounded-xl border border-amber-700/50 bg-amber-950/20 px-3 py-2 text-xs text-amber-200">
               Events unavailable. Showing run summary with agents marked as not started until telemetry returns.

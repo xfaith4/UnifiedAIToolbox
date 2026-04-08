@@ -671,6 +671,18 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
             : 'border-rose-700 bg-rose-900/30 text-rose-100'
     const failedGateCount = verificationFailures.length
     const requirementsRequest = orchRun.requirementsRequest ?? orchRun.sandboxReport?.requirementsRequest
+    const latestBlockerSignal = [...attemptFilteredEvents]
+      .reverse()
+      .find((ev) => {
+        const token = `${ev.type} ${ev.message || ''}`.toLowerCase()
+        return token.includes('blocked_requirements')
+          || token.includes('needs_requirements')
+          || token.includes('clarification_request')
+          || token.includes('requirements')
+      })
+    const blockerContextSummary = requirementsRequest?.summary || latestBlockerSignal?.message || orchRun.errorDetail || null
+    const blockerContextAvailable = Boolean(blockerContextSummary)
+    const showRecoveryCallout = executionStateLabel === 'Blocked requirements' || isError || failedGateCount > 0
     const checkpointHistory = orchRun.checkpoints ?? []
     const correctiveActions = (orchRun.correctiveActions?.length ? orchRun.correctiveActions : checkpointHistory
       .filter((checkpoint) => Boolean(checkpoint.response) || (checkpoint.answers?.length ?? 0) > 0)
@@ -791,6 +803,73 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
             <span className="font-mono text-xs opacity-50">{orchRun.id.slice(0, 20)}</span>
           </div>
         </div>
+
+        {showRecoveryCallout && (
+          <div className={`rounded-2xl border p-4 text-sm space-y-3 ${
+            executionStateLabel === 'Blocked requirements'
+              ? 'border-amber-700/60 bg-amber-950/20 text-amber-100'
+              : 'border-rose-700/60 bg-rose-950/20 text-rose-100'
+          }`}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="font-semibold">
+                {executionStateLabel === 'Blocked requirements'
+                  ? 'Execution blocked: missing requirements'
+                  : 'Execution failed: remediation required'}
+              </div>
+              <span className="rounded-full border border-current/40 bg-black/20 px-2 py-0.5 text-[10px] uppercase tracking-wide">
+                {orchRun.status || 'unknown'}
+              </span>
+            </div>
+
+            <div className="text-xs leading-relaxed">
+              {blockerContextAvailable
+                ? blockerContextSummary
+                : 'No structured blocker context was returned by the backend. Use copy context plus Concierge to gather missing requirements, then resume this run.'}
+            </div>
+
+            {latestBlockerSignal?.timestamp && (
+              <div className="text-[11px] opacity-80">
+                Last blocking signal at {new Date(latestBlockerSignal.timestamp).toLocaleTimeString()}.
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <a
+                href="#requirements-request"
+                className="rounded-lg border border-current/50 bg-black/20 px-3 py-1.5 font-medium hover:bg-black/35"
+              >
+                Open Requirements
+              </a>
+              <Link
+                href={`/concierge?run=${encodeURIComponent(runId)}`}
+                className="rounded-lg border border-current/50 bg-black/20 px-3 py-1.5 font-medium hover:bg-black/35"
+              >
+                Open Concierge
+              </Link>
+              <button
+                type="button"
+                onClick={() => void handleCopy([
+                  `Run ID: ${runId}`,
+                  `Status: ${orchRun.status || 'unknown'}`,
+                  `Outcome: ${outcomeLabel}`,
+                  `Blocker context: ${blockerContextSummary || 'none provided'}`,
+                ].join('\n'))}
+                className="rounded-lg border border-current/50 bg-black/20 px-3 py-1.5 font-medium hover:bg-black/35"
+              >
+                Copy Context
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleRequeueOrchestrationRun()}
+                disabled={requeuePending}
+                className="rounded-lg border border-current/50 bg-black/20 px-3 py-1.5 font-medium hover:bg-black/35 disabled:opacity-50"
+              >
+                {requeuePending ? 'Requeueing…' : 'Requeue Run'}
+              </button>
+            </div>
+          </div>
+        )}
+
         {orchRun.heartbeatStale && (
           <div className="rounded-xl border border-amber-700/50 bg-amber-950/30 px-3 py-2 text-xs text-amber-100">
             STUCK (no heartbeat): worker lease expired. Use Force Cancel or Requeue.
