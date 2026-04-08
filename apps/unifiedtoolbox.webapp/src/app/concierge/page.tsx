@@ -61,7 +61,9 @@ import {
   type RunContextEntry,
   type RunContextStatus,
 } from '@/lib/services/runContextStore'
-import { buildRequirementsRequestPrompt } from '@/lib/concierge/requirementsLoop'
+import { buildRequirementsRequestPromptWithGuidance } from '@/lib/concierge/requirementsLoop'
+import { extractBlockerAnswers } from '@/lib/concierge/extractBlockerAnswers'
+import { extractCheckpointAnswers } from '@/lib/services/conciergeAi'
 import { buildKickoffRefinementMessage, getRunMonitorHref } from '@/lib/services/conciergeKickoff'
 import type { Recipe } from '@/lib/types/recipes'
 import {
@@ -71,10 +73,12 @@ import {
 } from '@/lib/services/recipeStore'
 import CurrentRunCard from '@/components/runs/CurrentRunCard'
 import LiveEventPanel from '@/components/runs/LiveEventPanel'
+import RequirementsConfirmCard from '@/components/runs/RequirementsConfirmCard'
+import type { RequirementsRequest } from '@/lib/types/orchestrator'
 
 function buildRequirementsRequestMessage(run: OrchestrationRun): string | null {
   const packet = run.requirementsRequest ?? run.sandboxReport?.requirementsRequest
-  return buildRequirementsRequestPrompt(packet)
+  return buildRequirementsRequestPromptWithGuidance(packet, run.goal)
 }
 
 function renderChatInline(text: string, keyPrefix: string): React.ReactNode[] {
@@ -1021,6 +1025,11 @@ function ConciergePageContent() {
   const [runId, setRunId] = useState<string | null>(null)
   const [runStatus, setRunStatus] = useState<string | null>(null)
   const [runVerificationStatus, setRunVerificationStatus] = useState<string | null>(null)
+  const [activeRequirementsRequest, setActiveRequirementsRequest] = useState<RequirementsRequest | null>(null)
+  const [pendingCheckpointAnswers, setPendingCheckpointAnswers] = useState<{
+    runId: string
+    answers: Array<{ blocker_id: string; question: string; answer: string }>
+  } | null>(null)
   const [startRunLoading, setStartRunLoading] = useState(false)
   const [startRunError, setStartRunError] = useState<string | null>(null)
   const seenEventCount = useRef(0)
@@ -1125,6 +1134,9 @@ function ConciergePageContent() {
         setRunVerificationStatus(run.verificationStatus ?? null)
         if (context) setLastRunEntry(context)
 
+        const reqPacket = run.requirementsRequest ?? run.sandboxReport?.requirementsRequest ?? null
+        setActiveRequirementsRequest(reqPacket)
+
         const needsInfoMsg = buildRequirementsRequestMessage(run)
         if (!needsInfoMsg) return
 
@@ -1226,6 +1238,8 @@ function ConciergePageContent() {
             if (run.status === 'completed' || run.status === 'blocked_requirements' || run.status === 'needs_requirements') {
               if (run.verificationStatus === 'needs_requirements') {
                 updateDraftRun(proposalId, { runStatus: 'pending' })
+                const reqPacket = run.requirementsRequest ?? run.sandboxReport?.requirementsRequest ?? null
+                setActiveRequirementsRequest(reqPacket)
                 const needsInfoMsg = buildRequirementsRequestMessage(run)
                 if (needsInfoMsg) {
                   setMessages((prev) => [
@@ -1240,6 +1254,8 @@ function ConciergePageContent() {
                 }
               } else if (run.status === 'blocked_requirements' || run.status === 'needs_requirements') {
                 updateDraftRun(proposalId, { runStatus: 'pending' })
+                const reqPacket = run.requirementsRequest ?? run.sandboxReport?.requirementsRequest ?? null
+                setActiveRequirementsRequest(reqPacket)
                 const needsInfoMsg = buildRequirementsRequestMessage(run)
                 if (needsInfoMsg) {
                   setMessages((prev) => [
@@ -1348,6 +1364,28 @@ function ConciergePageContent() {
           : result.proposal
         const saved = saveProposal(proposalWithRecipe)
         setProposal(saved)
+      }
+
+      // Check if the AI response contains structured checkpoint answers
+      const checkpointPayload = extractCheckpointAnswers(result.message)
+      if (checkpointPayload && runId) {
+        setPendingCheckpointAnswers({ runId, answers: checkpointPayload.answers })
+      } else if (!checkpointPayload && runId && runStatus &&
+        ['blocked_requirements', 'needs_requirements'].includes(runStatus) &&
+        activeRequirementsRequest) {
+        // Fallback: try heuristic extraction from the user's message
+        const extracted = extractBlockerAnswers(text, activeRequirementsRequest.blockers)
+        const allAnswered = extracted.every((e) => e.answer.trim())
+        if (allAnswered && extracted.length > 0) {
+          setPendingCheckpointAnswers({
+            runId,
+            answers: extracted.map((e) => ({
+              blocker_id: e.blockerId,
+              question: e.question,
+              answer: e.answer,
+            })),
+          })
+        }
       }
     } catch (e) {
       setError(String(e))
@@ -1604,6 +1642,34 @@ function ConciergePageContent() {
           {error && (
             <div className="rounded-xl border border-rose-800 bg-rose-950/30 px-3 py-2 text-xs text-rose-300">
               {error}
+            </div>
+          )}
+          {pendingCheckpointAnswers && (
+            <div className="mx-2">
+              <RequirementsConfirmCard
+                runId={pendingCheckpointAnswers.runId}
+                answers={pendingCheckpointAnswers.answers}
+                onSubmitted={() => {
+                  setPendingCheckpointAnswers(null)
+                  setActiveRequirementsRequest(null)
+                  setMessages((prev) => [
+                    ...prev,
+                    {
+                      id: `checkpoint_ok_${Date.now()}`,
+                      role: 'assistant' as const,
+                      content: 'Requirements submitted successfully. The run is now resuming.',
+                      timestamp: new Date().toISOString(),
+                    },
+                  ])
+                  void fetchOrchestrationRun(pendingCheckpointAnswers.runId)
+                    .then((run) => {
+                      setRunStatus(run.status ?? null)
+                      setRunVerificationStatus(run.verificationStatus ?? null)
+                    })
+                    .catch(() => { /* keep existing state */ })
+                }}
+                onCancel={() => setPendingCheckpointAnswers(null)}
+              />
             </div>
           )}
           <div ref={bottomRef} />

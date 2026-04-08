@@ -85,7 +85,22 @@ confidence rules:
 - level: "high" if goal and context are unambiguous; "medium" if one or two unknowns exist; "low" if critical information is missing.
 - reasoning: One sentence explaining the confidence level.
 
-Keep plan.steps to 3–7 items. Include at least one risk. Make acceptance_checks measurable.`
+Keep plan.steps to 3–7 items. Include at least one risk. Make acceptance_checks measurable.
+
+When the conversation includes a requirements request (blocker questions from an orchestration run), follow these rules:
+1. Present each blocker as a numbered question. If default options exist, list them as numbered sub-choices.
+2. Based on the user's original goal and conversation context, suggest which option seems most appropriate and why.
+3. After the user responds with their choices, output a structured JSON block with the tag "checkpoint_answers" containing the answers mapped to each blocker:
+\`\`\`checkpoint_answers
+{
+  "answers": [
+    { "blocker_id": "req_1", "question": "The original question", "answer": "The user's chosen answer" }
+  ]
+}
+\`\`\`
+4. If the user's response is ambiguous or only partially answers the questions, ask targeted follow-ups for the missing blockers rather than guessing.
+5. Do NOT generate the checkpoint_answers block until ALL blockers have clear answers.
+6. After generating the checkpoint_answers block, tell the user to review the answers in the confirmation card that will appear.`
 
 // ── Mode-specific system prompt suffix ───────────────────────────────────────
 
@@ -95,6 +110,46 @@ const MODE_SYSTEM_SUFFIX: Record<ConciergeMode, string> = {
   confident: '', // no change — default behaviour
   'hands-off':
     '\n\nUser preference — HANDS-OFF mode: Generate a complete proposal immediately on the first user message without asking any clarifying questions. Be direct and efficient. List every assumption you made in the `assumptions` array — this is especially important since you are not asking for clarification.',
+}
+
+// ── Checkpoint answer extraction ────────────────────────────────────────────
+
+export interface CheckpointAnswerPayload {
+  answers: Array<{ blocker_id: string; question: string; answer: string }>
+}
+
+/**
+ * Extract structured checkpoint answers from an AI response.
+ * Looks for a ```checkpoint_answers ... ``` fenced JSON block.
+ */
+export function extractCheckpointAnswers(text: string): CheckpointAnswerPayload | null {
+  const match = text.match(/```checkpoint_answers\s*([\s\S]*?)```/)
+  if (!match) return null
+
+  try {
+    const parsed = JSON.parse(match[1].trim()) as Record<string, unknown>
+    const answers = parsed.answers
+    if (!Array.isArray(answers)) return null
+
+    const valid = answers.every(
+      (a: unknown) =>
+        typeof a === 'object' &&
+        a !== null &&
+        typeof (a as Record<string, unknown>).blocker_id === 'string' &&
+        typeof (a as Record<string, unknown>).answer === 'string',
+    )
+    if (!valid) return null
+
+    return {
+      answers: answers.map((a: Record<string, unknown>) => ({
+        blocker_id: String(a.blocker_id),
+        question: typeof a.question === 'string' ? a.question : '',
+        answer: String(a.answer),
+      })),
+    }
+  } catch {
+    return null
+  }
 }
 
 // ── JSON extraction ───────────────────────────────────────────────────────────

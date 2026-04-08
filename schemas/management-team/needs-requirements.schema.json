@@ -1,9 +1,10 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "management-team/needs-requirements",
-  "title": "NeedsRequirements",
-  "description": "Payload for message_type=NeedsRequirements. Sent by Commissioner → Concierge when GoalSpec is incomplete. This is NOT a failure — it is a requirements gap that Concierge must resolve before re-submitting. Run state transitions to BLOCKED_REQUIREMENTS.",
+  "$id": "management-team/v2/needs-requirements",
+  "title": "NeedsRequirementsV2",
+  "description": "Payload for message_type=NeedsRequirements. Sent by Commissioner \u2192 Concierge when GoalSpec is incomplete, contradictory, or too risky to approve.",
   "type": "object",
+  "additionalProperties": false,
   "required": [
     "block_reason",
     "missing",
@@ -12,41 +13,59 @@
     "commissioner_score",
     "decision"
   ],
-  "additionalProperties": false,
   "properties": {
     "block_reason": {
       "type": "string",
-      "enum": ["requirements_incomplete", "contradiction", "risk_unbounded"],
-      "description": "Primary reason Commissioner cannot approve. 'requirements_incomplete' = missing fields. 'contradiction' = conflicting constraints. 'risk_unbounded' = scope not constrainable."
+      "enum": [
+        "requirements_incomplete",
+        "contradiction",
+        "risk_unbounded",
+        "testability_gap"
+      ]
     },
     "missing": {
       "type": "array",
       "minItems": 1,
-      "description": "Each item describes a specific gap. Concierge must resolve all items before re-submitting GoalSpec.",
       "items": {
         "type": "object",
-        "required": ["field", "question", "why", "defaults"],
         "additionalProperties": false,
+        "required": [
+          "field",
+          "question",
+          "why",
+          "defaults",
+          "severity"
+        ],
         "properties": {
           "field": {
             "type": "string",
-            "minLength": 1,
-            "description": "JSON path to the missing or ambiguous field in GoalSpec (e.g. 'constraints.performance_budget')."
+            "minLength": 1
           },
           "question": {
             "type": "string",
-            "minLength": 20,
-            "description": "The exact question Concierge should ask the user (or answer from GoalSpec context)."
+            "minLength": 20
           },
           "why": {
             "type": "string",
-            "minLength": 20,
-            "description": "Why this field is needed to proceed (rationale for the user)."
+            "minLength": 20
           },
           "defaults": {
             "type": "array",
-            "items": { "type": "string" },
-            "description": "Sensible default options Concierge may apply if the user chooses 'fast path'."
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "blocker",
+              "high",
+              "medium"
+            ]
+          },
+          "can_be_answered_from_existing_spec": {
+            "type": "boolean"
           }
         }
       }
@@ -54,24 +73,47 @@
     "proposed_acceptance_tests": {
       "type": "array",
       "minItems": 1,
-      "description": "Commissioner's suggestions for concrete acceptance tests that would resolve the gap. Concierge may adopt, adapt, or reject these. At least one test must be proposed.",
-      "items": { "type": "string", "minLength": 10 }
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "title",
+          "procedure",
+          "expected_result"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 10
+          },
+          "procedure": {
+            "type": "string",
+            "minLength": 20
+          },
+          "expected_result": {
+            "type": "string",
+            "minLength": 20
+          }
+        }
+      }
     },
     "risk_notes": {
       "type": "array",
-      "description": "Risk observations that informed the block decision.",
-      "items": { "type": "string" }
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
     },
     "commissioner_score": {
       "type": "number",
       "minimum": 0,
-      "maximum": 100,
-      "description": "Completeness score (0–100) at the time of this NeedsRequirements. Used to track iteration progress."
+      "maximum": 100
     },
     "decision": {
       "type": "string",
-      "enum": ["blocked_requirements"],
-      "description": "Must always be 'blocked_requirements' for this message type."
+      "enum": [
+        "blocked_requirements"
+      ]
     }
   }
 }

@@ -1,28 +1,45 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "management-team/ack",
-  "title": "ACK",
-  "description": "Payload for message_type=ACK. Sent when a receiver accepts a message and wants to confirm receipt without sending a substantive response. Used by Concierge when Commissioner's question is already answered in GoalSpec — Concierge replies ACK + reference rather than re-asking the user.",
+  "$id": "management-team/v2/ack",
+  "title": "ACKV2",
+  "description": "Payload for message_type=ACK. Used for explicit receipt or resolution acknowledgement without sending a substantive replacement payload.",
   "type": "object",
-  "required": ["acknowledged_message_id", "acknowledged_message_type"],
   "additionalProperties": false,
+  "required": [
+    "acknowledged_message_id",
+    "acknowledged_message_type",
+    "ack_status"
+  ],
   "properties": {
     "acknowledged_message_id": {
       "type": "string",
-      "minLength": 1,
-      "description": "The message_id of the message being acknowledged."
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
     },
     "acknowledged_message_type": {
+      "$ref": "envelope.schema.json#/definitions/MessageType"
+    },
+    "ack_status": {
       "type": "string",
-      "description": "The message_type of the acknowledged message."
+      "enum": [
+        "received",
+        "understood",
+        "satisfied_by_reference"
+      ]
+    },
+    "resolved_by_message_id": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
     },
     "reference": {
       "type": "string",
-      "description": "Optional: if the ACK is in response to a NeedsRequirements, this points to where in GoalSpec the question is already answered (e.g. 'GoalSpec.constraints.offline_after_install = true')."
+      "description": "Optional pointer to where the requirement or answer is already satisfied."
+    },
+    "next_action_expected": {
+      "$ref": "envelope.schema.json#/definitions/MessageType"
     },
     "note": {
       "type": "string",
-      "description": "Optional human-readable context."
+      "minLength": 1
     }
   }
 }

@@ -1,9 +1,10 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "management-team/envelope",
-  "title": "ManagementTeamEnvelope",
-  "description": "Canonical message envelope for inter-agent communication. Every message exchanged between Concierge, Commissioner, Overseer, and Knowledge MUST conform to this schema. Any receiver that receives an envelope missing required fields MUST respond with a NACK.",
+  "$id": "management-team/v2/envelope",
+  "title": "ManagementTeamEnvelopeV2",
+  "description": "Canonical message envelope for inter-agent communication. Version 2 binds message_type to payload schema and constrains allowed sender/receiver pairs.",
   "type": "object",
+  "additionalProperties": false,
   "required": [
     "schema_version",
     "message_id",
@@ -15,23 +16,20 @@
     "correlation_id",
     "payload"
   ],
-  "additionalProperties": false,
   "properties": {
     "schema_version": {
       "type": "string",
-      "enum": ["1.0"],
-      "description": "Protocol schema version. Bump to 2.0 only on breaking changes."
+      "enum": [
+        "2.0"
+      ]
     },
     "message_id": {
       "type": "string",
-      "minLength": 1,
-      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
-      "description": "UUID v4. Unique across all messages in all runs."
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
     },
     "run_id": {
       "type": "string",
-      "minLength": 1,
-      "description": "The run this message belongs to. Must match the run_id under which Overseer is tracking state."
+      "minLength": 1
     },
     "from_role": {
       "$ref": "#/definitions/Role"
@@ -39,7 +37,41 @@
     "to_role": {
       "$ref": "#/definitions/Role"
     },
+    "stage": {
+      "$ref": "#/definitions/Stage"
+    },
     "message_type": {
+      "$ref": "#/definitions/MessageType"
+    },
+    "timestamp_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "correlation_id": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+    },
+    "reply_to_message_id": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+    },
+    "payload": {
+      "type": "object"
+    }
+  },
+  "definitions": {
+    "Role": {
+      "type": "string",
+      "enum": [
+        "Concierge",
+        "Commissioner",
+        "Overseer",
+        "Verifier",
+        "Knowledge"
+      ],
+      "description": "An allowed management-team agent role."
+    },
+    "MessageType": {
       "type": "string",
       "enum": [
         "GoalSpec",
@@ -50,43 +82,299 @@
         "KnowledgeRecord",
         "NACK",
         "ACK"
-      ],
-      "description": "Determines which payload schema applies. Receiver MUST reject unknown types with NACK."
+      ]
     },
-    "timestamp_utc": {
+    "Stage": {
       "type": "string",
-      "format": "date-time",
-      "description": "ISO-8601 UTC timestamp when the message was created."
+      "enum": [
+        "requirements",
+        "feasibility",
+        "execution",
+        "verification",
+        "knowledge",
+        "complete",
+        "terminated"
+      ]
     },
-    "correlation_id": {
-      "type": "string",
-      "minLength": 1,
-      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
-      "description": "UUID v4. A response message copies the correlation_id of the message it is responding to. New requests generate a fresh UUID."
-    },
-    "payload": {
+    "Evidence": {
       "type": "object",
-      "description": "Message-type-specific payload. Validated against the schema file matching message_type."
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "ref",
+        "summary"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "log",
+            "file_line",
+            "artifact",
+            "test_output",
+            "stack_trace",
+            "screenshot",
+            "note"
+          ]
+        },
+        "ref": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Resolvable pointer such as file:line, artifact name, screenshot id, or log source."
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 10,
+          "description": "Concise factual statement of what this evidence shows."
+        },
+        "excerpt": {
+          "type": "string",
+          "description": "Optional short excerpt. Keep brief; use ref for the canonical source."
+        },
+        "source_role": {
+          "$ref": "#/definitions/Role"
+        },
+        "timestamp_utc": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
     }
   },
-  "definitions": {
-    "Role": {
-      "type": "string",
-      "enum": ["Concierge", "Commissioner", "Overseer", "Knowledge"],
-      "description": "An allowed management team agent role."
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "message_type": {
+            "const": "GoalSpec"
+          }
+        },
+        "required": [
+          "message_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "from_role": {
+            "const": "Concierge"
+          },
+          "to_role": {
+            "const": "Commissioner"
+          },
+          "payload": {
+            "$ref": "goal-spec.schema.json#"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "message_type": {
+            "const": "NeedsRequirements"
+          }
+        },
+        "required": [
+          "message_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "from_role": {
+            "const": "Commissioner"
+          },
+          "to_role": {
+            "const": "Concierge"
+          },
+          "payload": {
+            "$ref": "needs-requirements.schema.json#"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "message_type": {
+            "const": "Approval"
+          }
+        },
+        "required": [
+          "message_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "from_role": {
+            "const": "Commissioner"
+          },
+          "to_role": {
+            "const": "Overseer"
+          },
+          "payload": {
+            "$ref": "approval.schema.json#"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "message_type": {
+            "const": "StageReport"
+          }
+        },
+        "required": [
+          "message_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "stage-report.schema.json#"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "message_type": {
+            "const": "VerificationReport"
+          }
+        },
+        "required": [
+          "message_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "from_role": {
+            "const": "Verifier"
+          },
+          "to_role": {
+            "const": "Overseer"
+          },
+          "payload": {
+            "$ref": "verification-report.schema.json#"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "message_type": {
+            "const": "KnowledgeRecord"
+          }
+        },
+        "required": [
+          "message_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "from_role": {
+            "const": "Knowledge"
+          },
+          "to_role": {
+            "const": "Overseer"
+          },
+          "payload": {
+            "$ref": "knowledge-record.schema.json#"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "message_type": {
+            "const": "NACK"
+          }
+        },
+        "required": [
+          "message_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "nack.schema.json#"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "message_type": {
+            "const": "ACK"
+          }
+        },
+        "required": [
+          "message_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "ack.schema.json#"
+          }
+        }
+      }
     }
-  },
+  ],
   "examples": [
     {
-      "schema_version": "1.0",
-      "message_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-      "run_id": "multi-agent_20240101-120000",
+      "schema_version": "2.0",
+      "message_id": "a1b2c3d4-e5f6-4a90-abcd-ef1234567890",
+      "run_id": "multi-agent_20260408-120000",
       "from_role": "Concierge",
       "to_role": "Commissioner",
+      "stage": "requirements",
       "message_type": "GoalSpec",
-      "timestamp_utc": "2024-01-01T12:00:00Z",
-      "correlation_id": "b2c3d4e5-f6a7-8901-bcde-f01234567891",
-      "payload": {}
+      "timestamp_utc": "2026-04-08T12:00:00Z",
+      "correlation_id": "b2c3d4e5-f6a7-4890-bcde-f01234567891",
+      "payload": {
+        "goal_summary": "Build a maintainable React web app that contrasts single-agent chat usage with multi-agent orchestration using visual examples, stage reports, and explicit verification evidence.",
+        "goal_type": "app",
+        "stack": {
+          "runtime": "node",
+          "language": "typescript"
+        },
+        "constraints": {
+          "offline_after_install": true,
+          "no_external_apis": true,
+          "target_devices": [
+            "desktop"
+          ]
+        },
+        "interactions": [
+          {
+            "id": "exhibit_a",
+            "user_action": "Click the first exhibit",
+            "visible_change": "The panel updates to show the single-agent flow with a new visual state and explanatory copy.",
+            "state_change": "selected exhibit changes to exhibit_a",
+            "numeric_readout": "shows 1 of 4 exhibits"
+          }
+        ],
+        "acceptance_tests": [
+          {
+            "id": "switch_exhibit",
+            "title": "Exhibit selection updates visible state",
+            "procedure": "Load the app, click the second exhibit card, and observe the active content region.",
+            "expected_result": "The active card changes, the content region updates, and the readout shows the correct index.",
+            "evidence_required": [
+              "screenshot"
+            ],
+            "priority": "must_pass"
+          }
+        ],
+        "maintenance_scope": "maintainable",
+        "defaults_applied": [],
+        "open_questions": []
+      }
     }
   ]
 }

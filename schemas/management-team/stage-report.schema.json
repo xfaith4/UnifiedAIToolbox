@@ -1,67 +1,132 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "management-team/stage-report",
-  "title": "StageReport",
-  "description": "Payload for message_type=StageReport. Sent by Overseer to any role to communicate stage progress. Also sent by build/verify agents back to Overseer. If a stage is marked 'completed' but artifacts_expected is not a subset of artifacts_present, Overseer MUST self-NACK and block progression.",
+  "$id": "management-team/v2/stage-report",
+  "title": "StageReportV2",
+  "description": "Payload for message_type=StageReport. Used by Overseer and worker roles to communicate stage progress, accountability, and blocking state.",
   "type": "object",
+  "additionalProperties": false,
   "required": [
     "stage",
     "status",
+    "owner_role",
     "artifacts_expected",
     "artifacts_present",
     "errors",
     "next_expected_message_type"
   ],
-  "additionalProperties": false,
   "properties": {
     "stage": {
-      "type": "string",
-      "enum": ["requirements", "feasibility", "execution", "verification", "knowledge"],
-      "description": "The lifecycle stage this report covers."
+      "$ref": "envelope.schema.json#/definitions/Stage"
     },
     "status": {
       "type": "string",
-      "enum": ["started", "working", "completed", "blocked"],
-      "description": "'blocked' halts progression until a corrected message arrives."
+      "enum": [
+        "started",
+        "working",
+        "completed",
+        "blocked"
+      ]
+    },
+    "owner_role": {
+      "$ref": "envelope.schema.json#/definitions/Role"
+    },
+    "stage_attempt": {
+      "type": "integer",
+      "minimum": 1
     },
     "artifacts_expected": {
       "type": "array",
-      "items": { "type": "string" },
-      "description": "Artifact names/paths that must exist for this stage to be 'completed'. Overseer enforces this list."
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
     },
     "artifacts_present": {
       "type": "array",
-      "items": { "type": "string" },
-      "description": "Artifacts confirmed present at the time of this report. Overseer compares against artifacts_expected."
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "artifact_manifest": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "status"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "present",
+              "missing",
+              "partial"
+            ]
+          },
+          "ref": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
     },
     "errors": {
       "type": "array",
-      "items": { "type": "string" },
-      "description": "Error messages from this stage, if any. May be empty ([]) on success."
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "blocking_message_id": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+    },
+    "depends_on_message_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+      },
+      "uniqueItems": true
     },
     "next_expected_message_type": {
+      "oneOf": [
+        {
+          "$ref": "envelope.schema.json#/definitions/MessageType"
+        },
+        {
+          "type": "string",
+          "enum": [
+            "none"
+          ]
+        }
+      ]
+    },
+    "percent_complete": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "decision_needed": {
       "type": "string",
-      "enum": [
-        "GoalSpec",
-        "NeedsRequirements",
-        "Approval",
-        "StageReport",
-        "VerificationReport",
-        "KnowledgeRecord",
-        "NACK",
-        "ACK",
-        "none"
-      ],
-      "description": "What message Overseer expects to receive next. 'none' = run is terminal."
+      "minLength": 10
     },
     "notes": {
       "type": "string",
-      "description": "Optional human-readable context for debugging."
+      "minLength": 1
     },
     "elapsed_ms": {
       "type": "number",
-      "minimum": 0,
-      "description": "Wall-clock milliseconds this stage has been running, if known."
+      "minimum": 0
     }
   }
 }

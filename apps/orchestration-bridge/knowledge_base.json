@@ -1,5 +1,48 @@
 [
   {
+    "run_id": "a1bfbee4-47a6-43e7-9637-158c52ad2d58.2026-04-08T05-58-03Z",
+    "ingested_at": "2026-04-08T05:58:08Z",
+    "goal": "Build a system dashboard using the System Dashboard Build Prompt.",
+    "goal_tokens": [
+      "build",
+      "system",
+      "dashboard",
+      "using",
+      "system",
+      "dashboard",
+      "build",
+      "prompt"
+    ],
+    "status": "running",
+    "verification_status": "needs_requirements",
+    "knowledge_status": "fail",
+    "knowledge_score": 0,
+    "learning": {
+      "classification": "knowledge_generation_failure",
+      "what_broke": "Knowledge artifact generation crashed.",
+      "root_cause": "name 'app_production_repairs_payload' is not defined",
+      "evidence": [
+        "name 'app_production_repairs_payload' is not defined"
+      ],
+      "prevention_patches": [],
+      "regression_checks": [],
+      "questions_needed": [],
+      "corrective_actions": [],
+      "instruction_adjustments": []
+    },
+    "checkpoint_history": [],
+    "corrective_actions": [],
+    "app_production_repairs": {},
+    "instruction_adjustments": [],
+    "agents": [
+      "Supervisor",
+      "Engineer",
+      "Critic"
+    ],
+    "model": "gpt-5.2",
+    "synthesis_present": false
+  },
+  {
     "run_id": "Create_an_interactive_web_application_that_compares_typical_AI_usage_with_advanced_orchestrated_AI_workflows.2026-04-05T21-40-59Z",
     "ingested_at": "2026-04-05T21:41:03Z",
     "goal": "Create an interactive web application that compares typical AI usage with advanced orchestrated AI workflows.",

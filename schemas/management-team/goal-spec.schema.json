@@ -1,11 +1,13 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "management-team/goal-spec",
-  "title": "GoalSpec",
-  "description": "Payload for message_type=GoalSpec. Sent by Concierge → Commissioner. Represents a complete, unambiguous set of requirements. Commissioner MUST NACK if interactions.length < 4 or any acceptance_test is vague.",
+  "$id": "management-team/v2/goal-spec",
+  "title": "GoalSpecV2",
+  "description": "Payload for message_type=GoalSpec. Sent by Concierge \u2192 Commissioner. Represents a complete, auditable set of requirements with stable acceptance-test IDs.",
   "type": "object",
+  "additionalProperties": false,
   "required": [
     "goal_summary",
+    "goal_type",
     "stack",
     "constraints",
     "interactions",
@@ -14,117 +16,233 @@
     "defaults_applied",
     "open_questions"
   ],
-  "additionalProperties": false,
   "properties": {
     "goal_summary": {
       "type": "string",
-      "minLength": 40,
-      "description": "A clear, unambiguous statement of what should be built. Must be specific enough to write a failing test from."
+      "minLength": 40
+    },
+    "goal_type": {
+      "type": "string",
+      "enum": [
+        "app",
+        "feature",
+        "fix",
+        "analysis",
+        "migration",
+        "prototype",
+        "other"
+      ]
     },
     "stack": {
       "type": "object",
-      "required": ["runtime"],
       "additionalProperties": false,
+      "required": [
+        "runtime",
+        "language"
+      ],
       "properties": {
         "runtime": {
           "type": "string",
-          "enum": ["node", "python", "dotnet", "powershell", "browser"],
-          "description": "Primary runtime environment."
+          "enum": [
+            "node",
+            "python",
+            "dotnet",
+            "powershell",
+            "browser",
+            "other"
+          ]
         },
-        "frontend": {
-          "type": "array",
-          "items": { "type": "string", "minLength": 1 },
-          "description": "Frontend libraries/frameworks (e.g. react, vite, ts)."
-        },
-        "3d": {
-          "type": "array",
-          "items": { "type": "string", "minLength": 1 },
-          "description": "3D libraries if applicable (e.g. r3f, three, drei)."
-        },
-        "state": {
+        "language": {
           "type": "string",
-          "minLength": 1,
-          "description": "State management approach (e.g. zustand, react, redux)."
+          "enum": [
+            "javascript",
+            "typescript",
+            "python",
+            "csharp",
+            "powershell",
+            "html-css-js",
+            "other"
+          ]
         },
-        "tests": {
-          "type": "array",
-          "items": { "type": "string", "minLength": 1 },
-          "description": "Test frameworks (e.g. vitest, jest, playwright)."
+        "frontend_framework": {
+          "type": "string",
+          "enum": [
+            "react",
+            "vue",
+            "svelte",
+            "plain_html",
+            "wpf",
+            "maui",
+            "none",
+            "other"
+          ]
         },
-        "other": {
+        "bundler": {
+          "type": "string",
+          "enum": [
+            "vite",
+            "webpack",
+            "parcel",
+            "none",
+            "other"
+          ]
+        },
+        "state_management": {
+          "type": "string",
+          "enum": [
+            "react_state",
+            "zustand",
+            "redux",
+            "mobx",
+            "none",
+            "other"
+          ]
+        },
+        "rendering_mode": {
+          "type": "string",
+          "enum": [
+            "2d",
+            "3d",
+            "mixed",
+            "n/a"
+          ]
+        },
+        "ui_library": {
+          "type": "string",
+          "enum": [
+            "shadcn",
+            "mui",
+            "tailwind_only",
+            "bootstrap",
+            "none",
+            "other"
+          ]
+        },
+        "test_frameworks": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1 },
-          "description": "Any additional tooling not covered above."
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "other_tools": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
         }
       }
     },
     "constraints": {
       "type": "object",
-      "required": ["offline_after_install", "no_external_apis", "target_devices"],
-      "additionalProperties": true,
+      "additionalProperties": false,
+      "required": [
+        "offline_after_install",
+        "no_external_apis",
+        "target_devices"
+      ],
       "properties": {
         "offline_after_install": {
-          "type": "boolean",
-          "description": "If true, the app must work fully offline after npm install."
+          "type": "boolean"
         },
         "no_external_apis": {
-          "type": "boolean",
-          "description": "If true, no runtime calls to external APIs are permitted."
+          "type": "boolean"
         },
         "target_devices": {
           "type": "array",
-          "items": { "type": "string" },
           "minItems": 1,
-          "description": "Target device profiles (e.g. typical_laptop, mobile, desktop)."
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "typical_laptop",
+              "desktop",
+              "mobile",
+              "tablet",
+              "server",
+              "unknown",
+              "other"
+            ]
+          }
         },
         "performance_budget": {
           "type": "object",
+          "additionalProperties": false,
           "properties": {
             "fps_target": {
               "type": "number",
-              "minimum": 15,
-              "description": "Minimum acceptable frames per second."
+              "minimum": 15
+            },
+            "max_initial_load_ms": {
+              "type": "number",
+              "minimum": 0
+            },
+            "max_bundle_kb_gzip": {
+              "type": "number",
+              "minimum": 0
             },
             "geometry_budget_notes": {
               "type": "string",
-              "description": "Human-readable geometry complexity guidance."
+              "minLength": 10
             }
           }
+        },
+        "security_profile": {
+          "type": "string",
+          "enum": [
+            "low",
+            "moderate",
+            "high",
+            "unknown"
+          ]
+        },
+        "data_sensitivity": {
+          "type": "string",
+          "enum": [
+            "public",
+            "internal",
+            "sensitive",
+            "unknown"
+          ]
         }
       }
     },
     "interactions": {
       "type": "array",
       "minItems": 4,
-      "description": "Distinct user interactions. Commissioner MUST NACK if fewer than 4.",
       "items": {
         "type": "object",
-        "required": ["id", "user_action", "visible_change", "state_change", "numeric_readout"],
         "additionalProperties": false,
+        "required": [
+          "id",
+          "user_action",
+          "visible_change",
+          "state_change",
+          "numeric_readout"
+        ],
         "properties": {
           "id": {
             "type": "string",
-            "minLength": 1,
-            "description": "Stable identifier for this interaction (e.g. exhibit_A)."
+            "pattern": "^[a-z][a-z0-9_\\-]{1,63}$"
           },
           "user_action": {
             "type": "string",
-            "description": "What the user does (e.g. click, tap, drag)."
+            "minLength": 10
           },
           "visible_change": {
             "type": "string",
-            "minLength": 20,
-            "description": "Observable change in the UI after the action. Must be specific enough to verify."
+            "minLength": 20
           },
           "state_change": {
             "type": "string",
-            "minLength": 15,
-            "description": "Internal state that changes (e.g. 'subdivisionDepth increments by 1')."
+            "minLength": 15
           },
           "numeric_readout": {
             "type": "string",
-            "minLength": 10,
-            "description": "What number or formula is displayed to the user after the interaction."
+            "minLength": 10
           }
         }
       }
@@ -132,27 +250,99 @@
     "acceptance_tests": {
       "type": "array",
       "minItems": 1,
-      "description": "Pass/fail acceptance criteria. Commissioner MUST NACK vague tests (e.g. 'looks nice', 'works well').",
       "items": {
-        "type": "string",
-        "minLength": 30
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "title",
+          "procedure",
+          "expected_result",
+          "evidence_required",
+          "priority"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_\\-]{1,63}$"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 10
+          },
+          "procedure": {
+            "type": "string",
+            "minLength": 25
+          },
+          "expected_result": {
+            "type": "string",
+            "minLength": 20
+          },
+          "evidence_required": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "enum": [
+                "log",
+                "file_line",
+                "artifact",
+                "test_output",
+                "stack_trace",
+                "screenshot",
+                "note"
+              ]
+            }
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "must_pass",
+              "should_pass",
+              "nice_to_have"
+            ]
+          },
+          "mapped_interaction_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_\\-]{1,63}$"
+            },
+            "uniqueItems": true
+          }
+        }
       }
     },
     "maintenance_scope": {
       "type": "string",
-      "enum": ["demo", "maintainable"],
-      "description": "Whether this is a throwaway demo or production-quality maintainable code."
+      "enum": [
+        "demo",
+        "maintainable",
+        "production_candidate"
+      ]
     },
     "defaults_applied": {
       "type": "array",
-      "description": "List of assumptions Concierge applied without explicit user confirmation.",
-      "items": { "type": "string" }
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
     },
     "open_questions": {
       "type": "array",
-      "description": "Must be empty ([]) before GoalSpec is sent. If non-empty, Concierge must resolve them first.",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
       "maxItems": 0
+    },
+    "assumptions_requiring_user_confirmation": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
     }
   }
 }

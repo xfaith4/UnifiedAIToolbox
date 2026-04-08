@@ -2,10 +2,11 @@
 
 import { use, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { Activity, AlertTriangle, ArrowLeft, Network, RefreshCw } from 'lucide-react'
+import { Activity, AlertTriangle, ArrowLeft, ChevronDown, ChevronUp, ClipboardCopy, FolderOpen, Network, RefreshCw } from 'lucide-react'
 import ActivityLog from '@/features/swarm-viz/components/ActivityLog'
 import ControlPanel from '@/features/swarm-viz/components/ControlPanel'
 import SwarmCanvas from '@/features/swarm-viz/components/SwarmCanvas'
+import RequirementsPanel from '@/components/runs/RequirementsPanel'
 import { useRunEvents } from '@/features/swarm-viz/hooks/useRunEvents'
 import { buildSwarmModel } from '@/features/swarm-viz/model/swarmModel'
 import { fetchOrchestrationRun, forceCancelOrchestrationRun, requeueOrchestrationRun } from '@/lib/services/orchestratorApi'
@@ -47,6 +48,8 @@ export default function RunSwarmPage({ params }: { params: Promise<{ runId: stri
   const [runSummary, setRunSummary] = useState<OrchestrationRun | null>(null)
   const [proposalId, setProposalId] = useState<string | null>(null)
   const [actionPending, setActionPending] = useState<'retry' | 'cancel' | null>(null)
+  const [copiedAll, setCopiedAll] = useState(false)
+  const [requirementsPanelOpen, setRequirementsPanelOpen] = useState(true)
 
   const { events, runStatus, loading, error, connectionStatus, lastEventTs, reconnectCount, refresh } = useRunEvents(runId, {
     limit: 600,
@@ -78,15 +81,66 @@ export default function RunSwarmPage({ params }: { params: Promise<{ runId: stri
 
   const displayStatus = (runSummary?.status || runStatus?.status || '').toLowerCase()
   const isTerminalError = displayStatus === 'stuck' || displayStatus.startsWith('error:') || displayStatus === 'failed'
+  const isCompleted = displayStatus === 'succeeded' || displayStatus === 'completed'
+  const isTerminal = isTerminalError || isCompleted
   const requirementsRequest = runSummary?.requirementsRequest ?? runSummary?.sandboxReport?.requirementsRequest
   const isRequirementsBlocked =
     displayStatus === 'blocked_requirements'
     || displayStatus === 'needs_requirements'
     || runSummary?.verificationStatus === 'needs_requirements'
+  const isRunning = !isTerminal && !isRequirementsBlocked && events.length > 0
   const runDetailHref = `/runs/${encodeURIComponent(runId)}#requirements-request`
   const conciergeHref = proposalId
     ? `/concierge?proposal=${encodeURIComponent(proposalId)}&run=${encodeURIComponent(runId)}`
     : `/concierge?run=${encodeURIComponent(runId)}`
+  const runDirPath = runSummary?.runDir
+
+  const copyAllContext = async () => {
+    const sections: string[] = []
+    sections.push(`# Swarm Context Export`)
+    sections.push(`Run ID: ${runId}`)
+    sections.push(`Status: ${runSummary?.status || runStatus?.status || 'unknown'}`)
+    sections.push(`Goal: ${runSummary?.goal || '—'}`)
+    sections.push(`Timestamp: ${new Date().toISOString()}`)
+    sections.push('')
+
+    if (model.agents.length > 0) {
+      sections.push(`## Agents`)
+      for (const agent of model.agents) {
+        sections.push(`- ${agent.name} [${agent.status}]${agent.lastMessage ? ` — ${agent.lastMessage}` : ''}`)
+      }
+      sections.push('')
+    }
+
+    const errorNodes = model.nodes.filter((n) => n.status === 'error' || n.status === 'blocked')
+    if (errorNodes.length > 0) {
+      sections.push(`## Failed / Blocked Nodes`)
+      for (const node of errorNodes) {
+        sections.push(`### ${node.label} [${node.status}]`)
+        sections.push(`- Kind: ${node.kind}`)
+        sections.push(`- Phase: ${node.phase || '—'}`)
+        sections.push(`- Agent: ${node.agent || '—'}`)
+        sections.push(`- Events: ${node.eventCount}`)
+        sections.push(`- Last updated: ${node.lastTs}`)
+        if (node.message) sections.push(`- Message: ${node.message}`)
+        sections.push('')
+      }
+    }
+
+    if (model.activity.length > 0) {
+      sections.push(`## Activity Log (last 50)`)
+      for (const item of model.activity.slice(0, 50)) {
+        const parts = [item.ts, item.type, item.phase, item.agent, item.status].filter(Boolean).join(' | ')
+        sections.push(`[${parts}] ${item.message}`)
+      }
+    }
+
+    try {
+      await navigator.clipboard.writeText(sections.join('\n'))
+      setCopiedAll(true)
+      setTimeout(() => setCopiedAll(false), 2000)
+    } catch { /* clipboard unavailable */ }
+  }
 
   const handleRetry = async () => {
     setActionPending('retry')
@@ -111,6 +165,14 @@ export default function RunSwarmPage({ params }: { params: Promise<{ runId: stri
     } finally {
       setActionPending(null)
     }
+  }
+
+  const handleRequirementsSubmitted = async () => {
+    try {
+      const run = await fetchOrchestrationRun(runId)
+      setRunSummary(run)
+    } catch { /* keep existing state */ }
+    await refresh()
   }
 
   const availableAgents = useMemo(() => model.agents.map((agent) => agent.name), [model.agents])
@@ -214,6 +276,33 @@ export default function RunSwarmPage({ params }: { params: Promise<{ runId: stri
             <RefreshCw className="h-3.5 w-3.5" />
             Refresh
           </button>
+          {runDirPath && (
+            <a
+              href={`file:///${runDirPath.replace(/\\/g, '/')}`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 rounded-full border border-slate-700 bg-slate-900 px-2.5 py-1 text-slate-200 hover:border-slate-600"
+              onClick={(e) => {
+                e.preventDefault()
+                void fetch('/api/open-path', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ path: runDirPath }),
+                }).catch(() => navigator.clipboard?.writeText(runDirPath))
+              }}
+            >
+              <FolderOpen className="h-3.5 w-3.5" />
+              Run Files
+            </a>
+          )}
+          <button
+            type="button"
+            onClick={() => void copyAllContext()}
+            className="inline-flex items-center gap-1 rounded-full border border-slate-700 bg-slate-900 px-2.5 py-1 text-slate-200 hover:border-slate-600"
+          >
+            <ClipboardCopy className="h-3.5 w-3.5" />
+            {copiedAll ? 'Copied!' : 'Copy Context'}
+          </button>
           {isTerminalError && (
             <>
               <button
@@ -294,59 +383,114 @@ export default function RunSwarmPage({ params }: { params: Promise<{ runId: stri
           </div>
 
           {isRequirementsBlocked && (
-            <div className="rounded-2xl border border-amber-700/60 bg-amber-950/20 p-4 text-sm text-amber-100">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="max-w-3xl space-y-2">
-                  <div className="flex items-center gap-2 font-semibold text-amber-100">
-                    <AlertTriangle className="h-4 w-4" />
-                    Requirements needed to continue this run
-                  </div>
-                  <p className="text-amber-100/90">
-                    Swarm View shows where execution stopped. Answer the blocker questions in Run Detail or Concierge, and the same run will be queued to resume with those answers.
-                  </p>
-                  {requirementsRequest?.summary && (
-                    <p className="text-amber-50/90">{requirementsRequest.summary}</p>
-                  )}
-                  {(requirementsRequest?.blockers?.length ?? 0) > 0 && (
-                    <div className="space-y-2 pt-1 text-xs">
-                      {requirementsRequest?.blockers?.slice(0, 2).map((blocker) => (
-                        <div key={blocker.id} className="rounded-xl border border-amber-700/50 bg-amber-950/30 p-3">
-                          <div><span className="font-semibold">Question:</span> {blocker.question}</div>
-                          {blocker.why && <div className="mt-1 text-amber-100/80"><span className="font-semibold">Why:</span> {blocker.why}</div>}
-                        </div>
-                      ))}
-                      {(requirementsRequest?.blockers?.length ?? 0) > 2 && (
-                        <div className="text-amber-200/80">
-                          Open Run Detail to review the remaining {(requirementsRequest?.blockers?.length ?? 0) - 2} question(s).
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex min-w-[220px] flex-col gap-2">
-                  <Link
-                    href={runDetailHref}
-                    className="inline-flex items-center justify-center rounded-xl border border-amber-600 bg-amber-500/15 px-3 py-2 text-sm font-medium text-amber-50 hover:bg-amber-500/25"
-                  >
-                    Review Questions in Run Detail
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-amber-700/60 bg-amber-950/20 px-4 py-3">
+                <button
+                  type="button"
+                  onClick={() => setRequirementsPanelOpen(!requirementsPanelOpen)}
+                  className="flex items-center gap-2 text-sm font-semibold text-amber-100"
+                >
+                  <AlertTriangle className="h-4 w-4" />
+                  Requirements needed to continue
+                  <span className="rounded-full border border-amber-700/50 bg-amber-900/30 px-2 py-0.5 text-[10px]">
+                    {requirementsRequest?.blockers?.length ?? 0} question{(requirementsRequest?.blockers?.length ?? 0) !== 1 ? 's' : ''}
+                  </span>
+                  {requirementsPanelOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                </button>
+                <div className="flex items-center gap-2 text-xs">
+                  <Link href={`/runs/${encodeURIComponent(runId)}`} className="text-amber-200/70 underline hover:text-amber-100">
+                    Run Detail
                   </Link>
-                  <Link
-                    href={conciergeHref}
-                    className="inline-flex items-center justify-center rounded-xl border border-slate-700 bg-slate-900/70 px-3 py-2 text-sm font-medium text-slate-100 hover:border-slate-600 hover:bg-slate-800/80"
-                  >
-                    Answer in Concierge
+                  <Link href={conciergeHref} className="text-amber-200/70 underline hover:text-amber-100">
+                    Concierge
                   </Link>
-                  <div className="text-xs text-amber-200/80">
-                    Concierge will restate the blocker packet so you can answer it without reconstructing context by hand.
-                  </div>
-                  {(runSummary?.checkpoints?.length ?? 0) > 0 && (
-                    <div className="text-xs text-slate-400">
-                      Run Detail also shows the checkpoint history and any learning-agent instruction adjustments captured for the next run.
-                    </div>
-                  )}
                 </div>
               </div>
+
+              {requirementsPanelOpen && requirementsRequest && (
+                <div className="max-h-[40vh] overflow-y-auto">
+                  <RequirementsPanel
+                    runId={runId}
+                    requirementsRequest={requirementsRequest}
+                    variant="panel"
+                    onSubmitted={() => void handleRequirementsSubmitted()}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {isTerminal && !isRequirementsBlocked && (
+            <div className={`rounded-2xl border p-4 text-sm ${
+              isCompleted
+                ? 'border-emerald-700/60 bg-emerald-950/20 text-emerald-100'
+                : 'border-rose-700/60 bg-rose-950/20 text-rose-100'
+            }`}>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2 font-semibold">
+                  {isCompleted ? (
+                    <>
+                      <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+                      Orchestration Complete
+                    </>
+                  ) : (
+                    <>
+                      <AlertTriangle className="h-4 w-4" />
+                      Orchestration {displayStatus === 'stuck' ? 'Stuck' : 'Failed'}
+                    </>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 text-xs">
+                  <Link
+                    href={`/runs/${encodeURIComponent(runId)}`}
+                    className={`rounded-lg border px-3 py-1.5 font-medium ${
+                      isCompleted
+                        ? 'border-emerald-600 bg-emerald-500/15 text-emerald-50 hover:bg-emerald-500/25'
+                        : 'border-rose-600 bg-rose-500/15 text-rose-50 hover:bg-rose-500/25'
+                    }`}
+                  >
+                    View Full Report
+                  </Link>
+                  {runDirPath && (
+                    <a
+                      href={`file:///${runDirPath.replace(/\\/g, '/')}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="rounded-lg border border-slate-700 bg-slate-900/70 px-3 py-1.5 font-medium text-slate-100 hover:border-slate-600"
+                      onClick={(e) => {
+                        e.preventDefault()
+                        void fetch('/api/open-path', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ path: runDirPath }),
+                        }).catch(() => navigator.clipboard?.writeText(runDirPath))
+                      }}
+                    >
+                      Open Run Files
+                    </a>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => void copyAllContext()}
+                    className="rounded-lg border border-slate-700 bg-slate-900/70 px-3 py-1.5 font-medium text-slate-100 hover:border-slate-600"
+                  >
+                    {copiedAll ? 'Copied!' : 'Copy All Context'}
+                  </button>
+                </div>
+              </div>
+              {isTerminalError && (
+                <p className="mt-2 text-xs opacity-80">
+                  {model.nodes.filter((n) => n.status === 'error').length} node(s) with errors,{' '}
+                  {model.nodes.filter((n) => n.status === 'blocked').length} blocked.
+                  Click any red node below to copy its context.
+                </p>
+              )}
+              {isCompleted && (
+                <p className="mt-2 text-xs opacity-80">
+                  {model.nodes.filter((n) => n.status === 'complete').length} node(s) completed,{' '}
+                  {model.agents.filter((a) => a.status === 'complete').length} agent(s) finished.
+                </p>
+              )}
             </div>
           )}
 

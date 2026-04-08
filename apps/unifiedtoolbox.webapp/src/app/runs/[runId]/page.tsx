@@ -8,7 +8,6 @@ import {
   forceCancelOrchestrationRun,
   fetchOrchestrationRun,
   fetchOrchestrationRunLog,
-  requeueOrchestrationRun,
 } from '@/lib/services/orchestratorApi'
 import type { OrchestrationRun, RepoOrchestrationReport } from '@/lib/types/orchestrator'
 import { nodeMatchesFilter, renderMarkdown } from '@/lib/artifacts/viewerUtils'
@@ -166,10 +165,6 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
   const [cancelMessage, setCancelMessage] = useState<string | null>(null)
   const [cancelError, setCancelError] = useState<string | null>(null)
   const [selectedAttemptId, setSelectedAttemptId] = useState<string | null>(null)
-  const [checkpointAnswers, setCheckpointAnswers] = useState<Record<string, string>>({})
-  const [checkpointPending, setCheckpointPending] = useState(false)
-  const [checkpointError, setCheckpointError] = useState<string | null>(null)
-  const [checkpointMessage, setCheckpointMessage] = useState<string | null>(null)
   const [buildInfo, setBuildInfo] = useState<{
     runDir: string
     artifactsDir: string
@@ -178,6 +173,10 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
     fileCount: number
     files: string[]
   } | null>(null)
+  const [checkpointAnswers, setCheckpointAnswers] = useState<Record<string, string>>({})
+  const [checkpointPending, setCheckpointPending] = useState(false)
+  const [checkpointError, setCheckpointError] = useState<string | null>(null)
+  const [checkpointMessage, setCheckpointMessage] = useState<string | null>(null)
 
   // Fetch build output location for completed App Factory (maint-) runs
   useEffect(() => {
@@ -186,7 +185,7 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
       .then((r) => r.ok ? r.json() : null)
       .then((data) => { if (data?.runDir) setBuildInfo(data) })
       .catch(() => null)
-  }, [orchRun?.id, orchRun?.status])
+  }, [orchRun])
 
   const artifactByName = useMemo(() => {
     const map = new Map<string, ArtifactItem>()
@@ -351,20 +350,6 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
       cancelled = true
     }
   }, [runId])
-
-  useEffect(() => {
-    const requirementsRequest = orchRun?.requirementsRequest ?? orchRun?.sandboxReport?.requirementsRequest
-    const blockers = requirementsRequest?.blockers ?? []
-    if (blockers.length === 0) return
-
-    setCheckpointAnswers((current) => {
-      const next: Record<string, string> = {}
-      for (const blocker of blockers) {
-        next[blocker.id] = current[blocker.id] ?? blocker.defaults?.[0] ?? ''
-      }
-      return next
-    })
-  }, [orchRun])
 
   const commands = report?.verification?.commands ?? []
   const passedCommands = commands.filter((cmd) => cmd?.exit_code === 0).length

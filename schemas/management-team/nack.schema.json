@@ -1,18 +1,19 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "management-team/nack",
-  "title": "NACK",
-  "description": "Payload for message_type=NACK. Any agent may send a NACK when it receives an invalid envelope or payload. A NACK blocks the run stage until a corrected message arrives. The sender of the invalid message MUST correct and re-send — it must NOT proceed.",
+  "$id": "management-team/v2/nack",
+  "title": "NACKV2",
+  "description": "Payload for message_type=NACK. Any agent may send a NACK when it receives an invalid envelope, invalid payload, invalid stage transition, or unsupported assumption.",
   "type": "object",
+  "additionalProperties": false,
   "required": [
     "reason",
     "missing_fields",
     "expected_schema",
     "retry_instructions",
     "rejected_message_id",
-    "rejected_message_type"
+    "rejected_message_type",
+    "severity"
   ],
-  "additionalProperties": false,
   "properties": {
     "reason": {
       "type": "string",
@@ -24,34 +25,56 @@
         "insufficient_items",
         "schema_version_mismatch",
         "unknown_message_type",
-        "vague_acceptance_test"
-      ],
-      "description": "Machine-readable rejection reason code."
+        "vague_acceptance_test",
+        "invalid_payload_shape",
+        "invalid_reference",
+        "evidence_mismatch",
+        "coverage_incomplete",
+        "forbidden_assumption",
+        "unauthorized_stage_transition",
+        "role_not_allowed",
+        "cross_message_inconsistency"
+      ]
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "error",
+        "fatal"
+      ]
     },
     "missing_fields": {
       "type": "array",
-      "items": { "type": "string" },
-      "description": "JSON paths to fields that are missing or invalid (e.g. ['payload.interactions', 'payload.open_questions']). May be empty for non-field errors like 'unknown_message_type'."
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
     },
     "expected_schema": {
       "type": "string",
-      "minLength": 1,
-      "description": "The schema ID that the rejected message should conform to (e.g. 'management-team/goal-spec v1.0')."
+      "minLength": 1
+    },
+    "protocol_rule": {
+      "type": "string",
+      "minLength": 1
     },
     "retry_instructions": {
       "type": "string",
-      "minLength": 30,
-      "description": "Plain-language instructions for the sender to fix the message. Must be actionable. 'Provide the missing fields exactly; do not proceed.' is the minimum."
+      "minLength": 30
+    },
+    "fix_examples": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 10
+      }
     },
     "rejected_message_id": {
       "type": "string",
-      "minLength": 1,
-      "description": "The message_id of the message being rejected. Required so the sender can identify which message to fix."
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
     },
     "rejected_message_type": {
-      "type": "string",
-      "minLength": 1,
-      "description": "The message_type of the rejected message. Required to allow the sender to locate the correct message."
+      "$ref": "envelope.schema.json#/definitions/MessageType"
     }
   }
 }

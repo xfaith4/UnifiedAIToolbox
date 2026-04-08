@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef } from 'react'
-import { AlertTriangle, Boxes, CheckCircle2, Circle, FileText, Hammer, Layers, Workflow } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { AlertTriangle, Boxes, CheckCircle2, Circle, ClipboardCopy, FileText, Hammer, Layers, Workflow } from 'lucide-react'
 import type { SwarmAgent, SwarmEdge, SwarmNode } from '../types'
 
 type Point = { x: number; y: number }
@@ -60,9 +60,34 @@ function nodeIcon(kind: SwarmNode['kind']) {
   return <Boxes className="h-4 w-4" />
 }
 
+function nodeContextText(node: SwarmNode): string {
+  const lines = [
+    `Node: ${node.label}`,
+    `Status: ${node.status}`,
+    `Kind: ${node.kind}`,
+    `Phase: ${node.phase || '—'}`,
+    `Agent: ${node.agent || '—'}`,
+    `Events: ${node.eventCount}`,
+    `First seen: ${node.firstTs}`,
+    `Last updated: ${node.lastTs}`,
+  ]
+  if (node.message) lines.push(`Message: ${node.message}`)
+  return lines.join('\n')
+}
+
 export default function SwarmCanvas({ agents, nodes, edges, phases, groupByPhase, followLive, resetSignal }: SwarmCanvasProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const nodeRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  const [expandedNode, setExpandedNode] = useState<string | null>(null)
+  const [copiedNodeId, setCopiedNodeId] = useState<string | null>(null)
+
+  const handleCopyNode = async (node: SwarmNode) => {
+    try {
+      await navigator.clipboard.writeText(nodeContextText(node))
+      setCopiedNodeId(node.id)
+      setTimeout(() => setCopiedNodeId(null), 2000)
+    } catch { /* clipboard unavailable */ }
+  }
 
   const layout = useMemo(() => {
     const nodePoints = new Map<string, Point>()
@@ -208,26 +233,31 @@ export default function SwarmCanvas({ agents, nodes, edges, phases, groupByPhase
           {nodes.map((node) => {
             const point = layout.nodePoints.get(node.id)
             if (!point) return null
+            const isExpanded = expandedNode === node.id
+            const isCopied = copiedNodeId === node.id
             return (
               <div
                 key={node.id}
                 ref={(element) => {
                   nodeRefs.current[node.id] = element
                 }}
-                className={`absolute w-56 -translate-x-1/2 rounded-xl border px-3 py-2 text-xs shadow-sm ${nodeTone(node.status)}`}
+                className={`absolute -translate-x-1/2 rounded-xl border px-3 py-2 text-xs shadow-sm cursor-pointer transition-all ${
+                  isExpanded ? 'w-80 z-20' : 'w-56'
+                } ${nodeTone(node.status)}`}
                 style={{ left: point.x, top: point.y }}
+                onClick={() => setExpandedNode(isExpanded ? null : node.id)}
               >
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 font-semibold">
                     {nodeIcon(node.kind)}
-                    <span>{node.label}</span>
+                    <span className={isExpanded ? '' : 'truncate'}>{node.label}</span>
                   </div>
                   {node.status === 'complete' ? (
-                    <CheckCircle2 className="h-4 w-4" />
+                    <CheckCircle2 className="h-4 w-4 shrink-0" />
                   ) : node.status === 'working' ? (
-                    <Circle className="h-4 w-4 animate-pulse" />
+                    <Circle className="h-4 w-4 shrink-0 animate-pulse" />
                   ) : node.status === 'error' || node.status === 'blocked' ? (
-                    <AlertTriangle className="h-4 w-4" />
+                    <AlertTriangle className="h-4 w-4 shrink-0" />
                   ) : null}
                 </div>
 
@@ -236,7 +266,26 @@ export default function SwarmCanvas({ agents, nodes, edges, phases, groupByPhase
                   {node.agent ? ` · ${node.agent}` : ''}
                 </div>
                 <div className="mt-1 text-[10px] opacity-70">{new Date(node.lastTs).toLocaleTimeString()} · {node.eventCount} event(s)</div>
-                {node.message && <p className="mt-1 line-clamp-2 text-[10px] opacity-80">{node.message}</p>}
+                {node.message && <p className={`mt-1 text-[10px] opacity-80 ${isExpanded ? 'whitespace-pre-wrap' : 'line-clamp-2'}`}>{node.message}</p>}
+
+                {isExpanded && (
+                  <div className="mt-2 space-y-1 border-t border-current/20 pt-2">
+                    <div className="text-[10px] opacity-70">Kind: {node.kind} · Status: {node.status}</div>
+                    <div className="text-[10px] opacity-70">First: {new Date(node.firstTs).toLocaleString()}</div>
+                    <div className="text-[10px] opacity-70">Last: {new Date(node.lastTs).toLocaleString()}</div>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        void handleCopyNode(node)
+                      }}
+                      className="mt-1 inline-flex items-center gap-1 rounded-md border border-current/30 bg-black/20 px-2 py-1 text-[10px] font-medium hover:bg-black/30"
+                    >
+                      <ClipboardCopy className="h-3 w-3" />
+                      {isCopied ? 'Copied!' : 'Copy Node Context'}
+                    </button>
+                  </div>
+                )}
               </div>
             )
           })}
