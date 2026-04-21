@@ -83,6 +83,21 @@ def test_generate_dry_run_uses_registry_prompt():
     assert messages[0]["role"] == "system"
 
 
+def test_openapi_exports_named_prompt_and_generation_responses():
+    schema = client.app.openapi()
+
+    prompts_response = schema["paths"]["/prompts"]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
+    audit_response = schema["paths"]["/api/audit"]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
+    dry_run_response = schema["paths"]["/api/generate/dry-run"]["post"]["responses"]["200"]["content"]["application/json"]["schema"]
+    template_id_description = schema["components"]["schemas"]["RequestPayload"]["properties"]["template_id"]["description"]
+
+    assert prompts_response == {"$ref": "#/components/schemas/PromptListResponse"}
+    assert audit_response == {"$ref": "#/components/schemas/AuditListResponse"}
+    assert dry_run_response == {"$ref": "#/components/schemas/DryRunResponse"}
+    assert "/prompts" in template_id_description
+    assert "/api/templates" in template_id_description
+
+
 def test_record_prompt_review_appends_run(tmp_path, monkeypatch):
     sample_yaml = tmp_path / "tests.prompt.review.prompt.yaml"
     sample_yaml.write_text(

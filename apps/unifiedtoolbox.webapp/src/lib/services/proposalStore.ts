@@ -110,6 +110,7 @@ export function createDraftRunFromProposal(proposal: Proposal): DraftRunConfig {
     mode: proposal.run_recipe?.mode ?? 'multi-agent',
     agents: proposal.run_recipe?.agents ?? proposal.recommended.agents,
     promptId: proposal.run_recipe?.promptId,
+    agentInstructions: proposal.run_recipe?.agentInstructions,
     jobType: proposal.run_recipe?.jobType,
     runStatus: 'pending',
     acceptanceChecks: proposal.acceptance_checks?.length ? proposal.acceptance_checks : undefined,

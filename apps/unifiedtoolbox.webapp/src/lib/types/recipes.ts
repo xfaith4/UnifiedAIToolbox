@@ -1,5 +1,13 @@
 export type RecipeSource = 'prompt' | 'agent' | 'mixed' | 'manual' | 'run'
 
+export interface RecipeAgentPreset {
+  id?: string
+  name: string
+  prompt?: string
+  purpose?: string
+  mission?: string
+}
+
 export interface Recipe {
   recipe_version: '1.0'
   id: string
@@ -12,6 +20,7 @@ export interface Recipe {
   promptTitles: string[]
   agentIds: string[]
   agentNames: string[]
+  agentPresets: RecipeAgentPreset[]
   tools: string[]
   acceptanceChecks: string[]
   suggestedGoal?: string

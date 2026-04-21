@@ -91,6 +91,20 @@ function resolvePowerShell(): string {
   )
 }
 
+async function validateLocalRepoPath(localPath: string): Promise<string> {
+  const resolvedPath = path.resolve(localPath)
+  let stat: fs.Stats
+  try {
+    stat = await fsp.stat(resolvedPath)
+  } catch {
+    throw new Error(`Local repo path does not exist: ${resolvedPath}`)
+  }
+  if (!stat.isDirectory()) {
+    throw new Error(`Local repo path must be a directory: ${resolvedPath}`)
+  }
+  return resolvedPath
+}
+
 async function markRunLaunchFailure(
   runDir: string,
   runId: string,
@@ -229,7 +243,8 @@ export async function POST(req: Request) {
     const model = typeof request.model === 'string' && request.model.trim()
       ? request.model.trim()
       : null
-    const localPath = typeof request.local_path === 'string' ? request.local_path.trim() : ''
+    const localPathInput = typeof request.local_path === 'string' ? request.local_path.trim() : ''
+    const localPath = localPathInput ? await validateLocalRepoPath(localPathInput) : ''
     const instruction = `Job type: ${jobType}\nRun ID: ${runId}`
 
     const psArgs = [
@@ -332,9 +347,12 @@ export async function POST(req: Request) {
       `# Run Error\n\nFailed to launch PowerShell process.\n\n${err instanceof Error ? err.message : String(err)}\n`,
       'utf8'
     )
+    const message = err instanceof Error ? err.message : String(err)
+    const status = message.includes('Local repo path') ? 400 : 500
+    const code = message.includes('Local repo path') ? 'INVALID_LOCAL_PATH' : 'LAUNCH_FAILED'
     return NextResponse.json(
-      { error: { code: 'LAUNCH_FAILED', message: 'Failed to launch maintenance run', details: err instanceof Error ? err.message : String(err) } },
-      { status: 500 }
+      { error: { code, message: status === 400 ? message : 'Failed to launch maintenance run', details: message } },
+      { status }
     )
   }
 

@@ -11,7 +11,7 @@ from functools import wraps
 from fastapi import FastAPI, HTTPException, Path, Query, Header, Depends, status, Request # pyright: ignore[reportMissingImports]
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, Response, StreamingResponse
-from pydantic import BaseModel, Field, field_validator # pyright: ignore[reportMissingImports]
+from pydantic import BaseModel, ConfigDict, Field, RootModel, field_validator # pyright: ignore[reportMissingImports]
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import uvicorn # pyright: ignore[reportMissingImports]
 import yaml # pyright: ignore[reportMissingModuleSource]
@@ -983,7 +983,14 @@ class InputData(BaseModel):
     # metrics: Optional[Dict[str, Any]] = None
 
 class RequestPayload(BaseModel):
-    template_id: str = Field(..., description="e.g., agent_webrtc_disconnect_v1.0.0")
+    template_id: str = Field(
+        ...,
+        description=(
+            "Execution resource identifier used by `/api/generate` and `/api/generate/dry-run`. "
+            "The runtime first attempts to resolve this value as a canonical prompt id from `/prompts`, "
+            "then falls back to a legacy YAML template under `/api/templates/{template_id}`."
+        ),
+    )
     role: str = Field(..., description="e.g., Genesys Cloud Monitoring Assistant")
     task: str = Field(..., description="e.g., Explain likely causes and mitigations for WebRTC disconnects")
     context: Dict[str, Any] = Field(..., description="e.g., {'environment':'Prod','audience':['Executives','NOC Engineers'],'scale':'100k agents, 12 BPO partners'}")
@@ -1002,21 +1009,176 @@ class RequestPayload(BaseModel):
 class GenerateResponse(BaseModel):
     cached: bool
     cache_key: str
-    template_id: str
+    template_id: str = Field(
+        ...,
+        description=(
+            "Identifier used for generation. This may be a canonical prompt id from `/prompts` "
+            "or a legacy YAML template id from `/api/templates`."
+        ),
+    )
     model: str
     output: Dict[str, Any]
-    audit_id: int
+    audit_id: int = Field(..., description="Audit record id that can be retrieved from `/api/audit`.")
 
 class PromptSyncRequest(BaseModel):
     prompts: List[Dict[str, Any]] = Field(default_factory=list)
 
+
+class PromptSyncResponse(BaseModel):
+    status: str
+    count: int
+
+
 class RenderRequest(BaseModel):
-    prompt_id: str
+    prompt_id: str = Field(..., description="Canonical prompt id from `/prompts` used by render and refiner workflows.")
     variables: Dict[str, Any] = Field(default_factory=dict)
 
 class RenderResponse(BaseModel):
     prompt: Dict[str, Any]
     rendered_blocks: Dict[str, Any]
+
+
+class HealthResponse(BaseModel):
+    ok: bool
+    time: str = Field(..., description="UTC timestamp when the health check was generated.")
+
+
+class MetricsResponse(BaseModel):
+    renders_total: int
+    render_errors: int
+    refiner_runs: int
+    refiner_errors: int
+    review_records: int
+    refiner_queue_depth: int
+
+
+class PromptVariableDefinition(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    type: Optional[str] = None
+    required: Optional[bool] = None
+    description: Optional[str] = None
+    default: Optional[Any] = None
+
+
+class PromptVariableItem(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    name: str
+    label: Optional[str] = None
+    type: Optional[str] = None
+    default: Optional[Any] = None
+    required: Optional[bool] = None
+    description: Optional[str] = None
+
+
+class PromptOutputContract(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    format: Optional[str] = None
+
+
+class PromptModelPreferences(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    recommended: List[str] = Field(default_factory=list)
+    temperature: Optional[float] = None
+    top_p: Optional[float] = None
+
+
+class PromptPayload(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    id: str
+    version: Optional[str] = None
+    title: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    owner: Optional[str] = None
+    context: Optional[str] = None
+    role: Optional[str] = None
+    style: Optional[str] = None
+    template: Optional[str] = None
+    prompt: Optional[Dict[str, Any]] = None
+    variables: Optional[List[PromptVariableItem] | Dict[str, PromptVariableDefinition]] = None
+    tags: List[str] = Field(default_factory=list)
+    integrations: Optional[Dict[str, Any]] = None
+    telemetry: Optional[Dict[str, Any]] = None
+    outputs: Optional[PromptOutputContract] = None
+    models: Optional[PromptModelPreferences] = None
+    fewShot: Optional[List[Dict[str, Any]]] = None
+    outputFormat: Optional[str] = None
+    stop: Optional[List[str]] = None
+    temperature: Optional[float] = None
+    top_p: Optional[float] = None
+    updatedAt: Optional[str] = None
+    createdAt: Optional[str] = None
+
+
+class PromptListResponse(RootModel[List[PromptPayload]]):
+    pass
+
+
+class TemplateExample(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    input: Optional[str] = None
+    output: Optional[str] = None
+
+
+class TemplateDocument(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    id: Optional[str] = None
+    system: Optional[str] = None
+    instructions: Optional[str] = None
+    constraints: Optional[str] = None
+    style: Optional[str] = None
+    few_shot: List[TemplateExample] = Field(default_factory=list)
+
+
+class TemplateListResponse(BaseModel):
+    templates: List[str]
+
+
+class InstallDefaultTemplatesResponse(BaseModel):
+    created: List[str]
+    skipped: List[str]
+    dir: str
+
+
+class ReloadTemplatesResponse(BaseModel):
+    count: int
+    ids: List[str]
+
+
+class AuditEntryResponse(BaseModel):
+    id: int
+    template_id: str = Field(
+        ...,
+        description=(
+            "Generation resource identifier recorded in the audit trail. "
+            "This corresponds to `GenerateResponse.audit_id` and may reference a canonical prompt id or legacy template id."
+        ),
+    )
+    model: str
+    created_at: str
+    status: str
+    cached: bool
+
+
+class AuditListResponse(BaseModel):
+    items: List[AuditEntryResponse]
+
+
+class DryRunMessage(BaseModel):
+    role: str
+    content: str
+
+
+class DryRunResponse(BaseModel):
+    model: str
+    messages: List[DryRunMessage]
 
 class RefinerRunRequest(BaseModel):
     prompt_id: str
@@ -2011,7 +2173,12 @@ else:
         """Check if authentication is disabled."""
         return {"enabled": False, "message": "Authentication is disabled"}
 
-@app.get("/health")
+@app.get(
+    "/health",
+    response_model=HealthResponse,
+    summary="Health",
+    description="Basic service health check with a UTC timestamp.",
+)
 def health():
     return {"ok": True, "time": now_iso()}
 
@@ -2251,7 +2418,15 @@ def get_telemetry_stats(days: int = Query(7, ge=1, le=90)):
             "by_day": {}
         }
 
-@app.get("/prompts")
+@app.get(
+    "/prompts",
+    response_model=PromptListResponse,
+    summary="List canonical prompts",
+    description=(
+        "Return canonical prompt payloads from the prompt registry, merged with any synced local overrides. "
+        "These prompt resources are the primary UI-facing contract for render, review, and refinement workflows."
+    ),
+)
 def list_prompt_payloads():
     """
     Return the union of canonical registry prompts and any synced overrides.
@@ -2464,7 +2639,12 @@ def search_prompts(
     )
 
 
-@app.get("/prompts/{prompt_id}")
+@app.get(
+    "/prompts/{prompt_id}",
+    response_model=PromptPayload,
+    summary="Get canonical prompt",
+    description="Return a single canonical prompt payload from `/prompts` by id.",
+)
 def get_prompt(prompt_id: str):
     spec = _get_prompt_or_404(prompt_id, allow_synced=True)
     return spec.to_ui_payload()
@@ -2556,14 +2736,24 @@ def record_prompt_review(prompt_id: str, req: ReviewRecordRequest):
     METRICS["review_records"] += 1
     return {"prompt_id": spec.id, "run": entry}
 
-@app.get("/metrics")
+@app.get(
+    "/metrics",
+    response_model=MetricsResponse,
+    summary="Metrics",
+    description="Return in-process counters for prompt rendering, refiner runs, review writes, and current queue depth.",
+)
 def metrics():
     return {
         **METRICS,
         "refiner_queue_depth": _refiner_queue_depth(),
     }
 
-@app.post("/prompts:sync")
+@app.post(
+    "/prompts:sync",
+    response_model=PromptSyncResponse,
+    summary="Sync prompt payloads",
+    description="Persist locally edited prompt payloads to the sync cache used for offline development overrides.",
+)
 def sync_prompt_payloads(
     request: PromptSyncRequest,
     admin_token: Optional[str] = Header(default=None, alias="X-Admin-Token"),
@@ -2626,12 +2816,25 @@ def update_orchestrator_task(task_id: str, update: OrchestratorTaskUpdate):
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     return {"status": "updated", "task": task}
-@app.get("/api/templates")
+@app.get(
+    "/api/templates",
+    response_model=TemplateListResponse,
+    summary="List legacy templates",
+    description=(
+        "Return the ids of legacy YAML templates used by the generate runtime. "
+        "Generation endpoints prefer canonical `/prompts` ids when available and fall back to these template files."
+    ),
+)
 def list_templates():
     return {"templates": list(read_templates().keys())}
 
-@app.get("/api/audit")
-def list_audit(limit: int = 50):
+@app.get(
+    "/api/audit",
+    response_model=AuditListResponse,
+    summary="List audit records",
+    description="Return recent generation audit records. Each item can be matched from `GenerateResponse.audit_id`.",
+)
+def list_audit(limit: int = Query(50, ge=1, le=500, description="Maximum number of recent audit entries to return.")):
     with sqlite3.connect(DB_PATH) as conn:
         c = conn.cursor()
         c.execute("SELECT id, template_id, model, created_at, status, cached FROM audit ORDER BY id DESC LIMIT ?", (limit,))
@@ -2674,7 +2877,12 @@ from fastapi import Body
 def _write_yaml(path: pathlib.Path, data: dict):
     path.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8")
 
-@app.post("/api/templates/install-defaults")
+@app.post(
+    "/api/templates/install-defaults",
+    response_model=InstallDefaultTemplatesResponse,
+    summary="Install default templates",
+    description="Create example legacy YAML templates under the local templates directory.",
+)
 def install_default_templates(overwrite: bool = False):
     """Create a couple of example templates under ./templates."""
     TEMPLATE_DIR.mkdir(parents=True, exist_ok=True)
@@ -2751,27 +2959,48 @@ def install_default_templates(overwrite: bool = False):
         created.append(p.name)
 
     return {"created": created, "skipped": skipped, "dir": str(TEMPLATE_DIR)}
-@app.post("/api/templates/reload")
+@app.post(
+    "/api/templates/reload",
+    response_model=ReloadTemplatesResponse,
+    summary="Reload templates",
+    description="Force a re-read of legacy template files from disk.",
+)
 def reload_templates():
     """Force re-read of template files (stateless, but useful for debugging)."""
     t = read_templates()
     return {"count": len(t), "ids": list(t.keys())}
 
-@app.get("/api/templates/{template_id}")
-def get_template(template_id: str = Path(..., description="Template id (matches YAML 'id')")):
-    """Return the parsed YAML/JSON for a single template."""
+@app.get(
+    "/api/templates/{template_id}",
+    response_model=TemplateDocument,
+    summary="Get legacy template",
+    description=(
+        "Return the parsed YAML/JSON for a single legacy template resource. "
+        "Use `/prompts/{prompt_id}` for canonical prompt payloads used by the editor and render flows."
+    ),
+)
+def get_template(
+    template_id: str = Path(
+        ...,
+        description="Legacy template id (matches the YAML `id` field used by `/api/templates`).",
+    )
+):
     t = read_templates()
     if template_id not in t:
         raise HTTPException(status_code=404, detail=f"Template not found: {template_id}")
     return t[template_id]
 
 
-@app.post("/api/generate/dry-run")
+@app.post(
+    "/api/generate/dry-run",
+    response_model=DryRunResponse,
+    summary="Generate dry run",
+    description=(
+        "Build the final chat messages without calling OpenAI. "
+        "This resolves `template_id` against canonical `/prompts` first, then legacy `/api/templates` if needed."
+    ),
+)
 def generate_dry_run(req: RequestPayload):
-    """
-    Build the final messages but do NOT call OpenAI.
-    Useful to verify substitutions and output contract before billing tokens.
-    """
     tpl, _ = _resolve_template_payload(req.template_id)
     messages = build_messages(tpl, req)
     return {"model": req.model or DEFAULT_MODEL, "messages": messages}
@@ -2816,7 +3045,15 @@ def favicon():
     """Return empty response to silence browser favicon requests."""
     return Response(status_code=204, media_type="image/x-icon")
 
-@app.post("/api/generate", response_model=GenerateResponse)
+@app.post(
+    "/api/generate",
+    response_model=GenerateResponse,
+    summary="Generate",
+    description=(
+        "Execute prompt generation against OpenAI. "
+        "The supplied `template_id` first resolves against canonical `/prompts` ids and falls back to legacy `/api/templates`."
+    ),
+)
 def generate(req: RequestPayload):
     tpl, _ = _resolve_template_payload(req.template_id)
 

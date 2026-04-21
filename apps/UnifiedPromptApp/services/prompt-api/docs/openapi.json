@@ -14,32 +14,38 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
               }
             }
           }
-        }
+        },
+        "description": "Basic service health check with a UTC timestamp."
       }
     },
     "/prompts": {
       "get": {
-        "summary": "List Prompt Payloads",
+        "summary": "List canonical prompts",
         "operationId": "list_prompt_payloads_prompts_get",
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PromptListResponse"
+                }
               }
             }
           }
-        }
+        },
+        "description": "Return canonical prompt payloads from the prompt registry, merged with any synced local overrides. These prompt resources are the primary UI-facing contract for render, review, and refinement workflows."
       }
     },
     "/prompts/{prompt_id}": {
       "get": {
-        "summary": "Get Prompt",
+        "summary": "Get canonical prompt",
         "operationId": "get_prompt_prompts__prompt_id__get",
         "parameters": [
           {
@@ -57,7 +63,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PromptPayload"
+                }
               }
             }
           },
@@ -71,7 +79,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Return a single canonical prompt payload from `/prompts` by id."
       }
     },
     "/prompts/render": {
@@ -159,16 +168,19 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/MetricsResponse"
+                }
               }
             }
           }
-        }
+        },
+        "description": "Return in-process counters for prompt rendering, refiner runs, review writes, and current queue depth."
       }
     },
     "/prompts:sync": {
       "post": {
-        "summary": "Sync Prompt Payloads",
+        "summary": "Sync prompt payloads",
         "operationId": "sync_prompt_payloads_prompts_sync_post",
         "requestBody": {
           "content": {
@@ -185,7 +197,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PromptSyncResponse"
+                }
               }
             }
           },
@@ -199,28 +213,32 @@
               }
             }
           }
-        }
+        },
+        "description": "Persist locally edited prompt payloads to the sync cache used for offline development overrides."
       }
     },
     "/api/templates": {
       "get": {
-        "summary": "List Templates",
+        "summary": "List legacy templates",
         "operationId": "list_templates_api_templates_get",
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateListResponse"
+                }
               }
             }
           }
-        }
+        },
+        "description": "Return the ids of legacy YAML templates used by the generate runtime. Generation endpoints prefer canonical `/prompts` ids when available and fall back to these template files."
       }
     },
     "/api/audit": {
       "get": {
-        "summary": "List Audit",
+        "summary": "List audit records",
         "operationId": "list_audit_api_audit_get",
         "parameters": [
           {
@@ -230,8 +248,11 @@
             "schema": {
               "type": "integer",
               "default": 50,
-              "title": "Limit"
-            }
+              "title": "Limit",
+              "minimum": 1,
+              "maximum": 500
+            },
+            "description": "Maximum number of recent audit entries to return."
           }
         ],
         "responses": {
@@ -239,7 +260,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/AuditListResponse"
+                }
               }
             }
           },
@@ -253,13 +276,14 @@
               }
             }
           }
-        }
+        },
+        "description": "Return recent generation audit records. Each item can be matched from `GenerateResponse.audit_id`."
       }
     },
     "/api/templates/install-defaults": {
       "post": {
-        "summary": "Install Default Templates",
-        "description": "Create a couple of example templates under ./templates.",
+        "summary": "Install default templates",
+        "description": "Create example legacy YAML templates under the local templates directory.",
         "operationId": "install_default_templates_api_templates_install_defaults_post",
         "parameters": [
           {
@@ -278,7 +302,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/InstallDefaultTemplatesResponse"
+                }
               }
             }
           },
@@ -297,15 +323,17 @@
     },
     "/api/templates/reload": {
       "post": {
-        "summary": "Reload Templates",
-        "description": "Force re-read of template files (stateless, but useful for debugging).",
+        "summary": "Reload templates",
+        "description": "Force a re-read of legacy template files from disk.",
         "operationId": "reload_templates_api_templates_reload_post",
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ReloadTemplatesResponse"
+                }
               }
             }
           }
@@ -314,8 +342,8 @@
     },
     "/api/templates/{template_id}": {
       "get": {
-        "summary": "Get Template",
-        "description": "Return the parsed YAML/JSON for a single template.",
+        "summary": "Get legacy template",
+        "description": "Return the parsed YAML/JSON for a single legacy template resource. Use `/prompts/{prompt_id}` for canonical prompt payloads used by the editor and render flows.",
         "operationId": "get_template_api_templates__template_id__get",
         "parameters": [
           {
@@ -324,10 +352,10 @@
             "required": true,
             "schema": {
               "type": "string",
-              "description": "Template id (matches YAML 'id')",
+              "description": "Legacy template id (matches the YAML `id` field used by `/api/templates`).",
               "title": "Template Id"
             },
-            "description": "Template id (matches YAML 'id')"
+            "description": "Legacy template id (matches the YAML `id` field used by `/api/templates`)."
           }
         ],
         "responses": {
@@ -335,7 +363,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateDocument"
+                }
               }
             }
           },
@@ -354,8 +384,8 @@
     },
     "/api/generate/dry-run": {
       "post": {
-        "summary": "Generate Dry Run",
-        "description": "Build the final messages but do NOT call OpenAI.\nUseful to verify substitutions and output contract before billing tokens.",
+        "summary": "Generate dry run",
+        "description": "Build the final chat messages without calling OpenAI. This resolves `template_id` against canonical `/prompts` first, then legacy `/api/templates` if needed.",
         "operationId": "generate_dry_run_api_generate_dry_run_post",
         "requestBody": {
           "content": {
@@ -372,7 +402,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/DryRunResponse"
+                }
               }
             }
           },
@@ -424,7 +456,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Execute prompt generation against OpenAI. The supplied `template_id` first resolves against canonical `/prompts` ids and falls back to legacy `/api/templates`."
       }
     }
   },
@@ -442,7 +475,8 @@
           },
           "template_id": {
             "type": "string",
-            "title": "Template Id"
+            "title": "Template Id",
+            "description": "Identifier used for generation. This may be a canonical prompt id from `/prompts` or a legacy YAML template id from `/api/templates`."
           },
           "model": {
             "type": "string",
@@ -455,7 +489,8 @@
           },
           "audit_id": {
             "type": "integer",
-            "title": "Audit Id"
+            "title": "Audit Id",
+            "description": "Audit record id that can be retrieved from `/api/audit`."
           }
         },
         "type": "object",
@@ -624,7 +659,8 @@
         "properties": {
           "prompt_id": {
             "type": "string",
-            "title": "Prompt Id"
+            "title": "Prompt Id",
+            "description": "Canonical prompt id from `/prompts` used by render and refiner workflows."
           },
           "variables": {
             "additionalProperties": true,
@@ -663,7 +699,7 @@
           "template_id": {
             "type": "string",
             "title": "Template Id",
-            "description": "e.g., agent_webrtc_disconnect_v1.0.0"
+            "description": "Execution resource identifier used by `/api/generate` and `/api/generate/dry-run`. The runtime first attempts to resolve this value as a canonical prompt id from `/prompts`, then falls back to a legacy YAML template under `/api/templates/{template_id}`."
           },
           "role": {
             "type": "string",
@@ -751,6 +787,796 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "HealthResponse": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "time": {
+            "type": "string",
+            "title": "Time",
+            "description": "UTC timestamp when the health check was generated."
+          }
+        },
+        "type": "object",
+        "required": [
+          "ok",
+          "time"
+        ],
+        "title": "HealthResponse"
+      },
+      "MetricsResponse": {
+        "properties": {
+          "renders_total": {
+            "type": "integer",
+            "title": "Renders Total"
+          },
+          "render_errors": {
+            "type": "integer",
+            "title": "Render Errors"
+          },
+          "refiner_runs": {
+            "type": "integer",
+            "title": "Refiner Runs"
+          },
+          "refiner_errors": {
+            "type": "integer",
+            "title": "Refiner Errors"
+          },
+          "review_records": {
+            "type": "integer",
+            "title": "Review Records"
+          },
+          "refiner_queue_depth": {
+            "type": "integer",
+            "title": "Refiner Queue Depth"
+          }
+        },
+        "type": "object",
+        "required": [
+          "renders_total",
+          "render_errors",
+          "refiner_runs",
+          "refiner_errors",
+          "review_records",
+          "refiner_queue_depth"
+        ],
+        "title": "MetricsResponse"
+      },
+      "PromptVariableDefinition": {
+        "properties": {
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          },
+          "required": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Required"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "default": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "PromptVariableDefinition"
+      },
+      "PromptVariableItem": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          },
+          "default": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default"
+          },
+          "required": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Required"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "PromptVariableItem"
+      },
+      "PromptOutputContract": {
+        "properties": {
+          "format": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Format"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "PromptOutputContract"
+      },
+      "PromptModelPreferences": {
+        "properties": {
+          "recommended": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Recommended"
+          },
+          "temperature": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperature"
+          },
+          "top_p": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Top P"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "PromptModelPreferences"
+      },
+      "PromptPayload": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner"
+          },
+          "context": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "style": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Style"
+          },
+          "template": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template"
+          },
+          "prompt": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt"
+          },
+          "variables": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/PromptVariableItem"
+                },
+                "type": "array"
+              },
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/PromptVariableDefinition"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variables"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags"
+          },
+          "integrations": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Integrations"
+          },
+          "telemetry": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Telemetry"
+          },
+          "outputs": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PromptOutputContract"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "models": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PromptModelPreferences"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fewShot": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fewshot"
+          },
+          "outputFormat": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outputformat"
+          },
+          "stop": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop"
+          },
+          "temperature": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperature"
+          },
+          "top_p": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Top P"
+          },
+          "updatedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updatedat"
+          },
+          "createdAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Createdat"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "title": "PromptPayload"
+      },
+      "PromptListResponse": {
+        "items": {
+          "$ref": "#/components/schemas/PromptPayload"
+        },
+        "type": "array",
+        "title": "PromptListResponse"
+      },
+      "TemplateExample": {
+        "properties": {
+          "input": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input"
+          },
+          "output": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "TemplateExample"
+      },
+      "TemplateDocument": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "system": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "System"
+          },
+          "instructions": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instructions"
+          },
+          "constraints": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Constraints"
+          },
+          "style": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Style"
+          },
+          "few_shot": {
+            "items": {
+              "$ref": "#/components/schemas/TemplateExample"
+            },
+            "type": "array",
+            "title": "Few Shot"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "TemplateDocument"
+      },
+      "TemplateListResponse": {
+        "properties": {
+          "templates": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Templates"
+          }
+        },
+        "type": "object",
+        "required": [
+          "templates"
+        ],
+        "title": "TemplateListResponse"
+      },
+      "InstallDefaultTemplatesResponse": {
+        "properties": {
+          "created": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Created"
+          },
+          "skipped": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Skipped"
+          },
+          "dir": {
+            "type": "string",
+            "title": "Dir"
+          }
+        },
+        "type": "object",
+        "required": [
+          "created",
+          "skipped",
+          "dir"
+        ],
+        "title": "InstallDefaultTemplatesResponse"
+      },
+      "ReloadTemplatesResponse": {
+        "properties": {
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "count",
+          "ids"
+        ],
+        "title": "ReloadTemplatesResponse"
+      },
+      "AuditEntryResponse": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "template_id": {
+            "type": "string",
+            "title": "Template Id",
+            "description": "Generation resource identifier recorded in the audit trail. This can reference a canonical prompt id from `/prompts` or a legacy template id from `/api/templates`."
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "cached": {
+            "type": "boolean",
+            "title": "Cached"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "template_id",
+          "model",
+          "created_at",
+          "status",
+          "cached"
+        ],
+        "title": "AuditEntryResponse"
+      },
+      "AuditListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AuditEntryResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "AuditListResponse"
+      },
+      "DryRunMessage": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          }
+        },
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "title": "DryRunMessage"
+      },
+      "DryRunResponse": {
+        "properties": {
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/DryRunMessage"
+            },
+            "type": "array",
+            "title": "Messages"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model",
+          "messages"
+        ],
+        "title": "DryRunResponse"
+      },
+      "PromptSyncResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "count"
+        ],
+        "title": "PromptSyncResponse"
       }
     }
   }

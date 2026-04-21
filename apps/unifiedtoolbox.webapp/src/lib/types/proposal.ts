@@ -58,6 +58,11 @@ export interface ProposalRunRecipe {
   goal?: string
   agents?: string[]
   promptId?: string
+  agentInstructions?: Array<{
+    agentId?: string
+    agentName: string
+    prompt: string
+  }>
   /** App Factory job type hint. 'github_repo' is excluded (no Concierge support in Phase 2). */
   jobType?: 'build_new_app' | 'maintain_existing_app'
 }
@@ -133,6 +138,11 @@ export interface DraftRunConfig {
   mode: 'multi-agent' | 'codex-swarm'
   agents: string[]
   promptId?: string
+  agentInstructions?: Array<{
+    agentId?: string
+    agentName: string
+    prompt: string
+  }>
   /** Hint for App Factory job type selector. Undefined means use page default. */
   jobType?: 'build_new_app' | 'maintain_existing_app'
   /** Updated as the run progresses. */

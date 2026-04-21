@@ -1,27 +1,5 @@
-// Fix: Import 'useEffect' from 'react'.
 import React, { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
-const safeGetDraftRun = (draftId: string) => {
-  try {
-    const req = (globalThis as any)?.require as undefined | ((id: string) => any)
-    const mod = req ? req('@/lib/services/proposalStore') : null
-    const fn = mod?.getDraftRun as undefined | ((id: string) => any)
-    return fn ? fn(draftId) : null
-  } catch {
-    return null
-  }
-}
-const safeGetRecipe = (recipeId: string) => {
-  try {
-    const req = (globalThis as any)?.require as undefined | ((id: string) => any)
-    const mod = req ? req('@/lib/services/recipeStore') : null
-    const fn = mod?.getRecipe as undefined | ((id: string) => any)
-    return fn ? fn(recipeId) : null
-  } catch {
-    return null
-  }
-}
-
 import Header from './components/Header';
 import GoalInput from './components/GoalInput';
 import ExpectedOutputsPanel from './components/ExpectedOutputsPanel';
@@ -48,50 +26,17 @@ import { useRunStatus } from './hooks/useRunStatus';
 import { useRuntimeActivity } from './hooks/useRuntimeActivity';
 import { getBrowserApiKeyFromEnv } from './utils/apiKey';
 import type { Task, Artifact, RunMode } from './types';
+import { getDraftRun } from '@/lib/services/proposalStore'
+import { getRecipe } from '@/lib/services/recipeStore'
+import type { Recipe } from '@/lib/types/recipes'
+import { getGithubStatus, listAccessibleRepos } from '@/lib/services/github'
+import {
+  ORCHESTRATOR_API_BASE,
+  startRepoOrchestration,
+} from '@/lib/services/orchestratorApi'
+import type { RepoOrchestrationEvent, RepoOrchestrationResult } from '@/lib/types/orchestrator'
 type EnginePipelinePayload = any;
-const safeGetGithubApi = () => {
-  try {
-    const req = (globalThis as any)?.require as undefined | ((id: string) => any)
-    const mod = req ? req('@/lib/services/github') : null
-    return mod ?? null
-  } catch {
-    return null
-  }
-}
-
-const githubApi = safeGetGithubApi()
-const getGithubStatus: any = githubApi?.getGithubStatus ?? (async () => ({ authenticated: false }))
-const listAccessibleRepos: any = githubApi?.listAccessibleRepos ?? (async () => [])
-const safeGetOrchestratorApi = () => {
-  try {
-    const req = (globalThis as any)?.require as undefined | ((id: string) => any)
-    const mod = req ? req('@/lib/services/orchestratorApi') : null
-    return mod ?? null
-  } catch {
-    return null
-  }
-}
-
-const orchestratorApi = safeGetOrchestratorApi()
-const startRepoOrchestration: any = orchestratorApi?.startRepoOrchestration ?? (async () => {
-  throw new Error('Repo orchestration API not available.')
-})
-const ORCHESTRATOR_API_BASE: string | undefined = orchestratorApi?.ORCHESTRATOR_API_BASE
 type GitHubRepo = import('@/lib/types/github').GitHubRepo
-type RepoOrchestrationResult = {
-  runId?: string
-  run_id?: string
-  artifacts_index?: Array<{ fileName?: string; artifactId?: string }>
-  [key: string]: unknown
-}
-
-type RepoOrchestrationEvent = {
-  type?: string
-  message?: string
-  final?: boolean
-  result?: RepoOrchestrationResult
-  [key: string]: unknown
-}
 import GitHubRepoPanel from './components/GitHubRepoPanel';
 
 const App: React.FC = () => {
@@ -176,12 +121,12 @@ const App: React.FC = () => {
   // Draft prefill from Concierge (?draft=<proposalId>)
   const [draftGoal, setDraftGoal] = useState<string | undefined>(undefined);
   const [draftProposalId, setDraftProposalId] = useState<string | null>(null);
-  const [recipeName, setRecipeName] = useState<string | null>(null);
+  const [activeRecipe, setActiveRecipe] = useState<Recipe | null>(null);
 
   useEffect(() => {
     const draftId = searchParams.get('draft');
     if (!draftId) return;
-    const draft = safeGetDraftRun(draftId);
+    const draft = getDraftRun(draftId);
     if (!draft) return;
     setDraftGoal(draft.goal);
     setDraftProposalId(draft.proposalId);
@@ -191,12 +136,15 @@ const App: React.FC = () => {
   useEffect(() => {
     const recipeId = searchParams.get('recipe');
     if (!recipeId) {
-      setRecipeName(null);
+      setActiveRecipe(null);
       return;
     }
-    const recipe = safeGetRecipe(recipeId);
-    if (!recipe) return;
-    setRecipeName(recipe.name ?? null);
+    const recipe = getRecipe(recipeId);
+    if (!recipe) {
+      setActiveRecipe(null);
+      return;
+    }
+    setActiveRecipe(recipe);
     if (recipe.suggestedGoal) setDraftGoal(recipe.suggestedGoal);
     if (recipe.suggestedJobType) setJobType(recipe.suggestedJobType);
   }, [searchParams]);
@@ -417,10 +365,10 @@ const App: React.FC = () => {
     try {
       const { cancel } = await startRepoOrchestration(
         { repo: repoUrl, goal: goal.trim(), options: { branch: branchValue, integration_branch: integBranch } },
-        async (event: RepoOrchestrationEvent) => {
+        (event: RepoOrchestrationEvent) => {
           setGithubEvents((prev) => [...prev, event])
           if (event.result) {
-            const result = event.result as RepoOrchestrationResult
+            const result = event.result
             setGithubResult(result)
             const rid = (result.runId ?? (result as Record<string, unknown>)['run_id']) as string | undefined
             if (rid) setGithubRunId(rid)
@@ -433,10 +381,14 @@ const App: React.FC = () => {
                 : []
               const mdItem = idx.find((a) => a['fileName'] === 'REPORT.md')
               if (mdItem?.['artifactId']) {
-                const r = await fetch(
+                void fetch(
                   `${ORCHESTRATOR_API_BASE}/orchestrate/repo/${encodeURIComponent(rid)}/artifacts/${encodeURIComponent(String(mdItem['artifactId']))}`
                 )
-                if (r.ok) setGithubReportMd(await r.text())
+                  .then(async (response) => {
+                    if (!response.ok) return
+                    setGithubReportMd(await response.text())
+                  })
+                  .catch(() => {})
               }
             }
           }
@@ -461,6 +413,17 @@ const App: React.FC = () => {
     runMode: RunMode,
     requestPayload?: Record<string, any>
   ) => {
+    const recipePayload =
+      activeRecipe && activeRecipe.agentPresets.length > 0
+        ? {
+            recipe_context: {
+              recipeId: activeRecipe.id,
+              recipeName: activeRecipe.name,
+              agentPresets: activeRecipe.agentPresets,
+            },
+          }
+        : {}
+    const mergedPayload = { ...(requestPayload || {}), ...recipePayload }
     if (activeView !== 'live') {
       setActiveView('live');
     }
@@ -470,10 +433,10 @@ const App: React.FC = () => {
     }
     if (isMaintenance) {
       const localPathPayload = localRepoPath.trim() ? { local_path: localRepoPath.trim() } : {}
-      void startMaintenanceRun({ ...(requestPayload || {}), ...localPathPayload, job_type: jobType, goal })
+      void startMaintenanceRun({ ...mergedPayload, ...localPathPayload, job_type: jobType, goal })
       return
     }
-    startOrchestration(goal, fileContent, seedArtifacts, runMode, { ...(requestPayload || {}), job_type: jobType });
+    startOrchestration(goal, fileContent, seedArtifacts, runMode, { ...mergedPayload, job_type: jobType });
     setSelectedTaskId(null);
   };
 
@@ -616,17 +579,24 @@ const App: React.FC = () => {
                 </button>
               </div>
             )}
-            {recipeName && (
+            {activeRecipe && (
               <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-violet-800/60 bg-violet-950/30 px-4 py-3 text-sm text-violet-200">
                 <div className="flex items-center gap-2">
                   <svg className="h-4 w-4 shrink-0 text-violet-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h7m-7 4h10M5 4h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z" />
                   </svg>
-                  <span>Prefilled from recipe <span className="font-semibold">{recipeName}</span>.</span>
+                  <span>
+                    Prefilled from recipe <span className="font-semibold">{activeRecipe.name}</span>.
+                    {activeRecipe.agentPresets.some((preset) => Boolean(preset.prompt?.trim())) && (
+                      <span className="ml-1 text-violet-300/90">
+                        Agent instructions will be carried into the run request.
+                      </span>
+                    )}
+                  </span>
                 </div>
                 <button
                   type="button"
-                  onClick={() => setRecipeName(null)}
+                  onClick={() => setActiveRecipe(null)}
                   className="shrink-0 text-violet-300 hover:text-violet-100"
                   aria-label="Dismiss recipe prefill"
                 >

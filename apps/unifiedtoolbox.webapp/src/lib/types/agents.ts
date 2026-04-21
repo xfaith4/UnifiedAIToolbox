@@ -7,6 +7,7 @@ export interface AgentInstruction {
   mission?: string
   role?: string
   prompt?: string
+  promptOverride?: string | null
   status: AgentStatus
   tags: string[]
   triggers?: string[]

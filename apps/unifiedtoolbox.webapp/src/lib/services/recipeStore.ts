@@ -3,7 +3,7 @@
 import type { AgentInstruction } from '@/lib/types/agents'
 import type { PromptItem } from '@/lib/types/prompts'
 import type { Proposal } from '@/lib/types/proposal'
-import type { Recipe } from '@/lib/types/recipes'
+import type { Recipe, RecipeAgentPreset } from '@/lib/types/recipes'
 
 const RECIPES_KEY = 'ai-toolbox-recipes.v1'
 
@@ -28,6 +28,19 @@ function save<T>(key: string, items: T[]): void {
   localStorage.setItem(key, JSON.stringify(items))
 }
 
+function normalizeRecipe(recipe: Recipe): Recipe {
+  return {
+    ...recipe,
+    promptIds: Array.isArray(recipe.promptIds) ? recipe.promptIds : [],
+    promptTitles: Array.isArray(recipe.promptTitles) ? recipe.promptTitles : [],
+    agentIds: Array.isArray(recipe.agentIds) ? recipe.agentIds : [],
+    agentNames: Array.isArray(recipe.agentNames) ? recipe.agentNames : [],
+    agentPresets: Array.isArray(recipe.agentPresets) ? recipe.agentPresets : [],
+    tools: Array.isArray(recipe.tools) ? recipe.tools : [],
+    acceptanceChecks: Array.isArray(recipe.acceptanceChecks) ? recipe.acceptanceChecks : [],
+  }
+}
+
 function uniqueStrings(values: Array<string | undefined | null>): string[] {
   return Array.from(
     new Set(
@@ -38,8 +51,20 @@ function uniqueStrings(values: Array<string | undefined | null>): string[] {
   )
 }
 
+function upsertAgentPreset(existing: RecipeAgentPreset[], nextPreset: RecipeAgentPreset): RecipeAgentPreset[] {
+  const key = nextPreset.id?.trim() || nextPreset.name.trim().toLowerCase()
+  if (!key) return existing
+
+  const normalized = existing.filter(Boolean)
+  const next = normalized.filter((preset) => {
+    const presetKey = preset.id?.trim() || preset.name.trim().toLowerCase()
+    return presetKey !== key
+  })
+  return [nextPreset, ...next]
+}
+
 export function listRecipes(): Recipe[] {
-  return load<Recipe>(RECIPES_KEY)
+  return load<Recipe>(RECIPES_KEY).map(normalizeRecipe)
 }
 
 export function getRecipe(id: string): Recipe | undefined {
@@ -47,14 +72,15 @@ export function getRecipe(id: string): Recipe | undefined {
 }
 
 export function saveRecipe(recipe: Recipe): Recipe {
+  const normalizedRecipe = normalizeRecipe(recipe)
   const existing = listRecipes()
-  const idx = existing.findIndex((item) => item.id === recipe.id)
+  const idx = existing.findIndex((item) => item.id === normalizedRecipe.id)
   const updated =
     idx >= 0
-      ? existing.map((item) => (item.id === recipe.id ? recipe : item))
-      : [recipe, ...existing]
+      ? existing.map((item) => (item.id === normalizedRecipe.id ? normalizedRecipe : item))
+      : [normalizedRecipe, ...existing]
   save(RECIPES_KEY, updated)
-  return recipe
+  return normalizedRecipe
 }
 
 export function createOrUpdateRecipeFromPrompt(prompt: PromptItem): Recipe {
@@ -75,6 +101,7 @@ export function createOrUpdateRecipeFromPrompt(prompt: PromptItem): Recipe {
     promptTitles: uniqueStrings([prompt.title, ...(current?.promptTitles ?? [])]),
     agentIds: current?.agentIds ?? [],
     agentNames: current?.agentNames ?? [],
+    agentPresets: current?.agentPresets ?? [],
     tools: current?.tools ?? [],
     acceptanceChecks: current?.acceptanceChecks ?? [],
     suggestedGoal: current?.suggestedGoal || prompt.description || prompt.context || prompt.title,
@@ -84,9 +111,20 @@ export function createOrUpdateRecipeFromPrompt(prompt: PromptItem): Recipe {
   return saveRecipe(recipe)
 }
 
-export function createOrUpdateRecipeFromAgent(agent: AgentInstruction): Recipe {
+export function createOrUpdateRecipeFromAgent(
+  agent: AgentInstruction,
+  options?: { effectivePrompt?: string | null }
+): Recipe {
   const current = getRecipe(`recipe_agent_${agent.id}`)
   const createdAt = current?.createdAt ?? nowIso()
+  const effectivePrompt = options?.effectivePrompt?.trim() || agent.promptOverride?.trim() || agent.prompt?.trim() || undefined
+  const preset: RecipeAgentPreset = {
+    id: agent.id,
+    name: agent.name,
+    prompt: effectivePrompt,
+    purpose: agent.purpose || undefined,
+    mission: agent.mission || undefined,
+  }
   const recipe: Recipe = {
     recipe_version: '1.0',
     id: `recipe_agent_${agent.id}`,
@@ -102,6 +140,7 @@ export function createOrUpdateRecipeFromAgent(agent: AgentInstruction): Recipe {
     promptTitles: current?.promptTitles ?? [],
     agentIds: uniqueStrings([agent.id, ...(current?.agentIds ?? [])]),
     agentNames: uniqueStrings([agent.name, ...(current?.agentNames ?? [])]),
+    agentPresets: upsertAgentPreset(current?.agentPresets ?? [], preset),
     tools: uniqueStrings([...(agent.tools ?? []), ...(current?.tools ?? [])]),
     acceptanceChecks: current?.acceptanceChecks ?? [],
     suggestedGoal: current?.suggestedGoal || agent.mission || agent.purpose || agent.name,
@@ -129,6 +168,14 @@ export function buildRecipeContextPrompt(recipe: Recipe): string {
     'Use this recipe as a strong default when generating the proposal, recommended assets, and run_recipe.',
   ]
 
+  const presetsWithPrompts = (recipe.agentPresets ?? []).filter((preset) => Boolean(preset.prompt?.trim()))
+  if (presetsWithPrompts.length > 0) {
+    lines.push('- preferred_agent_instructions:')
+    for (const preset of presetsWithPrompts) {
+      lines.push(`  - ${preset.name}: ${preset.prompt}`)
+    }
+  }
+
   return lines.filter(Boolean).join('\n')
 }
 
@@ -140,6 +187,13 @@ export function applyRecipeToProposal(proposal: Proposal, recipe: Recipe): Propo
     ...proposal.acceptance_checks,
     ...recipe.acceptanceChecks,
   ])
+  const recipeAgentInstructions = (recipe.agentPresets ?? [])
+    .filter((preset) => Boolean(preset.prompt?.trim()))
+    .map((preset) => ({
+      agentId: preset.id,
+      agentName: preset.name,
+      prompt: preset.prompt!.trim(),
+    }))
 
   return {
     ...proposal,
@@ -159,6 +213,12 @@ export function applyRecipeToProposal(proposal: Proposal, recipe: Recipe): Propo
           ? proposal.run_recipe.agents
           : nextAgents,
       promptId: proposal.run_recipe?.promptId ?? recipe.promptIds[0],
+      agentInstructions:
+        proposal.run_recipe?.agentInstructions && proposal.run_recipe.agentInstructions.length > 0
+          ? proposal.run_recipe.agentInstructions
+          : recipeAgentInstructions.length > 0
+            ? recipeAgentInstructions
+            : undefined,
       jobType: proposal.run_recipe?.jobType ?? recipe.suggestedJobType,
     },
   }

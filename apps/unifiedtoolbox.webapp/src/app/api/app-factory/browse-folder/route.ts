@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { spawn } from 'child_process'
+import { promises as fs } from 'fs'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -32,73 +33,111 @@ export async function POST() {
   }
 }
 
-function openFolderDialog(platform: string): Promise<string | null> {
+function buildWindowsFolderDialogScript() {
+  return [
+    'Add-Type -AssemblyName System.Windows.Forms',
+    '$d = New-Object System.Windows.Forms.FolderBrowserDialog',
+    '$d.Description = "Select repository or project folder"',
+    '$d.ShowNewFolderButton = $false',
+    '$r = $d.ShowDialog()',
+    'if ($r -eq "OK") { Write-Output $d.SelectedPath }',
+  ].join('; ')
+}
+
+function runCommand(command: string, args: string[]): Promise<{ code: number | null; stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    if (platform === 'win32') {
-      // PowerShell: show WinForms FolderBrowserDialog, write selected path to stdout
-      const psScript = [
-        'Add-Type -AssemblyName System.Windows.Forms',
-        '$d = New-Object System.Windows.Forms.FolderBrowserDialog',
-        '$d.Description = "Select repository or project folder"',
-        '$d.ShowNewFolderButton = $false',
-        '$r = $d.ShowDialog()',
-        'if ($r -eq "OK") { Write-Output $d.SelectedPath }',
-      ].join('; ')
-
-      const child = spawn(
-        'pwsh',
-        ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', psScript],
-        { stdio: ['ignore', 'pipe', 'pipe'] }
-      )
-
-      let stdout = ''
-      let stderr = ''
-      child.stdout.on('data', (d: Buffer) => { stdout += d.toString() })
-      child.stderr.on('data', (d: Buffer) => { stderr += d.toString() })
-
-      child.on('error', (err) => reject(new Error(`PowerShell spawn failed: ${err.message}`)))
-      child.on('close', (code) => {
-        if (code !== 0 && !stdout.trim()) {
-          // Non-zero exit with no output = pwsh not found; try fallback
-          reject(new Error(`PowerShell exited ${code}. stderr: ${stderr.trim()}`))
-          return
-        }
-        const selected = stdout.trim()
-        resolve(selected || null)
-      })
-    } else if (platform === 'darwin') {
-      // macOS: AppleScript folder picker
-      const script = 'choose folder with prompt "Select repository or project folder"'
-      const child = spawn('osascript', ['-e', script], { stdio: ['ignore', 'pipe', 'pipe'] })
-
-      let stdout = ''
-      child.stdout.on('data', (d: Buffer) => { stdout += d.toString() })
-      child.on('error', (err) => reject(new Error(`osascript failed: ${err.message}`)))
-      child.on('close', (code) => {
-        if (code !== 0) { resolve(null); return }
-        // osascript returns "alias Macintosh HD:Users:..." — convert to POSIX path
-        const raw = stdout.trim()
-        if (!raw) { resolve(null); return }
-        const posixChild = spawn('osascript', ['-e', `POSIX path of "${raw}"`], { stdio: ['ignore', 'pipe', 'ignore'] })
-        let posix = ''
-        posixChild.stdout.on('data', (d: Buffer) => { posix += d.toString() })
-        posixChild.on('close', () => resolve(posix.trim().replace(/\/$/, '') || null))
-      })
-    } else {
-      // Linux: zenity (GTK file picker, common on GNOME desktops)
-      const child = spawn(
-        'zenity',
-        ['--file-selection', '--directory', '--title=Select repository or project folder'],
-        { stdio: ['ignore', 'pipe', 'pipe'] }
-      )
-
-      let stdout = ''
-      child.stdout.on('data', (d: Buffer) => { stdout += d.toString() })
-      child.on('error', (err) => reject(new Error(`zenity failed: ${err.message}. Install zenity for folder picking.`)))
-      child.on('close', (code) => {
-        if (code !== 0) { resolve(null); return }
-        resolve(stdout.trim() || null)
-      })
-    }
+    const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] })
+    let stdout = ''
+    let stderr = ''
+    child.stdout.on('data', (d: Buffer) => { stdout += d.toString() })
+    child.stderr.on('data', (d: Buffer) => { stderr += d.toString() })
+    child.on('error', (err) => reject(err))
+    child.on('close', (code) => resolve({ code, stdout, stderr }))
   })
+}
+
+async function openWindowsFolderDialog(commands: string[]): Promise<string | null> {
+  const psScript = buildWindowsFolderDialogScript()
+  let lastError = 'PowerShell was not available.'
+
+  for (const command of commands) {
+    try {
+      const { code, stdout, stderr } = await runCommand(command, [
+        '-NoLogo',
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        psScript,
+      ])
+      if (code !== 0 && !stdout.trim()) {
+        lastError = `${command} exited ${code}. ${stderr.trim()}`.trim()
+        continue
+      }
+      return stdout.trim() || null
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err)
+    }
+  }
+
+  throw new Error(lastError)
+}
+
+async function maybeConvertWindowsPathToWsl(selectedPath: string): Promise<string> {
+  try {
+    const { code, stdout } = await runCommand('wslpath', ['-u', selectedPath])
+    if (code === 0 && stdout.trim()) {
+      return stdout.trim().replace(/\/$/, '')
+    }
+  } catch {
+    // fall back to the original path
+  }
+  return selectedPath
+}
+
+async function isWslEnvironment(): Promise<boolean> {
+  if (process.platform !== 'linux') return false
+  if (process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP) return true
+  try {
+    const version = await fs.readFile('/proc/version', 'utf8')
+    return /microsoft/i.test(version)
+  } catch {
+    return false
+  }
+}
+
+async function openFolderDialog(platform: string): Promise<string | null> {
+  if (platform === 'win32') {
+    return openWindowsFolderDialog(['pwsh', 'powershell.exe', 'powershell'])
+  }
+
+  if (platform === 'darwin') {
+    const script = 'choose folder with prompt "Select repository or project folder"'
+    const { code, stdout } = await runCommand('osascript', ['-e', script])
+    if (code !== 0) return null
+    const raw = stdout.trim()
+    if (!raw) return null
+    const posixResult = await runCommand('osascript', ['-e', `POSIX path of "${raw}"`])
+    return posixResult.stdout.trim().replace(/\/$/, '') || null
+  }
+
+  if (await isWslEnvironment()) {
+    const selected = await openWindowsFolderDialog(['powershell.exe', 'pwsh.exe', 'pwsh'])
+    if (!selected) return null
+    return maybeConvertWindowsPathToWsl(selected)
+  }
+
+  const { code, stdout, stderr } = await runCommand('zenity', [
+    '--file-selection',
+    '--directory',
+    '--title=Select repository or project folder',
+  ]).catch((err) => {
+    throw new Error(`zenity failed: ${err instanceof Error ? err.message : String(err)}. Install zenity or paste the path manually.`)
+  })
+  if (code !== 0) {
+    if (stderr.trim()) {
+      throw new Error(`Folder picker unavailable: ${stderr.trim()}`)
+    }
+    return null
+  }
+  return stdout.trim() || null
 }

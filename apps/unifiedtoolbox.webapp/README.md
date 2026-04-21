@@ -12,26 +12,29 @@ A modern Next.js web portal for the Unified AI Toolbox, featuring AI orchestrati
 ### Local Development
 
 1. **Install dependencies:**
+
    ```bash
    npm install
    ```
 
 2. **Configure the API connection:**
-   
+
    The webapp is pre-configured with `.env.local` pointing to `http://localhost:8000`.
-   
+
    If your Prompt API runs on a different port, update `.env.local`:
+
    ```bash
    NEXT_PUBLIC_API_BASE=http://localhost:8001
    ```
 
 3. **Start the development server:**
+
    ```bash
    npm run dev
    ```
 
 4. **Open the portal:**
-   
+
    Navigate to [http://localhost:3000](http://localhost:3000)
 
 ## Configuration

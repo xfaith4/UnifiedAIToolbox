@@ -3,7 +3,7 @@
 import type { AgentInstruction } from '@/lib/types/agents'
 
 const AGENT_STORAGE_KEY = 'ai-toolbox-agent-library'
-const AGENT_PROMPT_OVERRIDES_KEY = 'agentPromptOverrides'
+const LEGACY_AGENT_PROMPT_OVERRIDES_KEY = 'agentPromptOverrides'
 
 function nowIso(): string {
   return new Date().toISOString()
@@ -16,27 +16,87 @@ function uid(): string {
   return Math.random().toString(36).slice(2) + Date.now().toString(36)
 }
 
+function normalizeString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value.trim() || undefined : undefined
+}
+
+function normalizeStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+    .filter(Boolean)
+}
+
+function deriveAgentId(agent: Partial<AgentInstruction>): string {
+  if (typeof agent.id === 'string' && agent.id.trim()) return agent.id.trim()
+  const normalizedName = typeof agent.name === 'string' ? agent.name.trim().toLowerCase() : ''
+  if (normalizedName) {
+    const slug = normalizedName.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+    if (slug) return `local-agent-${slug}`
+  }
+  return uid()
+}
+
 export function normalizeAgent(agent: Partial<AgentInstruction>): AgentInstruction {
   const now = nowIso()
   return {
-    id: agent.id || uid(),
-    name: agent.name || 'New Agent',
-    purpose: agent.purpose || '',
-    mission: agent.mission || '',
+    ...agent,
+    id: deriveAgentId(agent),
+    name: normalizeString(agent.name) || 'New Agent',
+    purpose: normalizeString(agent.purpose) || '',
+    mission: normalizeString(agent.mission) || '',
     status: agent.status || 'draft',
-    tags: agent.tags || [],
-    triggers: agent.triggers || [],
-    inputs: agent.inputs || [],
-    outputs: agent.outputs || [],
-    tools: agent.tools || [],
-    playbook: agent.playbook || [],
-    owner: agent.owner,
-    handoff: agent.handoff,
-    notes: agent.notes,
+    role: normalizeString(agent.role),
+    prompt: typeof agent.prompt === 'string' ? agent.prompt : undefined,
+    promptOverride:
+      agent.promptOverride == null
+        ? null
+        : typeof agent.promptOverride === 'string'
+          ? agent.promptOverride
+          : null,
+    tags: normalizeStringList(agent.tags),
+    triggers: normalizeStringList(agent.triggers),
+    inputs: normalizeStringList(agent.inputs),
+    outputs: normalizeStringList(agent.outputs),
+    tools: normalizeStringList(agent.tools),
+    playbook: normalizeStringList(agent.playbook),
+    owner: normalizeString(agent.owner),
+    handoff: typeof agent.handoff === 'string' ? agent.handoff : undefined,
+    notes: typeof agent.notes === 'string' ? agent.notes : undefined,
     createdAt: agent.createdAt || now,
     updatedAt: agent.updatedAt || now,
-    ...agent,
   }
+}
+
+function loadLegacyPromptOverrides(): Record<string, string> {
+  if (typeof localStorage === 'undefined') return {}
+  try {
+    const raw = localStorage.getItem(LEGACY_AGENT_PROMPT_OVERRIDES_KEY)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw) as Record<string, string>
+    return parsed ?? {}
+  } catch {
+    return {}
+  }
+}
+
+function migrateLegacyPromptOverrides(agents: AgentInstruction[]): AgentInstruction[] {
+  if (typeof localStorage === 'undefined') return agents
+  const overrides = loadLegacyPromptOverrides()
+  const entries = Object.entries(overrides).filter(([, prompt]) => typeof prompt === 'string' && prompt.length > 0)
+  if (entries.length === 0) return agents
+
+  const migrated = agents.map((agent) => {
+    const promptOverride = overrides[agent.id]
+    if (!promptOverride || agent.promptOverride) return agent
+    return {
+      ...agent,
+      promptOverride,
+      updatedAt: agent.updatedAt || nowIso(),
+    }
+  })
+  localStorage.removeItem(LEGACY_AGENT_PROMPT_OVERRIDES_KEY)
+  return migrated
 }
 
 async function fetchDefaultAgents(signal?: AbortSignal): Promise<AgentInstruction[]> {
@@ -87,13 +147,15 @@ function mergeAgentLibraries(local: AgentInstruction[], defaults: AgentInstructi
 
 export async function fetchAgentLibrary(options?: { signal?: AbortSignal }): Promise<AgentInstruction[]> {
   const local = await loadFromLocalStorage()
-  const defaults = await fetchDefaultAgents(options?.signal)
+  const defaults = migrateLegacyPromptOverrides(await fetchDefaultAgents(options?.signal))
 
   if (local && local.length > 0) {
     if (defaults.length === 0) {
-      return local
+      const migratedLocal = migrateLegacyPromptOverrides(local)
+      saveToLocalStorage(migratedLocal)
+      return migratedLocal
     }
-    const merged = mergeAgentLibraries(local, defaults)
+    const merged = migrateLegacyPromptOverrides(mergeAgentLibraries(local, defaults))
     saveToLocalStorage(merged)
     return merged
   }
@@ -107,27 +169,4 @@ export async function fetchAgentLibrary(options?: { signal?: AbortSignal }): Pro
 export async function persistAgentLibrary(agents: AgentInstruction[]): Promise<void> {
   if (typeof localStorage === 'undefined') return
   localStorage.setItem(AGENT_STORAGE_KEY, JSON.stringify(agents))
-}
-
-export function loadPromptOverrides(): Record<string, string> {
-  if (typeof localStorage === 'undefined') return {}
-  try {
-    const raw = localStorage.getItem(AGENT_PROMPT_OVERRIDES_KEY)
-    if (!raw) return {}
-    const parsed = JSON.parse(raw) as Record<string, string>
-    return parsed ?? {}
-  } catch {
-    return {}
-  }
-}
-
-export function persistPromptOverride(agentId: string, prompt: string | null): void {
-  if (typeof localStorage === 'undefined') return
-  const existing = loadPromptOverrides()
-  if (!prompt) {
-    delete existing[agentId]
-  } else {
-    existing[agentId] = prompt
-  }
-  localStorage.setItem(AGENT_PROMPT_OVERRIDES_KEY, JSON.stringify(existing))
 }

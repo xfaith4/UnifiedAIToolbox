@@ -94,7 +94,9 @@ export default function LocalRepoPathPicker({ path, onChange, disabled }: LocalR
         )}
 
         {pickError && (
-          <div className="text-[11px] text-rose-400">{pickError}</div>
+          <div className="text-[11px] text-rose-400">
+            {pickError} If the native picker is unavailable in your environment, paste the absolute repo path manually.
+          </div>
         )}
       </div>
     </div>

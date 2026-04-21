@@ -109,7 +109,21 @@ describe('recipeStore', () => {
     const recipe = createOrUpdateRecipeFromAgent(makeAgent())
     expect(recipe.id).toBe('recipe_agent_agent_1')
     expect(recipe.agentNames).toEqual(['Engineer'])
+    expect(recipe.agentPresets[0]).toMatchObject({ id: 'agent_1', name: 'Engineer' })
     expect(recipe.tools).toEqual(['read_file', 'write_file'])
+  })
+
+  it('persists the effective agent prompt into the recipe preset and proposal run recipe', () => {
+    const recipe = createOrUpdateRecipeFromAgent(
+      makeAgent({ prompt: 'Canonical prompt', promptOverride: 'Override prompt' }),
+      { effectivePrompt: 'Override prompt' },
+    )
+    expect(recipe.agentPresets[0]?.prompt).toBe('Override prompt')
+
+    const applied = applyRecipeToProposal(makeProposal(), recipe)
+    expect(applied.run_recipe?.agentInstructions).toEqual([
+      { agentId: 'agent_1', agentName: 'Engineer', prompt: 'Override prompt' },
+    ])
   })
 
   it('applies recipe defaults into a proposal', () => {
@@ -130,10 +144,11 @@ describe('recipeStore', () => {
   })
 
   it('builds a system-prompt context block from a recipe', () => {
-    const recipe = createOrUpdateRecipeFromAgent(makeAgent())
+    const recipe = createOrUpdateRecipeFromAgent(makeAgent({ prompt: 'Use structured output.' }))
     const prompt = buildRecipeContextPrompt(recipe)
     expect(prompt).toContain('recipe_name')
     expect(prompt).toContain('preferred_agents')
     expect(prompt).toContain('preferred_tools')
+    expect(prompt).toContain('preferred_agent_instructions')
   })
 })

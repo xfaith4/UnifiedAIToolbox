@@ -6,13 +6,16 @@ import {
   fetchAgentLibrary,
   normalizeAgent,
   persistAgentLibrary,
-  loadPromptOverrides,
-  persistPromptOverride,
 } from '@/lib/services/agentStore'
 import type { AgentInstruction, AgentStatus } from '@/lib/types/agents'
 import { computeDiff, computeHash } from '@/lib/utils/textHelpers'
 import { trackUxEvent } from '@/lib/ux/telemetry'
 import { createOrUpdateRecipeFromAgent } from '@/lib/services/recipeStore'
+import {
+  getAgentReadinessIssues,
+  getEffectiveAgentPrompt,
+  validateImportedAgentLibrary,
+} from './utils'
 
 const statusLabels: Record<AgentStatus, string> = {
   draft: 'Draft',
@@ -178,10 +181,8 @@ export default function AgentsPage() {
     try {
       const text = await file.text()
       const payload = JSON.parse(text)
-      if (!Array.isArray(payload)) {
-        throw new Error('Expected an array of agents')
-      }
-      const normalized = payload.map((item) => normalizeAgent(item))
+      const validated = validateImportedAgentLibrary(payload)
+      const normalized = validated.map((item) => normalizeAgent(item))
       setAgents(normalized)
       setSelectedId(normalized[0]?.id ?? null)
       await persist(normalized)
@@ -341,12 +342,7 @@ function AgentDetailForm({
   }
 
   const canonicalPrompt = agent.prompt ?? ''
-  const [overridePrompt, setOverridePrompt] = useState<string | null>(() => {
-    if (typeof window === 'undefined') return null
-    const overrides = loadPromptOverrides()
-    return overrides[agent.id] ?? null
-  })
-  const [draftPrompt, setDraftPrompt] = useState(canonicalPrompt)
+  const [draftPrompt, setDraftPrompt] = useState(getEffectiveAgentPrompt(agent))
   const [editingPrompt, setEditingPrompt] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [showDiff, setShowDiff] = useState(false)
@@ -356,7 +352,9 @@ function AgentDetailForm({
   const [canonicalHash, setCanonicalHash] = useState('')
   const [renderedHash, setRenderedHash] = useState('')
 
-  const finalPrompt = overridePrompt ?? canonicalPrompt
+  const finalPrompt = getEffectiveAgentPrompt(agent)
+  const readinessIssues = useMemo(() => getAgentReadinessIssues(agent), [agent])
+  const canUseInBuild = readinessIssues.length === 0
 
   useEffect(() => {
     let active = true
@@ -372,12 +370,12 @@ function AgentDetailForm({
     finalPrompt,
   ])
 
-  const promptSource = overridePrompt ? 'Override' : 'Library'
-  const promptAvailable = Boolean(canonicalPrompt)
+  const promptSource = agent.promptOverride ? 'Override' : 'Library'
+  const promptAvailable = Boolean(finalPrompt)
   const renderablePrompt = finalPrompt
 
   function handleRecipeLaunch(destination: '/concierge' | '/engine') {
-    const recipe = createOrUpdateRecipeFromAgent(agent)
+    const recipe = createOrUpdateRecipeFromAgent(agent, { effectivePrompt: finalPrompt })
     setRecipeStatus(
       destination === '/concierge'
         ? `Recipe saved from "${agent.name}" and sent to Concierge.`
@@ -411,6 +409,12 @@ function AgentDetailForm({
               type="button"
               className="rounded-lg border border-slate-700 bg-slate-800/70 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-700/80"
               onClick={() => handleRecipeLaunch('/engine')}
+              disabled={!canUseInBuild}
+              title={
+                canUseInBuild
+                  ? 'Send this agent recipe to App Lifecycle.'
+                  : `Complete before build: ${readinessIssues.join(', ')}`
+              }
             >
               Use in Build
             </button>
@@ -419,6 +423,11 @@ function AgentDetailForm({
         {recipeStatus && (
           <p className="mt-2 text-xs text-blue-200" aria-live="polite">
             {recipeStatus}
+          </p>
+        )}
+        {!canUseInBuild && (
+          <p className="mt-2 text-xs text-amber-200">
+            Build is disabled until this agent has: {readinessIssues.join(', ')}.
           </p>
         )}
       </div>
@@ -596,11 +605,7 @@ function AgentDetailForm({
             onClick={() => {
               setEditingPrompt((prev) => {
                 const next = !prev
-                if (next) {
-                  setDraftPrompt(finalPrompt)
-                } else {
-                  setDraftPrompt(finalPrompt)
-                }
+                setDraftPrompt(finalPrompt)
                 return next
               })
             }}
@@ -613,8 +618,7 @@ function AgentDetailForm({
                 type="button"
                 className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500"
                 onClick={() => {
-                  persistPromptOverride(agent.id, draftPrompt || '')
-                  setOverridePrompt(draftPrompt || '')
+                  update('promptOverride', draftPrompt || null)
                   setEditingPrompt(false)
                 }}
               >
@@ -624,8 +628,7 @@ function AgentDetailForm({
                 type="button"
                 className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs hover:bg-slate-700/80"
                 onClick={() => {
-                  persistPromptOverride(agent.id, null)
-                  setOverridePrompt(null)
+                  update('promptOverride', null)
                   setDraftPrompt(canonicalPrompt)
                   setEditingPrompt(false)
                 }}
