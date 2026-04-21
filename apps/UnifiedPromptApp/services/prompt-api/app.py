@@ -45,6 +45,16 @@ except ImportError:
     ORCHESTRATOR_LOGGING_AVAILABLE = False
     logger.warning("Orchestrator logging modules not available")
 
+# Frontier Software Factory: arena (multi-lane candidate adjudication).
+# See `docs/frontier-software-factory-strategy.md` for the canonical schema.
+try:
+    from arena import attach_arena_to_manifest as _arena_attach_to_manifest
+    ARENA_AVAILABLE = True
+except ImportError:
+    _arena_attach_to_manifest = None  # type: ignore
+    ARENA_AVAILABLE = False
+    logger.warning("Arena module not available; multi-lane adjudication will be skipped.")
+
 # Import migrations module
 try:
     from migrations import apply_migrations
@@ -912,6 +922,7 @@ ORCH_RUN_MAX_CONCURRENT = _positive_int_env("PROMPT_API_ORCH_MAX_CONCURRENT", 2)
 ORCH_RUN_MAX_QUEUED = _positive_int_env("PROMPT_API_ORCH_MAX_QUEUED", 100)
 ORCH_LEASE_TTL_SECONDS = _positive_int_env("PROMPT_API_ORCH_LEASE_TTL_SECONDS", 45)
 ORCH_HEARTBEAT_INTERVAL_SECONDS = _positive_int_env("PROMPT_API_ORCH_HEARTBEAT_INTERVAL_SECONDS", 10)
+APP_PRODUCTION_REPAIR_MAX_ATTEMPTS = _positive_int_env("PROMPT_API_APP_PRODUCTION_REPAIR_ATTEMPTS", 1)
 ORCH_QUEUE_STATUSES = {"queued", "pending"}
 ORCH_DISPATCHING_STATUSES = {"dispatching"}
 ORCH_RUNNING_STATUSES = {
@@ -5289,6 +5300,14 @@ def orchestrate_run(
                         app_production["summary_artifact"] = _to_relpath(md_path, out_dir)
                         app_production_repairs = _derive_app_production_repair_plan(app_production)
                         if app_production_repairs.get("items"):
+                            app_production, app_production_repairs = _execute_app_production_repairs(
+                                out_dir,
+                                generated_root,
+                                app_production,
+                                app_production_repairs,
+                                model=str(manifest.get("model") or DEFAULT_MODEL),
+                            )
+                        else:
                             repair_json_path, repair_md_path = _write_app_production_repair_artifacts(out_dir, app_production_repairs)
                             app_production_repairs["report_artifact"] = _to_relpath(repair_json_path, out_dir)
                             app_production_repairs["summary_artifact"] = _to_relpath(repair_md_path, out_dir)
@@ -5319,12 +5338,71 @@ def orchestrate_run(
                             f"Generated app repair routing prepared {len(app_production_repairs['items'])} target(s)."
                         ),
                     }])
+                repair_execution_status = (
+                    str(app_production_repairs.get("execution_status") or "").strip().lower()
+                    if isinstance(app_production_repairs, dict)
+                    else ""
+                )
+                repair_attempts = (
+                    app_production_repairs.get("attempts")
+                    if isinstance(app_production_repairs, dict) and isinstance(app_production_repairs.get("attempts"), list)
+                    else []
+                )
+                if repair_execution_status == "blocked_missing_api_key":
+                    _append_events([{
+                        "ts": now_iso(),
+                        "type": "repair:generated_app_blocked",
+                        "message": "Generated app auto-repair skipped because OPENAI_API_KEY is not configured.",
+                    }])
+                elif repair_execution_status == "verified":
+                    _append_events([{
+                        "ts": now_iso(),
+                        "type": "repair:generated_app_verified",
+                        "message": f"Generated app auto-repair verified the app after {len(repair_attempts)} attempt(s).",
+                    }])
+                elif repair_attempts:
+                    last_attempt = repair_attempts[-1] if repair_attempts and isinstance(repair_attempts[-1], dict) else {}
+                    _append_events([{
+                        "ts": now_iso(),
+                        "type": "repair:generated_app_attempt",
+                        "message": (
+                            f"Generated app auto-repair {repair_execution_status or 'attempted'} "
+                            f"after {len(repair_attempts)} attempt(s); current status is {app_production.get('status') if isinstance(app_production, dict) else 'unknown'}."
+                        ),
+                        "details": {
+                            "attempts": len(repair_attempts),
+                            "last_gate": last_attempt.get("gate"),
+                            "last_status": last_attempt.get("status"),
+                        },
+                    }])
                 _update_manifest(lambda d: {
                     **d,
                     "generated_app_files": generated_app_files,
                     "app_production": app_production or d.get("app_production"),
                     "app_production_repairs": app_production_repairs or d.get("app_production_repairs"),
                 })
+
+            # Frontier arena: derive a canonical multi-lane manifest from the
+            # current run's evidence and adjudicate it. Today only the internal
+            # lane exists; the seam is in place for frontier provider lanes.
+            if ARENA_AVAILABLE and _arena_attach_to_manifest is not None:
+                try:
+                    arena_snapshot = safe_json_load(path, default={}, context=f"arena_snapshot:{run_id}") or {}
+                    arena_record = _arena_attach_to_manifest(arena_snapshot, out_dir)
+                    _update_manifest(lambda d: {**d, "arena": arena_record})
+                    verdict = arena_record.get("verdict") or {}
+                    _append_events([{
+                        "ts": now_iso(),
+                        "type": "arena:adjudicated",
+                        "message": (
+                            f"Arena verdict: winner=`{verdict.get('winner_lane_id')}` "
+                            f"score={verdict.get('winner_score', 0.0):.2f} "
+                            f"confidence={verdict.get('confidence', 'unknown')} "
+                            f"lanes={len(arena_record.get('lanes') or [])}."
+                        ),
+                    }])
+                except Exception as arena_err:
+                    print(f"[orchestrate] Arena adjudication failed: {arena_err}", file=sys.stderr)
 
             data = safe_json_load(path, context=f"execute_complete:{run_id}")
             verification_status = str(data.get("verification_status") or "").strip().lower()
@@ -7700,6 +7778,375 @@ def _derive_app_production_repair_plan(app_production: Optional[Dict[str, Any]])
     }
 
 
+def _read_text_excerpt(path: pathlib.Path, max_chars: int = 4000) -> str:
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except Exception as exc:
+        return f"Unable to read file: {exc}"
+    text = text.strip()
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars].rstrip() + "\n... (truncated)"
+
+
+def _safe_generated_app_relpath(value: Optional[str]) -> Optional[pathlib.PurePosixPath]:
+    if not value:
+        return None
+    normalized = str(value).replace("\\", "/").strip()
+    if not normalized:
+        return None
+    normalized = normalized.lstrip("/")
+    if normalized.startswith("generated_app/"):
+        normalized = normalized[len("generated_app/"):]
+    pure = pathlib.PurePosixPath(normalized)
+    if pure.is_absolute() or any(part in {"", ".", ".."} for part in pure.parts):
+        return None
+    return pure
+
+
+def _collect_app_production_repair_context(
+    out_dir: pathlib.Path,
+    app_dir: pathlib.Path,
+    repair_target: Dict[str, Any],
+    max_files: int = 6,
+) -> List[Dict[str, str]]:
+    gate = str(repair_target.get("gate") or "").strip().lower()
+    default_candidates = {
+        "install": ["package.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock", ".npmrc"],
+        "lint": ["package.json", "eslint.config.js", "eslint.config.mjs", ".eslintrc.js", ".eslintrc.json"],
+        "build": ["package.json", "tsconfig.json", "vite.config.ts", "vite.config.js", "next.config.js", "next.config.mjs"],
+        "dev_server": ["package.json", "vite.config.ts", "vite.config.js", "next.config.js", "next.config.mjs"],
+        "unit_tests": ["package.json", "vitest.config.ts", "vitest.config.js", "jest.config.js"],
+        "smoke_tests": ["package.json", "playwright.config.ts", "playwright.config.js"],
+    }
+
+    relpaths: List[pathlib.PurePosixPath] = []
+    seen: set[str] = set()
+
+    def _add(rel: Optional[pathlib.PurePosixPath]) -> None:
+        if not rel:
+            return
+        rel_key = rel.as_posix()
+        if rel_key in seen:
+            return
+        target = (app_dir / pathlib.Path(rel_key)).resolve()
+        try:
+            target.relative_to(app_dir.resolve())
+        except Exception:
+            return
+        if not target.exists() or not target.is_file():
+            return
+        seen.add(rel_key)
+        relpaths.append(rel)
+
+    for candidate in default_candidates.get(gate, ["package.json"]):
+        _add(_safe_generated_app_relpath(candidate))
+
+    log_artifact = repair_target.get("log_artifact")
+    if isinstance(log_artifact, str) and log_artifact.strip():
+        log_rel = _safe_generated_app_relpath(log_artifact)
+        log_path = (out_dir / pathlib.Path(log_artifact)).resolve()
+        if log_path.exists():
+            log_text = _read_text_excerpt(log_path, max_chars=8000)
+            for match in re.findall(r"(?<![A-Za-z0-9_./-])([A-Za-z0-9_./-]+\.(?:[cm]?[jt]sx?|json|css|scss|html|md))", log_text):
+                _add(_safe_generated_app_relpath(match))
+                if len(relpaths) >= max_files:
+                    break
+        if log_rel:
+            _add(log_rel)
+
+    contexts: List[Dict[str, str]] = []
+    for rel in relpaths[:max_files]:
+        full_path = app_dir / pathlib.Path(rel.as_posix())
+        contexts.append(
+            {
+                "path": rel.as_posix(),
+                "content": _read_text_excerpt(full_path, max_chars=4000),
+            }
+        )
+    return contexts
+
+
+def _build_app_production_repair_messages(
+    out_dir: pathlib.Path,
+    app_dir: pathlib.Path,
+    app_production: Dict[str, Any],
+    repair_target: Dict[str, Any],
+) -> List[Dict[str, str]]:
+    checks = app_production.get("checks") if isinstance(app_production.get("checks"), list) else []
+    check_lines = []
+    for check in checks:
+        if not isinstance(check, dict):
+            continue
+        parts = [str(check.get("name") or "check"), str(check.get("status") or "unknown")]
+        if check.get("summary"):
+            parts.append(str(check["summary"]))
+        check_lines.append(" | ".join(parts))
+
+    log_excerpt = ""
+    log_artifact = repair_target.get("log_artifact")
+    if isinstance(log_artifact, str) and log_artifact.strip():
+        log_path = (out_dir / pathlib.Path(log_artifact)).resolve()
+        if log_path.exists():
+            log_excerpt = _read_text_excerpt(log_path, max_chars=8000)
+
+    file_contexts = _collect_app_production_repair_context(out_dir, app_dir, repair_target)
+
+    system = "\n".join(
+        [
+            "You repair a generated application in place.",
+            "Return JSON only with this shape:",
+            '{"summary":"short summary","files":[{"path":"relative/path","content":"full file content","reason":"why"}],"notes":["optional note"]}',
+            "Rules:",
+            "- Keep edits minimal and targeted to the reported root-cause gate.",
+            "- Only write files inside generated_app/ using relative paths.",
+            "- Return full file contents for each changed file.",
+            "- Omit unchanged files.",
+            "- If the best action is to stop, return an empty files array and explain why in notes.",
+            "- Never wrap the JSON in markdown fences.",
+        ]
+    )
+
+    user_lines = [
+        f"App directory: {app_dir.name}",
+        f"Repair gate: {repair_target.get('gate') or 'gate'}",
+        f"Priority: {repair_target.get('priority') or 'medium'}",
+        f"Owner lane: {repair_target.get('agent') or 'Engineer'}",
+        f"Route summary: {repair_target.get('summary') or ''}",
+        f"Failure summary: {repair_target.get('failure_summary') or repair_target.get('failureSummary') or ''}",
+        f"Command: {repair_target.get('command') or 'n/a'}",
+        f"Blocked checks: {', '.join(str(v) for v in repair_target.get('blocked_checks') or repair_target.get('blockedChecks') or []) or 'none'}",
+        "",
+        "Current verification checks:",
+        "\n".join(check_lines) or "(none)",
+    ]
+
+    if log_excerpt:
+        user_lines.extend(["", "Failing log excerpt:", log_excerpt])
+
+    if file_contexts:
+        user_lines.append("")
+        user_lines.append("Relevant file contents:")
+        for item in file_contexts:
+            user_lines.append(f"--- FILE: {item['path']} ---")
+            user_lines.append(item["content"])
+
+    user_lines.extend(
+        [
+            "",
+            "Task:",
+            "Repair the root-cause gate first.",
+            "Preserve the generated stack and avoid broad rewrites.",
+            "Prefer fixing package scripts, dependency metadata, imports, config, or runtime wiring based on the evidence above.",
+        ]
+    )
+
+    return [
+        {"role": "system", "content": system},
+        {"role": "user", "content": "\n".join(user_lines)},
+    ]
+
+
+def _apply_app_production_repair_payload(
+    app_dir: pathlib.Path,
+    payload: Dict[str, Any],
+) -> Tuple[List[str], List[str]]:
+    files = payload.get("files") if isinstance(payload.get("files"), list) else []
+    written: List[str] = []
+    notes: List[str] = []
+
+    for item in files:
+        if not isinstance(item, dict):
+            continue
+        rel = _safe_generated_app_relpath(item.get("path"))
+        content = item.get("content")
+        if not rel or not isinstance(content, str):
+            continue
+        target = (app_dir / pathlib.Path(rel.as_posix())).resolve()
+        try:
+            target.relative_to(app_dir.resolve())
+        except Exception:
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content.rstrip() + "\n", encoding="utf-8")
+        written.append(rel.as_posix())
+        reason = str(item.get("reason") or "").strip()
+        if reason:
+            notes.append(f"{rel.as_posix()}: {reason}")
+
+    for note in payload.get("notes") if isinstance(payload.get("notes"), list) else []:
+        if isinstance(note, str) and note.strip():
+            notes.append(note.strip())
+
+    return written, notes
+
+
+def _write_app_production_repair_execution_artifacts(
+    out_dir: pathlib.Path,
+    execution: Dict[str, Any],
+) -> Tuple[pathlib.Path, pathlib.Path]:
+    json_path = out_dir / "generated_app_repair_execution.json"
+    md_path = out_dir / "generated_app_repair_execution.md"
+    json_path.write_text(json.dumps(execution, indent=2), encoding="utf-8")
+
+    lines = [
+        "# Generated App Repair Execution",
+        "",
+        f"- Status: `{execution.get('status')}`",
+        f"- Attempts: {execution.get('attempt_count', 0)} / {execution.get('max_attempts', 0)}",
+        f"- Model: `{execution.get('model') or 'n/a'}`",
+        "",
+        "## Attempts",
+    ]
+
+    attempts = execution.get("attempts") if isinstance(execution.get("attempts"), list) else []
+    if not attempts:
+        lines.append("- No automatic repair attempts were executed.")
+    else:
+        for attempt in attempts:
+            if not isinstance(attempt, dict):
+                continue
+            lines.append(
+                f"- **Attempt {attempt.get('attempt', '?')}** `{attempt.get('gate', 'gate')}` -> `{attempt.get('status', 'unknown')}`"
+            )
+            if attempt.get("summary"):
+                lines.append(f"  - summary: {attempt['summary']}")
+            if attempt.get("error"):
+                lines.append(f"  - error: {attempt['error']}")
+            files_written = attempt.get("files_written") if isinstance(attempt.get("files_written"), list) else []
+            if files_written:
+                lines.append(f"  - files written: {', '.join(str(v) for v in files_written)}")
+            if attempt.get("verification_status"):
+                lines.append(f"  - verification status: {attempt['verification_status']}")
+            if attempt.get("started_at"):
+                lines.append(f"  - started: {attempt['started_at']}")
+            if attempt.get("completed_at"):
+                lines.append(f"  - completed: {attempt['completed_at']}")
+
+    md_path.write_text("\n".join(lines), encoding="utf-8")
+    return json_path, md_path
+
+
+def _execute_app_production_repairs(
+    out_dir: pathlib.Path,
+    app_dir: pathlib.Path,
+    app_production: Dict[str, Any],
+    repair_plan: Dict[str, Any],
+    model: Optional[str] = None,
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    if not isinstance(repair_plan, dict):
+        return app_production, repair_plan
+
+    items = repair_plan.get("items") if isinstance(repair_plan.get("items"), list) else []
+    chosen_model = str(model or DEFAULT_MODEL)
+    execution_status = "not_needed"
+    attempts: List[Dict[str, Any]] = []
+    current_app_production = dict(app_production)
+    current_repair_plan = dict(repair_plan)
+
+    if not items:
+        execution_status = "not_needed"
+    elif not OPENAI_API_KEY:
+        execution_status = "blocked_missing_api_key"
+    else:
+        execution_status = "attempting"
+        for attempt_number in range(1, APP_PRODUCTION_REPAIR_MAX_ATTEMPTS + 1):
+            current_items = current_repair_plan.get("items") if isinstance(current_repair_plan.get("items"), list) else []
+            if not current_items:
+                break
+
+            repair_target = current_items[0] if isinstance(current_items[0], dict) else {}
+            started_at = now_iso()
+            attempt_record: Dict[str, Any] = {
+                "attempt": attempt_number,
+                "gate": str(repair_target.get("gate") or "gate"),
+                "status": "failed",
+                "summary": "",
+                "model": chosen_model,
+                "started_at": started_at,
+                "completed_at": None,
+                "files_written": [],
+                "notes": [],
+                "verification_status": current_app_production.get("status"),
+            }
+            try:
+                payload, _usage = call_provider_chat(
+                    chosen_model,
+                    _build_app_production_repair_messages(out_dir, app_dir, current_app_production, repair_target),
+                )
+                if not isinstance(payload, dict):
+                    raise ValueError("Repair model returned a non-object payload.")
+
+                written_files, notes = _apply_app_production_repair_payload(app_dir, payload)
+                attempt_record["files_written"] = written_files
+                attempt_record["notes"] = notes
+                attempt_record["summary"] = str(payload.get("summary") or "").strip() or "Repair payload applied."
+
+                if not written_files:
+                    execution_status = "failed"
+                    attempt_record["status"] = "failed"
+                    attempt_record["error"] = "Repair model did not return any file edits."
+                    attempts.append(attempt_record)
+                    break
+
+                verifier = OrchestratorVerifier(
+                    app_dir,
+                    log_dir=out_dir / "logs" / "generated_app_repairs" / f"attempt_{attempt_number}",
+                )
+                gate_results = verifier.run_all_verifications()
+                current_app_production = _summarize_app_production_gates(gate_results, out_dir, app_dir)
+                verification_json_path, verification_md_path = _write_app_production_artifacts(out_dir, current_app_production)
+                current_app_production["report_artifact"] = _to_relpath(verification_json_path, out_dir)
+                current_app_production["summary_artifact"] = _to_relpath(verification_md_path, out_dir)
+
+                current_repair_plan = _derive_app_production_repair_plan(current_app_production)
+                if current_app_production.get("status") == "verified" and not current_repair_plan.get("items"):
+                    attempt_record["status"] = "verified"
+                    execution_status = "verified"
+                else:
+                    attempt_record["status"] = "applied"
+                    execution_status = "retry_exhausted" if attempt_number >= APP_PRODUCTION_REPAIR_MAX_ATTEMPTS else "attempting"
+                attempt_record["verification_status"] = current_app_production.get("status")
+                attempts.append(attempt_record)
+                if execution_status == "verified":
+                    break
+            except HTTPException as exc:
+                execution_status = "failed"
+                attempt_record["status"] = "failed"
+                attempt_record["error"] = str(exc.detail)
+                attempts.append(attempt_record)
+                break
+            except Exception as exc:
+                execution_status = "failed"
+                attempt_record["status"] = "failed"
+                attempt_record["error"] = str(exc)
+                attempts.append(attempt_record)
+                break
+            finally:
+                attempt_record["completed_at"] = now_iso()
+
+    execution_payload = {
+        "status": execution_status,
+        "attempt_count": len(attempts),
+        "max_attempts": APP_PRODUCTION_REPAIR_MAX_ATTEMPTS,
+        "model": chosen_model,
+        "attempts": attempts,
+    }
+    execution_json_path, execution_md_path = _write_app_production_repair_execution_artifacts(out_dir, execution_payload)
+
+    current_repair_plan = {
+        **current_repair_plan,
+        "execution_status": execution_status,
+        "attempts": attempts,
+        "execution_report_artifact": _to_relpath(execution_json_path, out_dir),
+        "execution_summary_artifact": _to_relpath(execution_md_path, out_dir),
+    }
+    repair_json_path, repair_md_path = _write_app_production_repair_artifacts(out_dir, current_repair_plan)
+    current_repair_plan["report_artifact"] = _to_relpath(repair_json_path, out_dir)
+    current_repair_plan["summary_artifact"] = _to_relpath(repair_md_path, out_dir)
+    return current_app_production, current_repair_plan
+
+
 def _write_app_production_repair_artifacts(
     out_dir: pathlib.Path,
     repair_plan: Dict[str, Any],
@@ -7712,6 +8159,7 @@ def _write_app_production_repair_artifacts(
         "# Generated App Repair Routing",
         "",
         f"- Status: `{repair_plan.get('status')}`",
+        f"- Execution status: `{repair_plan.get('execution_status') or 'pending'}`",
         f"- Repair targets: {len(repair_plan.get('items') or [])}",
         "",
         "## Targets",
@@ -7734,6 +8182,27 @@ def _write_app_production_repair_artifacts(
             lines.append(f"  - blocked checks: {', '.join(str(v) for v in blocked_checks)}")
         for action in item.get("recommended_actions", []) if isinstance(item.get("recommended_actions"), list) else []:
             lines.append(f"  - action: {action}")
+
+    attempts = repair_plan.get("attempts") if isinstance(repair_plan.get("attempts"), list) else []
+    lines.extend(["", "## Execution"])
+    if not attempts:
+        lines.append("- No automatic repair attempts were executed.")
+    else:
+        for attempt in attempts:
+            if not isinstance(attempt, dict):
+                continue
+            lines.append(
+                f"- **Attempt {attempt.get('attempt', '?')}** `{attempt.get('gate', 'gate')}` -> `{attempt.get('status', 'unknown')}`"
+            )
+            if attempt.get("summary"):
+                lines.append(f"  - summary: {attempt['summary']}")
+            if attempt.get("error"):
+                lines.append(f"  - error: {attempt['error']}")
+            files_written = attempt.get("files_written") if isinstance(attempt.get("files_written"), list) else []
+            if files_written:
+                lines.append(f"  - files written: {', '.join(str(v) for v in files_written)}")
+            if attempt.get("verification_status"):
+                lines.append(f"  - verification status: {attempt['verification_status']}")
 
     md_path.write_text("\n".join(lines), encoding="utf-8")
     return json_path, md_path

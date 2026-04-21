@@ -194,7 +194,8 @@ Current implementation status:
 
 - structured repair targets are now derived from failed generated-app gates
 - repair routing is surfaced to operators and preserved for learning context
-- automatic repair execution and scoped re-verification are still pending
+- bounded automatic repair execution now applies targeted generated-app edits and reruns verification when model credentials are available
+- broader scoped-only re-verification can still be refined later if full reruns become too expensive
 
 ### Phase D: Runtime + UX smoke
 
@@ -237,4 +238,5 @@ As of 2026-04-05:
 - `build_new_app` runs now verify `generated_app/` explicitly and surface the result in Run Detail
 - generated web apps now receive deterministic install and dev-start proof when Node project metadata is present
 - failed generated-app gates now emit structured repair routing for operators and learning
-- the next implementation slice is automatic repair execution and re-verification from those routed targets
+- generated-app repair routing now records automatic repair attempts, rewritten files, and post-repair verification evidence in Run Detail
+- the next implementation slice is demo-mode / UX smoke verification for frontend-focused briefs

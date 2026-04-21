@@ -723,6 +723,24 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
       appProductionBasePath && appProductionRepairs?.summaryArtifact
         ? `${appProductionBasePath}${orchRun.runDir?.includes('\\') ? '\\' : '/'}${appProductionRepairs.summaryArtifact.replace(/^[/\\]+/, '')}`
         : null
+    const appProductionRepairExecutionReportPath =
+      appProductionBasePath && appProductionRepairs?.executionReportArtifact
+        ? `${appProductionBasePath}${orchRun.runDir?.includes('\\') ? '\\' : '/'}${appProductionRepairs.executionReportArtifact.replace(/^[/\\]+/, '')}`
+        : null
+    const appProductionRepairExecutionSummaryPath =
+      appProductionBasePath && appProductionRepairs?.executionSummaryArtifact
+        ? `${appProductionBasePath}${orchRun.runDir?.includes('\\') ? '\\' : '/'}${appProductionRepairs.executionSummaryArtifact.replace(/^[/\\]+/, '')}`
+        : null
+
+    const arena = orchRun.arena
+    const arenaReportPath =
+      appProductionBasePath && arena?.reportArtifact
+        ? `${appProductionBasePath}${orchRun.runDir?.includes('\\') ? '\\' : '/'}${arena.reportArtifact.replace(/^[/\\]+/, '')}`
+        : null
+    const arenaSummaryPath =
+      appProductionBasePath && arena?.summaryArtifact
+        ? `${appProductionBasePath}${orchRun.runDir?.includes('\\') ? '\\' : '/'}${arena.summaryArtifact.replace(/^[/\\]+/, '')}`
+        : null
 
     const synthesisHtmlPath = orchRun.runDir
       ? `${orchRun.runDir.replace(/[\\\/]+$/, '')}${orchRun.runDir.includes('\\') ? '\\' : '/'}Final_Synthesis.html`
@@ -1196,6 +1214,184 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
           </div>
         )}
 
+        {arena && (
+          <div className="rounded-2xl border border-violet-700/50 bg-violet-950/20 p-4 space-y-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-violet-300">Evidence Arena</div>
+                <div className="mt-1 text-sm text-violet-100">
+                  Multi-lane candidate evidence and adjudicated verdict for this run.
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2 text-[11px]">
+                <span className="rounded border border-violet-700/60 bg-violet-900/30 px-2 py-1 text-violet-100">
+                  Winner: {arena.verdict?.winnerLaneId ?? 'n/a'}
+                </span>
+                <span className="rounded border border-slate-700 bg-slate-900/50 px-2 py-1 text-slate-200">
+                  Score: {arena.verdict?.winnerScore?.toFixed(2) ?? '0.00'}
+                </span>
+                <span className={`rounded border px-2 py-1 ${
+                  arena.verdict?.confidence === 'high'
+                    ? 'border-emerald-700 bg-emerald-900/30 text-emerald-100'
+                    : arena.verdict?.confidence === 'medium'
+                      ? 'border-amber-700 bg-amber-900/30 text-amber-100'
+                      : 'border-slate-700 bg-slate-900/50 text-slate-200'
+                }`}>
+                  Confidence: {arena.verdict?.confidence ?? 'low'}
+                </span>
+                <span className="rounded border border-slate-700 bg-slate-900/50 px-2 py-1 text-slate-200">
+                  Lanes: {arena.lanes?.length ?? 0}
+                </span>
+              </div>
+            </div>
+
+            {arena.verdict?.reasons && arena.verdict.reasons.length > 0 && (
+              <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-3 text-xs text-slate-200">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-1">Reasons</div>
+                <ul className="list-disc pl-4 space-y-1">
+                  {arena.verdict.reasons.map((reason, idx) => (
+                    <li key={`reason-${idx}`}>{reason}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {arena.verdict?.followUp && arena.verdict.followUp.length > 0 && (
+              <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-3 text-xs text-slate-300">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-1">Follow-up</div>
+                <ul className="list-disc pl-4 space-y-1">
+                  {arena.verdict.followUp.map((item, idx) => (
+                    <li key={`followup-${idx}`}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              {arena.lanes?.map((lane) => {
+                const isWinner = lane.laneId === arena.verdict?.winnerLaneId
+                return (
+                  <div
+                    key={lane.laneId}
+                    className={`rounded-xl border p-3 text-xs space-y-2 ${
+                      isWinner
+                        ? 'border-emerald-700/60 bg-emerald-900/20 text-emerald-50'
+                        : 'border-slate-800 bg-slate-900/50 text-slate-200'
+                    }`}
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-semibold">{lane.label || lane.laneId}</span>
+                      <span className="rounded border border-slate-700 bg-slate-900/70 px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-300">
+                        {lane.provider}
+                      </span>
+                      <span className={`rounded border px-2 py-0.5 text-[10px] uppercase tracking-wide ${
+                        lane.status === 'verified' || lane.status === 'ready_for_delivery'
+                          ? 'border-emerald-700 bg-emerald-900/30 text-emerald-100'
+                          : lane.status === 'repair_needed'
+                            ? 'border-rose-700 bg-rose-900/30 text-rose-100'
+                            : 'border-slate-700 bg-slate-900/70 text-slate-300'
+                      }`}>
+                        {lane.status}
+                      </span>
+                      {isWinner && (
+                        <span className="rounded border border-violet-700 bg-violet-900/30 px-2 py-0.5 text-[10px] uppercase tracking-wide text-violet-100">
+                          Winner
+                        </span>
+                      )}
+                      <span className="ml-auto text-[11px] text-slate-400">Score: {lane.score?.total?.toFixed(2) ?? '0.00'}</span>
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-4 text-[11px]">
+                      <div className="rounded border border-slate-800 bg-slate-950/50 px-2 py-1">
+                        <div className="text-[10px] uppercase text-slate-500">Gates</div>
+                        <div>
+                          {lane.evidence?.gates?.passed ?? 0}✓ /{' '}
+                          {lane.evidence?.gates?.failed ?? 0}✗ /{' '}
+                          {lane.evidence?.gates?.skipped ?? 0}∅
+                        </div>
+                      </div>
+                      <div className="rounded border border-slate-800 bg-slate-950/50 px-2 py-1">
+                        <div className="text-[10px] uppercase text-slate-500">Repair</div>
+                        <div>
+                          {lane.evidence?.repair?.attempts ?? 0} attempt(s) · {lane.evidence?.repair?.status ?? 'n/a'}
+                        </div>
+                      </div>
+                      <div className="rounded border border-slate-800 bg-slate-950/50 px-2 py-1">
+                        <div className="text-[10px] uppercase text-slate-500">Files</div>
+                        <div>{lane.evidence?.filesChangedCount ?? 0}</div>
+                      </div>
+                      <div className="rounded border border-slate-800 bg-slate-950/50 px-2 py-1">
+                        <div className="text-[10px] uppercase text-slate-500">Delivery</div>
+                        <div>{lane.evidence?.deliveryReadiness ?? 'unknown'}</div>
+                      </div>
+                    </div>
+                    {lane.score?.components && Object.keys(lane.score.components).length > 0 && (
+                      <details className="text-[11px] text-slate-400">
+                        <summary className="cursor-pointer hover:text-slate-200">Score components</summary>
+                        <ul className="mt-1 grid gap-1 pl-4 sm:grid-cols-2">
+                          {Object.entries(lane.score.components).map(([key, value]) => (
+                            <li key={key}>
+                              <span className="text-slate-300">{key}:</span>{' '}
+                              <code className={value < 0 ? 'text-rose-300' : 'text-emerald-300'}>
+                                {value > 0 ? `+${value.toFixed(2)}` : value.toFixed(2)}
+                              </code>
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+
+            {arena.verdict?.loserReasons && arena.verdict.loserReasons.length > 0 && (
+              <details className="rounded-xl border border-slate-800 bg-slate-900/40 p-3 text-xs text-slate-300">
+                <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                  Loser rationale ({arena.verdict.loserReasons.length})
+                </summary>
+                <ul className="mt-2 space-y-1 pl-4 list-disc">
+                  {arena.verdict.loserReasons.map((entry, idx) => (
+                    <li key={`loser-${idx}`}>
+                      <code>{entry.laneId ?? 'lane'}</code> ({entry.score.toFixed(2)}): {entry.rationale}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+
+            <div className="flex flex-wrap gap-2 text-[11px]">
+              {arenaReportPath && (
+                <a
+                  className="rounded border border-violet-700/60 bg-violet-900/30 px-2 py-1 text-violet-100 hover:bg-violet-900/50"
+                  href={toFileUrl(arenaReportPath)}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(event) => {
+                    event.preventDefault()
+                    void openPath(arenaReportPath)
+                  }}
+                >
+                  Open arena JSON
+                </a>
+              )}
+              {arenaSummaryPath && (
+                <a
+                  className="rounded border border-slate-700 bg-slate-900/40 px-2 py-1 text-slate-200 hover:bg-slate-800/60"
+                  href={toFileUrl(arenaSummaryPath)}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(event) => {
+                    event.preventDefault()
+                    void openPath(arenaSummaryPath)
+                  }}
+                >
+                  Open arena summary
+                </a>
+              )}
+            </div>
+          </div>
+        )}
+
         {appProduction && (
           <div className="rounded-2xl border border-cyan-700/50 bg-cyan-950/20 p-4 space-y-3">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1289,7 +1485,7 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
           </div>
         )}
 
-        {appProductionRepairs && appProductionRepairs.items.length > 0 && (
+        {appProductionRepairs && ((appProductionRepairs.items?.length ?? 0) > 0 || (appProductionRepairs.attempts?.length ?? 0) > 0) && (
           <div className="rounded-2xl border border-amber-700/50 bg-amber-950/20 p-4 space-y-3">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -1298,11 +1494,19 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
                   Failed generated-app gates have been converted into structured repair targets with root-cause ordering.
                 </div>
               </div>
-              <div className="rounded border border-amber-700/60 bg-amber-900/30 px-2 py-1 text-[11px] text-amber-100">
-                Status: {appProductionRepairs.status}
+              <div className="flex flex-wrap gap-2 text-[11px]">
+                <div className="rounded border border-amber-700/60 bg-amber-900/30 px-2 py-1 text-amber-100">
+                  Status: {appProductionRepairs.status}
+                </div>
+                {appProductionRepairs.executionStatus && (
+                  <div className="rounded border border-slate-700 bg-slate-900/50 px-2 py-1 text-slate-200">
+                    Execution: {appProductionRepairs.executionStatus}
+                  </div>
+                )}
               </div>
             </div>
-            <div className="space-y-2">
+            {(appProductionRepairs.items?.length ?? 0) > 0 && (
+              <div className="space-y-2">
               {appProductionRepairs.items.map((item) => (
                 <div key={item.id} className="rounded-xl border border-slate-800 bg-slate-900/50 p-3 text-xs text-slate-300 space-y-1">
                   <div className="flex flex-wrap items-center gap-2">
@@ -1331,7 +1535,52 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
                   )}
                 </div>
               ))}
-            </div>
+              </div>
+            )}
+            {appProductionRepairs.attempts && appProductionRepairs.attempts.length > 0 && (
+              <div className="space-y-2">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Execution Attempts</div>
+                {appProductionRepairs.attempts.map((attempt) => (
+                  <div key={`${attempt.attempt}-${attempt.gate}`} className="rounded-xl border border-slate-800 bg-slate-900/50 p-3 text-xs text-slate-300 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-semibold text-slate-100">Attempt {attempt.attempt}</span>
+                      <span className="rounded border border-amber-700 bg-amber-900/30 px-2 py-0.5 text-[10px] uppercase tracking-wide text-amber-100">
+                        {attempt.gate}
+                      </span>
+                      <span className={`rounded border px-2 py-0.5 text-[10px] uppercase tracking-wide ${
+                        attempt.status === 'verified'
+                          ? 'border-emerald-700 bg-emerald-900/30 text-emerald-100'
+                          : attempt.status === 'failed'
+                            ? 'border-rose-700 bg-rose-900/30 text-rose-100'
+                            : 'border-slate-700 bg-slate-900/70 text-slate-300'
+                      }`}>
+                        {attempt.status}
+                      </span>
+                      {attempt.verificationStatus && (
+                        <span className="text-[11px] text-slate-400">Verification: {attempt.verificationStatus}</span>
+                      )}
+                    </div>
+                    {attempt.summary && <div><span className="font-semibold text-slate-200">Summary:</span> {attempt.summary}</div>}
+                    {attempt.error && <div><span className="font-semibold text-slate-200">Error:</span> {attempt.error}</div>}
+                    {attempt.model && <div><span className="font-semibold text-slate-200">Model:</span> <code>{attempt.model}</code></div>}
+                    {attempt.filesWritten && attempt.filesWritten.length > 0 && (
+                      <div><span className="font-semibold text-slate-200">Files written:</span> {attempt.filesWritten.join(', ')}</div>
+                    )}
+                    {attempt.notes && attempt.notes.length > 0 && (
+                      <ul className="list-disc pl-4 space-y-1 text-slate-300">
+                        {attempt.notes.map((note) => (
+                          <li key={note}>{note}</li>
+                        ))}
+                      </ul>
+                    )}
+                    <div className="flex flex-wrap gap-4 text-[11px] text-slate-500">
+                      {attempt.startedAt && <span>Started: {new Date(attempt.startedAt).toLocaleString()}</span>}
+                      {attempt.completedAt && <span>Completed: {new Date(attempt.completedAt).toLocaleString()}</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="flex flex-wrap gap-2 text-[11px]">
               {appProductionRepairReportPath && (
                 <a
@@ -1359,6 +1608,34 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
                   }}
                 >
                   Open repair summary
+                </a>
+              )}
+              {appProductionRepairExecutionReportPath && (
+                <a
+                  className="rounded border border-amber-700/60 bg-amber-900/30 px-2 py-1 text-amber-100 hover:bg-amber-900/50"
+                  href={toFileUrl(appProductionRepairExecutionReportPath)}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(event) => {
+                    event.preventDefault()
+                    void openPath(appProductionRepairExecutionReportPath)
+                  }}
+                >
+                  Open execution JSON
+                </a>
+              )}
+              {appProductionRepairExecutionSummaryPath && (
+                <a
+                  className="rounded border border-slate-700 bg-slate-900/40 px-2 py-1 text-slate-200 hover:bg-slate-800/60"
+                  href={toFileUrl(appProductionRepairExecutionSummaryPath)}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(event) => {
+                    event.preventDefault()
+                    void openPath(appProductionRepairExecutionSummaryPath)
+                  }}
+                >
+                  Open execution summary
                 </a>
               )}
             </div>

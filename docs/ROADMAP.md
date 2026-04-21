@@ -1,6 +1,6 @@
 # Unified AI Toolbox Roadmap
 
-Last updated: 2026-04-05
+Last updated: 2026-04-21
 
 ## Purpose
 
@@ -28,6 +28,7 @@ This file is the single roadmap source for active feature delivery.
 | RM-009 | App Factory Phase 1 — Closed Feedback Loop | done | next | Sandbox engine, acceptance-check evaluator, refinement loop controller, verify/refine API endpoints, and Run Detail Verification tab all delivered |
 | RM-010 | Orchestration experience unification (story-led UX, recipe reuse, cast assembly) | in_progress | next | Product narrative unified from intake through run review; prompts/agents/tools reusable in-context; run experience organized around story, chapters, and lessons |
 | RM-011 | App production loop (generated app verification, repair routing, functioning-app completion) | in_progress | next | `build_new_app` runs produce a materialized app with executable gate evidence, targeted repair routing, and a deliverable that is verifiably runnable |
+| RM-012 | Frontier software factory (multi-lane arena, trace-graded adjudication, frontier agent lanes) | in_progress | next | One run can execute multiple isolated candidate lanes, compare them with explicit evidence and traces, and promote the best verified outcome instead of relying on a single implementation lane |
 
 ## Side-track policy
 
@@ -322,10 +323,10 @@ Every roadmap-impacting tradeoff gets a `DEC-###` record in `IMPLEMENTATION_SUMM
   Ref: `apps/UnifiedPromptApp/services/prompt-api/orchestrator_verifier.py`, `apps/UnifiedPromptApp/services/prompt-api/app.py`  
   Notes: The shared verifier now detects Node package managers, executes dependency installation with bounded commands, and proves dev-server startup with a local health probe. Generated-app summaries explicitly mark downstream gates as skipped when install fails, so operators see prerequisite failure instead of misleading follow-on build/test noise.
 
-- [ ] Route failing generated-app gates into targeted repair loops instead of leaving them as informational summaries.  
-  Date opened: 2026-04-05  
-  Ref: `docs/future-agent-handoff-app-production.md`  
-  Notes: Failed gates should produce agent-specific repair tasks with evidence attached, while honoring prerequisite semantics introduced by deterministic app-production proof. In particular, `install` is now a root-cause gate and downstream `skipped` checks should not be routed as independent failures. Structured repair targets are now emitted in the run manifest and Run Detail; the remaining work is automatic repair execution and re-verification.
+- [x] Route failing generated-app gates into targeted repair loops instead of leaving them as informational summaries.  
+  Date: 2026-04-21  
+  Ref: `apps/UnifiedPromptApp/services/prompt-api/app.py`, `apps/unifiedtoolbox.webapp/src/app/runs/[runId]/page.tsx`  
+  Notes: Actionable generated-app repair targets now trigger a bounded model-driven repair attempt when credentials are present, persist execution artifacts/status in the run manifest, and rerun verification so Run Detail shows both the route and what the repair loop actually changed.
 
 - [ ] Add demo-mode / UX smoke verification for frontend app briefs.  
   Date opened: 2026-04-05  
@@ -336,6 +337,33 @@ Every roadmap-impacting tradeoff gets a `DEC-###` record in `IMPLEMENTATION_SUMM
   Date opened: 2026-04-05  
   Ref: `docs/application-production-path.md`  
   Notes: A run should end with a clear readiness state such as `repair_needed`, `verified`, or `ready_for_delivery`, backed by build/smoke evidence and artifact completeness.
+
+## RM-012 Worklist (Frontier software factory)
+
+- [x] Define the canonical multi-lane candidate manifest and event schema without breaking the current single-lane run contract.  
+  Date: 2026-04-21  
+  Ref: `docs/frontier-software-factory-strategy.md`, `apps/UnifiedPromptApp/services/prompt-api/arena.py`, `apps/unifiedtoolbox.webapp/src/lib/types/orchestrator.ts`  
+  Notes: Canonical lane / arena schema (schema_version `1`) wraps the existing orchestration as the `internal-default` lane via `build_internal_lane_record`, leaving the single-lane run contract intact. Extra lanes can be merged through `build_arena_record(extra_lanes=…)` without touching the core orchestration code path.
+
+- [x] Add an arena adjudication artifact that compares candidate lanes using explicit evidence and produces a winner with reasons.  
+  Date: 2026-04-21  
+  Ref: `apps/UnifiedPromptApp/services/prompt-api/arena.py`, `apps/UnifiedPromptApp/services/prompt-api/app.py`, `apps/unifiedtoolbox.webapp/src/app/runs/[runId]/page.tsx`  
+  Notes: `adjudicate_lanes` produces a verdict (winner, score, confidence, reasons, loser rationale, follow-up) using whole-candidate comparison over gate pass-rate, delivery readiness, repair efficiency, patch-size penalty, and verification status. Persisted as `arena.json` + `arena.md` next to the run manifest, attached to the manifest under `arena`, and rendered in Run Detail. Tests in `tests/test_arena.py`.
+
+- [ ] Add frontend browser-evidence verification as a first-class evaluation lane for app-generation runs.  
+  Date opened: 2026-04-21  
+  Ref: `docs/frontier-software-factory-strategy.md`, `docs/application-production-path.md`  
+  Notes: For frontend briefs, route/section/interactions/responsive proof should become required evidence rather than an optional future enhancement.
+
+- [ ] Introduce optional frontier provider lanes behind the canonical lane contract.  
+  Date opened: 2026-04-21  
+  Ref: `docs/frontier-software-factory-strategy.md`  
+  Notes: Add external execution lanes only after the manifest/eval seam exists. Prefer a provider-neutral wrapper over product-specific branching in the core run model.
+
+- [ ] Feed arena outcomes back into Knowledge and recipe recommendations.  
+  Date opened: 2026-04-21  
+  Ref: `docs/frontier-software-factory-strategy.md`  
+  Notes: Future similar runs should learn which lane, model, repair style, and recipe historically produced the best verified outcomes for the same goal archetype.
 
 ## RM-004 Worklist (MCP governance end-to-end)
 

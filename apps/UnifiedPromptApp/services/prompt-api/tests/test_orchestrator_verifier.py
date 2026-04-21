@@ -192,3 +192,160 @@ def test_summarize_app_production_counts_install_failure_and_skips(tmp_path):
     assert checks["lint"]["status"] == "skipped"
     assert checks["build"]["status"] == "skipped"
     assert checks["dev_server"]["status"] == "skipped"
+
+
+def test_execute_app_production_repairs_marks_blocked_without_api_key(tmp_path, monkeypatch):
+    out_dir = tmp_path / "run"
+    out_dir.mkdir()
+    app_dir = out_dir / "generated_app"
+    app_dir.mkdir()
+    (app_dir / "package.json").write_text(json.dumps({"name": "generated-app"}), encoding="utf-8")
+
+    monkeypatch.setattr(app_module, "OPENAI_API_KEY", "")
+
+    app_production = {
+        "status": "repair_needed",
+        "delivery_readiness": "repair_needed",
+        "app_dir": "generated_app",
+        "checks": [
+            {"name": "install", "status": "failed", "summary": "npm ci failed"},
+        ],
+        "passed_count": 0,
+        "failed_count": 1,
+        "skipped_count": 0,
+    }
+    repair_plan = {
+        "status": "actionable",
+        "items": [
+            {
+                "id": "app-production-install",
+                "gate": "install",
+                "agent": "Engineer",
+                "priority": "high",
+                "summary": "Fix install",
+            }
+        ],
+    }
+
+    updated_production, updated_plan = app_module._execute_app_production_repairs(
+        out_dir,
+        app_dir,
+        app_production,
+        repair_plan,
+        model="gpt-test",
+    )
+
+    assert updated_production["status"] == "repair_needed"
+    assert updated_plan["execution_status"] == "blocked_missing_api_key"
+    assert updated_plan["attempts"] == []
+    assert updated_plan["execution_report_artifact"] == "generated_app_repair_execution.json"
+
+
+def test_execute_app_production_repairs_applies_model_edits_and_reverifies(tmp_path, monkeypatch):
+    out_dir = tmp_path / "run"
+    out_dir.mkdir()
+    app_dir = out_dir / "generated_app"
+    app_dir.mkdir()
+    (app_dir / "package.json").write_text(
+        json.dumps({"name": "generated-app", "scripts": {"build": "vite build"}}),
+        encoding="utf-8",
+    )
+    (app_dir / "src").mkdir()
+    (app_dir / "src" / "main.tsx").write_text("console.log('broken')\n", encoding="utf-8")
+
+    monkeypatch.setattr(app_module, "OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr(app_module, "APP_PRODUCTION_REPAIR_MAX_ATTEMPTS", 1)
+
+    def fake_call_provider_chat(model, messages):
+        assert model == "gpt-test"
+        assert any("Repair gate: build" in message["content"] for message in messages if message["role"] == "user")
+        return (
+            {
+                "summary": "Fixed the generated entrypoint.",
+                "files": [
+                    {
+                        "path": "src/main.tsx",
+                        "content": "console.log('fixed')",
+                        "reason": "Resolve the build error in the generated entrypoint.",
+                    }
+                ],
+                "notes": ["Repaired the generated app entrypoint."],
+            },
+            {},
+        )
+
+    class FakeVerifier:
+        def __init__(self, run_dir, log_dir=None):
+            self.run_dir = run_dir
+            self.log_dir = log_dir
+
+        def run_all_verifications(self):
+            return {
+                "install_result": {
+                    "passed": True,
+                    "output": "install ok",
+                    "command": "npm ci --no-audit --no-fund",
+                    "exit_code": 0,
+                },
+                "lint_result": None,
+                "build_result": {
+                    "passed": True,
+                    "output": "build ok",
+                    "command": "npm run build",
+                    "exit_code": 0,
+                },
+                "unit_test_result": None,
+                "smoke_test_result": None,
+                "dev_server_result": None,
+                "docker_compose_valid": None,
+            }
+
+    monkeypatch.setattr(app_module, "call_provider_chat", fake_call_provider_chat)
+    monkeypatch.setattr(app_module, "OrchestratorVerifier", FakeVerifier)
+
+    app_production = {
+        "status": "repair_needed",
+        "delivery_readiness": "repair_needed",
+        "app_dir": "generated_app",
+        "checks": [
+            {
+                "name": "build",
+                "status": "failed",
+                "summary": "Build failed",
+                "command": "npm run build",
+                "log_artifact": "logs/generated_app/build.log",
+            },
+        ],
+        "passed_count": 0,
+        "failed_count": 1,
+        "skipped_count": 0,
+    }
+    repair_plan = {
+        "status": "actionable",
+        "items": [
+            {
+                "id": "app-production-build",
+                "gate": "build",
+                "agent": "Engineer",
+                "priority": "high",
+                "summary": "Fix the build",
+                "failure_summary": "Build failed",
+                "command": "npm run build",
+            }
+        ],
+    }
+
+    updated_production, updated_plan = app_module._execute_app_production_repairs(
+        out_dir,
+        app_dir,
+        app_production,
+        repair_plan,
+        model="gpt-test",
+    )
+
+    assert (app_dir / "src" / "main.tsx").read_text(encoding="utf-8") == "console.log('fixed')\n"
+    assert updated_production["status"] == "verified"
+    assert updated_plan["status"] == "not_needed"
+    assert updated_plan["execution_status"] == "verified"
+    assert len(updated_plan["attempts"]) == 1
+    assert updated_plan["attempts"][0]["status"] == "verified"

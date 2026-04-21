@@ -80,11 +80,119 @@ export interface AppProductionRepairTarget {
   recommendedActions?: string[]
 }
 
+export interface AppProductionRepairAttempt {
+  attempt: number
+  gate: string
+  status: string
+  summary?: string
+  error?: string
+  model?: string | null
+  startedAt?: string | null
+  completedAt?: string | null
+  filesWritten?: string[]
+  notes?: string[]
+  verificationStatus?: string
+}
+
 export interface AppProductionRepairPlan {
   status: string
   reportArtifact?: string
   summaryArtifact?: string
+  executionStatus?: string
+  executionReportArtifact?: string
+  executionSummaryArtifact?: string
   items: AppProductionRepairTarget[]
+  attempts?: AppProductionRepairAttempt[]
+}
+
+// ── Frontier Arena (multi-lane candidate adjudication) ───────────────────────
+// See `docs/frontier-software-factory-strategy.md` for the canonical schema.
+
+export interface ArenaGateVerdict {
+  name: string
+  status: string
+}
+
+export interface ArenaLaneGates {
+  passed: number
+  failed: number
+  skipped: number
+  verdicts: ArenaGateVerdict[]
+}
+
+export interface ArenaLaneRepair {
+  targets: number
+  attempts: number
+  status: string
+}
+
+export interface ArenaLaneEvidence {
+  filesChangedCount: number
+  filesChanged: string[]
+  commandsRunCount: number
+  checkpointsTriggered: number
+  eventsRecorded: number
+  gates: ArenaLaneGates
+  repair: ArenaLaneRepair
+  verificationStatus: string
+  deliveryReadiness: string
+}
+
+export interface ArenaLaneScore {
+  total: number
+  components: Record<string, number>
+}
+
+export interface ArenaLaneArtifacts {
+  appProductionReport?: string | null
+  appProductionSummary?: string | null
+  repairReport?: string | null
+  repairExecutionReport?: string | null
+}
+
+export interface ArenaLane {
+  laneId: string
+  provider: string
+  label: string
+  status: string
+  startedAt?: string | null
+  completedAt?: string | null
+  evidence: ArenaLaneEvidence
+  score: ArenaLaneScore
+  artifacts?: ArenaLaneArtifacts
+}
+
+export interface ArenaLoserReason {
+  laneId?: string
+  score: number
+  rationale: string
+}
+
+export interface ArenaCriteria {
+  mustHave: string[]
+  niceToHave: string[]
+  intent?: string | null
+}
+
+export interface ArenaVerdict {
+  winnerLaneId?: string
+  winnerScore: number
+  confidence: 'low' | 'medium' | 'high' | string
+  reasons: string[]
+  loserReasons: ArenaLoserReason[]
+  followUp: string[]
+  criteria: ArenaCriteria
+}
+
+export interface ArenaRecord {
+  schemaVersion: string
+  runId?: string
+  intent?: string | null
+  generatedAt?: string
+  lanes: ArenaLane[]
+  verdict: ArenaVerdict
+  reportArtifact?: string
+  summaryArtifact?: string
 }
 
 // ── Phase 1: Verification / Sandbox types ─────────────────────────────────────
@@ -207,6 +315,7 @@ export interface OrchestrationRun {
   generatedAppFiles?: string[]
   appProduction?: AppProductionReport
   appProductionRepairs?: AppProductionRepairPlan
+  arena?: ArenaRecord
 
   // Output
   output?: string

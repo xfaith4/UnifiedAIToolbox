@@ -9,6 +9,7 @@ This index is the canonical map of documentation in the Unified AI Toolbox repos
 - **Orchestration experience roadmap:** `docs/orchestration-experience-roadmap.md`
 - **Application production path:** `docs/application-production-path.md`
 - **Future agent handoff (app production):** `docs/future-agent-handoff-app-production.md`
+- **Frontier software factory strategy:** `docs/frontier-software-factory-strategy.md`
 
 ## Apps and services
 

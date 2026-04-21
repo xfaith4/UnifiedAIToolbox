@@ -1,6 +1,9 @@
 'use client'
 
 import type {
+  ArenaLane,
+  ArenaLoserReason,
+  ArenaRecord,
   OrchestrationRun,
   OrchestrationRunEvent,
   RepoOrchestrationEvent,
@@ -376,6 +379,182 @@ export async function fetchOrchestrationRunLog(
   }
 }
 
+function pickString(value: unknown, fallback: string): string {
+  return typeof value === 'string' && value.length > 0 ? value : fallback
+}
+
+function pickNumber(value: unknown, fallback = 0): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number(value)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return fallback
+}
+
+function normalizeArenaLane(raw: Record<string, unknown>): ArenaLane {
+  const evidenceRaw = (raw.evidence && typeof raw.evidence === 'object' ? raw.evidence : {}) as Record<string, unknown>
+  const gatesRaw = (evidenceRaw.gates && typeof evidenceRaw.gates === 'object' ? evidenceRaw.gates : {}) as Record<string, unknown>
+  const repairRaw = (evidenceRaw.repair && typeof evidenceRaw.repair === 'object' ? evidenceRaw.repair : {}) as Record<string, unknown>
+  const scoreRaw = (raw.score && typeof raw.score === 'object' ? raw.score : {}) as Record<string, unknown>
+  const componentsRaw = (scoreRaw.components && typeof scoreRaw.components === 'object' ? scoreRaw.components : {}) as Record<string, unknown>
+  const artifactsRaw = (raw.artifacts && typeof raw.artifacts === 'object' ? raw.artifacts : {}) as Record<string, unknown>
+
+  const verdicts = Array.isArray(gatesRaw.verdicts)
+    ? (gatesRaw.verdicts as unknown[])
+        .filter((v): v is Record<string, unknown> => Boolean(v && typeof v === 'object'))
+        .map((v) => ({
+          name: pickString(v.name, 'check'),
+          status: pickString(v.status, 'unknown'),
+        }))
+    : []
+
+  const components: Record<string, number> = {}
+  for (const [key, value] of Object.entries(componentsRaw)) {
+    if (typeof value === 'number' && Number.isFinite(value)) components[key] = value
+  }
+
+  return {
+    laneId: pickString(raw.lane_id ?? raw.laneId, 'lane'),
+    provider: pickString(raw.provider, 'unknown'),
+    label: pickString(raw.label, 'Lane'),
+    status: pickString(raw.status, 'unknown'),
+    startedAt: typeof raw.started_at === 'string' ? raw.started_at : typeof raw.startedAt === 'string' ? raw.startedAt : null,
+    completedAt: typeof raw.completed_at === 'string' ? raw.completed_at : typeof raw.completedAt === 'string' ? raw.completedAt : null,
+    evidence: {
+      filesChangedCount: pickNumber(evidenceRaw.files_changed_count ?? evidenceRaw.filesChangedCount),
+      filesChanged: Array.isArray(evidenceRaw.files_changed)
+        ? (evidenceRaw.files_changed as unknown[]).map((v) => String(v))
+        : Array.isArray(evidenceRaw.filesChanged)
+          ? (evidenceRaw.filesChanged as unknown[]).map((v) => String(v))
+          : [],
+      commandsRunCount: pickNumber(evidenceRaw.commands_run_count ?? evidenceRaw.commandsRunCount),
+      checkpointsTriggered: pickNumber(evidenceRaw.checkpoints_triggered ?? evidenceRaw.checkpointsTriggered),
+      eventsRecorded: pickNumber(evidenceRaw.events_recorded ?? evidenceRaw.eventsRecorded),
+      gates: {
+        passed: pickNumber(gatesRaw.passed),
+        failed: pickNumber(gatesRaw.failed),
+        skipped: pickNumber(gatesRaw.skipped),
+        verdicts,
+      },
+      repair: {
+        targets: pickNumber(repairRaw.targets),
+        attempts: pickNumber(repairRaw.attempts),
+        status: pickString(repairRaw.status, 'unknown'),
+      },
+      verificationStatus: pickString(evidenceRaw.verification_status ?? evidenceRaw.verificationStatus, 'pending'),
+      deliveryReadiness: pickString(evidenceRaw.delivery_readiness ?? evidenceRaw.deliveryReadiness, 'insufficient_evidence'),
+    },
+    score: {
+      total: pickNumber(scoreRaw.total),
+      components,
+    },
+    artifacts: {
+      appProductionReport:
+        typeof artifactsRaw.app_production_report === 'string'
+          ? artifactsRaw.app_production_report
+          : typeof artifactsRaw.appProductionReport === 'string'
+            ? artifactsRaw.appProductionReport
+            : null,
+      appProductionSummary:
+        typeof artifactsRaw.app_production_summary === 'string'
+          ? artifactsRaw.app_production_summary
+          : typeof artifactsRaw.appProductionSummary === 'string'
+            ? artifactsRaw.appProductionSummary
+            : null,
+      repairReport:
+        typeof artifactsRaw.repair_report === 'string'
+          ? artifactsRaw.repair_report
+          : typeof artifactsRaw.repairReport === 'string'
+            ? artifactsRaw.repairReport
+            : null,
+      repairExecutionReport:
+        typeof artifactsRaw.repair_execution_report === 'string'
+          ? artifactsRaw.repair_execution_report
+          : typeof artifactsRaw.repairExecutionReport === 'string'
+            ? artifactsRaw.repairExecutionReport
+            : null,
+    },
+  }
+}
+
+function normalizeArena(raw: unknown): ArenaRecord | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const obj = raw as Record<string, unknown>
+  const lanesRaw = Array.isArray(obj.lanes) ? (obj.lanes as unknown[]) : []
+  const lanes = lanesRaw
+    .filter((l): l is Record<string, unknown> => Boolean(l && typeof l === 'object'))
+    .map((l) => normalizeArenaLane(l))
+  if (lanes.length === 0) return undefined
+
+  const verdictRaw = (obj.verdict && typeof obj.verdict === 'object' ? obj.verdict : {}) as Record<string, unknown>
+  const criteriaRaw = (verdictRaw.criteria && typeof verdictRaw.criteria === 'object' ? verdictRaw.criteria : {}) as Record<string, unknown>
+  const reasonsRaw = Array.isArray(verdictRaw.reasons) ? (verdictRaw.reasons as unknown[]) : []
+  const followUpRaw = Array.isArray(verdictRaw.follow_up)
+    ? (verdictRaw.follow_up as unknown[])
+    : Array.isArray(verdictRaw.followUp)
+      ? (verdictRaw.followUp as unknown[])
+      : []
+  const loserReasonsRaw = Array.isArray(verdictRaw.loser_reasons)
+    ? (verdictRaw.loser_reasons as unknown[])
+    : Array.isArray(verdictRaw.loserReasons)
+      ? (verdictRaw.loserReasons as unknown[])
+      : []
+  const loserReasons: ArenaLoserReason[] = loserReasonsRaw
+    .filter((l): l is Record<string, unknown> => Boolean(l && typeof l === 'object'))
+    .map((l) => ({
+      laneId: typeof l.lane_id === 'string' ? l.lane_id : typeof l.laneId === 'string' ? l.laneId : undefined,
+      score: pickNumber(l.score),
+      rationale: pickString(l.rationale, ''),
+    }))
+
+  return {
+    schemaVersion: pickString(obj.schema_version ?? obj.schemaVersion, '1'),
+    runId: typeof obj.run_id === 'string' ? obj.run_id : typeof obj.runId === 'string' ? obj.runId : undefined,
+    intent: typeof obj.intent === 'string' ? obj.intent : null,
+    generatedAt: typeof obj.generated_at === 'string' ? obj.generated_at : typeof obj.generatedAt === 'string' ? obj.generatedAt : undefined,
+    lanes,
+    verdict: {
+      winnerLaneId:
+        typeof verdictRaw.winner_lane_id === 'string'
+          ? verdictRaw.winner_lane_id
+          : typeof verdictRaw.winnerLaneId === 'string'
+            ? verdictRaw.winnerLaneId
+            : undefined,
+      winnerScore: pickNumber(verdictRaw.winner_score ?? verdictRaw.winnerScore),
+      confidence: pickString(verdictRaw.confidence, 'low'),
+      reasons: reasonsRaw.map((r) => String(r)).filter((r) => r.length > 0),
+      loserReasons,
+      followUp: followUpRaw.map((f) => String(f)).filter((f) => f.length > 0),
+      criteria: {
+        mustHave: Array.isArray(criteriaRaw.must_have)
+          ? (criteriaRaw.must_have as unknown[]).map((v) => String(v))
+          : Array.isArray(criteriaRaw.mustHave)
+            ? (criteriaRaw.mustHave as unknown[]).map((v) => String(v))
+            : [],
+        niceToHave: Array.isArray(criteriaRaw.nice_to_have)
+          ? (criteriaRaw.nice_to_have as unknown[]).map((v) => String(v))
+          : Array.isArray(criteriaRaw.niceToHave)
+            ? (criteriaRaw.niceToHave as unknown[]).map((v) => String(v))
+            : [],
+        intent: typeof criteriaRaw.intent === 'string' ? criteriaRaw.intent : null,
+      },
+    },
+    reportArtifact:
+      typeof obj.report_artifact === 'string'
+        ? obj.report_artifact
+        : typeof obj.reportArtifact === 'string'
+          ? obj.reportArtifact
+          : undefined,
+    summaryArtifact:
+      typeof obj.summary_artifact === 'string'
+        ? obj.summary_artifact
+        : typeof obj.summaryArtifact === 'string'
+          ? obj.summaryArtifact
+          : undefined,
+  }
+}
+
 /**
  * Normalize an API response into the client-side OrchestrationRun type
  */
@@ -548,6 +727,24 @@ function normalizeApiRun(raw: Record<string, unknown>): OrchestrationRun {
             : (raw.app_production_repairs as Record<string, unknown>).summaryArtifact
               ? String((raw.app_production_repairs as Record<string, unknown>).summaryArtifact)
               : undefined,
+        executionStatus:
+          (raw.app_production_repairs as Record<string, unknown>).execution_status
+            ? String((raw.app_production_repairs as Record<string, unknown>).execution_status)
+            : (raw.app_production_repairs as Record<string, unknown>).executionStatus
+              ? String((raw.app_production_repairs as Record<string, unknown>).executionStatus)
+              : undefined,
+        executionReportArtifact:
+          (raw.app_production_repairs as Record<string, unknown>).execution_report_artifact
+            ? String((raw.app_production_repairs as Record<string, unknown>).execution_report_artifact)
+            : (raw.app_production_repairs as Record<string, unknown>).executionReportArtifact
+              ? String((raw.app_production_repairs as Record<string, unknown>).executionReportArtifact)
+              : undefined,
+        executionSummaryArtifact:
+          (raw.app_production_repairs as Record<string, unknown>).execution_summary_artifact
+            ? String((raw.app_production_repairs as Record<string, unknown>).execution_summary_artifact)
+            : (raw.app_production_repairs as Record<string, unknown>).executionSummaryArtifact
+              ? String((raw.app_production_repairs as Record<string, unknown>).executionSummaryArtifact)
+              : undefined,
         items: Array.isArray((raw.app_production_repairs as Record<string, unknown>).items)
           ? ((raw.app_production_repairs as Record<string, unknown>).items as unknown[])
               .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'))
@@ -580,6 +777,34 @@ function normalizeApiRun(raw: Record<string, unknown>): OrchestrationRun {
                     : undefined,
               }))
           : [],
+        attempts: Array.isArray((raw.app_production_repairs as Record<string, unknown>).attempts)
+          ? ((raw.app_production_repairs as Record<string, unknown>).attempts as unknown[])
+              .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'))
+              .map((item) => ({
+                attempt: Number(item.attempt || 0),
+                gate: String(item.gate || 'gate'),
+                status: String(item.status || 'unknown'),
+                summary: item.summary ? String(item.summary) : undefined,
+                error: item.error ? String(item.error) : undefined,
+                model: item.model == null ? null : String(item.model),
+                startedAt:
+                  item.started_at ? String(item.started_at) : item.startedAt ? String(item.startedAt) : null,
+                completedAt:
+                  item.completed_at ? String(item.completed_at) : item.completedAt ? String(item.completedAt) : null,
+                filesWritten: Array.isArray(item.files_written)
+                  ? item.files_written.map((entry) => String(entry))
+                  : Array.isArray(item.filesWritten)
+                    ? item.filesWritten.map((entry) => String(entry))
+                    : undefined,
+                notes: Array.isArray(item.notes) ? item.notes.map((entry) => String(entry)) : undefined,
+                verificationStatus:
+                  item.verification_status
+                    ? String(item.verification_status)
+                    : item.verificationStatus
+                      ? String(item.verificationStatus)
+                      : undefined,
+              }))
+          : undefined,
       }
     : undefined
   const sandboxReport = rawSandboxReport
@@ -679,6 +904,7 @@ function normalizeApiRun(raw: Record<string, unknown>): OrchestrationRun {
     generatedAppFiles: Array.isArray(raw.generated_app_files) ? raw.generated_app_files.map(String) : undefined,
     appProduction,
     appProductionRepairs,
+    arena: normalizeArena(raw.arena),
   }
 }
 

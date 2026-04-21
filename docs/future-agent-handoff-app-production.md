@@ -136,6 +136,7 @@ These items are already done:
 - Node project verification now detects package manager, runs install deterministically, and attempts bounded dev-server proof
 - generated-app summaries mark downstream executable checks as skipped when install fails, preserving clearer causal evidence
 - failed generated-app gates now emit structured repair targets with owner, priority, evidence, and blocked-check lineage
+- actionable generated-app repair targets now drive a bounded auto-repair attempt plus persisted re-verification evidence when model credentials are available
 
 ## The first slice should stay small
 
@@ -235,10 +236,10 @@ The next repair-routing phase should use the hardened gate model as input:
 - preserve `failed` vs `skipped` semantics in any repair summary, learning artifact, or operator UI
 - assume the app-production verifier is now the canonical place for package-manager-aware command selection
 
-The remaining gap is execution:
+The remaining gap is no longer basic execution. The next work should improve evidence quality:
 
-- the repo can now derive and display repair targets
-- it does not yet automatically execute those repairs and re-run only the affected gates
+- the repo can now derive, execute, and display bounded generated-app repairs
+- frontend-focused briefs still need UX-specific smoke proof beyond package/build/runtime checks
 
 ## Known environment limitations from the current session
 
