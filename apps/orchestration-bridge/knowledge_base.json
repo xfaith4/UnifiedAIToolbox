@@ -1,5 +1,66 @@
 [
   {
+    "run_id": "Build_the_Genesys_Cloud_Insights_Generator_dashboard_using_React_and_Vite.2026-05-01T09-01-13Z",
+    "ingested_at": "2026-05-01T09:01:17Z",
+    "goal": "Build the Genesys Cloud Insights Generator dashboard using React and Vite.",
+    "goal_tokens": [
+      "build",
+      "genesys",
+      "cloud",
+      "insights",
+      "generator",
+      "dashboard",
+      "using",
+      "react",
+      "vite"
+    ],
+    "status": "awaiting_input",
+    "verification_status": "needs_requirements",
+    "knowledge_status": "fail",
+    "knowledge_score": 0,
+    "learning": {
+      "classification": "knowledge_generation_failure",
+      "what_broke": "Knowledge artifact generation crashed.",
+      "root_cause": "name 'app_production_repairs_payload' is not defined",
+      "evidence": [
+        "name 'app_production_repairs_payload' is not defined"
+      ],
+      "prevention_patches": [],
+      "regression_checks": [],
+      "questions_needed": [],
+      "corrective_actions": [],
+      "instruction_adjustments": []
+    },
+    "checkpoint_history": [
+      {
+        "id": "ConceptualModelContract:What specific metrics or data points sho",
+        "agent": "ConceptualModelContract",
+        "question": "What specific metrics or data points should the Genesys Cloud Insights Generator dashboard display? What are the user interactions expected on the dashboard? Are there any performance benchmarks or accessibility standards that need to be met?",
+        "options": [
+          "Provide explicit requirements answers",
+          "Revise the goal and resume"
+        ],
+        "default_option": "Provide explicit requirements answers",
+        "requested_at": "2026-05-01T09:01:17Z",
+        "response": null,
+        "responded_at": null,
+        "resolved_by": null,
+        "status": null,
+        "answers": []
+      }
+    ],
+    "corrective_actions": [],
+    "app_production_repairs": {},
+    "instruction_adjustments": [],
+    "agents": [
+      "Supervisor",
+      "Engineer",
+      "Critic"
+    ],
+    "model": "gpt-5.2",
+    "synthesis_present": false
+  },
+  {
     "run_id": "Design_and_build_the_next_maintainable_version_of_the_Home_Telemetry_Dashboard_Syslog_Edition_end-to-end.2026-04-08T08-01-50Z",
     "ingested_at": "2026-04-08T08:01:53Z",
     "goal": "Design and build the next maintainable version of the Home Telemetry Dashboard (Syslog Edition) end-to-end.",

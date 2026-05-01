@@ -632,13 +632,10 @@ def _build_requirements_request_packet(commissioner_payload: Dict[str, Any]) -> 
         _normalize_requirements_blocker(raw, idx)
         for idx, raw in enumerate(missing_sources)
     ]
-
-    if not normalized_blockers:
-        normalized_blockers = [
-            _normalize_requirements_blocker(None, 0),
-            _normalize_requirements_blocker(None, 1),
-            _normalize_requirements_blocker(None, 2),
-        ]
+    # Do not synthesize phantom blockers when the agent returned none — that
+    # forced every run to interrogate the user for "measurable outcomes" /
+    # "success criteria" even when industry defaults were sufficient. Agents
+    # are expected to fill in defaults rather than the user answering.
 
     proposed_tests_raw = commissioner_payload.get("proposed_acceptance_tests")
     if not isinstance(proposed_tests_raw, list):
@@ -711,7 +708,11 @@ def _evaluate_commissioner_decision(payload: Dict[str, Any]) -> Tuple[str, str, 
     blockers = packet.get("blockers") if isinstance(packet, dict) else []
     has_blockers = isinstance(blockers, list) and len(blockers) > 0
 
-    if decision_hint in {"needs_requirements", "blocked_requirements", "needs_info"}:
+    # Only block on explicit needs_requirements when the agent actually
+    # surfaced concrete blockers. A bare hint with no blockers means the
+    # agent could not name a real gap — proceed with industry defaults.
+    explicit_needs = decision_hint in {"needs_requirements", "blocked_requirements", "needs_info"}
+    if explicit_needs and has_blockers:
         return (
             "needs_requirements",
             f"Requirements needed: {len(blockers)} blocker(s) must be answered before implementation can continue.",
@@ -724,22 +725,31 @@ def _evaluate_commissioner_decision(payload: Dict[str, Any]) -> Tuple[str, str, 
             },
         )
 
-    if score_value is not None and score_value >= 7 and not has_blockers:
+    # Block on real blockers regardless of score.
+    if has_blockers:
         return (
-            "passed",
-            f"Commissioner score: {score_raw}/10, recommendation: {recommendation or 'proceed'}",
-            {"value_score": score_raw, "recommendation": recommendation, "commissioner_decision": "success"},
+            "needs_requirements",
+            f"Requirements needed: {len(blockers)} blocker(s) must be answered before implementation can continue.",
+            {
+                "value_score": score_raw,
+                "recommendation": recommendation,
+                "commissioner_decision": "needs_requirements",
+                "confidence": confidence,
+                "requirements_request": packet,
+            },
         )
 
+    # No blockers and not a hard fail → proceed. Score thresholds alone are
+    # insufficient grounds to interrogate the user; agents fill defaults.
+    score_label = score_raw if score_raw is not None else "n/a"
     return (
-        "needs_requirements",
-        f"Requirements needed: Commissioner score {score_raw if score_raw is not None else 'n/a'}/10 indicates more input is required.",
+        "passed",
+        f"Commissioner score: {score_label}/10, recommendation: {recommendation or 'proceed (defaults applied)'}",
         {
             "value_score": score_raw,
             "recommendation": recommendation,
-            "commissioner_decision": "needs_requirements",
+            "commissioner_decision": "success",
             "confidence": confidence,
-            "requirements_request": packet,
         },
     )
 
