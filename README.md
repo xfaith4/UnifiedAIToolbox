@@ -89,6 +89,7 @@ That's it! The launcher will automatically:
 - **Run Tracking**: Track orchestration with cost analysis and quality metrics
 - **GitHub Integration**: Automated repo operations via GitHub API
 - **Real-time Monitoring**: Live log streaming and progress tracking
+- **Worktree-Isolated Execution**: Per-step git worktrees so parallel code-modifying agents in the same wave cannot conflict. OK steps merge into a per-run integration branch; failed steps are quarantined. See [AGENTS.md](AGENTS.md#worktree-isolated-execution-phase-1) for details.
 
 #### Artifact Normalization Workflow
 

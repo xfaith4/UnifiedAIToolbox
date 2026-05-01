@@ -2,5 +2,10 @@
   "artifactRoot": ".\\artifacts",
   "failOnRevise": false,
   "maxToolRetries": 2,
-  "logLevel": "Information"
+  "logLevel": "Information",
+  "worktree": {
+    "enabled": false,
+    "baseRef": "main",
+    "purgeOnFailure": false
+  }
 }

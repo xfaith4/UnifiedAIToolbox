@@ -9,8 +9,25 @@
   - Executes steps wave-by-wave; writes artifacts/envelopes per step.
   - Tool bindings are stubbed but hardened; swap with real handlers as needed.
 
+  Worktree mode (-UseWorktrees):
+    Each step runs in an isolated git worktree on its own branch.
+    Successful step branches merge into a per-run integration branch;
+    failed step branches are quarantined for forensics. Use -MergeIntegrationTo
+    to fast-forward a target branch to the run's integration branch on success.
+
+.EXAMPLE
+  # Standard mode (no git):
+  .\Run-Orchestration.ps1 -PlanPath plan.example.json
+
+.EXAMPLE
+  # Worktree mode against an external repo:
+  .\Run-Orchestration.ps1 -PlanPath plan.worktree-example.json `
+      -UseWorktrees -RepoRoot C:\path\to\target\repo `
+      -BaseRef main -RunId my-run-001 -MergeIntegrationTo main
+
 .NOTES
   PS 5.1 / 7+ compatible. Strings use $() when followed by a colon to avoid scope-qualifier parser traps.
+  Worktree mode requires git 2.5+.
 #>
 
 [CmdletBinding()]
@@ -22,7 +39,31 @@ param(
     [string]$ConfigPath = ".\runner.config.json",
 
     # When set, recompute waves from dependencies instead of trusting plan
-    [switch]$RecomputeWaves
+    [switch]$RecomputeWaves,
+
+    # When set, run each step in an isolated git worktree on its own branch.
+    # Successful step branches merge into a per-run integration branch;
+    # failed step branches are quarantined for forensics.
+    [switch]$UseWorktrees,
+
+    # Target repository for worktree operations. Defaults to git root containing this script.
+    [string]$RepoRoot,
+
+    # Run identifier for branch/worktree naming. Auto-generated if omitted.
+    [string]$RunId,
+
+    # Base branch the run integration branch is forked from.
+    [string]$BaseRef = 'main',
+
+    # On successful run, fast-forward this branch to the integration branch.
+    # Empty = leave integration branch as-is for later PR review.
+    [string]$MergeIntegrationTo,
+
+    # Push the merged target branch (or integration branch if no merge target) to remote.
+    [switch]$PushOnComplete,
+
+    # On any wave failure, run aggressive cleanup (drop quarantine branches too).
+    [switch]$PurgeOnFailure
 )
 
 ### ======================================================================
@@ -398,7 +439,10 @@ function Invoke-Agent {
         [Parameter(Mandatory)][pscustomobject]$Step,
         [Parameter(Mandatory)][pscustomobject]$Plan,
         [Parameter(Mandatory)][string]$ArtifactRoot,
-        [Parameter(Mandatory)][string]$PlanName
+        [Parameter(Mandatory)][string]$PlanName,
+        # Optional per-step worktree dir. When provided, agents that modify code
+        # should write into this directory (a real git worktree on a step branch).
+        [Parameter()][string]$WorktreeDir
     )
 
     $stepDir = Get-StepArtifactPath -Root $ArtifactRoot -PlanName $PlanName -StepId ([int]$Step.id)
@@ -553,9 +597,11 @@ function Invoke-Agent {
     }
 
     return @{
-        Status    = $status
-        Artifacts = $artifacts
-        Dir       = $stepDir
+        Status      = $status
+        Artifacts   = $artifacts
+        Dir         = $stepDir
+        StepId      = [int]$Step.id
+        WorktreeDir = $WorktreeDir
     }
 }
 
@@ -586,22 +632,100 @@ if ($RecomputeWaves) {
 $planNameRaw = ($Plan.goal -replace '[^\w\-\.]', '_')
 $planName = $planNameRaw.Substring(0, [Math]::Min(40, $planNameRaw.Length))
 
+# ----------------------------------------------------------------------
+# Worktree mode: opt-in via -UseWorktrees, or via config.worktree.enabled
+# ----------------------------------------------------------------------
+$worktreeEnabled = $UseWorktrees.IsPresent
+if (-not $worktreeEnabled -and $Config.PSObject.Properties.Name -contains 'worktree' -and $Config.worktree.enabled) {
+    $worktreeEnabled = [bool]$Config.worktree.enabled
+}
+
+$wtContext = $null
+if ($worktreeEnabled) {
+    Import-Module (Join-Path $PSScriptRoot 'WorktreeExecutor.psm1') -Force
+
+    if (-not $RepoRoot) {
+        # Default: the repo containing this script
+        $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+    }
+    if (-not (Test-GitRepo -Path $RepoRoot)) {
+        throw ("Worktree mode requested but RepoRoot is not a git repo: {0}" -f $RepoRoot)
+    }
+    if (-not $RunId) { $RunId = $planName }
+
+    Write-Host ("Worktree mode: ON (repo={0}, base={1}, runId={2})" -f $RepoRoot, $BaseRef, $RunId) -ForegroundColor Magenta
+    $wtContext = Initialize-RunIntegration -RepoRoot $RepoRoot -RunId $RunId -BaseRef $BaseRef
+    Write-Host ("Integration branch: {0}" -f $wtContext.IntegrationBranch) -ForegroundColor DarkMagenta
+}
+
 Write-Host ("Executing plan: {0}" -f $Plan.goal) -ForegroundColor Cyan
 Write-Host ("Waves: {0}" -f ([string]::Join(' | ', ($Plan.waves | ForEach-Object { '[' + ($_ -join ',') + ']' })))) -ForegroundColor DarkCyan
 
-# Execute wave-by-wave (sequential per wave; parallelization is optional)
-foreach ($wave in $Plan.waves) {
-    Write-Host ("--- Wave: {0}" -f (($wave -join ', '))) -ForegroundColor Yellow
+$runFailed = $false
 
-    $results = foreach ($id in $wave) {
-        $step = $Plan.steps | Where-Object { $_.id -eq $id }
-        Invoke-Agent -Step $step -Plan $Plan -ArtifactRoot $artifactRoot -PlanName $planName
+try {
+    # Execute wave-by-wave (sequential per wave; parallelization is optional)
+    foreach ($wave in $Plan.waves) {
+        Write-Host ("--- Wave: {0}" -f (($wave -join ', '))) -ForegroundColor Yellow
+
+        # Pre-create worktrees for every step in the wave (so parallel steps don't race the integration branch)
+        $waveWorktrees = @{}
+        if ($wtContext) {
+            foreach ($id in $wave) {
+                $waveWorktrees[$id] = New-RunWorktree -Context $wtContext -StepId ([int]$id)
+            }
+        }
+
+        $results = foreach ($id in $wave) {
+            $step = $Plan.steps | Where-Object { $_.id -eq $id }
+            $wtDir = if ($waveWorktrees.ContainsKey($id)) { $waveWorktrees[$id] } else { $null }
+            Invoke-Agent -Step $step -Plan $Plan -ArtifactRoot $artifactRoot -PlanName $planName -WorktreeDir $wtDir
+        }
+
+        # Post-wave: merge OK steps, quarantine FAILED steps
+        if ($wtContext) {
+            foreach ($r in $results) {
+                $status = if ($r.Status -eq 'OK') { 'OK' } else { 'FAILED' }
+                $stepRecord = $Plan.steps | Where-Object { [int]$_.id -eq [int]$r.StepId } | Select-Object -First 1
+                $agentLabel = if ($stepRecord) { $stepRecord.agent } else { 'unknown' }
+                Merge-RunWorktree -Context $wtContext -StepId ([int]$r.StepId) -Status $status `
+                    -CommitMessage ("uaitb: step {0} ({1})" -f $r.StepId, $agentLabel)
+            }
+        }
+
+        if ($results | Where-Object { $_.Status -eq 'FAILED' }) {
+            Write-Warning ("Wave failed. See artifacts at: {0}" -f ($results | Select-Object -First 1).Dir)
+            $runFailed = $true
+            break
+        }
     }
 
-    if ($results | Where-Object { $_.Status -eq 'FAILED' }) {
-        Write-Warning ("Wave failed. See artifacts at: {0}" -f ($results | Select-Object -First 1).Dir)
-        break
+    # Finalize integration branch
+    if ($wtContext -and -not $runFailed) {
+        $finalize = Complete-RunIntegration -Context $wtContext -MergeTo $MergeIntegrationTo -PushRemote:$PushOnComplete
+        Write-Host ("Run integration: merged={0} quarantined={1} mergedTo={2} pushed={3}" -f `
+            $finalize.mergedSteps.Count, $finalize.quarantined.Count, $finalize.mergedTo, $finalize.pushed) -ForegroundColor Green
+    }
+    elseif ($wtContext -and $runFailed) {
+        Write-Warning ("Run failed. Integration branch '{0}' preserved for inspection. Quarantined: {1}" -f `
+            $wtContext.IntegrationBranch, ($wtContext.Quarantined | ForEach-Object { $_.Branch } | Sort-Object) -join ', ')
+        if ($PurgeOnFailure) {
+            Remove-RunArtifacts -Context $wtContext -IncludeQuarantine
+            Write-Warning "Purged all run artifacts (including quarantined branches)."
+        }
     }
 }
+catch {
+    Write-Error ("Run aborted: {0}" -f $_.Exception.Message)
+    if ($wtContext -and $PurgeOnFailure) {
+        Remove-RunArtifacts -Context $wtContext -IncludeQuarantine
+    }
+    throw
+}
 
-Write-Host "Done." -ForegroundColor Green
+if ($runFailed) {
+    Write-Host "Done (with failures)." -ForegroundColor Yellow
+    exit 1
+} else {
+    Write-Host "Done." -ForegroundColor Green
+}

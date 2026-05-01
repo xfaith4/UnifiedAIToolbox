@@ -1,0 +1,55 @@
+{
+  "goal": "Worktree mode demo: parallel implementers + reviewer",
+  "assumptions": [
+    "Run with -UseWorktrees to enable per-step git worktree isolation",
+    "Each step writes into its own branch; only OK steps merge into integration"
+  ],
+  "artifacts": [
+    { "name": "review_a", "description": "Implementer A review and patch", "type": "dir" },
+    { "name": "review_b", "description": "Implementer B review and patch", "type": "dir" },
+    { "name": "winner", "description": "Reviewer's selection", "type": "json" },
+    { "name": "finalReport", "description": "Synthesized report", "type": "markdown" }
+  ],
+  "steps": [
+    {
+      "id": 1,
+      "title": "Implementer A approach",
+      "agent": "Implementer",
+      "task": "Produce candidate review/patch A in isolated worktree branch uaitb/<run>/step-1",
+      "inputs": {},
+      "produces": ["reviewA.md", "patchA.json", "testReportA.json"],
+      "dependencies": [0]
+    },
+    {
+      "id": 2,
+      "title": "Implementer B approach",
+      "agent": "Implementer",
+      "task": "Produce candidate review/patch B in isolated worktree branch uaitb/<run>/step-2",
+      "inputs": {},
+      "produces": ["reviewB.md", "patchB.json", "testReportB.json"],
+      "dependencies": [0]
+    },
+    {
+      "id": 3,
+      "title": "Reviewer selects winner",
+      "agent": "Reviewer",
+      "task": "Score A vs B with rubric; promote winner. Runs after both implementer worktrees have merged into integration.",
+      "inputs": {
+        "A": ["reviewA.md", "patchA.json", "testReportA.json"],
+        "B": ["reviewB.md", "patchB.json", "testReportB.json"]
+      },
+      "produces": ["winner.json", "promotedArtifacts"],
+      "dependencies": [1, 2]
+    },
+    {
+      "id": 4,
+      "title": "Final report",
+      "agent": "Report Writer",
+      "task": "Synthesize the run narrative",
+      "inputs": { "winner": "winner.json" },
+      "produces": ["finalReport.md"],
+      "dependencies": [3]
+    }
+  ],
+  "waves": [[1, 2], [3], [4]]
+}
