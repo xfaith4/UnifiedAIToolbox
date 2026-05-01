@@ -1,5 +1,49 @@
 [
   {
+    "run_id": "Build_an_IoT_Capture_Access_Point_to_monitor_traffic_from_a_weather_station.2026-05-01T09-49-34Z",
+    "ingested_at": "2026-05-01T09:49:37Z",
+    "goal": "Build an IoT Capture Access Point to monitor traffic from a weather station.",
+    "goal_tokens": [
+      "build",
+      "capture",
+      "access",
+      "point",
+      "monitor",
+      "traffic",
+      "from",
+      "weather",
+      "station"
+    ],
+    "status": "running",
+    "verification_status": "needs_requirements",
+    "knowledge_status": "fail",
+    "knowledge_score": 0,
+    "learning": {
+      "classification": "knowledge_generation_failure",
+      "what_broke": "Knowledge artifact generation crashed.",
+      "root_cause": "name 'app_production_repairs_payload' is not defined",
+      "evidence": [
+        "name 'app_production_repairs_payload' is not defined"
+      ],
+      "prevention_patches": [],
+      "regression_checks": [],
+      "questions_needed": [],
+      "corrective_actions": [],
+      "instruction_adjustments": []
+    },
+    "checkpoint_history": [],
+    "corrective_actions": [],
+    "app_production_repairs": {},
+    "instruction_adjustments": [],
+    "agents": [
+      "Supervisor",
+      "Engineer",
+      "Critic"
+    ],
+    "model": "gpt-5.2",
+    "synthesis_present": false
+  },
+  {
     "run_id": "Build_the_Genesys_Cloud_Insights_Generator_dashboard_using_React_and_Vite.2026-05-01T09-01-13Z",
     "ingested_at": "2026-05-01T09:01:17Z",
     "goal": "Build the Genesys Cloud Insights Generator dashboard using React and Vite.",
