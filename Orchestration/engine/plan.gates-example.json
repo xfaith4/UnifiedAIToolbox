@@ -1,0 +1,71 @@
+{
+  "goal": "Gate policy demo: parallel implementers + critic gate + tests gate",
+  "assumptions": [
+    "Run with -UseWorktrees for full isolation",
+    "Critic gate fires after wave 1; tests gate fires after wave 2"
+  ],
+  "artifacts": [
+    { "name": "review_a", "description": "Implementer A output", "type": "dir" },
+    { "name": "review_b", "description": "Implementer B output", "type": "dir" },
+    { "name": "winner",   "description": "Reviewer's selection", "type": "json" }
+  ],
+  "gates": [
+    {
+      "id": "critic-after-implementers",
+      "type": "Critic",
+      "after": "wave:2",
+      "threshold": 4.0,
+      "blocking": true,
+      "maxRetries": 1
+    },
+    {
+      "id": "smoke-after-reviewer",
+      "type": "RunCommand",
+      "after": "wave:2",
+      "command": "echo gate-smoke-ok",
+      "blocking": true
+    }
+  ],
+  "steps": [
+    {
+      "id": 1,
+      "title": "Implementer A",
+      "agent": "Implementer",
+      "task": "Produce candidate A",
+      "inputs": {},
+      "produces": ["reviewA.md", "patchA.json", "testReportA.json"],
+      "dependencies": [0]
+    },
+    {
+      "id": 2,
+      "title": "Implementer B",
+      "agent": "Implementer",
+      "task": "Produce candidate B",
+      "inputs": {},
+      "produces": ["reviewB.md", "patchB.json", "testReportB.json"],
+      "dependencies": [0]
+    },
+    {
+      "id": 6,
+      "title": "Reviewer selects winner",
+      "agent": "Reviewer",
+      "task": "Score A vs B; promote winner",
+      "inputs": {
+        "A": ["reviewA.md", "patchA.json", "testReportA.json"],
+        "B": ["reviewB.md", "patchB.json", "testReportB.json"]
+      },
+      "produces": ["winner.json", "promotedArtifacts"],
+      "dependencies": [1, 2]
+    },
+    {
+      "id": 7,
+      "title": "Final report",
+      "agent": "Report Writer",
+      "task": "Synthesize",
+      "inputs": { "winner": "winner.json" },
+      "produces": ["finalReport.md"],
+      "dependencies": [6]
+    }
+  ],
+  "waves": [[1, 2], [6], [7]]
+}

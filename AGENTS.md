@@ -37,7 +37,7 @@ isolation so parallel agents in the same wave cannot trample each other.
 
 **Branching scheme:**
 
-```
+```text
 uaitb/<runId>/integration       <- run-level branch (audit trail)
 uaitb/<runId>/step-<id>         <- per-step branch (isolated worktree)
 uaitb/<runId>/quarantine/step-N <- failed step (preserved for forensics)
@@ -85,10 +85,61 @@ uaitb/<runId>/quarantine/step-N <- failed step (preserved for forensics)
 ```
 
 **Cleanup contract:**
+
 - Successful run -> integration branch + main fast-forwarded; all worktrees gone; step branches deleted.
 - Failed run -> integration branch preserved; quarantine branches preserved; worktrees gone.
 - `-PurgeOnFailure` -> aggressive cleanup including quarantine branches.
 - `Remove-RunArtifacts` is idempotent and safe to call after partial failures.
+
+## Blocking Gate Policy (Phase 2)
+
+Plans may declare `gates` — checkpoints that BLOCK progression unless their
+verdict is PASS. Gate failures can trigger automatic wave retries with
+feedback injected into the failing step.
+
+**Gate types built in:**
+- `Critic` — reads `winner.json` rubric, requires composite score >= threshold
+- `Commissioner` — reads `commissioner_decision.json`, requires recommendation match
+- `RunCommand` — executes a shell command (in integration worktree by default), requires exit 0
+- `ContractValidator` — runs `supervisor/contract_validator.ps1` against a contract file
+- `Custom` — register your own via `Register-GateHandler -TypeName X -Handler { ... }`
+
+**Plan format:**
+
+```json
+{
+  "gates": [
+    {
+      "id": "critic-after-implementers",
+      "type": "Critic",
+      "after": "wave:1",
+      "threshold": 4.0,
+      "blocking": true,
+      "maxRetries": 2
+    },
+    {
+      "id": "tests-pass",
+      "type": "RunCommand",
+      "after": "wave:2",
+      "command": "npm test",
+      "blocking": true
+    }
+  ]
+}
+```
+
+**Anchor syntax:** `wave:N`, `step:N`, `all` (every wave).
+
+**Verdict semantics:**
+- `PASS` -> wave proceeds.
+- `RETRY` (with retries left) -> step worktrees discarded, wave re-runs with
+  `feedback` injected into each step containing the gate's failure reason.
+- `RETRY` (no retries left) or `FAIL` (blocking) -> run halts; integration
+  branch and quarantine branches preserved for inspection.
+- `FAIL` (non-blocking) -> wave proceeds, failure recorded in summary.
+
+**Audit trail:** Every gate evaluation writes a JSON record to
+`<artifactRoot>/<plan>/gates/gate_<id>_attempt<N>_<HHmmss>.json`.
 
 ## Definition of Done
 

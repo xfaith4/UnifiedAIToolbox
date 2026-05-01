@@ -90,6 +90,7 @@ That's it! The launcher will automatically:
 - **GitHub Integration**: Automated repo operations via GitHub API
 - **Real-time Monitoring**: Live log streaming and progress tracking
 - **Worktree-Isolated Execution**: Per-step git worktrees so parallel code-modifying agents in the same wave cannot conflict. OK steps merge into a per-run integration branch; failed steps are quarantined. See [AGENTS.md](AGENTS.md#worktree-isolated-execution-phase-1) for details.
+- **Blocking Gate Policy**: Plans declare `gates` (Critic, Commissioner, RunCommand, ContractValidator, Custom) that block wave progression unless their verdict is PASS. RETRY verdicts trigger automatic wave retries with feedback injected into failing steps. See [AGENTS.md](AGENTS.md#blocking-gate-policy-phase-2).
 
 #### Artifact Normalization Workflow
 

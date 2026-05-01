@@ -658,46 +658,135 @@ if ($worktreeEnabled) {
     Write-Host ("Integration branch: {0}" -f $wtContext.IntegrationBranch) -ForegroundColor DarkMagenta
 }
 
+# ----------------------------------------------------------------------
+# Gate policy: load if the plan declares any gates
+# ----------------------------------------------------------------------
+$gatesEnabled = $false
+if ($Plan.PSObject.Properties.Name -contains 'gates' -and $Plan.gates -and $Plan.gates.Count -gt 0) {
+    Import-Module (Join-Path $PSScriptRoot 'GatePolicy.psm1') -Force
+    $gatesEnabled = $true
+    Write-Host ("Gate policy: {0} gate(s) registered" -f $Plan.gates.Count) -ForegroundColor Magenta
+}
+$gateAttempts = @{}  # gateId -> attempts so far
+
 Write-Host ("Executing plan: {0}" -f $Plan.goal) -ForegroundColor Cyan
 Write-Host ("Waves: {0}" -f ([string]::Join(' | ', ($Plan.waves | ForEach-Object { '[' + ($_ -join ',') + ']' })))) -ForegroundColor DarkCyan
 
 $runFailed = $false
+$gateFailures = @()
 
 try {
-    # Execute wave-by-wave (sequential per wave; parallelization is optional)
+    $waveIndex = 0
     foreach ($wave in $Plan.waves) {
-        Write-Host ("--- Wave: {0}" -f (($wave -join ', '))) -ForegroundColor Yellow
+        $waveIndex++
+        $waveAttempt = 0
+        $waveCheckpoint = "wave:$waveIndex"
+        $waveStepIds = @($wave | ForEach-Object { [int]$_ })
 
-        # Pre-create worktrees for every step in the wave (so parallel steps don't race the integration branch)
-        $waveWorktrees = @{}
-        if ($wtContext) {
-            foreach ($id in $wave) {
-                $waveWorktrees[$id] = New-RunWorktree -Context $wtContext -StepId ([int]$id)
+        $waveCleared = $false
+        while (-not $waveCleared) {
+            $waveAttempt++
+            $headerSuffix = if ($waveAttempt -gt 1) { " (attempt $waveAttempt)" } else { "" }
+            Write-Host ("--- Wave {0}: {1}{2}" -f $waveIndex, ($wave -join ', '), $headerSuffix) -ForegroundColor Yellow
+
+            # Pre-create worktrees for every step in the wave
+            $waveWorktrees = @{}
+            if ($wtContext) {
+                foreach ($id in $wave) {
+                    $waveWorktrees[$id] = New-RunWorktree -Context $wtContext -StepId ([int]$id)
+                }
             }
-        }
 
-        $results = foreach ($id in $wave) {
-            $step = $Plan.steps | Where-Object { $_.id -eq $id }
-            $wtDir = if ($waveWorktrees.ContainsKey($id)) { $waveWorktrees[$id] } else { $null }
-            Invoke-Agent -Step $step -Plan $Plan -ArtifactRoot $artifactRoot -PlanName $planName -WorktreeDir $wtDir
-        }
-
-        # Post-wave: merge OK steps, quarantine FAILED steps
-        if ($wtContext) {
-            foreach ($r in $results) {
-                $status = if ($r.Status -eq 'OK') { 'OK' } else { 'FAILED' }
-                $stepRecord = $Plan.steps | Where-Object { [int]$_.id -eq [int]$r.StepId } | Select-Object -First 1
-                $agentLabel = if ($stepRecord) { $stepRecord.agent } else { 'unknown' }
-                Merge-RunWorktree -Context $wtContext -StepId ([int]$r.StepId) -Status $status `
-                    -CommitMessage ("uaitb: step {0} ({1})" -f $r.StepId, $agentLabel)
+            $results = foreach ($id in $wave) {
+                $step = $Plan.steps | Where-Object { $_.id -eq $id }
+                $wtDir = if ($waveWorktrees.ContainsKey($id)) { $waveWorktrees[$id] } else { $null }
+                Invoke-Agent -Step $step -Plan $Plan -ArtifactRoot $artifactRoot -PlanName $planName -WorktreeDir $wtDir
             }
+
+            $stepFailed = ($results | Where-Object { $_.Status -eq 'FAILED' })
+
+            # Evaluate gates BEFORE merging — gate failure means we may want to retry the wave,
+            # in which case we discard the worktrees rather than merging in bad output.
+            $gateRetry = $false
+            $gateFatal = $false
+            if ($gatesEnabled -and -not $stepFailed) {
+                $gates = Get-GatesForCheckpoint -Plan $Plan -Checkpoint $waveCheckpoint -WaveIndex $waveIndex -WaveStepIds $waveStepIds
+                foreach ($g in $gates) {
+                    $gid = if ($g.PSObject.Properties.Name -contains 'id') { [string]$g.id } else { "gate-$waveIndex" }
+                    if (-not $gateAttempts.ContainsKey($gid)) { $gateAttempts[$gid] = 0 }
+                    $gateAttempts[$gid]++
+
+                    Write-Host ("  Gate: {0} ({1})..." -f $gid, $g.type) -NoNewline -ForegroundColor DarkYellow
+                    $verdict = Invoke-Gate -Gate $g -WaveResults $results -RunContext $wtContext -ArtifactRoot $artifactRoot
+                    Save-GateResult -Verdict $verdict -ArtifactRoot $artifactRoot -PlanName $planName -Attempt $gateAttempts[$gid] | Out-Null
+
+                    $statusColor = switch ($verdict.Status) { 'PASS' {'Green'} 'RETRY' {'Yellow'} default {'Red'} }
+                    Write-Host (" {0}" -f $verdict.Status) -ForegroundColor $statusColor
+                    if ($verdict.Reason) { Write-Host ("    -> {0}" -f $verdict.Reason) -ForegroundColor DarkGray }
+
+                    if ($verdict.Status -eq 'PASS') { continue }
+
+                    if ($verdict.Status -eq 'RETRY' -and $gateAttempts[$gid] -le $verdict.MaxRetries) {
+                        $gateRetry = $true
+                        # Inject feedback into the wave's steps so retried agents can see why they failed
+                        foreach ($id in $wave) {
+                            $step = $Plan.steps | Where-Object { $_.id -eq $id }
+                            if ($step) {
+                                if (-not ($step.PSObject.Properties.Name -contains 'feedback')) {
+                                    $step | Add-Member -NotePropertyName feedback -NotePropertyValue @() -Force
+                                }
+                                $step.feedback = @($step.feedback) + @{
+                                    gate = $gid; reason = $verdict.Reason; attempt = $gateAttempts[$gid]
+                                }
+                            }
+                        }
+                        Write-Host ("    Will retry wave (attempt {0}/{1})" -f ($gateAttempts[$gid] + 1), ($verdict.MaxRetries + 1)) -ForegroundColor Yellow
+                        break  # don't evaluate later gates; retry now
+                    }
+
+                    # FAIL or RETRY-with-no-retries-left
+                    $gateFailures += $verdict
+                    if ($verdict.Blocking) {
+                        $gateFatal = $true
+                        Write-Warning ("Blocking gate '{0}' failed: {1}" -f $gid, $verdict.Reason)
+                        break
+                    } else {
+                        Write-Warning ("Non-blocking gate '{0}' failed: {1}" -f $gid, $verdict.Reason)
+                    }
+                }
+            }
+
+            if ($gateRetry) {
+                # Discard worktrees from this attempt; the wave will re-run fresh
+                if ($wtContext) {
+                    foreach ($r in $results) {
+                        Merge-RunWorktree -Context $wtContext -StepId ([int]$r.StepId) -Status 'SKIP'
+                    }
+                }
+                continue  # back to the while loop -> retry wave
+            }
+
+            # Post-wave: merge OK steps, quarantine FAILED steps (real merge into integration)
+            if ($wtContext) {
+                foreach ($r in $results) {
+                    $mstatus = if ($r.Status -eq 'OK') { 'OK' } else { 'FAILED' }
+                    $stepRecord = $Plan.steps | Where-Object { [int]$_.id -eq [int]$r.StepId } | Select-Object -First 1
+                    $agentLabel = if ($stepRecord) { $stepRecord.agent } else { 'unknown' }
+                    Merge-RunWorktree -Context $wtContext -StepId ([int]$r.StepId) -Status $mstatus `
+                        -CommitMessage ("uaitb: step {0} ({1})" -f $r.StepId, $agentLabel)
+                }
+            }
+
+            if ($stepFailed) {
+                Write-Warning ("Wave failed. See artifacts at: {0}" -f ($results | Select-Object -First 1).Dir)
+                $runFailed = $true
+            }
+            if ($gateFatal) { $runFailed = $true }
+
+            $waveCleared = $true
         }
 
-        if ($results | Where-Object { $_.Status -eq 'FAILED' }) {
-            Write-Warning ("Wave failed. See artifacts at: {0}" -f ($results | Select-Object -First 1).Dir)
-            $runFailed = $true
-            break
-        }
+        if ($runFailed) { break }
     }
 
     # Finalize integration branch
@@ -721,6 +810,13 @@ catch {
         Remove-RunArtifacts -Context $wtContext -IncludeQuarantine
     }
     throw
+}
+
+if ($gateFailures.Count -gt 0) {
+    Write-Host ("Gate failures: {0}" -f $gateFailures.Count) -ForegroundColor Yellow
+    foreach ($gf in $gateFailures) {
+        Write-Host ("  - [{0}] {1}: {2}" -f $gf.GateId, $gf.Status, $gf.Reason) -ForegroundColor DarkYellow
+    }
 }
 
 if ($runFailed) {
