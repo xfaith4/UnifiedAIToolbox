@@ -211,7 +211,7 @@ if (!status) {
 
 **Impact:** Swarm View and any future dashboard widget that uses the canonical `/api/runs/{runId}/summary` will silently fail for all Concierge runs.
 
-**Fix status:** Open — add `fetchOrchestratorRunStatus` fallback mirroring `status/route.ts`.
+**Fix status:** Done — `/api/runs/{runId}/summary` now mirrors the status route fallback: filesystem first, then `fetchOrchestratorRunStatus`, with `X-Run-Source` set on success.
 
 ---
 
@@ -240,7 +240,7 @@ if (listRes.status === 404) {
 
 **Impact:** The run detail page at `/runs/{runId}` is broken for all App Factory runs. Users must navigate directly to the App Factory Engine page to see run details.
 
-**Fix status:** Open — the page needs a pathway that detects `maint-` prefix and reads from `/api/app-factory/runs/{runId}/status` instead of the orchestrator API.
+**Fix status:** Done — `/runs/[runId]` now detects `maint-*` App Factory run IDs and reads from `/api/app-factory/runs/{runId}/status`, mapping the status payload into the existing run detail view.
 
 ---
 
@@ -301,6 +301,8 @@ Display labels: Queued / Dispatching / Running / Stuck / Review Required / Compl
 |----------|------|-------|
 | P0 | Orchestrator API should emit richer events (`phase`, `agent`, `step`) for full Swarm View support | Backend |
 | P0 | Concierge: CurrentRunCard should detect maint- prefix and use app-factory status polling | Done (this PR) |
+| P0 | Canonical summary route should fall back to orchestrator runs | Done |
+| P0 | Run detail page should load App Factory `maint-*` runs through App Factory status | Done |
 | P1 | Unify run listing: `/api/app-factory/runs` and `/orchestrate/runs` should be merged behind `/api/runs` | Full-stack |
 | P1 | Concierge → App Factory bridge: when goal matches maintain_existing_app, offer "Start in App Factory" with pre-filled form | UX |
 | P2 | Orchestrator: expose SSE endpoint so Concierge runs get true live streaming (not polling) | Backend |

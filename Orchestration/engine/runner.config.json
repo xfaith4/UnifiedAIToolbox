@@ -4,7 +4,7 @@
   "maxToolRetries": 2,
   "logLevel": "Information",
   "worktree": {
-    "enabled": false,
+    "enabled": true,
     "baseRef": "main",
     "purgeOnFailure": false
   }

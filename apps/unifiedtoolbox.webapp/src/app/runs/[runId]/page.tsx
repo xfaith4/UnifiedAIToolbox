@@ -10,6 +10,7 @@ import {
   fetchOrchestrationRunLog,
 } from '@/lib/services/orchestratorApi'
 import type { OrchestrationRun, RepoOrchestrationReport } from '@/lib/types/orchestrator'
+import type { RunStatusResponse } from '@/lib/app-factory/runs/types'
 import { nodeMatchesFilter, renderMarkdown } from '@/lib/artifacts/viewerUtils'
 
 type ArtifactItem = {
@@ -24,6 +25,7 @@ type ArtifactItem = {
 type TabKey = 'report' | 'verification' | 'findings' | 'diff' | 'raw'
 
 const toFileUrl = (path: string) => `file:///${path.replace(/\\/g, '/')}`
+const isAppFactoryRunId = (value: string) => value.startsWith('maint-')
 const safeDecode = (value: string) => {
   try {
     return decodeURIComponent(value)
@@ -47,6 +49,54 @@ const copyText = async (value: string) => {
   } catch {
     return
   }
+}
+
+const normalizeAppFactoryRunStatus = (status: RunStatusResponse['status']) => {
+  if (status === 'succeeded') return 'completed'
+  return status
+}
+
+const toOrchestrationRun = (status: RunStatusResponse): OrchestrationRun => {
+  const latest = status.events.at(-1)
+  return {
+    id: status.runId,
+    jobType: status.jobType,
+    status: normalizeAppFactoryRunStatus(status.status),
+    rawStatus: status.status,
+    currentStage: status.currentStage ?? undefined,
+    requestedAt: status.startedAt,
+    startedAt: status.startedAt,
+    completedAt: status.endedAt,
+    lastHeartbeatAt: status.updatedAt,
+    lastEventAt: latest?.ts,
+    events: status.events.map((event) => ({
+      timestamp: event.ts,
+      type: event.type ?? 'info',
+      message: event.message,
+      attemptId: event.attemptId,
+    })),
+    acceptanceChecks: status.acceptanceChecks,
+    verificationStatus: status.verificationStatus,
+    loopIteration: status.loopIteration,
+    sandboxReport: status.sandboxReport,
+    currentAttemptId: status.currentAttemptId,
+    attemptNumber: status.attemptNumber,
+    attempts: status.attempts,
+    notes: status.warnings?.join('\n'),
+    errorDetail: status.errors?.join('\n'),
+  }
+}
+
+const fetchAppFactoryRun = async (runId: string): Promise<OrchestrationRun | null> => {
+  const res = await fetch(`/api/app-factory/runs/${encodeURIComponent(runId)}/status`, { cache: 'no-store' })
+  if (res.status === 404) return null
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(text || `Failed to load App Factory run (${res.status})`)
+  }
+
+  const payload = (await res.json()) as RunStatusResponse
+  return toOrchestrationRun(payload)
 }
 
 const openPath = async (absPath: string | undefined) => {
@@ -230,6 +280,25 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
       setForceCancelPending(false)
       setRequeuePending(false)
 
+      if (isAppFactoryRunId(runId)) {
+        try {
+          const run = await fetchAppFactoryRun(runId)
+          if (!cancelled) {
+            if (run) {
+              setOrchRun(run)
+              setSelectedAttemptId((prev) => prev ?? run.currentAttemptId ?? null)
+            } else {
+              setError('Run not found.')
+            }
+          }
+        } catch (err) {
+          if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load App Factory run.')
+        } finally {
+          if (!cancelled) setLoading(false)
+        }
+        return
+      }
+
       if (!ORCHESTRATOR_API_BASE) {
         setError('Orchestrator API base is not configured.')
         setLoading(false)
@@ -384,6 +453,19 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
     setCancelError(null)
     setCancelMessage(null)
     try {
+      if (isAppFactoryRunId(runId)) {
+        const res = await fetch(`/api/app-factory/runs/${encodeURIComponent(runId)}/cancel`, { method: 'POST' })
+        const result = (await res.json().catch(() => ({}))) as { status?: string; killed?: boolean; error?: { message?: string } }
+        if (!res.ok) {
+          throw new Error(result.error?.message || `Failed to cancel App Factory run (${res.status}).`)
+        }
+
+        setCancelMessage(result.killed ? 'Run cancelled.' : 'Cancellation recorded for this run.')
+        const refreshed = await fetchAppFactoryRun(runId)
+        if (refreshed) setOrchRun(refreshed)
+        return
+      }
+
       const result = await cancelOrchestrationRun(runId)
       const requested = Boolean(result.cancel_requested || result.cancelRequested)
       if (result.cancelled) {
@@ -554,14 +636,15 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
 
   // ── Orchestrator run fallback view ────────────────────────────────────────────
   if (!loading && orchRun) {
+    const isAppFactoryRun = isAppFactoryRunId(orchRun.id)
     const isError = orchRun.status?.startsWith('error') || orchRun.status === 'failed'
     const isRunning = orchRun.status && !['completed', 'failed', 'cancelled', 'stuck'].includes(orchRun.status) && !isError
     const statusLower = String(orchRun.status || '').toLowerCase()
     const canCancel = ['queued', 'pending', 'dispatching', 'running', 'in_progress', 'awaiting_input', 'gating', 'awaiting_gate', 'starting']
       .includes(statusLower)
-    const canForceCancel = ['dispatching', 'running', 'in_progress', 'awaiting_input', 'gating', 'awaiting_gate', 'starting', 'stuck']
+    const canForceCancel = !isAppFactoryRun && ['dispatching', 'running', 'in_progress', 'awaiting_input', 'gating', 'awaiting_gate', 'starting', 'stuck']
       .includes(statusLower)
-    const canRequeue = ['failed', 'cancelled', 'stuck', 'completed', 'blocked_requirements', 'needs_requirements'].includes(statusLower)
+    const canRequeue = !isAppFactoryRun && ['failed', 'cancelled', 'stuck', 'completed', 'blocked_requirements', 'needs_requirements'].includes(statusLower)
     const statusCls = orchRun.status === 'completed'
       ? 'border-emerald-700 bg-emerald-900/30 text-emerald-100'
       : orchRun.status === 'stuck'

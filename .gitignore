@@ -17,6 +17,8 @@ data/sqlite/*.db
 data/artifacts/**
 data/orchestrator-history/
 .vscode/
+.vs/
+.claude/settings.local.json
 .vercel/
 bin/
 obj/
