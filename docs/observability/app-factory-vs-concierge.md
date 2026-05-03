@@ -104,18 +104,21 @@ No filesystem directory is created for orchestrator runs.
 ## 4. Telemetry Model
 
 ### App Factory
+
 - **Write path:** PowerShell appends JSON lines to `{runDir}/events.ndjson`
 - **In-memory buffer:** `runEvents.ts` keeps last 400 events per runId in a Node.js Map (process-scoped)
 - **Delivery:** SSE via `EventSource` subscribed to in-memory buffer; file-tail JSON as fallback
 - **Heartbeat:** Every 15 seconds when SSE connection is open
 
 ### Concierge / Orchestrator
+
 - **Write path:** External orchestrator process writes events to its own store
 - **Delivery:** HTTP polling — `GET /orchestrate/run/{runId}` returns full run object with embedded `events[]`
 - **Poll interval:** 3s in Concierge page, 5s in CurrentRunCard, 3s→30s backoff in LiveEventPanel
 - **No SSE:** The orchestrator does not expose an SSE endpoint; polling only
 
 ### Canonical unified delivery (post-alignment)
+
 Both pathways are accessible via:
 - **SSE:** `GET /api/runs/{runId}/events/stream` — for App Factory runs, proxies to SSE buffer; for orchestrator runs, uses polling-based pseudo-SSE
 - **File/JSON:** `GET /api/runs/{runId}/events/file?offset=N` — for App Factory runs, reads NDJSON; for orchestrator runs, returns embedded events
@@ -309,6 +312,7 @@ Display labels: Queued / Dispatching / Running / Stuck / Review Required / Compl
 ## 8. File Reference Map
 
 ### Frontend Services
+
 | File | Purpose |
 |------|---------|
 | `src/lib/services/conciergeRunService.ts` | Launch orchestrator runs from Concierge, event narration |
@@ -318,6 +322,7 @@ Display labels: Queued / Dispatching / Running / Stuck / Review Required / Compl
 | `src/lib/services/runContextStore.ts` | Lightweight run metadata for page persistence |
 
 ### App Factory Backend
+
 | File | Purpose |
 |------|---------|
 | `src/lib/app-factory/runs/runStatus.ts` | Read run_state.json + events from filesystem |
@@ -326,6 +331,7 @@ Display labels: Queued / Dispatching / Running / Stuck / Review Required / Compl
 | `src/lib/app-factory/runs/types.ts` | Shared TypeScript types |
 
 ### API Routes
+
 | File | Endpoint |
 |------|---------|
 | `src/app/api/app-factory/runs/start/route.ts` | POST /api/app-factory/runs/start |
@@ -336,6 +342,7 @@ Display labels: Queued / Dispatching / Running / Stuck / Review Required / Compl
 | `src/app/api/runs/[runId]/events/file/route.ts` | GET /api/runs/{runId}/events/file |
 
 ### UI Components
+
 | File | Purpose |
 |------|---------|
 | `src/components/runs/CurrentRunCard.tsx` | Run Monitor card (Concierge + Reports) |
