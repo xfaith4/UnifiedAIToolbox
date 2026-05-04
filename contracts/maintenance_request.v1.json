@@ -1,0 +1,31 @@
+{
+  "type": "object",
+  "required": [
+    "job_type",
+    "goal",
+    "intent",
+    "repo",
+    "ref"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "job_type": { "type": "string" },
+    "run_id": { "type": "string" },
+    "goal": { "type": "string" },
+    "intent": { "type": "string" },
+    "risk_level": { "type": "string" },
+    "agent_roster": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "budget": { "type": "object" },
+    "logging": { "type": "object" },
+    "stages": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "repo": { "type": "object" },
+    "ref": { "type": "object" },
+    "metadata": { "type": "object" }
+  }
+}
