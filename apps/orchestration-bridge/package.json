@@ -4,7 +4,7 @@
   "description": "Orchestration bridge with run tracking and API endpoints",
   "main": "bridge.js",
   "scripts": {
-    "test": "jest --config ./jest.config.cjs"
+    "test": "npx --no-install jest --config ./jest.config.cjs"
   },
   "engines": {
     "node": ">=24.13.1"
