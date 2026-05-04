@@ -106,7 +106,7 @@ export function createDraftRunFromProposal(proposal: Proposal): DraftRunConfig {
     id: proposal.id,
     proposalId: proposal.id,
     createdAt: new Date().toISOString(),
-    goal: proposal.run_recipe?.goal ?? proposal.goal.summary,
+    goal: buildDraftGoalFromProposal(proposal),
     mode: proposal.run_recipe?.mode ?? 'multi-agent',
     agents: proposal.run_recipe?.agents ?? proposal.recommended.agents,
     promptId: proposal.run_recipe?.promptId,
@@ -116,4 +116,40 @@ export function createDraftRunFromProposal(proposal: Proposal): DraftRunConfig {
     acceptanceChecks: proposal.acceptance_checks?.length ? proposal.acceptance_checks : undefined,
   }
   return saveDraftRun(draft)
+}
+
+function formatListSection(title: string, items: string[]): string | null {
+  const cleanItems = items.map((item) => item.trim()).filter(Boolean)
+  if (cleanItems.length === 0) return null
+  return `${title}:\n${cleanItems.map((item) => `- ${item}`).join('\n')}`
+}
+
+function buildDraftGoalFromProposal(proposal: Proposal): string {
+  const baseGoal = proposal.run_recipe?.goal?.trim() || proposal.goal.summary.trim()
+  const context = proposal.goal.context?.trim()
+  const originalRequest = proposal.conversation
+    .filter((message) => message.role === 'user')
+    .map((message) => message.content.trim())
+    .filter(Boolean)
+    .join('\n\n')
+  const constraints = proposal.inputs.constraints ?? []
+  const assumptions = proposal.assumptions?.map((item) => `Assumption: ${item}`) ?? []
+  const planSteps = proposal.plan.steps.map((step) => {
+    const title = step.title?.trim()
+    const description = step.description?.trim()
+    if (title && description) return `${title}: ${description}`
+    return title || description || ''
+  })
+
+  const sections = [
+    baseGoal ? `Goal:\n${baseGoal}` : null,
+    originalRequest ? `Original user request:\n${originalRequest}` : null,
+    context ? `Context:\n${context}` : null,
+    formatListSection('Constraints', constraints),
+    formatListSection('Plan', planSteps),
+    formatListSection('Acceptance checks', proposal.acceptance_checks ?? []),
+    formatListSection('Assumptions', assumptions),
+  ].filter(Boolean)
+
+  return sections.join('\n\n') || proposal.goal.summary
 }

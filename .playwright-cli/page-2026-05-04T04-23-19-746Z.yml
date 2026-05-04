@@ -1,0 +1,131 @@
+- generic [ref=e2]:
+  - link "Skip to main content" [ref=e3] [cursor=pointer]:
+    - /url: "#main-content"
+  - generic [ref=e4]:
+    - complementary [ref=e5]:
+      - link "AI Toolbox Unified Web App" [ref=e6] [cursor=pointer]:
+        - /url: /
+        - img [ref=e8]
+        - generic [ref=e13]:
+          - generic [ref=e14]: AI Toolbox
+          - generic [ref=e15]: Unified Web App
+      - navigation "Main navigation" [ref=e16]:
+        - generic [ref=e17]:
+          - generic [ref=e18]: Home
+          - generic [ref=e19]:
+            - link "Home" [ref=e20] [cursor=pointer]:
+              - /url: /
+              - img [ref=e21]
+              - text: Home
+            - link "Concierge" [ref=e24] [cursor=pointer]:
+              - /url: /concierge
+              - img [ref=e25]
+              - text: Concierge
+        - generic [ref=e27]:
+          - generic [ref=e28]: Build
+          - generic [ref=e29]:
+            - link "Prompt Library" [ref=e30] [cursor=pointer]:
+              - /url: /prompts
+              - img [ref=e31]
+              - text: Prompt Library
+            - link "Agent Library" [ref=e34] [cursor=pointer]:
+              - /url: /agents
+              - img [ref=e35]
+              - text: Agent Library
+            - link "Tooling" [ref=e42] [cursor=pointer]:
+              - /url: /mcp-library
+              - img [ref=e43]
+              - text: Tooling
+        - generic [ref=e45]:
+          - generic [ref=e46]: Run
+          - generic [ref=e47]:
+            - link "Playground" [ref=e48] [cursor=pointer]:
+              - /url: /orchestrator
+              - img [ref=e49]
+              - text: Playground
+            - link "App Lifecycle" [ref=e52] [cursor=pointer]:
+              - /url: /engine
+              - img [ref=e53]
+              - text: App Lifecycle
+        - generic [ref=e57]:
+          - generic [ref=e58]: Observe
+          - generic [ref=e59]:
+            - link "Runs" [ref=e60] [cursor=pointer]:
+              - /url: /runs
+              - img [ref=e61]
+              - text: Runs
+            - link "Knowledge" [ref=e65] [cursor=pointer]:
+              - /url: /knowledge
+              - img [ref=e66]
+              - text: Knowledge
+            - link "Reports" [ref=e75] [cursor=pointer]:
+              - /url: /milestones
+              - img [ref=e76]
+              - text: Reports
+        - generic [ref=e79]:
+          - separator [ref=e80]
+          - generic [ref=e81]: Settings
+          - link "Settings" [ref=e83] [cursor=pointer]:
+            - /url: /settings
+            - img [ref=e84]
+            - text: Settings
+      - button "Open help and docs" [ref=e88] [cursor=pointer]:
+        - img [ref=e89]
+        - generic [ref=e93]: Help & Docs
+    - main [ref=e94]:
+      - generic [ref=e95]:
+        - generic [ref=e96]:
+          - generic [ref=e97]:
+            - generic [ref=e98]:
+              - img [ref=e99]
+              - text: Ideas
+            - heading "Turn intent into a proposal before you launch work." [level=1] [ref=e102]
+            - paragraph [ref=e103]: Concierge is the guided intake surface. Use it to clarify the story, capture assumptions, and create a build-ready proposal.
+          - generic [ref=e104]:
+            - link "Open App Lifecycle" [ref=e105] [cursor=pointer]:
+              - /url: /engine
+              - text: Open App Lifecycle
+              - img [ref=e106]
+            - link "Review active runs" [ref=e109] [cursor=pointer]:
+              - /url: /runs
+              - text: Review active runs
+              - img [ref=e110]
+        - generic [ref=e113]:
+          - generic [ref=e114]: Define the outcome
+          - generic [ref=e115]: Clarify blockers
+          - generic [ref=e116]: Approve the next move
+      - generic [ref=e117]:
+        - generic [ref=e118]:
+          - generic [ref=e119]:
+            - img [ref=e121]
+            - generic [ref=e128]:
+              - heading "Concierge" [level=1] [ref=e129]
+              - paragraph [ref=e130]: Describe your goal — I'll build a Proposal
+          - generic [ref=e132]:
+            - img [ref=e134]
+            - heading "What do you want to achieve?" [level=2] [ref=e139]
+            - paragraph [ref=e140]: Describe your goal in plain language. I'll ask a couple of questions, then generate a structured Proposal you can approve and run.
+            - generic [ref=e141]:
+              - button "Refactor the auth module for readability" [ref=e142] [cursor=pointer]
+              - button "Write tests for the payments service" [ref=e143] [cursor=pointer]
+              - button "Add dark mode to the settings page" [ref=e144] [cursor=pointer]
+          - generic [ref=e145]:
+            - generic [ref=e146]:
+              - generic [ref=e147]: Mode
+              - generic [ref=e148]:
+                - button "Guided" [ref=e149] [cursor=pointer]
+                - button "Confident" [ref=e150] [cursor=pointer]
+                - button "Hands-off" [active] [ref=e151] [cursor=pointer]
+            - generic [ref=e152]:
+              - textbox "Message Concierge" [ref=e153]:
+                - /placeholder: Describe your goal… (Enter to send, Shift+Enter for newline)
+              - button "Send message" [disabled] [ref=e154]:
+                - img [ref=e155]
+        - generic [ref=e159]:
+          - img [ref=e160]
+          - paragraph [ref=e165]: Your Proposal will appear here once the Concierge has enough context to generate one.
+          - paragraph [ref=e166]:
+            - text: Concierge creates proposals — runs are tracked in
+            - link "Observe → Runs" [ref=e167] [cursor=pointer]:
+              - /url: /runs
+            - text: .

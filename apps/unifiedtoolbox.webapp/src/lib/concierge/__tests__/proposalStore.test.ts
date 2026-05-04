@@ -147,9 +147,45 @@ describe('proposalStore', () => {
       saveProposal(p)
       const draft = createDraftRunFromProposal(p)
       expect(draft.proposalId).toBe(p.id)
-      expect(draft.goal).toBe(p.goal.summary)
+      expect(draft.goal).toContain(`Goal:\n${p.goal.summary}`)
       expect(draft.runStatus).toBe('pending')
       expect(listDraftRuns()).toHaveLength(1)
+    })
+
+    it('preserves proposal context and acceptance checks in the run goal', () => {
+      const p = makeProposal({
+        status: 'approved',
+        goal: {
+          summary: 'Build Pixel Burrow',
+          context: 'Browser-playable canvas arcade game with persistent high score.',
+        },
+        inputs: {
+          repo: '',
+          files: [],
+          constraints: ['No backend services', 'No copyrighted arcade assets'],
+        },
+        acceptance_checks: ['npm run build completes', 'HUD shows score and lives'],
+        assumptions: ['Use Vite + React + TypeScript'],
+        run_recipe: { mode: 'multi-agent', agents: ['Engineer'], goal: 'Build Pixel Burrow' },
+        conversation: [
+          {
+            id: 'msg_1',
+            role: 'user',
+            content: 'Required mechanic: segmented crawler creates obstacles when destroyed.',
+            timestamp: new Date().toISOString(),
+          },
+        ],
+      })
+
+      const draft = createDraftRunFromProposal(p)
+
+      expect(draft.goal).toContain(
+        'Original user request:\nRequired mechanic: segmented crawler creates obstacles when destroyed.',
+      )
+      expect(draft.goal).toContain('Context:\nBrowser-playable canvas arcade game')
+      expect(draft.goal).toContain('Constraints:\n- No backend services')
+      expect(draft.goal).toContain('Acceptance checks:\n- npm run build completes')
+      expect(draft.goal).toContain('Assumptions:\n- Assumption: Use Vite + React + TypeScript')
     })
 
     it('uses run_recipe agents when present', () => {
