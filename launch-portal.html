@@ -224,7 +224,7 @@
         <div class="launch-section">
             <h2>🎯 Quick Launch</h2>
             <p style="margin-bottom: 16px;">Choose your preferred launch method:</p>
-            
+
             <div class="launch-commands">
                 <div class="command"><span class="comment"># Bash (Linux/Mac/WSL/Git Bash on Windows)</span></div>
                 <div class="command">./launch.sh</div>
@@ -260,12 +260,12 @@
             <div class="service-card">
                 <h3>🔌 Prompt API</h3>
                 <p>FastAPI backend service</p>
-                <div class="port">Port: 8000</div>
+                <div class="port">Port: 8888</div>
                 <div class="status">
                     <span class="status-indicator" id="api-status"></span>
                     <span id="api-status-text">Checking...</span>
                 </div>
-                <button class="btn" id="api-btn" onclick="openService('http://localhost:8000')" disabled>
+                <button class="btn" id="api-btn" onclick="openService('http://localhost:8888')" disabled>
                     Open API
                 </button>
             </div>
@@ -298,7 +298,7 @@
     <script>
         const services = [
             { id: 'dashboard', url: 'http://localhost:5173', name: 'Dashboard' },
-            { id: 'api', url: 'http://localhost:8000/health', name: 'Prompt API' },
+            { id: 'api', url: 'http://localhost:8888/health', name: 'Prompt API' },
             { id: 'web', url: 'http://localhost:3000', name: 'Web Portal' }
         ];
 
@@ -320,7 +320,7 @@
                     mode: 'no-cors',
                     cache: 'no-cache'
                 });
-                
+
                 // no-cors mode doesn't give us status, so we assume success if no error
                 statusIndicator.className = 'status-indicator online';
                 statusText.textContent = 'Online';
@@ -330,13 +330,13 @@
                 try {
                     const img = new Image();
                     img.src = service.url + '?t=' + Date.now();
-                    
+
                     await new Promise((resolve, reject) => {
                         img.onload = resolve;
                         img.onerror = reject;
                         setTimeout(reject, 3000);
                     });
-                    
+
                     statusIndicator.className = 'status-indicator online';
                     statusText.textContent = 'Online';
                     button.disabled = false;
