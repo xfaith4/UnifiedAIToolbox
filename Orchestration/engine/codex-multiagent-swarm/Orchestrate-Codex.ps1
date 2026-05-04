@@ -411,6 +411,11 @@ function Select-Agents {
             }
         }
     )
+
+    if ($MaxAgents -gt 0 -and $selected.Count -gt $MaxAgents) {
+        $selected = @($selected | Select-Object -First $MaxAgents)
+    }
+
     $coreNames = @($selected | Where-Object { $_.Stage -eq "core" } | ForEach-Object { $_.Type })
     $governanceNames = @($selected | Where-Object { $_.Stage -eq "governance" } | ForEach-Object { $_.Type })
     Write-Log "Selected $($selected.Count) agents: $($selected.Type -join ', ')" -Level Success
@@ -794,7 +799,17 @@ try {
         Swarm = $swarmPayload.swarmType
         Status = $swarmPayload.status
     }
-    ($summary | ConvertTo-Json -Depth 10) | Set-Content -LiteralPath (Join-Path $resolvedOutputDir "orchestration-summary.json") -Encoding UTF8
+    $summaryJson = $summary | ConvertTo-Json -Depth 10
+    $summaryJson | Set-Content -LiteralPath (Join-Path $resolvedOutputDir "orchestration-summary.json") -Encoding UTF8
+    $summaryJson | Set-Content -LiteralPath (Join-Path $resolvedOutputDir "swarm-summary.json") -Encoding UTF8
+
+    $resultsData = @{
+        Timestamp     = (Get-Date -Format "o")
+        AgentResults  = $swarmPayload.result
+        OverallStatus = $swarmPayload.status
+        Model         = $Model
+    }
+    $resultsData | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $resolvedOutputDir "swarm-results.json") -Encoding UTF8
 
     Write-Log "=== Orchestration Completed Successfully ===" -Level Success
     Write-Log "Total agents executed: $selectedAgentCount"

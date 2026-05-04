@@ -1,0 +1,76 @@
+{
+  "type": "object",
+  "required": [
+    "schema_version",
+    "job_type",
+    "contract_universe",
+    "contract_version",
+    "pipeline_id",
+    "run_id",
+    "goal",
+    "agent_roster",
+    "budget",
+    "logging",
+    "artifact_policy",
+    "gate_policy",
+    "stages"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "job_type": { "type": "string" },
+    "contract_universe": { "type": "string" },
+    "contract_version": { "type": "string" },
+    "pipeline_id": { "type": "string" },
+    "run_id": { "type": "string" },
+    "goal": { "type": "string" },
+    "agent_roster": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "budget": {
+      "type": "object",
+      "properties": {
+        "max_time_minutes": { "type": "integer" }
+      }
+    },
+    "logging": {
+      "type": "object",
+      "properties": {
+        "level": { "type": "string" }
+      }
+    },
+    "artifact_policy": {
+      "type": "object",
+      "properties": {
+        "mode": { "type": "string" },
+        "required": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "gate_policy": {
+      "type": "object",
+      "properties": {
+        "mode": { "type": "string" }
+      }
+    },
+    "stages": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "app": {
+      "type": "object"
+    },
+    "supervisor_policy": {
+      "type": "object"
+    },
+    "command_policy": {
+      "type": "object"
+    },
+    "metadata": {
+      "type": "object"
+    }
+  }
+}

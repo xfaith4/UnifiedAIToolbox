@@ -1,0 +1,25 @@
+{
+  "type": "object",
+  "required": [
+    "job_type",
+    "goal"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "job_type": { "type": "string" },
+    "run_id": { "type": "string" },
+    "goal": { "type": "string" },
+    "agent_roster": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "budget": { "type": "object" },
+    "logging": { "type": "object" },
+    "stages": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "app": { "type": "object" },
+    "metadata": { "type": "object" }
+  }
+}

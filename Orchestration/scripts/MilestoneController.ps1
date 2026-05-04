@@ -936,12 +936,12 @@ function Assert-AgentOutputContract {
     )
 
     if (-not $EnforceContracts) {
-        return @{ ok = $true; parsed = $null; error = $null; errors = @(); schema = $null }
+        return @{ ok = $true; parsed = $null; normalized_json = $null; error = $null; errors = @(); schema = $null }
     }
 
     $agentDef = Get-AgentDefinition -AgentName $AgentName
     if (-not $agentDef) {
-        return @{ ok = $true; parsed = $null; error = $null; errors = @(); schema = $null }
+        return @{ ok = $true; parsed = $null; normalized_json = $null; error = $null; errors = @(); schema = $null }
     }
 
     $schema = $null
@@ -1232,7 +1232,7 @@ function Initialize-RunStatus {
     }
 
     $repoUrl = $null
-    if ($script:Contract -and $script:Contract.repo) {
+    if ($script:Contract -and $script:Contract.PSObject.Properties['repo']) {
         $repoProps = @($script:Contract.repo.PSObject.Properties.Name)
         if ($repoProps -contains "url" -and $script:Contract.repo.url) {
             $repoUrl = $script:Contract.repo.url
@@ -1873,7 +1873,7 @@ $supervisorContext
 
         $repoPathOverride = $null
         # 1. Check contract's repo.local_path (set by contract_compiler from request.local_path)
-        if ($script:Contract -and $script:Contract.repo) {
+        if ($script:Contract -and $script:Contract.PSObject.Properties['repo']) {
             $repoProps = @($script:Contract.repo.PSObject.Properties.Name)
             if ($repoProps -contains "local_path" -and $script:Contract.repo.local_path) {
                 $repoPathOverride = $script:Contract.repo.local_path
@@ -2249,6 +2249,10 @@ try {
     if (Test-Path -LiteralPath $maintenanceGatesPath) {
         . $maintenanceGatesPath
     }
+    # Reset strict mode: supervisor scripts set StrictMode -Latest when dot-sourced,
+    # but MilestoneController.ps1 accesses optional PSCustomObject properties that
+    # may not exist, which would throw under strict mode.
+    Set-StrictMode -Off
 
     $script:JobTypesPath = Join-Path $repoRoot "job_types.json"
     $script:RepoContextSchemaPath = Join-Path $repoRoot "contracts\\repo_context_schema.v1.json"
@@ -2326,6 +2330,8 @@ try {
             throw "Contract compiler not found at $compilerPath"
         }
         . $compilerPath
+        # Reset strict mode after dot-sourcing contract_compiler.ps1
+        Set-StrictMode -Off
         $compileResult = Invoke-ContractCompiler -RequestPath $RequestPath -JobTypesPath $script:JobTypesPath -RepoRoot $repoRoot -OutputDir $OutputDir
         $script:RequestPath = $RequestPath
         $script:Request = $compileResult.Request

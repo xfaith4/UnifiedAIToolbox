@@ -1,0 +1,51 @@
+{
+  "type": "object",
+  "required": [
+    "schema_version",
+    "run_id",
+    "generated_at_utc",
+    "repo",
+    "discovery",
+    "baseline"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "run_id": { "type": "string" },
+    "generated_at_utc": { "type": "string" },
+    "repo": {
+      "type": "object",
+      "properties": {
+        "root_path": { "type": "string" },
+        "url": { "type": "string" },
+        "branch": { "type": "string" },
+        "commit": { "type": "string" },
+        "ref": { "type": "string" }
+      }
+    },
+    "discovery": {
+      "type": "object",
+      "properties": {
+        "scan": { "type": "object" },
+        "detection": { "type": "array" },
+        "commands": { "type": "array" },
+        "ci": { "type": "array" },
+        "project_layout": { "type": "object" },
+        "repo_shape": { "type": "object" },
+        "working_tree": { "type": "object" },
+        "high_risk_areas": { "type": "array" },
+        "warnings": { "type": "array" },
+        "policy_hooks": { "type": "object" }
+      }
+    },
+    "baseline": {
+      "type": "object",
+      "properties": {
+        "attempted": { "type": "boolean" },
+        "commands_run": { "type": "array" },
+        "results": { "type": "array" },
+        "environment": { "type": "object" },
+        "warnings": { "type": "array" }
+      }
+    }
+  }
+}

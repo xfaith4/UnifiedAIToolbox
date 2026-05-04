@@ -1,0 +1,94 @@
+{
+  "type": "object",
+  "required": [
+    "schema_version",
+    "job_type",
+    "contract_universe",
+    "contract_version",
+    "pipeline_id",
+    "run_id",
+    "goal",
+    "intent",
+    "agent_roster",
+    "budget",
+    "logging",
+    "artifact_policy",
+    "gate_policy",
+    "stages",
+    "repo",
+    "ref"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "job_type": { "type": "string" },
+    "contract_universe": { "type": "string" },
+    "contract_version": { "type": "string" },
+    "pipeline_id": { "type": "string" },
+    "run_id": { "type": "string" },
+    "goal": { "type": "string" },
+    "intent": { "type": "string" },
+    "risk_level": { "type": "string" },
+    "agent_roster": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "budget": {
+      "type": "object",
+      "properties": {
+        "max_time_minutes": { "type": "integer" }
+      }
+    },
+    "logging": {
+      "type": "object",
+      "properties": {
+        "level": { "type": "string" }
+      }
+    },
+    "artifact_policy": {
+      "type": "object",
+      "properties": {
+        "mode": { "type": "string" },
+        "required": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "gate_policy": {
+      "type": "object",
+      "properties": {
+        "mode": { "type": "string" }
+      }
+    },
+    "stages": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "repo": {
+      "type": "object",
+      "properties": {
+        "full_name": { "type": "string" },
+        "local_path": { "type": "string" },
+        "url": { "type": "string" }
+      }
+    },
+    "ref": {
+      "type": "object",
+      "properties": {
+        "branch": { "type": "string" },
+        "commit": { "type": "string" }
+      }
+    },
+    "constraints": { "type": "object" },
+    "change_surface": { "type": "object" },
+    "baseline": { "type": "object" },
+    "command_policy": { "type": "object" },
+    "repo_context_ref": { "type": "object" },
+    "pr_policy": { "type": "object" },
+    "conflict_policy": { "type": "object" },
+    "supervisor_policy": { "type": "object" },
+    "repo_context": { "type": "object" },
+    "metadata": { "type": "object" }
+  }
+}
