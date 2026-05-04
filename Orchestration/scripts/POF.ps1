@@ -86,7 +86,8 @@ if (Test-Path -LiteralPath $CanonicalAgentLibraryPath) {
 }
 $OutDir = if (-not [string]::IsNullOrWhiteSpace($OutputRoot)) {
     Join-Path $OutputRoot $RunId
-} else {
+}
+else {
     "$PSScriptRoot\..\runs\$RunId"
 }
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
@@ -113,24 +114,24 @@ function Write-AgentStatus {
         status    = $Status
         timestamp = $timestamp
     }
-    
+
     # Add any extra data fields to the hashtable
     foreach ($key in $ExtraData.Keys) {
         $statusHash[$key] = $ExtraData[$key]
     }
-    
+
     # Convert to PSCustomObject once
     $statusObj = [PSCustomObject]$statusHash
 
     # Append to status log as JSON lines with error handling
     try {
         $jsonLine = $statusObj | ConvertTo-Json -Compress -Depth 20 -ErrorAction Stop
-        
+
         # Validate the JSON is not empty
         if ([string]::IsNullOrWhiteSpace($jsonLine)) {
             throw "Generated JSON line is empty or whitespace"
         }
-        
+
         Add-Content -Path $statusPath -Value $jsonLine -ErrorAction Stop
     }
     catch {
@@ -235,13 +236,14 @@ function New-RequirementsRequestPacket {
 
     $cleanQuestion = if ([string]::IsNullOrWhiteSpace($Question)) {
         "Provide the missing product requirements needed to continue implementation."
-    } else {
+    }
+    else {
         $Question.Trim()
     }
 
     return @{
-        summary = "${AgentName} requires additional requirements before implementation can continue."
-        blockers = @(
+        summary                   = "${AgentName} requires additional requirements before implementation can continue."
+        blockers                  = @(
             @{
                 id       = "req_1"
                 question = $cleanQuestion
@@ -559,10 +561,10 @@ function ConvertTo-NormalizedAgentJson {
 
         $normalizedObject = Normalize-AgentContractObject -AgentName $AgentName -Object $RawOutput
         return @{
-            ok = $true
-            error = $null
+            ok     = $true
+            error  = $null
             parsed = $normalizedObject
-            json = ($normalizedObject | ConvertTo-Json -Depth 80)
+            json   = ($normalizedObject | ConvertTo-Json -Depth 80)
         }
     }
 
@@ -573,10 +575,10 @@ function ConvertTo-NormalizedAgentJson {
 
     if (Test-ContainsMarkdownFence -Text $text) {
         return @{
-            ok = $false
-            error = "Output includes markdown/code fences. Emit raw JSON only."
+            ok     = $false
+            error  = "Output includes markdown/code fences. Emit raw JSON only."
             parsed = $null
-            json = $null
+            json   = $null
         }
     }
 
@@ -588,10 +590,10 @@ function ConvertTo-NormalizedAgentJson {
     }
     catch {
         return @{
-            ok = $false
-            error = ("Output is not valid strict JSON: {0}" -f $_.Exception.Message)
+            ok     = $false
+            error  = ("Output is not valid strict JSON: {0}" -f $_.Exception.Message)
             parsed = $null
-            json = $null
+            json   = $null
         }
     }
 
@@ -609,19 +611,19 @@ function ConvertTo-NormalizedAgentJson {
 
     if (Test-ContainsMarkdownFenceInObject -Value $parsed) {
         return @{
-            ok = $false
-            error = "Output JSON includes markdown/code fences within string fields."
+            ok     = $false
+            error  = "Output JSON includes markdown/code fences within string fields."
             parsed = $null
-            json = $null
+            json   = $null
         }
     }
 
     $normalized = Normalize-AgentContractObject -AgentName $AgentName -Object $parsed
     return @{
-        ok = $true
-        error = $null
+        ok     = $true
+        error  = $null
         parsed = $normalized
-        json = ($normalized | ConvertTo-Json -Depth 80)
+        json   = ($normalized | ConvertTo-Json -Depth 80)
     }
 }
 
@@ -696,15 +698,15 @@ function Write-ContractFailureArtifact {
     $path = Join-Path $failureDir ("{0}.{1}.json" -f $safeAgent, $stamp)
 
     $payload = [ordered]@{
-        schema_version = "1.0"
-        run_id = $RunId
-        agent = $AgentName
-        timestamp_utc = (Get-Date).ToUniversalTime().ToString("o")
+        schema_version            = "1.0"
+        run_id                    = $RunId
+        agent                     = $AgentName
+        timestamp_utc             = (Get-Date).ToUniversalTime().ToString("o")
         initial_validation_errors = @($InitialErrors)
-        repair_validation_errors = @($RepairErrors)
-        schema = $Schema
-        raw_output = $RawOutput
-        repaired_output = $RepairedOutput
+        repair_validation_errors  = @($RepairErrors)
+        schema                    = $Schema
+        raw_output                = $RawOutput
+        repaired_output           = $RepairedOutput
     }
 
     $payload | ConvertTo-Json -Depth 80 | Set-Content -LiteralPath $path -Encoding UTF8
@@ -809,11 +811,12 @@ function Get-SwarmRequestsFromText {
         try {
             $obj = $jsonText | ConvertFrom-Json -ErrorAction Stop
             $requests += $obj
-        } catch {
+        }
+        catch {
             # Ignore invalid tool requests; commissioner still provides a score
         }
     }
-    return ,$requests
+    return , $requests
 }
 
 function Invoke-SwarmsEngine {
@@ -853,7 +856,8 @@ function Invoke-SwarmsEngine {
     }
     if (-not [string]::IsNullOrWhiteSpace($RepoRoot)) {
         $args += @("--repo-root", $RepoRoot)
-    } else {
+    }
+    else {
         $args += @("--repo-root", $toolboxRoot)
     }
     if (-not [string]::IsNullOrWhiteSpace($OutputDir)) {
@@ -899,28 +903,28 @@ function Invoke-OpenAIRequest {
 
     try {
         $Response = Invoke-RestMethod -Uri $Config.OpenAIEndpoint -Method Post -Headers $Headers -Body $Body -ErrorAction Stop
-        
+
         # Log raw response for debugging
         $rawResponsePath = Join-Path $OutDir "${AgentName}_raw_response.json"
         $Response | ConvertTo-Json -Depth 10 | Out-File -FilePath $rawResponsePath -Encoding UTF8
-        
+
         # Validate response structure
         if (-not $Response.choices -or $Response.choices.Count -eq 0) {
             throw "OpenAI API returned no choices in response"
         }
-        
+
         $Choice = $Response.choices[0].message
         if (-not $Choice -or -not $Choice.content) {
             throw "Empty or invalid OpenAI response (missing message.content)"
         }
-        
+
         Write-Log -Agent $AgentName -Content "✅ OpenAI call succeeded. Tokens used: $($Response.usage.total_tokens)"
         return $Choice.content
     }
     catch {
         $errorMsg = $_.Exception.Message
         $errorDetails = if ($_.ErrorDetails) { $_.ErrorDetails.Message } else { "" }
-        
+
         # Enhanced error logging
         $errorLogPath = Join-Path $OutDir "${AgentName}_api_error.log"
         $errorReport = @"
@@ -931,7 +935,7 @@ Error Details: $errorDetails
 Stack Trace: $($_.ScriptStackTrace)
 "@
         $errorReport | Out-File -FilePath $errorLogPath -Encoding UTF8
-        
+
         Write-Log -Agent $AgentName -Content "❌ OpenAI call failed: $errorMsg"
         return $null
     }
@@ -947,28 +951,28 @@ function New-MaintenanceFallbackOutput {
         "RepoContextBuilder" {
             return @{
                 schema_version = "1.0"
-                status = "insufficient_input"
+                status         = "insufficient_input"
                 missing_inputs = @(
                     "repo_path OR repo snapshot",
                     "orchestration log tail",
                     "failing command output"
                 )
-                errors = @($Reason)
-                repo = @{}
-                discovery = @{
-                    warnings = @($Reason)
+                errors         = @($Reason)
+                repo           = @{}
+                discovery      = @{
+                    warnings     = @($Reason)
                     policy_hooks = @{}
                 }
-                baseline = @{
+                baseline       = @{
                     attempted = $false
-                    warnings = @($Reason)
+                    warnings  = @($Reason)
                 }
             } | ConvertTo-Json -Depth 20
         }
         "ReviewGate" {
             return @{
-                status = "error"
-                errors = @($Reason)
+                status   = "error"
+                errors   = @($Reason)
                 warnings = @(
                     "Run maintenance mode with -JobType maintain_existing_app and -ContractPath/-RequestPath."
                 )
@@ -977,10 +981,10 @@ function New-MaintenanceFallbackOutput {
         "PRPublisher" {
             return @{
                 schema_version = "1.0"
-                run_id = $RunId
-                status = "failed"
-                draft = $true
-                errors = @($Reason)
+                run_id         = $RunId
+                status         = "failed"
+                draft          = $true
+                errors         = @($Reason)
             } | ConvertTo-Json -Depth 20
         }
         default {
@@ -1148,6 +1152,30 @@ try {
             Write-Log -Agent $ContractAgent.name -Content $finalOutput
             $AgentOutputs[$ContractAgent.name] = $finalOutput
 
+            ### BEGIN: Advisory ConceptualModelContract Clarifications For App Builds
+            $TreatClarificationAsAdvisory = (
+                $ContractAgent.name -eq "ConceptualModelContract" -and
+                $EffectiveJobType -eq "build_new_app"
+            )
+
+            if ($validated.ClarificationNeeded -and $TreatClarificationAsAdvisory) {
+                Write-Warning "ConceptualModelContract requested clarification, but this is build_new_app. Treating requirements request as advisory and continuing."
+
+                $advisoryRequirementsRequest = New-RequirementsRequestPacket `
+                    -Question $validated.ClarificationText `
+                    -AgentName $ContractAgent.name
+
+                Write-AgentStatus -Agent $ContractAgent.name -Status "complete" -ExtraData @{
+                    clarification_advisory = $true
+                    clarification_text     = $validated.ClarificationText
+                    requirements_request   = $advisoryRequirementsRequest
+                }
+
+                $Context += "`n`n[$($ContractAgent.name) Advisory Clarification Ignored]:`n$($advisoryRequirementsRequest | ConvertTo-Json -Depth 20)"
+                continue
+            }
+
+            ### END: Advisory ConceptualModelContract Clarifications For App Builds
             if ($validated.ClarificationNeeded) {
                 $requirementsRequest = New-RequirementsRequestPacket -Question $validated.ClarificationText -AgentName $ContractAgent.name
                 $checkpointRecord = New-PofRequirementsCheckpointRecord `
@@ -1184,11 +1212,11 @@ try {
                     -Message "$($ContractAgent.name) requested clarification before implementation could continue." `
                     -Stage "checkpoint" `
                     -Data @{
-                        agent                = $ContractAgent.name
-                        checkpoint_id        = $checkpointRecord.checkpoint_id
-                        clarification_text   = $validated.ClarificationText
-                        requirements_request = $requirementsRequest
-                    }
+                    agent                = $ContractAgent.name
+                    checkpoint_id        = $checkpointRecord.checkpoint_id
+                    clarification_text   = $validated.ClarificationText
+                    requirements_request = $requirementsRequest
+                }
 
                 $requirementsBlocker = @{
                     AgentName           = $ContractAgent.name
@@ -1212,11 +1240,11 @@ try {
         # --- Prepare work items --------------------------------------------
         $WorkItems = foreach ($A in $Phase1Agents) {
             [PSCustomObject]@{
-                Agent   = $A
-                Context = $Context
-                Config  = $Config
-                OutDir  = $OutDir
-                Instruction = $Instruction
+                Agent            = $A
+                Context          = $Context
+                Config           = $Config
+                OutDir           = $OutDir
+                Instruction      = $Instruction
                 EffectiveAppType = $EffectiveAppType
                 EffectiveJobType = $EffectiveJobType
             }
@@ -1324,26 +1352,26 @@ Artifacts field rules (CRITICAL):
                 $statusObj | ConvertTo-Json -Compress | Add-Content -Path $statusPath
 
                 [PSCustomObject]@{
-                    Agent  = $Agent.name
-                    Output = $Response.choices[0].message.content
-                    Tokens = $Response.usage.total_tokens
-                    Ok     = $true
+                    Agent        = $Agent.name
+                    Output       = $Response.choices[0].message.content
+                    Tokens       = $Response.usage.total_tokens
+                    Ok           = $true
                     SystemPrompt = $systemPrompt
-                    UserPrompt = $Context
+                    UserPrompt   = $Context
                 }
             }
             catch {
                 # Enhanced error logging with details
                 $errorMsg = $_.Exception.Message
                 $errorDetails = if ($_.ErrorDetails) { $_.ErrorDetails.Message } else { "" }
-                
+
                 # Write status: error with details (using centralized function for consistency)
                 $statusPath = Join-Path $OutDir "agent_status.json"
                 $statusObj = [PSCustomObject]@{
-                    agent       = $Agent.name
-                    status      = "error"
-                    timestamp   = (Get-Date -Format "o")
-                    error       = $errorMsg
+                    agent        = $Agent.name
+                    status       = "error"
+                    timestamp    = (Get-Date -Format "o")
+                    error        = $errorMsg
                     error_detail = $errorDetails
                 }
                 try {
@@ -1367,13 +1395,13 @@ Stack Trace: $($_.ScriptStackTrace)
                 $errorReport | Out-File -FilePath $errorLogPath -Encoding UTF8
 
                 [PSCustomObject]@{
-                    Agent  = $Agent.name
-                    Output = $null
-                    Tokens = 0
-                    Ok     = $false
-                    Error  = $errorMsg
+                    Agent        = $Agent.name
+                    Output       = $null
+                    Tokens       = 0
+                    Ok           = $false
+                    Error        = $errorMsg
                     SystemPrompt = $systemPrompt
-                    UserPrompt = $Context
+                    UserPrompt   = $Context
                 }
             }
 
@@ -1395,6 +1423,23 @@ Stack Trace: $($_.ScriptStackTrace)
             Write-Log -Agent $r.Agent -Content $finalOutput
             $Context += "`n`n[$($r.Agent) Output]:`n$finalOutput"
             $AgentOutputs[$r.Agent] = $finalOutput
+
+            ### BEGIN: Advisory ConceptualModelContract Clarifications In Parallel Collection
+            if ($r.Agent -eq "ConceptualModelContract" -and $validated.ClarificationNeeded -and $EffectiveJobType -eq "build_new_app") {
+                Write-Warning "ConceptualModelContract clarification detected during result collection, but this is build_new_app. Treating as advisory."
+
+                $requirementsRequest = New-RequirementsRequestPacket -Question $validated.ClarificationText -AgentName $r.Agent
+
+                Write-AgentStatus -Agent $r.Agent -Status "complete" -ExtraData @{
+                    clarification_advisory = $true
+                    clarification_text     = $validated.ClarificationText
+                    requirements_request   = $requirementsRequest
+                }
+
+                $Context += "`n`n[$($r.Agent) Advisory Clarification Ignored]:`n$($requirementsRequest | ConvertTo-Json -Depth 20)"
+                continue
+            }
+            ### END: Advisory ConceptualModelContract Clarifications In Parallel Collection
 
             if ($r.Agent -eq "ConceptualModelContract" -and $validated.ClarificationNeeded) {
                 $requirementsRequest = New-RequirementsRequestPacket -Question $validated.ClarificationText -AgentName $r.Agent
@@ -1421,10 +1466,10 @@ Stack Trace: $($_.ScriptStackTrace)
                     -Message "$($r.Agent) requested clarification before implementation could continue." `
                     -Stage "requirements" `
                     -Data @{
-                        agent                = $r.Agent
-                        clarification_text   = $validated.ClarificationText
-                        requirements_request = $requirementsRequest
-                    }
+                    agent                = $r.Agent
+                    clarification_text   = $validated.ClarificationText
+                    requirements_request = $requirementsRequest
+                }
 
                 $requirementsBlocker = @{
                     AgentName           = $r.Agent
@@ -1480,10 +1525,10 @@ Stack Trace: $($_.ScriptStackTrace)
                 $systemPrompt = Get-AgentSystemPrompt -Agent $V -BaseInstruction $Instruction -EffectiveAppType $EffectiveAppType -EffectiveJobType $EffectiveJobType
 
                 $auditInput = @{
-                    run_id = $RunId
-                    goal = $Goal
+                    run_id        = $RunId
+                    goal          = $Goal
                     agent_outputs = $AgentOutputs
-                    audit_focus = "Identify stub-outs, placeholders, TODO/TBD/FIXME markers, and unfinished tasks."
+                    audit_focus   = "Identify stub-outs, placeholders, TODO/TBD/FIXME markers, and unfinished tasks."
                 } | ConvertTo-Json -Depth 20
 
                 $Messages = @(
@@ -1546,7 +1591,8 @@ Stack Trace: $($_.ScriptStackTrace)
                         if ($req.agents) {
                             if ($req.agents -is [System.Collections.IEnumerable] -and -not ($req.agents -is [string])) {
                                 $swarmAgents = @($req.agents | ForEach-Object { [string]$_ })
-                            } else {
+                            }
+                            else {
                                 $swarmAgents = @([string]$req.agents)
                             }
                         }
@@ -1582,10 +1628,12 @@ Stack Trace: $($_.ScriptStackTrace)
                             Write-Log -Agent $C.name -Content "`n--- Commissioner Re-Run (with Swarms) ---`n$Output2"
                             $Context += "`n`n[$($C.name) Output (Re-Run)]:`n$Output2"
                             $Output = $Output2
-                        } else {
+                        }
+                        else {
                             Write-AgentStatus -Agent $C.name -Status "error" -ExtraData @{ rerun = $true }
                         }
-                    } catch {
+                    }
+                    catch {
                         Write-Host "⚠️ Swarms run failed: $_" -ForegroundColor Yellow
                         Write-AgentStatus -Agent "SwarmsEngine" -Status "error" -ExtraData @{ error = "$_" }
                     }
@@ -1631,7 +1679,8 @@ Stack Trace: $($_.ScriptStackTrace)
                     $commission = $Output | ConvertFrom-Json -ErrorAction Stop
                     if ($null -ne $commission.value_score) { $Score = [int]$commission.value_score }
                     if ($commission.recommendation) { $Recommendation = [string]$commission.recommendation }
-                } catch {
+                }
+                catch {
                     # Fallback to legacy formats.
                     if ($Output -match "Value Score[:\s]*(\d+)") {
                         $Score = [int]$matches[1]
@@ -1681,7 +1730,8 @@ Stack Trace: $($_.ScriptStackTrace)
 
                     $nextInstruction = if ([string]::IsNullOrWhiteSpace($Instruction)) {
                         $RefineDirective
-                    } else {
+                    }
+                    else {
                         "$Instruction`n`n$RefineDirective"
                     }
 
@@ -1710,8 +1760,8 @@ Stack Trace: $($_.ScriptStackTrace)
                 $systemPrompt = Get-AgentSystemPrompt -Agent $Sup -BaseInstruction $Instruction -EffectiveAppType $EffectiveAppType -EffectiveJobType $EffectiveJobType
 
                 $input = @{
-                    run_id = $RunId
-                    goal = $Goal
+                    run_id        = $RunId
+                    goal          = $Goal
                     agent_outputs = $AgentOutputs
                 } | ConvertTo-Json -Depth 20
 
@@ -1748,8 +1798,8 @@ Stack Trace: $($_.ScriptStackTrace)
                 $systemPrompt = Get-AgentSystemPrompt -Agent $H -BaseInstruction $Instruction -EffectiveAppType $EffectiveAppType -EffectiveJobType $EffectiveJobType
 
                 $input = @{
-                    run_id = $RunId
-                    goal = $Goal
+                    run_id        = $RunId
+                    goal          = $Goal
                     agent_outputs = $AgentOutputs
                 } | ConvertTo-Json -Depth 20
 
