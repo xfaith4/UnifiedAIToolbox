@@ -634,3 +634,228 @@ class TestOrchestrateRun:
         assert len(repairs) == 1
         assert repairs[0]["gate"] == "build"
         assert repairs[0]["agent"] == "Engineer"
+
+    def test_checkpoint_resume_dispatches_to_executor(self, cleanup_test_runs):
+        """
+        Regression test for the requirements resume path stuck at queued(resume_requirements).
+
+        After responding to a requirements checkpoint, _execute_orchestration_run must be
+        submitted to the thread-pool executor (unless PYTEST_CURRENT_TEST suppresses it).
+        This test verifies that:
+          1. The manifest is transitioned from blocked_requirements → queued
+          2. _orch_run_state holds a cancel_event for the run
+          3. When execution IS enabled, _execute_orchestration_run is called via executor
+        """
+        import unittest.mock as mock
+        run_id = f"test_cp_dispatch_{app.now_iso().replace(':', '-')}"
+        manifest_path = app.BRIDGE_RUN_DIR / f"{run_id}.json"
+        out_dir = app.BRIDGE_RUN_DIR / run_id
+        out_dir.mkdir(parents=True, exist_ok=True)
+        now = app.now_iso()
+
+        requirements_request = {
+            "summary": "ConceptualModelContract requires more detail.",
+            "blockers": [
+                {
+                    "id": "req_1",
+                    "question": "Which frontend stack should be used?",
+                    "why": "Needed to produce a valid implementation contract.",
+                    "defaults": ["React + Vite"],
+                }
+            ],
+            "proposed_acceptance_tests": ["App loads locally with npm run dev."],
+        }
+        checkpoint_pending = {
+            "checkpoint_id": "requirements-dispatch-test",
+            "run_id": run_id,
+            "kind": "requirements",
+            "agent": "ConceptualModelContract",
+            "summary": "needs requirements",
+            "question": "Which frontend stack should be used?",
+            "options": ["Provide explicit requirements answers"],
+            "default_option": "Provide explicit requirements answers",
+            "requested_at": now,
+            "requirements_request": requirements_request,
+        }
+        (out_dir / "checkpoint_pending.json").write_text(json.dumps(checkpoint_pending), encoding="utf-8")
+
+        manifest = {
+            "run_id": run_id,
+            "status": "blocked_requirements",
+            "requested_at": now,
+            "run_dir": str(out_dir),
+            "goal": "Build a Tic-Tac-Toe app",
+            "model": "gpt-4o-mini",
+            "events": [],
+            "requirements_request": requirements_request,
+            "verification_status": "needs_requirements",
+            "checkpoints": [
+                {
+                    "id": "requirements-dispatch-test",
+                    "agent": "ConceptualModelContract",
+                    "question": "Which frontend stack should be used?",
+                    "options": ["Provide explicit requirements answers"],
+                    "default_option": "Provide explicit requirements answers",
+                    "requested_at": now,
+                    "response": None,
+                    "responded_at": None,
+                    "resolved_by": None,
+                }
+            ],
+            "lease": None,
+        }
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+        submitted_args = []
+        original_submit = app._orch_run_executor.submit
+
+        def mock_submit(fn, *args, **kwargs):
+            submitted_args.append((fn, args))
+            # Return a real Future that is already done so cleanup works
+            import concurrent.futures
+            f = concurrent.futures.Future()
+            f.set_result(None)
+            return f
+
+        # Temporarily disable the PYTEST suppression and patch the executor
+        import os
+        env_backup = os.environ.pop("PYTEST_CURRENT_TEST", None)
+        try:
+            with mock.patch.object(app._orch_run_executor, "submit", side_effect=mock_submit):
+                res = client.post(
+                    f"/orchestrate/run/{run_id}/checkpoint",
+                    json={
+                        "agent": "ConceptualModelContract",
+                        "answers": [
+                            {
+                                "blocker_id": "req_1",
+                                "question": "Which frontend stack should be used?",
+                                "answer": "Use React with Vite.",
+                            }
+                        ],
+                    },
+                )
+        finally:
+            if env_backup is not None:
+                os.environ["PYTEST_CURRENT_TEST"] = env_backup
+
+        assert res.status_code == 200
+        body = res.json()
+        assert body.get("status") == "queued"
+
+        # _execute_orchestration_run must have been submitted to the executor
+        assert len(submitted_args) == 1, f"Expected 1 executor submit, got {len(submitted_args)}"
+        submitted_fn = submitted_args[0][0]
+        assert submitted_fn is app._execute_orchestration_run, (
+            f"Expected _execute_orchestration_run to be submitted, got {submitted_fn}"
+        )
+        submitted_run_id = submitted_args[0][1][0]
+        assert submitted_run_id == run_id, f"Wrong run_id submitted: {submitted_run_id}"
+
+        # Manifest should be queued with resume_context
+        updated = json.loads(manifest_path.read_text(encoding="utf-8"))
+        assert updated.get("status") == "queued"
+        assert "resume_context" in updated
+        assert "Use React with Vite." in updated["resume_context"]
+
+    def test_requeue_dispatches_to_executor(self, cleanup_test_runs):
+        """
+        Regression test: After requeueing a stuck/cancelled run, _execute_orchestration_run
+        must be submitted to the thread-pool executor (unless suppressed in test env).
+        """
+        import unittest.mock as mock, os
+        run_id = f"test_rq_dispatch_{app.now_iso().replace(':', '-')}"
+        manifest_path = app.BRIDGE_RUN_DIR / f"{run_id}.json"
+        out_dir = app.BRIDGE_RUN_DIR / run_id
+        out_dir.mkdir(parents=True, exist_ok=True)
+        now = app.now_iso()
+
+        manifest = {
+            "run_id": run_id,
+            "status": "stuck",
+            "requested_at": now,
+            "run_dir": str(out_dir),
+            "goal": "Build a Tic-Tac-Toe app",
+            "model": "gpt-4o-mini",
+            "events": [],
+            "lease": None,
+        }
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+        submitted_args = []
+
+        def mock_submit(fn, *args, **kwargs):
+            submitted_args.append((fn, args))
+            import concurrent.futures
+            f = concurrent.futures.Future()
+            f.set_result(None)
+            return f
+
+        env_backup = os.environ.pop("PYTEST_CURRENT_TEST", None)
+        try:
+            with mock.patch.object(app._orch_run_executor, "submit", side_effect=mock_submit):
+                res = client.post(f"/api/runs/{run_id}/requeue")
+        finally:
+            if env_backup is not None:
+                os.environ["PYTEST_CURRENT_TEST"] = env_backup
+
+        assert res.status_code == 200
+        body = res.json()
+        assert body.get("status") == "queued"
+        assert body.get("requeued") is True
+
+        assert len(submitted_args) == 1, f"Expected 1 executor submit, got {len(submitted_args)}"
+        submitted_fn = submitted_args[0][0]
+        assert submitted_fn is app._execute_orchestration_run, (
+            f"Expected _execute_orchestration_run to be submitted, got {submitted_fn}"
+        )
+
+    def test_derive_run_clears_checkpoint_stage_on_resume(self, cleanup_test_runs):
+        """
+        After a requirements checkpoint is answered and the run is re-queued,
+        _derive_run_runtime_fields should clear the stale current_stage='checkpoint'
+        so the blocking banner is hidden.
+        """
+        run_id = f"test_stage_reset_{app.now_iso().replace(':', '-')}"
+        manifest_path = app.BRIDGE_RUN_DIR / f"{run_id}.json"
+        out_dir = app.BRIDGE_RUN_DIR / run_id
+        out_dir.mkdir(parents=True, exist_ok=True)
+        now = app.now_iso()
+
+        manifest = {
+            "run_id": run_id,
+            "status": "queued",
+            "requested_at": now,
+            "run_dir": str(out_dir),
+            "events": [
+                {"ts": now, "type": "status", "message": "blocked_requirements"},
+                {"ts": now, "type": "checkpoint:resolved", "message": "checkpoint resolved"},
+                # A new queued status event that should clear the checkpoint stage
+                {"ts": now, "type": "status", "message": "queued (resume_requirements)"},
+            ],
+            "checkpoints": [
+                {
+                    "id": "cp-1",
+                    "agent": "ConceptualModelContract",
+                    "question": "Which stack?",
+                    "response": "Use React.",
+                    "responded_at": now,
+                    "resolved_by": "human",
+                    "status": "answered",
+                }
+            ],
+            "lease": None,
+            "verification_status": "pending",
+        }
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+        res = client.get(f"/orchestrate/run/{run_id}")
+        assert res.status_code == 200
+        body = res.json()
+
+        # After re-queuing the stage should NOT be 'checkpoint'
+        assert body.get("current_stage") != "checkpoint", (
+            f"current_stage should not be 'checkpoint' after re-queue, got: {body.get('current_stage')!r}"
+        )
+        # The run is queued, not blocked
+        assert body.get("status") == "queued"

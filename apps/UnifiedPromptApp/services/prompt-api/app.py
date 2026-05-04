@@ -3768,6 +3768,12 @@ def _derive_run_runtime_fields(manifest: Dict[str, Any]) -> Dict[str, Any]:
             current_stage = "checkpoint"
         elif ev_type.startswith("overseer:"):
             current_stage = "overseer"
+        elif ev_type == "status":
+            msg = str(ev.get("message") or "").lower()
+            if msg.startswith("queued") or msg.startswith("running") or msg.startswith("dispatching"):
+                # A transition back to queued/running resets the stale checkpoint stage
+                current_stage = None
+                current_agent = None
 
     lease = data.get("lease") if isinstance(data.get("lease"), dict) else {}
     last_heartbeat_at = lease.get("heartbeat_at") if lease else None
@@ -4077,12 +4083,26 @@ def _requeue_orchestration_run_internal(run_id: str, reason: str = "manual_reque
         return data
 
     _update_manifest_atomic(manifest_path, _apply)
+    new_cancel_event = threading.Event()
     with _orch_run_state_lock:
         _orch_run_state[run_id] = {
-            "cancel_event": threading.Event(),
+            "cancel_event": new_cancel_event,
             "process": None,
             "future": None,
         }
+    _rq_disable_exec = (
+        os.environ.get("PROMPT_API_DISABLE_ORCHESTRATION_EXEC") == "1"
+        or bool(os.environ.get("PYTEST_CURRENT_TEST"))
+    )
+    if not _rq_disable_exec:
+        _rq_future = _orch_run_executor.submit(
+            _execute_orchestration_run, run_id, manifest_path, new_cancel_event
+        )
+        with _orch_run_state_lock:
+            _rq_state = _orch_run_state.get(run_id, {})
+            _rq_state["future"] = _rq_future
+            _orch_run_state[run_id] = _rq_state
+        _rq_future.add_done_callback(lambda _f: _orch_run_state.pop(run_id, None))
     return {"run_id": run_id, "status": "queued", "requeued": True, "message": "Run requeued."}
 
 
@@ -4198,6 +4218,1281 @@ def get_orchestration_mcp_middleware() -> Optional["OrchestrationMCPMiddleware"]
     return _mcp_middleware
 
 
+
+def _execute_orchestration_run(run_id_hint: str, path: pathlib.Path, cancel_event: threading.Event, orch_logger: Optional[Any] = None) -> None:
+    """
+    Core orchestration executor. Reads all context from the manifest on disk.
+    Suitable for new runs, requeued runs, and requirements-resume runs because
+    it does not close over any request object or outer-scope variables.
+    """
+    start_time = time.time()
+    worker_id = f"orch-worker-{os.getpid()}-{threading.get_ident()}-{run_id_hint[:8]}"
+    heartbeat_stop = threading.Event()
+    heartbeat_thread: Optional[threading.Thread] = None
+    # ── Manifest helpers (path is captured from this function's scope) ─────────
+    def _update_manifest(update_fn):
+        try:
+            _update_manifest_atomic(path, lambda d: update_fn(d) or d)
+        except Exception as e:
+            print(f"[orchestrate] Failed to update manifest {path}: {e}", file=sys.stderr)
+
+    def _append_events(events: List[Dict[str, Any]]):
+        def _inner(data):
+            data.setdefault("events", [])
+            data["events"].extend(events)
+            return data
+        _update_manifest(_inner)
+
+    def _append_scratchpad(entries: List[Dict[str, Any]]):
+        def _inner(data):
+            data.setdefault("scratchpad", [])
+            data["scratchpad"].extend(entries)
+            return data
+        _update_manifest(_inner)
+
+    try:
+        _acquire_run_lease(run_id_hint, path, worker_id=worker_id)
+        with _orch_run_state_lock:
+            state = _orch_run_state.get(run_id_hint, {})
+            state["worker_id"] = worker_id
+            _orch_run_state[run_id_hint] = state
+
+        data = safe_json_load(path, context=f"execute_start:{run_id_hint}")
+
+        # Derive all execution context from the persisted manifest
+        run_id = str(data.get("run_id") or run_id_hint)
+        run_dir_str = str(data.get("run_dir") or "").strip()
+        out_dir = pathlib.Path(run_dir_str) if run_dir_str else BRIDGE_RUN_DIR / run_id
+        log_path_str = str(data.get("log_path") or "").strip()
+        log_path = pathlib.Path(log_path_str) if log_path_str else BRIDGE_RUN_DIR / f"{run_id}.log"
+
+        # ── _ingest_status_file defined here to close over run_id, data, orch_logger ─
+        def _ingest_status_file(status_file: pathlib.Path, processed: int):
+            if not status_file.exists():
+                return processed
+            try:
+                lines = status_file.read_text(encoding="utf-8").splitlines()
+            except Exception as e:
+                print(f"[orchestrate] Failed to read status file {status_file}: {e}", file=sys.stderr)
+                return processed
+            if processed >= len(lines):
+                return processed
+            new_lines = lines[processed:]
+            processed = len(lines)
+            entries = []
+            events = []
+            for line_num, line in enumerate(new_lines, start=processed+1):
+                if not line.strip():  # Skip empty lines
+                    continue
+                try:
+                    rec = json.loads(line)
+                    entries.append(rec)
+                    events.append(
+                        {
+                            "ts": rec.get("timestamp") or now_iso(),
+                            "type": f"agent:{rec.get('agent')}",
+                            "message": rec.get("status") or "",
+                        }
+                    )
+                    
+                    # Log agent step if orchestrator logger is available
+                    if orch_logger and rec.get("agent"):
+                        try:
+                            step_id = f"{run_id}_step_{processed + line_num}"
+                            orch_logger.log_step(
+                                step_id=step_id,
+                                agent_id=rec.get("agent", "unknown"),
+                                model=data.get("model") or DEFAULT_MODEL,
+                                prompt_text=rec.get("prompt", ""),
+                                input_payload={"status": rec.get("status"), "timestamp": rec.get("timestamp")},
+                                raw_output=rec.get("output", ""),
+                                parsed_output=rec if isinstance(rec, dict) else None,
+                                timing_ms=rec.get("duration_ms"),
+                            )
+                        except Exception as log_err:
+                            logger.warning(f"Failed to log step: {log_err}")
+                    
+                except json.JSONDecodeError as e:
+                    print(f"[orchestrate] Invalid JSON in {status_file} at line {line_num}: {e.msg} - Content: {line[:100]}", file=sys.stderr)
+                    continue
+                except Exception as e:
+                    print(f"[orchestrate] Error processing line {line_num} in {status_file}: {e}", file=sys.stderr)
+                    continue
+            if entries:
+                _append_scratchpad(entries)
+            if events:
+                _append_events(events)
+            return processed
+
+        if cancel_event.is_set():
+            data["status"] = "cancelled"
+            data["completed_at"] = now_iso()
+            data.setdefault("events", []).append({"ts": data["completed_at"], "type": "status", "message": "cancelled"})
+            data.setdefault("events", []).append({"ts": data["completed_at"], "type": "info", "message": "Run cancelled before execution started."})
+            path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            _release_run_lease(path, reason="cancelled_before_start")
+            return
+        data["status"] = "running"
+        data["started_at"] = now_iso()
+        data.setdefault("events", []).append({"ts": data["started_at"], "type": "status", "message": "running"})
+        data["mode"] = "executed"
+        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+        def _heartbeat_loop() -> None:
+            while not heartbeat_stop.wait(ORCH_HEARTBEAT_INTERVAL_SECONDS):
+                try:
+                    _heartbeat_run_lease(path)
+                except Exception as hb_exc:
+                    print(f"[orchestrate] heartbeat update failed for {run_id}: {hb_exc}", file=sys.stderr)
+
+        heartbeat_thread = threading.Thread(target=_heartbeat_loop, daemon=True)
+        heartbeat_thread.start()
+
+        goal_text = data.get("goal") or data.get("prompt_id") or ""
+        repo_root = str(data.get("repo_root") or "") or REPO_ROOT_DEFAULT
+        ps_exe = shutil.which("pwsh") or shutil.which("powershell")
+
+        # choose orchestrator script based on normalized run_mode
+        run_mode = str(data.get("run_mode") or "default")
+        ps1_candidate = pathlib.Path(CODEX_SWARM_PS1 if run_mode == "codex-swarm" else ORCH_PS1)
+        data.setdefault("events", []).append({
+            "ts": now_iso(),
+            "type": "debug",
+            "message": f"Resolved ORCH_PS1={ORCH_PS1}, POF_PS1={POF_PS1}",
+        })
+        data.setdefault("events", []).append({
+            "ts": now_iso(),
+            "type": "debug",
+            "message": f"Resolving orchestrator script: ROOT={ROOT_DIR}, candidate={ps1_candidate}, exists={ps1_candidate.exists()}, run_mode={run_mode}",
+        })
+        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        env_snapshot = {
+            "root": str(ROOT_DIR),
+            "candidate": str(ps1_candidate),
+            "exists": ps1_candidate.exists(),
+            "cwd": str(ps1_candidate.parent),
+            "pwsh_path": ps_exe,
+            "run_mode": run_mode,
+        }
+        with open(log_path, "w", encoding="utf-8") as logf:
+            logf.write(f"PRE-EXEC ENV: {json.dumps(env_snapshot)}\n")
+        try:
+            ps1 = ps1_candidate.resolve(strict=True)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Orchestrator script not found: {ps1_candidate.as_posix()}")
+
+        status_file = out_dir / "agent_status.json"
+        final_synthesis = out_dir / "Final_Synthesis.txt"
+        processed_status = 0
+        stop_event = threading.Event()
+
+        def _poll_status():
+            nonlocal processed_status
+            while not stop_event.is_set():
+                processed_status = _ingest_status_file(status_file, processed_status)
+                stop_event.wait(1.0)
+
+        poller = threading.Thread(target=_poll_status, daemon=True)
+        poller.start()
+
+        # ── Overseer ──────────────────────────────────────────────────────
+        # Monitors orchestration health independently of the goal.
+        # Emits overseer:* events to the manifest and writes overseer_advisory.json.
+        # Never surfaces findings to the end user — advises Commissioner only.
+        AGENT_STUCK_WARN_S = 60
+        AGENT_STUCK_CRITICAL_S = 180
+        advisory_path = out_dir / "overseer_advisory.json"
+
+        def _oversee():
+            advisory = {
+                "run_id": run_id,
+                "generated_at": now_iso(),
+                "observations": [],
+                "commissioner_directives": [],
+            }
+
+            def _save_advisory():
+                try:
+                    advisory_path.write_text(json.dumps(advisory, indent=2), encoding="utf-8")
+                except Exception as _e:
+                    print(f"[overseer] advisory write failed: {_e}", file=sys.stderr)
+
+            def _observe(severity, agent, finding, duration_s, directive):
+                ts = now_iso()
+                obs = {"ts": ts, "severity": severity, "finding": finding}
+                if agent:
+                    obs["agent"] = agent
+                if duration_s is not None:
+                    obs["duration_s"] = round(duration_s, 1)
+                if directive:
+                    obs["suggested_directive"] = directive
+                advisory["observations"].append(obs)
+                if directive:
+                    advisory["commissioner_directives"].append({"ts": ts, "directive": directive})
+                _save_advisory()
+                msg = f"[{agent}] {finding}" if agent else finding
+                if duration_s is not None:
+                    msg += f" ({duration_s:.0f}s)"
+                if directive:
+                    msg += f" — {directive}"
+                _append_events([{"ts": ts, "type": f"overseer:{severity}", "message": msg}])
+
+            _append_events([{"ts": now_iso(), "type": "overseer:info", "message": "Overseer monitoring started"}])
+
+            agent_working_since: Dict[str, float] = {}
+            warned_agents: set = set()
+            checked_agents: set = set()  # agents whose .txt output has been inspected
+
+            # ── Phase 3: Checkpoint state ──────────────────────────────────
+            CHECKPOINT_TIMEOUT_S = 300          # 5 minutes before auto-resolve
+            checkpoint_pending_path = out_dir / "checkpoint_pending.json"
+            checkpoint_response_path = out_dir / "checkpoint_response.json"
+            active_checkpoint_key: Optional[str] = None  # "{agent}:{question[:40]}"
+            checkpoint_started_at: Optional[float] = None
+
+            def _write_checkpoint_pending(agent_name: str, question: str, options: list, default_opt: str) -> None:
+                """Write checkpoint_pending.json so agents and the UI know to pause."""
+                nonlocal active_checkpoint_key, checkpoint_started_at
+                key = f"{agent_name}:{question[:40]}"
+                active_checkpoint_key = key
+                checkpoint_started_at = time.time()
+                record = {
+                    "run_id": run_id,
+                    "agent": agent_name,
+                    "question": question,
+                    "options": options,
+                    "default_option": default_opt,
+                    "requested_at": now_iso(),
+                    "timeout_s": CHECKPOINT_TIMEOUT_S,
+                }
+                try:
+                    checkpoint_pending_path.write_text(json.dumps(record, indent=2), encoding="utf-8")
+                except Exception as _e:
+                    print(f"[overseer] checkpoint_pending write failed: {_e}", file=sys.stderr)
+                # Update manifest: status → awaiting_input, append to checkpoints[]
+                def _apply(d):
+                    d["status"] = "awaiting_input"
+                    d.setdefault("checkpoints", []).append({
+                        "id": key,
+                        "agent": agent_name,
+                        "question": question,
+                        "options": options,
+                        "default_option": default_opt,
+                        "requested_at": record["requested_at"],
+                        "response": None,
+                        "responded_at": None,
+                        "resolved_by": None,
+                    })
+                    d.setdefault("events", []).append({
+                        "ts": now_iso(),
+                        "type": "checkpoint:pending",
+                        "message": f"[{agent_name}] {question}",
+                    })
+                    return d
+                _update_manifest(_apply)
+
+            def _resolve_checkpoint(response: str, resolved_by: str) -> None:
+                """Resolve active checkpoint — write response file and update manifest."""
+                nonlocal active_checkpoint_key, checkpoint_started_at
+                key = active_checkpoint_key
+                active_checkpoint_key = None
+                checkpoint_started_at = None
+                try:
+                    checkpoint_response_path.write_text(
+                        json.dumps({"response": response, "resolved_by": resolved_by, "resolved_at": now_iso()}, indent=2),
+                        encoding="utf-8",
+                    )
+                except Exception as _e:
+                    print(f"[overseer] checkpoint_response write failed: {_e}", file=sys.stderr)
+                def _apply(d):
+                    d["status"] = "running"
+                    for cp in d.get("checkpoints", []):
+                        if cp.get("id") == key and cp.get("response") is None:
+                            cp["response"] = response
+                            cp["responded_at"] = now_iso()
+                            cp["resolved_by"] = resolved_by
+                            break
+                    ev_type = "checkpoint:timed_out" if resolved_by == "timeout" else "checkpoint:resolved"
+                    d.setdefault("events", []).append({
+                        "ts": now_iso(),
+                        "type": ev_type,
+                        "message": f"Checkpoint resolved by {resolved_by}: {response!r}",
+                    })
+                    return d
+                _update_manifest(_apply)
+            # ── End Phase 3 checkpoint state ──────────────────────────────
+
+            def _build_error_directive(agent_name: str, error_msgs: list) -> str:
+                """Produce a root-cause + remediation directive for an agent error."""
+                for err in error_msgs:
+                    err_str = str(err)
+                    # Schema validation failure (ReviewGate pattern)
+                    if "output_schema" in err_str or "Required properties" in err_str:
+                        m = re.search(r'Required properties \["([^"]+)"\]', err_str)
+                        missing = f'"{m.group(1)}"' if m else "a required field"
+                        return (
+                            f"{agent_name} failed schema validation: an upstream agent returned JSON "
+                            f"that is missing the required property {missing}. "
+                            f"Root cause: the agent feeding {agent_name} did not include a top-level "
+                            f"{missing} key in its response. "
+                            f"Remediation: inspect the output_schema for {agent_name} and ensure all "
+                            f"upstream agents include {missing}. Consider adding explicit output "
+                            f"validation to the upstream agent's prompt."
+                        )
+                error_summary = "; ".join(str(e) for e in error_msgs)
+                return (
+                    f"{agent_name} produced an error-status output. "
+                    f"Error: {error_summary}. "
+                    f"Remediation: review {agent_name}'s prompt template and expected input format. "
+                    f"Verify that the model response conforms to the output_schema."
+                )
+
+            def _analyze_agent_output(agent_name: str) -> None:
+                """Read canonical agent output; emit an observation if it contains errors."""
+                try:
+                    output_json = _parse_agent_json_from_run_dir(out_dir, agent_name)
+                    if not isinstance(output_json, dict):
+                        return
+                    status = output_json.get("status", "")
+                    errors = output_json.get("errors", [])
+                    has_error = status == "error" or (isinstance(errors, list) and len(errors) > 0)
+                    if not has_error:
+                        return
+                    error_msgs = errors if isinstance(errors, list) else []
+                    error_summary = (
+                        "; ".join(str(e) for e in error_msgs) if error_msgs else f"status={status!r}"
+                    )
+                    directive = _build_error_directive(agent_name, error_msgs)
+                    _observe(
+                        severity="warn",
+                        agent=agent_name,
+                        finding=f"agent_output_error: {error_summary}",
+                        duration_s=None,
+                        directive=directive,
+                    )
+                except Exception as _e:
+                    print(f"[overseer] Output check failed for {agent_name}: {_e}", file=sys.stderr)
+
+            while not stop_event.is_set():
+                stop_event.wait(3.0)
+                if stop_event.is_set():
+                    break
+
+                # Read latest agent statuses from agent_status.json
+                if not status_file.exists():
+                    continue
+                try:
+                    lines = status_file.read_text(encoding="utf-8").splitlines()
+                except Exception:
+                    continue
+
+                agent_latest: Dict[str, Dict[str, Any]] = {}
+                for line in lines:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        rec = json.loads(line)
+                        name = rec.get("agent")
+                        if name:
+                            agent_latest[name] = rec
+                    except json.JSONDecodeError:
+                        continue
+
+                now_ts = time.time()
+                for name, rec in agent_latest.items():
+                    agent_status_val = rec.get("status", "")
+                    if agent_status_val == "working":
+                        if name not in agent_working_since:
+                            agent_working_since[name] = now_ts
+                        duration = now_ts - agent_working_since[name]
+                        if duration >= AGENT_STUCK_CRITICAL_S and f"{name}:critical" not in warned_agents:
+                            warned_agents.add(f"{name}:critical")
+                            _observe(
+                                severity="critical",
+                                agent=name,
+                                finding="stuck_working_critical",
+                                duration_s=duration,
+                                directive=(
+                                    f"{name} has been working for {duration:.0f}s with no status change. "
+                                    f"Commissioner should consider synthesizing from available partial output "
+                                    f"or reducing scope and retrying."
+                                ),
+                            )
+                        elif duration >= AGENT_STUCK_WARN_S and f"{name}:warn" not in warned_agents:
+                            warned_agents.add(f"{name}:warn")
+                            _observe(
+                                severity="warn",
+                                agent=name,
+                                finding="stuck_working",
+                                duration_s=duration,
+                                directive=None,
+                            )
+                    else:
+                        agent_working_since.pop(name, None)
+
+                # ── Agent output error check ──────────────────────────────────
+                # Inspect newly completed agents' .txt files for error status.
+                for name, rec in agent_latest.items():
+                    if rec.get("status") == "complete" and name not in checked_agents:
+                        checked_agents.add(name)
+                        _analyze_agent_output(name)
+
+                # ── Phase 3: Checkpoint detection ─────────────────────────────
+                if active_checkpoint_key is None:
+                    # Look for any agent that has requested a checkpoint
+                    for name, rec in agent_latest.items():
+                        if rec.get("checkpoint") is True and rec.get("status") != "complete":
+                            question = rec.get("question", "Agent requires a decision to continue.")
+                            options = rec.get("options") or ["Continue", "Abort"]
+                            default_opt = rec.get("default") or options[0]
+                            _write_checkpoint_pending(name, question, options, default_opt)
+                            _append_events([{
+                                "ts": now_iso(),
+                                "type": "checkpoint:pending",
+                                "message": f"[{name}] waiting for human input: {question[:120]}",
+                            }])
+                            break
+                else:
+                    # Checkpoint is active — check for response or timeout
+                    if checkpoint_response_path.exists():
+                        try:
+                            resp_data = json.loads(checkpoint_response_path.read_text(encoding="utf-8"))
+                            response_val = resp_data.get("response", "")
+                            resolved_by = resp_data.get("resolved_by", "human")
+                            _resolve_checkpoint(response_val, resolved_by)
+                            _append_events([{
+                                "ts": now_iso(),
+                                "type": "checkpoint:resolved",
+                                "message": f"Human response received: {response_val!r}",
+                            }])
+                        except Exception as _cpe:
+                            print(f"[overseer] checkpoint response read error: {_cpe}", file=sys.stderr)
+                    elif checkpoint_started_at is not None:
+                        elapsed = time.time() - checkpoint_started_at
+                        if elapsed >= CHECKPOINT_TIMEOUT_S:
+                            # Load default from pending file and auto-resolve
+                            try:
+                                pending_data = json.loads(checkpoint_pending_path.read_text(encoding="utf-8"))
+                                default_val = pending_data.get("default_option", "Continue")
+                            except Exception:
+                                default_val = "Continue"
+                            _resolve_checkpoint(default_val, "timeout")
+                            _append_events([{
+                                "ts": now_iso(),
+                                "type": "checkpoint:timed_out",
+                                "message": f"Checkpoint timed out after {CHECKPOINT_TIMEOUT_S}s. Auto-resolved: {default_val!r}",
+                            }])
+                # ── End Phase 3 checkpoint detection ──────────────────────────
+
+            # ── Final sweep (runs after subprocess exits) ──────────────────
+            try:
+                run_data = safe_json_load(path, default={}, context=f"overseer_final:{run_id}")
+                final_status = str(run_data.get("status", "") or "")
+                scratchpad = run_data.get("scratchpad", [])
+
+                # Build agent completion map from scratchpad
+                agent_completions: Dict[str, str] = {}
+                for entry in scratchpad:
+                    a = entry.get("agent")
+                    s = entry.get("status")
+                    if a and s:
+                        agent_completions[a] = s
+                all_agents_complete = bool(agent_completions) and all(
+                    v == "complete" for v in agent_completions.values()
+                )
+                synthesis_present = (
+                    (out_dir / "Final_Synthesis.html").exists()
+                    or (out_dir / "Final_Synthesis.txt").exists()
+                )
+                derived_final_status = _derive_final_status(
+                    final_status, agent_completions, all_agents_complete, synthesis_present
+                )
+
+                # ── Final output error sweep ──────────────────────────────────
+                # Catch any agents that completed too quickly to be seen during polling.
+                SKIP_FINAL_SWEEP = {"Final_Synthesis"}
+                for agent_file in sorted(out_dir.glob("*.txt")):
+                    name = agent_file.stem
+                    if name not in checked_agents and name not in SKIP_FINAL_SWEEP:
+                        checked_agents.add(name)
+                        _analyze_agent_output(name)
+
+                # STATUS RECLASSIFICATION
+                # A CalledProcessError after all agents complete and synthesis exists
+                # means the PowerShell wrapper exited non-zero for a non-critical reason
+                # (e.g. stdout/stderr flush, non-fatal post-run hook).
+                # Reclassify so the UI shows results rather than a red error state.
+                if derived_final_status == "completed_with_errors":
+                    derived_final_status = "completed_with_errors"
+                    _append_events([{
+                        "ts": now_iso(),
+                        "type": "overseer:action",
+                        "message": (
+                            "Status reclassified from error:CalledProcessError → completed_with_errors. "
+                            "All agents completed and synthesis output is present; "
+                            "PowerShell exit code is non-critical."
+                        ),
+                    }])
+                    _update_manifest(lambda d: {
+                        **d,
+                        "status": derived_final_status,
+                        "overseer_reclassified": True,
+                        "overseer_original_status": final_status,
+                    })
+                elif derived_final_status != final_status:
+                    _update_manifest(lambda d: {
+                        **d,
+                        "status": derived_final_status,
+                    })
+
+                obs_count = len(advisory["observations"])
+                directives_count = len(advisory.get("commissioner_directives", []))
+                summary = (
+                    f"Overseer monitoring ended. "
+                    f"{obs_count} observation(s), {directives_count} directive(s). "
+                    f"All agents complete: {all_agents_complete}. "
+                    f"Synthesis present: {synthesis_present}."
+                )
+                _append_events([{"ts": now_iso(), "type": "overseer:info", "message": summary}])
+
+                advisory["completed_at"] = now_iso()
+                advisory["agent_completions"] = agent_completions
+                advisory["all_agents_complete"] = all_agents_complete
+                advisory["synthesis_present"] = synthesis_present
+                advisory["final_status"] = derived_final_status
+                _save_advisory()
+            except Exception as _e:
+                print(f"[overseer] Final sweep error: {_e}", file=sys.stderr)
+
+        overseer = threading.Thread(target=_oversee, daemon=True)
+        overseer.start()
+        # ── End Overseer ──────────────────────────────────────────────────
+
+        if not ps_exe:
+            raise RuntimeError("PowerShell executable not found (pwsh or powershell)")
+
+        # ── Phase 2: Knowledge context injection ──────────────────────────
+        # Query similar past runs and prepend [KNOWLEDGE CONTEXT] to -Instruction
+        # so orchestration agents can learn from historical results.
+        knowledge_ctx = ""
+        if goal_text:
+            try:
+                knowledge_ctx = build_knowledge_context(goal_text)
+                if knowledge_ctx:
+                    _append_events([{
+                        "ts": now_iso(),
+                        "type": "info",
+                        "message": "Knowledge context injected from similar past runs.",
+                    }])
+            except Exception as _kce:
+                print(f"[knowledge] Context build error: {_kce}", file=sys.stderr)
+        # ── End Phase 2 Knowledge context injection ───────────────────────
+
+        data["events"].append({"ts": now_iso(), "type": "info", "message": f"Executing {ps1.name}"})
+        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+        # ── Goal.md materialization ───────────────────────────────────────
+        # Persist the full canonical goal to <out_dir>/Goal.md and pass it via
+        # -GoalFile rather than -Goal, so long Concierge prompts cannot be
+        # truncated on the command line. fullGoal is canonical and never
+        # truncated; goalPreview, run titles, and slugs may still be
+        # truncated for display/filesystem-safety.
+        full_goal = str(goal_text or "")
+        goal_file_path = out_dir / "Goal.md"
+        try:
+            out_dir.mkdir(parents=True, exist_ok=True)
+            goal_file_path.write_text(full_goal, encoding="utf-8")
+        except Exception as _gerr:
+            print(f"[orchestrate] Failed to write Goal.md: {_gerr}", file=sys.stderr)
+            raise
+        goal_bytes = full_goal.encode("utf-8")
+        goal_sha256 = hashlib.sha256(goal_bytes).hexdigest()
+        goal_length = len(full_goal)
+        goal_preview = full_goal if goal_length <= 300 else full_goal[:300]
+        goal_metadata = {
+            "source": "file",
+            "path": "Goal.md",
+            "length": goal_length,
+            "sha256": goal_sha256,
+            "preview": goal_preview,
+        }
+        data.setdefault("events", []).append({
+            "ts": now_iso(),
+            "type": "debug",
+            "message": (
+                f"Goal materialized to {goal_file_path.name} "
+                f"(length={goal_length}, sha256={goal_sha256[:12]}…)"
+            ),
+        })
+        try:
+            _update_manifest(lambda d: {**d, "goal_metadata": goal_metadata})
+        except Exception:
+            # Fall back to writing the metadata directly into `data`.
+            data["goal_metadata"] = goal_metadata
+        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+        args = [ps_exe, "-NoLogo", "-File", str(ps1)]
+        if run_mode == "codex-swarm":
+            args += [
+                "-RepoRoot",
+                repo_root,
+                "-GoalFile",
+                str(goal_file_path),
+                "-Model",
+                data.get("model") or DEFAULT_MODEL,
+                "-OutputDir",
+                str(out_dir),
+            ]
+        else:
+            args += [
+                "-GoalFile", str(goal_file_path),
+                "-Model", data.get("model") or DEFAULT_MODEL,
+            ]
+            if data.get("job_type"):
+                args += ["-JobType", str(data.get("job_type"))]
+            if data.get("app_type"):
+                args += ["-AppType", str(data.get("app_type"))]
+            if data.get("request_path"):
+                args += ["-RequestPath", str(data.get("request_path"))]
+            if data.get("contract_path"):
+                args += ["-ContractPath", str(data.get("contract_path"))]
+            notes = data.get("notes")
+            resume_context = data.get("resume_context")
+            instruction_parts = [p for p in [knowledge_ctx, resume_context, notes] if p]
+            if instruction_parts:
+                args += ["-Instruction", "\n\n".join(instruction_parts)]
+            args += [
+                "-OutputDir", str(out_dir),
+            ]
+        data.setdefault("events", []).append({
+            "ts": now_iso(),
+            "type": "debug",
+            "message": f"Prepared orchestration run with script {ps1} and args {args}",
+        })
+        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        if cancel_event.is_set():
+            raise RuntimeError("cancelled")
+        try:
+            with open(log_path, "a", encoding="utf-8") as logf:
+                logf.write(f"READY TO EXECUTE: {json.dumps({'script': str(ps1), 'args': args})}\n")
+                proc = subprocess.Popen(args, stdout=logf, stderr=logf)
+                _set_orch_run_process(run_id, proc)
+                try:
+                    while True:
+                        if cancel_event.is_set():
+                            try:
+                                proc.terminate()
+                                proc.wait(timeout=8)
+                            except subprocess.TimeoutExpired:
+                                proc.kill()
+                                proc.wait(timeout=5)
+                            raise RuntimeError("cancelled")
+
+                        return_code = proc.poll()
+                        if return_code is not None:
+                            if return_code != 0:
+                                # Capture the last 4 KB of combined stdout/stderr (both were
+                                # redirected into log_path) so the error handler can surface
+                                # the actual PowerShell failure message instead of just an
+                                # opaque exit-code number.
+                                _log_tail = ""
+                                try:
+                                    _log_sz = log_path.stat().st_size
+                                    _read_sz = min(_log_sz, 4096)
+                                    with open(log_path, "r", encoding="utf-8", errors="replace") as _lf:
+                                        _lf.seek(max(0, _log_sz - _read_sz))
+                                        _log_tail = _lf.read()
+                                except Exception:
+                                    pass
+                                raise subprocess.CalledProcessError(
+                                    return_code, args, output=_log_tail.encode("utf-8", errors="replace")
+                                )
+                            break
+                        time.sleep(0.5)
+                finally:
+                    _set_orch_run_process(run_id, None)
+        finally:
+            # Always stop background threads when the subprocess exits, whether it
+            # succeeded, failed, or was cancelled.  Without this guard the poller
+            # thread keeps calling _ingest_status_file every second, and the overseer
+            # thread keeps appending events — both after the run is already marked
+            # failed — producing duplicate/phantom entries in the manifest.
+            stop_event.set()
+            poller.join(timeout=2.0)
+            overseer.join(timeout=6.0)  # slightly longer — overseer does a final manifest sweep
+            processed_status = _ingest_status_file(status_file, processed_status)
+        if cancel_event.is_set():
+            raise RuntimeError("cancelled")
+
+        # ── Phase 1 Verifier ──────────────────────────────────────────────
+        # Evaluates each acceptance check from the proposal against the
+        # run_dir output files. Runs after Overseer so reclassifications
+        # are already applied. Writes sandbox_report.json.
+        def _verify():
+            checks_to_run = list(data.get("acceptance_checks") or [])
+            mandatory_contract_check = (
+                "Conceptual Model Contract must be strict JSON, machine-falsifiable, and fully traceable in Engineer output."
+            )
+            if mandatory_contract_check not in checks_to_run:
+                checks_to_run.append(mandatory_contract_check)
+
+            sandbox_report_path = out_dir / "sandbox_report.json"
+
+            def _parse_agent_json(agent_name: str) -> Optional[Dict[str, Any]]:
+                return _parse_agent_json_from_run_dir(out_dir, agent_name)
+
+            def _eval_commissioner_score():
+                d = _parse_agent_json("Commissioner")
+                if d is None:
+                    return "deferred", "Commissioner output not found", {}
+                return _evaluate_commissioner_decision(d)
+
+            def _eval_critic_blockers():
+                d = _parse_agent_json("Critic")
+                if d is None:
+                    return "deferred", "Critic output not found", {}
+                blockers = d.get("blockers", [])
+                if isinstance(blockers, list) and len(blockers) > 0:
+                    return (
+                        "failed",
+                        f"{len(blockers)} blocker(s): {'; '.join(str(b) for b in blockers[:3])}",
+                        {"blockers": blockers},
+                    )
+                return "passed", "No blockers found in Critic output", {"blockers": []}
+
+            def _eval_reviewgate():
+                d = _parse_agent_json("ReviewGate")
+                if d is None:
+                    return "deferred", "ReviewGate output not found", {}
+                status = d.get("status", "")
+                errors = d.get("errors", [])
+                if status == "error" or (isinstance(errors, list) and len(errors) > 0):
+                    return (
+                        "failed",
+                        f"ReviewGate status: {status!r}. Errors: {'; '.join(str(e) for e in errors[:2])}",
+                        {"status": status, "errors": errors},
+                    )
+                return "passed", f"ReviewGate passed (status: {status or 'ok'})", {"status": status}
+
+            def _eval_agent_completion():
+                if not status_file.exists():
+                    return "deferred", "agent_status.json not found", {}
+                try:
+                    lines = status_file.read_text(encoding="utf-8").splitlines()
+                    agent_latest: Dict[str, str] = {}
+                    for line in lines:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            rec = json.loads(line)
+                            name = rec.get("agent")
+                            if name:
+                                agent_latest[name] = rec.get("status", "unknown")
+                        except json.JSONDecodeError:
+                            continue
+                    incomplete = [n for n, s in agent_latest.items() if s != "complete"]
+                    if incomplete:
+                        return (
+                            "failed",
+                            f"Agents not complete: {', '.join(incomplete)}",
+                            {"incomplete": incomplete, "all": agent_latest},
+                        )
+                    return "passed", f"All {len(agent_latest)} agents completed", {"agents": agent_latest}
+                except Exception as _e:
+                    return "deferred", f"Error reading agent_status.json: {_e}", {}
+
+            def _eval_synthesis_present():
+                if (out_dir / "Final_Synthesis.html").exists():
+                    return "passed", "Final_Synthesis.html is present", {"file": "Final_Synthesis.html"}
+                if (out_dir / "Final_Synthesis.txt").exists():
+                    return "passed", "Final_Synthesis.txt is present", {"file": "Final_Synthesis.txt"}
+                return "failed", "No Final_Synthesis output found in run directory", {}
+
+            def _eval_conceptual_model_contract():
+                contract = _parse_agent_json("ConceptualModelContract")
+                if contract is None:
+                    return "failed", "ConceptualModelContract output not found", {}
+
+                clarification_request = str(contract.get("clarification_request") or "").strip()
+                if clarification_request:
+                    packet = _build_requirements_request_packet(
+                        {
+                            "summary": "ConceptualModelContract requested additional requirements before implementation can continue.",
+                            "blockers": [
+                                {
+                                    "id": "req_1",
+                                    "question": clarification_request,
+                                    "why": "Required to convert intent into machine-verifiable acceptance criteria.",
+                                }
+                            ],
+                        }
+                    )
+                    return (
+                        "needs_requirements",
+                        f"ConceptualModelContract requested clarification: {clarification_request}",
+                        {
+                            "requirements_request": packet,
+                            "blocking_agent": "ConceptualModelContract",
+                            "clarification_request": clarification_request,
+                        },
+                    )
+
+                contract_errors = _validate_conceptual_model_contract(contract)
+                if contract_errors:
+                    return (
+                        "failed",
+                        f"ConceptualModelContract invalid: {contract_errors[0]}",
+                        {"errors": contract_errors},
+                    )
+
+                engineer = _parse_agent_json("Engineer")
+                if engineer is None:
+                    return "failed", "Engineer output not found for traceability validation", {}
+
+                traceability_errors = _validate_engineer_contract_traceability(engineer, contract)
+                if traceability_errors:
+                    return (
+                        "failed",
+                        f"Engineer Contract Traceability invalid: {traceability_errors[0]}",
+                        {"errors": traceability_errors},
+                    )
+
+                return "passed", "ConceptualModelContract and Engineer traceability passed", {}
+
+            EVALUATOR_MAP = {
+                "commissioner_score": _eval_commissioner_score,
+                "critic_blockers": _eval_critic_blockers,
+                "reviewgate_status": _eval_reviewgate,
+                "agent_completion": _eval_agent_completion,
+                "synthesis_present": _eval_synthesis_present,
+                "conceptual_model_contract": _eval_conceptual_model_contract,
+            }
+
+            def _pick_evaluator(check_text: str) -> str:
+                text = check_text.lower()
+                if any(k in text for k in ("commissioner", "value score", "score ≥", "score >=")):
+                    return "commissioner_score"
+                if any(k in text for k in ("blocker", "high-severity", "high severity", "critical finding")):
+                    return "critic_blockers"
+                if any(k in text for k in ("review gate", "reviewgate", "schema", "output schema")):
+                    return "reviewgate_status"
+                if any(k in text for k in ("all agent", "agents complete", "agent completion")):
+                    return "agent_completion"
+                if any(k in text for k in ("synthesis", "output present", "deliverable", "final output")):
+                    return "synthesis_present"
+                if any(k in text for k in ("conceptual model contract", "traceability", "observableevidence", "acceptance_tests")):
+                    return "conceptual_model_contract"
+                return "deferred_code_execution"  # needs Phase 4
+
+            results = []
+            for check_text in checks_to_run:
+                evaluator_key = _pick_evaluator(check_text)
+                evaluator_fn = EVALUATOR_MAP.get(evaluator_key)
+                if evaluator_fn is None:
+                    results.append({
+                        "check": check_text,
+                        "evaluator": evaluator_key,
+                        "result": "deferred",
+                        "details": "Requires code execution — deferred to Phase 4 (Artifact Pipeline).",
+                        "data": {},
+                    })
+                    continue
+                try:
+                    v_result, v_details, v_data = evaluator_fn()
+                except Exception as _e:
+                    v_result, v_details, v_data = "deferred", f"Evaluator error: {_e}", {}
+                results.append({
+                    "check": check_text,
+                    "evaluator": evaluator_key,
+                    "result": v_result,
+                    "details": v_details,
+                    "data": v_data,
+                })
+
+            n_passed  = sum(1 for r in results if r["result"] == "passed")
+            n_failed  = sum(1 for r in results if r["result"] == "failed")
+            n_needs_requirements = sum(1 for r in results if r["result"] == "needs_requirements")
+            n_deferred = sum(1 for r in results if r["result"] == "deferred")
+            commissioner_hard_fail = any(
+                r.get("evaluator") == "commissioner_score"
+                and r.get("result") == "failed"
+                and isinstance(r.get("data"), dict)
+                and str(cast(Dict[str, Any], r.get("data", {})).get("commissioner_decision") or "") == "hard_fail"
+                for r in results
+            )
+            requirements_request = next(
+                (
+                    cast(Dict[str, Any], r.get("data", {})).get("requirements_request")
+                    for r in results
+                    if r.get("result") == "needs_requirements" and isinstance(r.get("data"), dict)
+                ),
+                None,
+            )
+
+            if commissioner_hard_fail:
+                v_status = "failed"
+            elif n_needs_requirements > 0:
+                v_status = "needs_requirements"
+            elif n_failed > 0:
+                v_status = "failed"
+            elif n_passed > 0 and n_deferred == 0:
+                v_status = "passed"
+            elif n_passed > 0:
+                v_status = "partial"
+            else:
+                v_status = "deferred"
+
+            sandbox_report = {
+                "generated_at": now_iso(),
+                "verification_status": v_status,
+                "loop_iteration": 0,
+                "checks": results,
+                "passed_count": n_passed,
+                "failed_count": n_failed,
+                "needs_requirements_count": n_needs_requirements,
+                "deferred_count": n_deferred,
+                "requirements_request": requirements_request,
+            }
+            try:
+                sandbox_report_path.write_text(json.dumps(sandbox_report, indent=2), encoding="utf-8")
+            except Exception as _e:
+                print(f"[verifier] Failed to write sandbox_report.json: {_e}", file=sys.stderr)
+
+            _append_events([{
+                "ts": now_iso(),
+                "type": f"verify:{v_status}",
+                "message": (
+                    f"Verification {v_status}: {n_passed} passed, {n_failed} failed, "
+                    f"{n_needs_requirements} needs_requirements, {n_deferred} deferred "
+                    f"out of {len(results)} check(s)."
+                ),
+            }])
+            _update_manifest(lambda d: {
+                **d,
+                "verification_status": v_status,
+                "sandbox_report": sandbox_report,
+                "requirements_request": requirements_request,
+            })
+
+        _verify()
+        # ── End Phase 1 Verifier ──────────────────────────────────────────
+
+        # ── Phase 2: Knowledge ingestion ──────────────────────────────────
+        # Runs after _verify() so sandbox_report data is in the manifest.
+        try:
+            ingest_run_knowledge(run_id, out_dir, path)
+        except Exception as _ke:
+            print(f"[knowledge] Post-run ingestion error: {_ke}", file=sys.stderr)
+        # ── End Phase 2 Knowledge ingestion ──────────────────────────────
+        if cancel_event.is_set():
+            raise RuntimeError("cancelled")
+
+        # Try to populate final_synthesis from various sources
+        final_synthesis_text = None
+        
+        # First try Final_Synthesis.txt (legacy location)
+        if final_synthesis.exists():
+            try:
+                final_synthesis_text = final_synthesis.read_text(encoding="utf-8")
+            except Exception as e:
+                print(f"[orchestrate] Failed to read Final_Synthesis.txt: {e}", file=sys.stderr)
+        
+        # If not found, try orchestration-summary.json from run_dir
+        if not final_synthesis_text:
+            orchestration_summary = out_dir / "orchestration-summary.json"
+            if orchestration_summary.exists():
+                try:
+                    summary_data = safe_json_load(orchestration_summary, context=f"final_synthesis:{run_id}")
+                    if summary_data is not None:
+                        # Format the summary as readable text
+                        summary_lines = [
+                            f"Goal: {summary_data.get('Goal', 'N/A')}",
+                            f"Status: {summary_data.get('Status', 'N/A')}",
+                            f"Model: {summary_data.get('Model', 'N/A')}",
+                            f"Duration: {summary_data.get('DurationSeconds', 'N/A')} seconds",
+                            f"Milestones: {summary_data.get('CompletedMilestones', 0)}/{summary_data.get('MilestonesCount', 0)} completed",
+                        ]
+                        final_synthesis_text = "\n".join(summary_lines)
+                except Exception as e:
+                    print(f"[orchestrate] Failed to read orchestration-summary.json: {e}", file=sys.stderr)
+        
+        # Update manifest with final synthesis if found
+        if final_synthesis_text:
+            try:
+                _update_manifest(lambda d: {**d, "final_synthesis": final_synthesis_text})
+            except Exception as e:
+                print(f"[orchestrate] Failed to update manifest with final synthesis: {e}", file=sys.stderr)
+
+        # Materialize concrete app files from Engineer output when possible.
+        try:
+            generated_app_files = _materialize_engineer_artifacts(out_dir)
+        except Exception as e:
+            generated_app_files = []
+            print(f"[orchestrate] Failed to materialize Engineer artifacts: {e}", file=sys.stderr)
+        if generated_app_files:
+            app_production = None
+            app_production_repairs = None
+            generated_root = out_dir / "generated_app"
+            if ORCHESTRATOR_LOGGING_AVAILABLE and generated_root.exists():
+                try:
+                    generated_logs_dir = out_dir / "logs" / "generated_app"
+                    verifier = OrchestratorVerifier(generated_root, log_dir=generated_logs_dir)
+                    install_result = verifier.verify_install()
+                    install_failed = isinstance(install_result, dict) and not bool(install_result.get("passed"))
+                    gate_results = {
+                        "install_result": install_result,
+                        "lint_result": (
+                            _make_skipped_gate_result("Lint skipped because dependency installation failed.")
+                            if install_failed else verifier.verify_lint()
+                        ),
+                        "build_result": (
+                            _make_skipped_gate_result("Build skipped because dependency installation failed.")
+                            if install_failed else verifier.verify_build()
+                        ),
+                        "unit_test_result": (
+                            _make_skipped_gate_result("Unit tests skipped because dependency installation failed.")
+                            if install_failed else verifier.verify_unit_tests()
+                        ),
+                        "smoke_test_result": (
+                            _make_skipped_gate_result("Smoke tests skipped because dependency installation failed.")
+                            if install_failed else verifier.verify_smoke_tests()
+                        ),
+                        "dev_server_result": (
+                            _make_skipped_gate_result("Dev server proof skipped because dependency installation failed.")
+                            if install_failed else verifier.verify_dev_server()
+                        ),
+                        "docker_compose_valid": verifier.verify_docker_compose(),
+                    }
+                    app_production = _summarize_app_production_gates(gate_results, out_dir, generated_root)
+                    json_path, md_path = _write_app_production_artifacts(out_dir, app_production)
+                    app_production["report_artifact"] = _to_relpath(json_path, out_dir)
+                    app_production["summary_artifact"] = _to_relpath(md_path, out_dir)
+                    app_production_repairs = _derive_app_production_repair_plan(app_production)
+                    if app_production_repairs.get("items"):
+                        app_production, app_production_repairs = _execute_app_production_repairs(
+                            out_dir,
+                            generated_root,
+                            app_production,
+                            app_production_repairs,
+                            model=str(data.get("model") or DEFAULT_MODEL),
+                        )
+                    else:
+                        repair_json_path, repair_md_path = _write_app_production_repair_artifacts(out_dir, app_production_repairs)
+                        app_production_repairs["report_artifact"] = _to_relpath(repair_json_path, out_dir)
+                        app_production_repairs["summary_artifact"] = _to_relpath(repair_md_path, out_dir)
+                except Exception as e:
+                    print(f"[orchestrate] Failed to verify generated_app artifacts: {e}", file=sys.stderr)
+
+            _append_events([{
+                "ts": now_iso(),
+                "type": "artifact:generated_app",
+                "message": f"Generated {len(generated_app_files)} app file(s) under generated_app/.",
+            }])
+            if app_production:
+                _append_events([{
+                    "ts": now_iso(),
+                    "type": "verify:generated_app",
+                    "message": (
+                        f"Generated app verification {app_production['status']}: "
+                        f"{app_production['passed_count']} passed, "
+                        f"{app_production['failed_count']} failed, "
+                        f"{app_production['skipped_count']} skipped."
+                    ),
+                }])
+            if app_production_repairs and app_production_repairs.get("items"):
+                _append_events([{
+                    "ts": now_iso(),
+                    "type": "repair:generated_app_route",
+                    "message": (
+                        f"Generated app repair routing prepared {len(app_production_repairs['items'])} target(s)."
+                    ),
+                }])
+            repair_execution_status = (
+                str(app_production_repairs.get("execution_status") or "").strip().lower()
+                if isinstance(app_production_repairs, dict)
+                else ""
+            )
+            repair_attempts = (
+                app_production_repairs.get("attempts")
+                if isinstance(app_production_repairs, dict) and isinstance(app_production_repairs.get("attempts"), list)
+                else []
+            )
+            if repair_execution_status == "blocked_missing_api_key":
+                _append_events([{
+                    "ts": now_iso(),
+                    "type": "repair:generated_app_blocked",
+                    "message": "Generated app auto-repair skipped because OPENAI_API_KEY is not configured.",
+                }])
+            elif repair_execution_status == "verified":
+                _append_events([{
+                    "ts": now_iso(),
+                    "type": "repair:generated_app_verified",
+                    "message": f"Generated app auto-repair verified the app after {len(repair_attempts)} attempt(s).",
+                }])
+            elif repair_attempts:
+                last_attempt = repair_attempts[-1] if repair_attempts and isinstance(repair_attempts[-1], dict) else {}
+                _append_events([{
+                    "ts": now_iso(),
+                    "type": "repair:generated_app_attempt",
+                    "message": (
+                        f"Generated app auto-repair {repair_execution_status or 'attempted'} "
+                        f"after {len(repair_attempts)} attempt(s); current status is {app_production.get('status') if isinstance(app_production, dict) else 'unknown'}."
+                    ),
+                    "details": {
+                        "attempts": len(repair_attempts),
+                        "last_gate": last_attempt.get("gate"),
+                        "last_status": last_attempt.get("status"),
+                    },
+                }])
+            _update_manifest(lambda d: {
+                **d,
+                "generated_app_files": generated_app_files,
+                "app_production": app_production or d.get("app_production"),
+                "app_production_repairs": app_production_repairs or d.get("app_production_repairs"),
+            })
+
+        # Frontier arena: derive a canonical multi-lane manifest from the
+        # current run's evidence and adjudicate it. Today only the internal
+        # lane exists; the seam is in place for frontier provider lanes.
+        if ARENA_AVAILABLE and _arena_attach_to_manifest is not None:
+            try:
+                arena_snapshot = safe_json_load(path, default={}, context=f"arena_snapshot:{run_id}") or {}
+                arena_record = _arena_attach_to_manifest(arena_snapshot, out_dir)
+                _update_manifest(lambda d: {**d, "arena": arena_record})
+                verdict = arena_record.get("verdict") or {}
+                _append_events([{
+                    "ts": now_iso(),
+                    "type": "arena:adjudicated",
+                    "message": (
+                        f"Arena verdict: winner=`{verdict.get('winner_lane_id')}` "
+                        f"score={verdict.get('winner_score', 0.0):.2f} "
+                        f"confidence={verdict.get('confidence', 'unknown')} "
+                        f"lanes={len(arena_record.get('lanes') or [])}."
+                    ),
+                }])
+            except Exception as arena_err:
+                print(f"[orchestrate] Arena adjudication failed: {arena_err}", file=sys.stderr)
+
+        data = safe_json_load(path, context=f"execute_complete:{run_id}")
+        verification_status = str(data.get("verification_status") or "").strip().lower()
+        if verification_status in {"needs_requirements", "blocked_requirements"}:
+            data["status"] = "blocked_requirements"
+            completion_message = "blocked_requirements"
+        else:
+            data["status"] = "completed"
+            completion_message = "completed"
+        data["completed_at"] = now_iso()
+        data.setdefault("events", []).append({"ts": data["completed_at"], "type": "status", "message": completion_message})
+        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        
+        # Log artifact manifest and run verification if logger is available
+        if orch_logger:
+            try:
+                # Collect generated files
+                generated_files = []
+                if out_dir.exists():
+                    for file_path in out_dir.rglob("*"):
+                        if file_path.is_file() and file_path.name not in ["run.json", "steps.jsonl", "decisions.jsonl", "conflicts.jsonl"]:
+                            try:
+                                generated_files.append({
+                                    "path": str(file_path.relative_to(out_dir)),
+                                    "sha256": compute_file_hash(file_path),
+                                    "size_bytes": file_path.stat().st_size,
+                                })
+                            except Exception:
+                                pass
+                
+                # Detect stacks
+                detected = detect_stacks(out_dir)
+                
+                # Find entrypoints
+                entrypoints = []
+                for common_entry in ["main.py", "index.js", "app.py", "server.js", "index.html"]:
+                    if (out_dir / common_entry).exists():
+                        entrypoints.append(common_entry)
+                
+                # Log artifact manifest
+                orch_logger.log_artifact_manifest(
+                    files=generated_files,
+                    detected_stacks=detected,
+                    entrypoints_found=entrypoints,
+                    warnings=[],
+                )
+                
+                # Run verification (optional)
+                try:
+                    verifier = OrchestratorVerifier(out_dir)
+                    verification_results = verifier.run_all_verifications()
+                    orch_logger.log_verification(**verification_results)
+                except Exception as verify_err:
+                    logger.warning(f"Verification failed: {verify_err}")
+                    
+            except Exception as log_err:
+                logger.warning(f"Failed to log artifacts/verification: {log_err}")
+        
+        elapsed_ms = (time.time() - start_time) * 1000
+        logger.info(f"Orchestration run {run_id} completed in {elapsed_ms:.2f}ms")
+        
+    except Exception as exc:
+        is_cancelled = str(exc).strip().lower() == "cancelled"
+        if is_cancelled:
+            try:
+                data = safe_json_load(path, default={}, context=f"execute_cancelled:{run_id_hint}")
+                data["status"] = "cancelled"
+                data["completed_at"] = now_iso()
+                data.setdefault("events", []).append({"ts": data["completed_at"], "type": "status", "message": "cancelled"})
+                data.setdefault("events", []).append({"ts": data["completed_at"], "type": "info", "message": "Run cancelled during execution."})
+                path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            except Exception as e:
+                print(f"[orchestrate] Failed to write cancelled state to manifest: {e}", file=sys.stderr)
+        else:
+            # When the subprocess exited non-zero, CalledProcessError.output holds the
+            # last 4 KB of the script's combined stdout+stderr (captured above).
+            # Decode it and attach to the error so operators can read the root cause
+            # directly from the manifest instead of hunting through log files.
+            error_log_tail = ""
+            if isinstance(exc, subprocess.CalledProcessError) and exc.output:
+                try:
+                    raw = exc.output if isinstance(exc.output, str) else exc.output.decode("utf-8", errors="replace")
+                    error_log_tail = raw.strip()[-3000:]  # cap at 3000 chars for manifest size
+                except Exception:
+                    pass
+            exit_code_str = f" (exit code {exc.returncode})" if isinstance(exc, subprocess.CalledProcessError) else ""
+            error_detail = f"orchestrator failed{exit_code_str}: {exc}"
+            if error_log_tail:
+                error_detail = f"{error_detail}\n\n--- Script output (last 4 KB) ---\n{error_log_tail}"
+            print(f"[orchestrate] {error_detail}", file=sys.stderr)
+            try:
+                _append_events(
+                    [{"ts": now_iso(), "type": "error", "message": error_detail, "error_detail": str(exc), "traceback": str(type(exc).__name__)}]
+                )
+                data = safe_json_load(path, default={}, context=f"execute_error:{run_id_hint}")
+                data["status"] = f"error:{type(exc).__name__}"
+                data["completed_at"] = now_iso()
+                data["error_detail"] = str(exc)
+                if error_log_tail:
+                    data["error_log_tail"] = error_log_tail
+                data["last_step"] = "orchestrator execution"
+                path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            except Exception as e:
+                print(f"[orchestrate] Failed to write error state to manifest: {e}", file=sys.stderr)
+    finally:
+        heartbeat_stop.set()
+        if heartbeat_thread is not None:
+            heartbeat_thread.join(timeout=2.0)
+        try:
+            data = safe_json_load(path, default={}, context=f"execute_finally:{run_id_hint}")
+            status_value = str(data.get("status") or "").strip().lower()
+            if status_value == "stuck":
+                _release_run_lease(path, reason="stale_lease_detected")
+            elif status_value in ORCH_TERMINAL_STATUSES:
+                _release_run_lease(path, reason=f"terminal:{status_value}")
+        except Exception:
+            pass
+
+
 @app.post("/orchestrate/run")
 def orchestrate_run(
     req: OrchestrationRequest,
@@ -4290,6 +5585,7 @@ def orchestrate_run(
         "mcp_enforcement_enabled": bool(getattr(middleware, "enabled", False)),
         "run_dir": str(out_dir),
         "log_path": str(log_path),
+        "repo_root": req.repo_root or REPO_ROOT_DEFAULT,
         "events": [
             {"ts": now_iso(), "type": "status", "message": "queued"},
         ],
@@ -4313,1264 +5609,10 @@ def orchestrate_run(
             "worker_id": None,
         }
 
-    def _update_manifest(update_fn):
-        try:
-            _update_manifest_atomic(path, lambda d: update_fn(d) or d)
-        except Exception as e:
-            print(f"[orchestrate] Failed to update manifest {path}: {e}", file=sys.stderr)
-
-    def _append_events(events: List[Dict[str, Any]]):
-        def _inner(data):
-            data.setdefault("events", [])
-            data["events"].extend(events)
-            return data
-        _update_manifest(_inner)
-
-    def _append_scratchpad(entries: List[Dict[str, Any]]):
-        def _inner(data):
-            data.setdefault("scratchpad", [])
-            data["scratchpad"].extend(entries)
-            return data
-        _update_manifest(_inner)
-
-    def _ingest_status_file(status_file: pathlib.Path, processed: int):
-        if not status_file.exists():
-            return processed
-        try:
-            lines = status_file.read_text(encoding="utf-8").splitlines()
-        except Exception as e:
-            print(f"[orchestrate] Failed to read status file {status_file}: {e}", file=sys.stderr)
-            return processed
-        if processed >= len(lines):
-            return processed
-        new_lines = lines[processed:]
-        processed = len(lines)
-        entries = []
-        events = []
-        for line_num, line in enumerate(new_lines, start=processed+1):
-            if not line.strip():  # Skip empty lines
-                continue
-            try:
-                rec = json.loads(line)
-                entries.append(rec)
-                events.append(
-                    {
-                        "ts": rec.get("timestamp") or now_iso(),
-                        "type": f"agent:{rec.get('agent')}",
-                        "message": rec.get("status") or "",
-                    }
-                )
-                
-                # Log agent step if orchestrator logger is available
-                if orch_logger and rec.get("agent"):
-                    try:
-                        step_id = f"{run_id}_step_{processed + line_num}"
-                        orch_logger.log_step(
-                            step_id=step_id,
-                            agent_id=rec.get("agent", "unknown"),
-                            model=manifest.get("model", DEFAULT_MODEL),
-                            prompt_text=rec.get("prompt", ""),
-                            input_payload={"status": rec.get("status"), "timestamp": rec.get("timestamp")},
-                            raw_output=rec.get("output", ""),
-                            parsed_output=rec if isinstance(rec, dict) else None,
-                            timing_ms=rec.get("duration_ms"),
-                        )
-                    except Exception as log_err:
-                        logger.warning(f"Failed to log step: {log_err}")
-                
-            except json.JSONDecodeError as e:
-                print(f"[orchestrate] Invalid JSON in {status_file} at line {line_num}: {e.msg} - Content: {line[:100]}", file=sys.stderr)
-                continue
-            except Exception as e:
-                print(f"[orchestrate] Error processing line {line_num} in {status_file}: {e}", file=sys.stderr)
-                continue
-        if entries:
-            _append_scratchpad(entries)
-        if events:
-            _append_events(events)
-        return processed
 
     def _execute(path: pathlib.Path, manifest: Dict[str, Any], cancel_event: threading.Event):
-        nonlocal orch_logger
-        start_time = time.time()
-        worker_id = f"orch-worker-{os.getpid()}-{threading.get_ident()}-{run_id[:8]}"
-        heartbeat_stop = threading.Event()
-        heartbeat_thread: Optional[threading.Thread] = None
-        try:
-            _acquire_run_lease(run_id, path, worker_id=worker_id)
-            with _orch_run_state_lock:
-                state = _orch_run_state.get(run_id, {})
-                state["worker_id"] = worker_id
-                _orch_run_state[run_id] = state
-
-            data = safe_json_load(path, context=f"execute_start:{run_id}")
-            if cancel_event.is_set():
-                data["status"] = "cancelled"
-                data["completed_at"] = now_iso()
-                data.setdefault("events", []).append({"ts": data["completed_at"], "type": "status", "message": "cancelled"})
-                data.setdefault("events", []).append({"ts": data["completed_at"], "type": "info", "message": "Run cancelled before execution started."})
-                path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-                _release_run_lease(path, reason="cancelled_before_start")
-                return
-            data["status"] = "running"
-            data["started_at"] = now_iso()
-            data.setdefault("events", []).append({"ts": data["started_at"], "type": "status", "message": "running"})
-            data["mode"] = "executed"
-            path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-
-            def _heartbeat_loop() -> None:
-                while not heartbeat_stop.wait(ORCH_HEARTBEAT_INTERVAL_SECONDS):
-                    try:
-                        _heartbeat_run_lease(path)
-                    except Exception as hb_exc:
-                        print(f"[orchestrate] heartbeat update failed for {run_id}: {hb_exc}", file=sys.stderr)
-
-            heartbeat_thread = threading.Thread(target=_heartbeat_loop, daemon=True)
-            heartbeat_thread.start()
-
-            goal_text = manifest.get("goal") or manifest.get("prompt_id") or ""
-            repo_root = req.repo_root or REPO_ROOT_DEFAULT
-            ps_exe = shutil.which("pwsh") or shutil.which("powershell")
-
-            # choose orchestrator script based on normalized run_mode
-            run_mode = _normalize_run_mode(req.run_mode)
-            ps1_candidate = pathlib.Path(CODEX_SWARM_PS1 if run_mode == "codex-swarm" else ORCH_PS1)
-            data.setdefault("events", []).append({
-                "ts": now_iso(),
-                "type": "debug",
-                "message": f"Resolved ORCH_PS1={ORCH_PS1}, POF_PS1={POF_PS1}",
-            })
-            data.setdefault("events", []).append({
-                "ts": now_iso(),
-                "type": "debug",
-                "message": f"Resolving orchestrator script: ROOT={ROOT_DIR}, candidate={ps1_candidate}, exists={ps1_candidate.exists()}, run_mode={run_mode}",
-            })
-            path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-            env_snapshot = {
-                "root": str(ROOT_DIR),
-                "candidate": str(ps1_candidate),
-                "exists": ps1_candidate.exists(),
-                "cwd": str(ps1_candidate.parent),
-                "pwsh_path": ps_exe,
-                "run_mode": run_mode,
-            }
-            with open(log_path, "w", encoding="utf-8") as logf:
-                logf.write(f"PRE-EXEC ENV: {json.dumps(env_snapshot)}\n")
-            try:
-                ps1 = ps1_candidate.resolve(strict=True)
-            except FileNotFoundError:
-                raise FileNotFoundError(f"Orchestrator script not found: {ps1_candidate.as_posix()}")
-
-            status_file = out_dir / "agent_status.json"
-            final_synthesis = out_dir / "Final_Synthesis.txt"
-            processed_status = 0
-            stop_event = threading.Event()
-
-            def _poll_status():
-                nonlocal processed_status
-                while not stop_event.is_set():
-                    processed_status = _ingest_status_file(status_file, processed_status)
-                    stop_event.wait(1.0)
-
-            poller = threading.Thread(target=_poll_status, daemon=True)
-            poller.start()
-
-            # ── Overseer ──────────────────────────────────────────────────────
-            # Monitors orchestration health independently of the goal.
-            # Emits overseer:* events to the manifest and writes overseer_advisory.json.
-            # Never surfaces findings to the end user — advises Commissioner only.
-            AGENT_STUCK_WARN_S = 60
-            AGENT_STUCK_CRITICAL_S = 180
-            advisory_path = out_dir / "overseer_advisory.json"
-
-            def _oversee():
-                advisory = {
-                    "run_id": run_id,
-                    "generated_at": now_iso(),
-                    "observations": [],
-                    "commissioner_directives": [],
-                }
-
-                def _save_advisory():
-                    try:
-                        advisory_path.write_text(json.dumps(advisory, indent=2), encoding="utf-8")
-                    except Exception as _e:
-                        print(f"[overseer] advisory write failed: {_e}", file=sys.stderr)
-
-                def _observe(severity, agent, finding, duration_s, directive):
-                    ts = now_iso()
-                    obs = {"ts": ts, "severity": severity, "finding": finding}
-                    if agent:
-                        obs["agent"] = agent
-                    if duration_s is not None:
-                        obs["duration_s"] = round(duration_s, 1)
-                    if directive:
-                        obs["suggested_directive"] = directive
-                    advisory["observations"].append(obs)
-                    if directive:
-                        advisory["commissioner_directives"].append({"ts": ts, "directive": directive})
-                    _save_advisory()
-                    msg = f"[{agent}] {finding}" if agent else finding
-                    if duration_s is not None:
-                        msg += f" ({duration_s:.0f}s)"
-                    if directive:
-                        msg += f" — {directive}"
-                    _append_events([{"ts": ts, "type": f"overseer:{severity}", "message": msg}])
-
-                _append_events([{"ts": now_iso(), "type": "overseer:info", "message": "Overseer monitoring started"}])
-
-                agent_working_since: Dict[str, float] = {}
-                warned_agents: set = set()
-                checked_agents: set = set()  # agents whose .txt output has been inspected
-
-                # ── Phase 3: Checkpoint state ──────────────────────────────────
-                CHECKPOINT_TIMEOUT_S = 300          # 5 minutes before auto-resolve
-                checkpoint_pending_path = out_dir / "checkpoint_pending.json"
-                checkpoint_response_path = out_dir / "checkpoint_response.json"
-                active_checkpoint_key: Optional[str] = None  # "{agent}:{question[:40]}"
-                checkpoint_started_at: Optional[float] = None
-
-                def _write_checkpoint_pending(agent_name: str, question: str, options: list, default_opt: str) -> None:
-                    """Write checkpoint_pending.json so agents and the UI know to pause."""
-                    nonlocal active_checkpoint_key, checkpoint_started_at
-                    key = f"{agent_name}:{question[:40]}"
-                    active_checkpoint_key = key
-                    checkpoint_started_at = time.time()
-                    record = {
-                        "run_id": run_id,
-                        "agent": agent_name,
-                        "question": question,
-                        "options": options,
-                        "default_option": default_opt,
-                        "requested_at": now_iso(),
-                        "timeout_s": CHECKPOINT_TIMEOUT_S,
-                    }
-                    try:
-                        checkpoint_pending_path.write_text(json.dumps(record, indent=2), encoding="utf-8")
-                    except Exception as _e:
-                        print(f"[overseer] checkpoint_pending write failed: {_e}", file=sys.stderr)
-                    # Update manifest: status → awaiting_input, append to checkpoints[]
-                    def _apply(d):
-                        d["status"] = "awaiting_input"
-                        d.setdefault("checkpoints", []).append({
-                            "id": key,
-                            "agent": agent_name,
-                            "question": question,
-                            "options": options,
-                            "default_option": default_opt,
-                            "requested_at": record["requested_at"],
-                            "response": None,
-                            "responded_at": None,
-                            "resolved_by": None,
-                        })
-                        d.setdefault("events", []).append({
-                            "ts": now_iso(),
-                            "type": "checkpoint:pending",
-                            "message": f"[{agent_name}] {question}",
-                        })
-                        return d
-                    _update_manifest(_apply)
-
-                def _resolve_checkpoint(response: str, resolved_by: str) -> None:
-                    """Resolve active checkpoint — write response file and update manifest."""
-                    nonlocal active_checkpoint_key, checkpoint_started_at
-                    key = active_checkpoint_key
-                    active_checkpoint_key = None
-                    checkpoint_started_at = None
-                    try:
-                        checkpoint_response_path.write_text(
-                            json.dumps({"response": response, "resolved_by": resolved_by, "resolved_at": now_iso()}, indent=2),
-                            encoding="utf-8",
-                        )
-                    except Exception as _e:
-                        print(f"[overseer] checkpoint_response write failed: {_e}", file=sys.stderr)
-                    def _apply(d):
-                        d["status"] = "running"
-                        for cp in d.get("checkpoints", []):
-                            if cp.get("id") == key and cp.get("response") is None:
-                                cp["response"] = response
-                                cp["responded_at"] = now_iso()
-                                cp["resolved_by"] = resolved_by
-                                break
-                        ev_type = "checkpoint:timed_out" if resolved_by == "timeout" else "checkpoint:resolved"
-                        d.setdefault("events", []).append({
-                            "ts": now_iso(),
-                            "type": ev_type,
-                            "message": f"Checkpoint resolved by {resolved_by}: {response!r}",
-                        })
-                        return d
-                    _update_manifest(_apply)
-                # ── End Phase 3 checkpoint state ──────────────────────────────
-
-                def _build_error_directive(agent_name: str, error_msgs: list) -> str:
-                    """Produce a root-cause + remediation directive for an agent error."""
-                    for err in error_msgs:
-                        err_str = str(err)
-                        # Schema validation failure (ReviewGate pattern)
-                        if "output_schema" in err_str or "Required properties" in err_str:
-                            m = re.search(r'Required properties \["([^"]+)"\]', err_str)
-                            missing = f'"{m.group(1)}"' if m else "a required field"
-                            return (
-                                f"{agent_name} failed schema validation: an upstream agent returned JSON "
-                                f"that is missing the required property {missing}. "
-                                f"Root cause: the agent feeding {agent_name} did not include a top-level "
-                                f"{missing} key in its response. "
-                                f"Remediation: inspect the output_schema for {agent_name} and ensure all "
-                                f"upstream agents include {missing}. Consider adding explicit output "
-                                f"validation to the upstream agent's prompt."
-                            )
-                    error_summary = "; ".join(str(e) for e in error_msgs)
-                    return (
-                        f"{agent_name} produced an error-status output. "
-                        f"Error: {error_summary}. "
-                        f"Remediation: review {agent_name}'s prompt template and expected input format. "
-                        f"Verify that the model response conforms to the output_schema."
-                    )
-
-                def _analyze_agent_output(agent_name: str) -> None:
-                    """Read canonical agent output; emit an observation if it contains errors."""
-                    try:
-                        output_json = _parse_agent_json_from_run_dir(out_dir, agent_name)
-                        if not isinstance(output_json, dict):
-                            return
-                        status = output_json.get("status", "")
-                        errors = output_json.get("errors", [])
-                        has_error = status == "error" or (isinstance(errors, list) and len(errors) > 0)
-                        if not has_error:
-                            return
-                        error_msgs = errors if isinstance(errors, list) else []
-                        error_summary = (
-                            "; ".join(str(e) for e in error_msgs) if error_msgs else f"status={status!r}"
-                        )
-                        directive = _build_error_directive(agent_name, error_msgs)
-                        _observe(
-                            severity="warn",
-                            agent=agent_name,
-                            finding=f"agent_output_error: {error_summary}",
-                            duration_s=None,
-                            directive=directive,
-                        )
-                    except Exception as _e:
-                        print(f"[overseer] Output check failed for {agent_name}: {_e}", file=sys.stderr)
-
-                while not stop_event.is_set():
-                    stop_event.wait(3.0)
-                    if stop_event.is_set():
-                        break
-
-                    # Read latest agent statuses from agent_status.json
-                    if not status_file.exists():
-                        continue
-                    try:
-                        lines = status_file.read_text(encoding="utf-8").splitlines()
-                    except Exception:
-                        continue
-
-                    agent_latest: Dict[str, Dict[str, Any]] = {}
-                    for line in lines:
-                        line = line.strip()
-                        if not line:
-                            continue
-                        try:
-                            rec = json.loads(line)
-                            name = rec.get("agent")
-                            if name:
-                                agent_latest[name] = rec
-                        except json.JSONDecodeError:
-                            continue
-
-                    now_ts = time.time()
-                    for name, rec in agent_latest.items():
-                        agent_status_val = rec.get("status", "")
-                        if agent_status_val == "working":
-                            if name not in agent_working_since:
-                                agent_working_since[name] = now_ts
-                            duration = now_ts - agent_working_since[name]
-                            if duration >= AGENT_STUCK_CRITICAL_S and f"{name}:critical" not in warned_agents:
-                                warned_agents.add(f"{name}:critical")
-                                _observe(
-                                    severity="critical",
-                                    agent=name,
-                                    finding="stuck_working_critical",
-                                    duration_s=duration,
-                                    directive=(
-                                        f"{name} has been working for {duration:.0f}s with no status change. "
-                                        f"Commissioner should consider synthesizing from available partial output "
-                                        f"or reducing scope and retrying."
-                                    ),
-                                )
-                            elif duration >= AGENT_STUCK_WARN_S and f"{name}:warn" not in warned_agents:
-                                warned_agents.add(f"{name}:warn")
-                                _observe(
-                                    severity="warn",
-                                    agent=name,
-                                    finding="stuck_working",
-                                    duration_s=duration,
-                                    directive=None,
-                                )
-                        else:
-                            agent_working_since.pop(name, None)
-
-                    # ── Agent output error check ──────────────────────────────────
-                    # Inspect newly completed agents' .txt files for error status.
-                    for name, rec in agent_latest.items():
-                        if rec.get("status") == "complete" and name not in checked_agents:
-                            checked_agents.add(name)
-                            _analyze_agent_output(name)
-
-                    # ── Phase 3: Checkpoint detection ─────────────────────────────
-                    if active_checkpoint_key is None:
-                        # Look for any agent that has requested a checkpoint
-                        for name, rec in agent_latest.items():
-                            if rec.get("checkpoint") is True and rec.get("status") != "complete":
-                                question = rec.get("question", "Agent requires a decision to continue.")
-                                options = rec.get("options") or ["Continue", "Abort"]
-                                default_opt = rec.get("default") or options[0]
-                                _write_checkpoint_pending(name, question, options, default_opt)
-                                _append_events([{
-                                    "ts": now_iso(),
-                                    "type": "checkpoint:pending",
-                                    "message": f"[{name}] waiting for human input: {question[:120]}",
-                                }])
-                                break
-                    else:
-                        # Checkpoint is active — check for response or timeout
-                        if checkpoint_response_path.exists():
-                            try:
-                                resp_data = json.loads(checkpoint_response_path.read_text(encoding="utf-8"))
-                                response_val = resp_data.get("response", "")
-                                resolved_by = resp_data.get("resolved_by", "human")
-                                _resolve_checkpoint(response_val, resolved_by)
-                                _append_events([{
-                                    "ts": now_iso(),
-                                    "type": "checkpoint:resolved",
-                                    "message": f"Human response received: {response_val!r}",
-                                }])
-                            except Exception as _cpe:
-                                print(f"[overseer] checkpoint response read error: {_cpe}", file=sys.stderr)
-                        elif checkpoint_started_at is not None:
-                            elapsed = time.time() - checkpoint_started_at
-                            if elapsed >= CHECKPOINT_TIMEOUT_S:
-                                # Load default from pending file and auto-resolve
-                                try:
-                                    pending_data = json.loads(checkpoint_pending_path.read_text(encoding="utf-8"))
-                                    default_val = pending_data.get("default_option", "Continue")
-                                except Exception:
-                                    default_val = "Continue"
-                                _resolve_checkpoint(default_val, "timeout")
-                                _append_events([{
-                                    "ts": now_iso(),
-                                    "type": "checkpoint:timed_out",
-                                    "message": f"Checkpoint timed out after {CHECKPOINT_TIMEOUT_S}s. Auto-resolved: {default_val!r}",
-                                }])
-                    # ── End Phase 3 checkpoint detection ──────────────────────────
-
-                # ── Final sweep (runs after subprocess exits) ──────────────────
-                try:
-                    run_data = safe_json_load(path, default={}, context=f"overseer_final:{run_id}")
-                    final_status = str(run_data.get("status", "") or "")
-                    scratchpad = run_data.get("scratchpad", [])
-
-                    # Build agent completion map from scratchpad
-                    agent_completions: Dict[str, str] = {}
-                    for entry in scratchpad:
-                        a = entry.get("agent")
-                        s = entry.get("status")
-                        if a and s:
-                            agent_completions[a] = s
-                    all_agents_complete = bool(agent_completions) and all(
-                        v == "complete" for v in agent_completions.values()
-                    )
-                    synthesis_present = (
-                        (out_dir / "Final_Synthesis.html").exists()
-                        or (out_dir / "Final_Synthesis.txt").exists()
-                    )
-                    derived_final_status = _derive_final_status(
-                        final_status, agent_completions, all_agents_complete, synthesis_present
-                    )
-
-                    # ── Final output error sweep ──────────────────────────────────
-                    # Catch any agents that completed too quickly to be seen during polling.
-                    SKIP_FINAL_SWEEP = {"Final_Synthesis"}
-                    for agent_file in sorted(out_dir.glob("*.txt")):
-                        name = agent_file.stem
-                        if name not in checked_agents and name not in SKIP_FINAL_SWEEP:
-                            checked_agents.add(name)
-                            _analyze_agent_output(name)
-
-                    # STATUS RECLASSIFICATION
-                    # A CalledProcessError after all agents complete and synthesis exists
-                    # means the PowerShell wrapper exited non-zero for a non-critical reason
-                    # (e.g. stdout/stderr flush, non-fatal post-run hook).
-                    # Reclassify so the UI shows results rather than a red error state.
-                    if derived_final_status == "completed_with_errors":
-                        derived_final_status = "completed_with_errors"
-                        _append_events([{
-                            "ts": now_iso(),
-                            "type": "overseer:action",
-                            "message": (
-                                "Status reclassified from error:CalledProcessError → completed_with_errors. "
-                                "All agents completed and synthesis output is present; "
-                                "PowerShell exit code is non-critical."
-                            ),
-                        }])
-                        _update_manifest(lambda d: {
-                            **d,
-                            "status": derived_final_status,
-                            "overseer_reclassified": True,
-                            "overseer_original_status": final_status,
-                        })
-                    elif derived_final_status != final_status:
-                        _update_manifest(lambda d: {
-                            **d,
-                            "status": derived_final_status,
-                        })
-
-                    obs_count = len(advisory["observations"])
-                    directives_count = len(advisory.get("commissioner_directives", []))
-                    summary = (
-                        f"Overseer monitoring ended. "
-                        f"{obs_count} observation(s), {directives_count} directive(s). "
-                        f"All agents complete: {all_agents_complete}. "
-                        f"Synthesis present: {synthesis_present}."
-                    )
-                    _append_events([{"ts": now_iso(), "type": "overseer:info", "message": summary}])
-
-                    advisory["completed_at"] = now_iso()
-                    advisory["agent_completions"] = agent_completions
-                    advisory["all_agents_complete"] = all_agents_complete
-                    advisory["synthesis_present"] = synthesis_present
-                    advisory["final_status"] = derived_final_status
-                    _save_advisory()
-                except Exception as _e:
-                    print(f"[overseer] Final sweep error: {_e}", file=sys.stderr)
-
-            overseer = threading.Thread(target=_oversee, daemon=True)
-            overseer.start()
-            # ── End Overseer ──────────────────────────────────────────────────
-
-            if not ps_exe:
-                raise RuntimeError("PowerShell executable not found (pwsh or powershell)")
-
-            # ── Phase 2: Knowledge context injection ──────────────────────────
-            # Query similar past runs and prepend [KNOWLEDGE CONTEXT] to -Instruction
-            # so orchestration agents can learn from historical results.
-            knowledge_ctx = ""
-            if goal_text:
-                try:
-                    knowledge_ctx = build_knowledge_context(goal_text)
-                    if knowledge_ctx:
-                        _append_events([{
-                            "ts": now_iso(),
-                            "type": "info",
-                            "message": "Knowledge context injected from similar past runs.",
-                        }])
-                except Exception as _kce:
-                    print(f"[knowledge] Context build error: {_kce}", file=sys.stderr)
-            # ── End Phase 2 Knowledge context injection ───────────────────────
-
-            data["events"].append({"ts": now_iso(), "type": "info", "message": f"Executing {ps1.name}"})
-            path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-
-            # ── Goal.md materialization ───────────────────────────────────────
-            # Persist the full canonical goal to <out_dir>/Goal.md and pass it via
-            # -GoalFile rather than -Goal, so long Concierge prompts cannot be
-            # truncated on the command line. fullGoal is canonical and never
-            # truncated; goalPreview, run titles, and slugs may still be
-            # truncated for display/filesystem-safety.
-            full_goal = str(goal_text or "")
-            goal_file_path = out_dir / "Goal.md"
-            try:
-                out_dir.mkdir(parents=True, exist_ok=True)
-                goal_file_path.write_text(full_goal, encoding="utf-8")
-            except Exception as _gerr:
-                print(f"[orchestrate] Failed to write Goal.md: {_gerr}", file=sys.stderr)
-                raise
-            goal_bytes = full_goal.encode("utf-8")
-            goal_sha256 = hashlib.sha256(goal_bytes).hexdigest()
-            goal_length = len(full_goal)
-            goal_preview = full_goal if goal_length <= 300 else full_goal[:300]
-            goal_metadata = {
-                "source": "file",
-                "path": "Goal.md",
-                "length": goal_length,
-                "sha256": goal_sha256,
-                "preview": goal_preview,
-            }
-            data.setdefault("events", []).append({
-                "ts": now_iso(),
-                "type": "debug",
-                "message": (
-                    f"Goal materialized to {goal_file_path.name} "
-                    f"(length={goal_length}, sha256={goal_sha256[:12]}…)"
-                ),
-            })
-            try:
-                _update_manifest(lambda d: {**d, "goal_metadata": goal_metadata})
-            except Exception:
-                # Fall back to writing the metadata directly into `data`.
-                data["goal_metadata"] = goal_metadata
-            path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-
-            args = [ps_exe, "-NoLogo", "-File", str(ps1)]
-            if run_mode == "codex-swarm":
-                args += [
-                    "-RepoRoot",
-                    repo_root,
-                    "-GoalFile",
-                    str(goal_file_path),
-                    "-Model",
-                    manifest.get("model") or DEFAULT_MODEL,
-                    "-OutputDir",
-                    str(out_dir),
-                ]
-            else:
-                args += [
-                    "-GoalFile", str(goal_file_path),
-                    "-Model", manifest.get("model") or DEFAULT_MODEL,
-                ]
-                if manifest.get("job_type"):
-                    args += ["-JobType", str(manifest.get("job_type"))]
-                if manifest.get("app_type"):
-                    args += ["-AppType", str(manifest.get("app_type"))]
-                if manifest.get("request_path"):
-                    args += ["-RequestPath", str(manifest.get("request_path"))]
-                if manifest.get("contract_path"):
-                    args += ["-ContractPath", str(manifest.get("contract_path"))]
-                notes = manifest.get("notes")
-                resume_context = manifest.get("resume_context")
-                instruction_parts = [p for p in [knowledge_ctx, resume_context, notes] if p]
-                if instruction_parts:
-                    args += ["-Instruction", "\n\n".join(instruction_parts)]
-                args += [
-                    "-OutputDir", str(out_dir),
-                ]
-            data.setdefault("events", []).append({
-                "ts": now_iso(),
-                "type": "debug",
-                "message": f"Prepared orchestration run with script {ps1} and args {args}",
-            })
-            path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-            if cancel_event.is_set():
-                raise RuntimeError("cancelled")
-            try:
-                with open(log_path, "a", encoding="utf-8") as logf:
-                    logf.write(f"READY TO EXECUTE: {json.dumps({'script': str(ps1), 'args': args})}\n")
-                    proc = subprocess.Popen(args, stdout=logf, stderr=logf)
-                    _set_orch_run_process(run_id, proc)
-                    try:
-                        while True:
-                            if cancel_event.is_set():
-                                try:
-                                    proc.terminate()
-                                    proc.wait(timeout=8)
-                                except subprocess.TimeoutExpired:
-                                    proc.kill()
-                                    proc.wait(timeout=5)
-                                raise RuntimeError("cancelled")
-
-                            return_code = proc.poll()
-                            if return_code is not None:
-                                if return_code != 0:
-                                    # Capture the last 4 KB of combined stdout/stderr (both were
-                                    # redirected into log_path) so the error handler can surface
-                                    # the actual PowerShell failure message instead of just an
-                                    # opaque exit-code number.
-                                    _log_tail = ""
-                                    try:
-                                        _log_sz = log_path.stat().st_size
-                                        _read_sz = min(_log_sz, 4096)
-                                        with open(log_path, "r", encoding="utf-8", errors="replace") as _lf:
-                                            _lf.seek(max(0, _log_sz - _read_sz))
-                                            _log_tail = _lf.read()
-                                    except Exception:
-                                        pass
-                                    raise subprocess.CalledProcessError(
-                                        return_code, args, output=_log_tail.encode("utf-8", errors="replace")
-                                    )
-                                break
-                            time.sleep(0.5)
-                    finally:
-                        _set_orch_run_process(run_id, None)
-            finally:
-                # Always stop background threads when the subprocess exits, whether it
-                # succeeded, failed, or was cancelled.  Without this guard the poller
-                # thread keeps calling _ingest_status_file every second, and the overseer
-                # thread keeps appending events — both after the run is already marked
-                # failed — producing duplicate/phantom entries in the manifest.
-                stop_event.set()
-                poller.join(timeout=2.0)
-                overseer.join(timeout=6.0)  # slightly longer — overseer does a final manifest sweep
-                processed_status = _ingest_status_file(status_file, processed_status)
-            if cancel_event.is_set():
-                raise RuntimeError("cancelled")
-
-            # ── Phase 1 Verifier ──────────────────────────────────────────────
-            # Evaluates each acceptance check from the proposal against the
-            # run_dir output files. Runs after Overseer so reclassifications
-            # are already applied. Writes sandbox_report.json.
-            def _verify():
-                checks_to_run = list(req.acceptance_checks or [])
-                mandatory_contract_check = (
-                    "Conceptual Model Contract must be strict JSON, machine-falsifiable, and fully traceable in Engineer output."
-                )
-                if mandatory_contract_check not in checks_to_run:
-                    checks_to_run.append(mandatory_contract_check)
-
-                sandbox_report_path = out_dir / "sandbox_report.json"
-
-                def _parse_agent_json(agent_name: str) -> Optional[Dict[str, Any]]:
-                    return _parse_agent_json_from_run_dir(out_dir, agent_name)
-
-                def _eval_commissioner_score():
-                    d = _parse_agent_json("Commissioner")
-                    if d is None:
-                        return "deferred", "Commissioner output not found", {}
-                    return _evaluate_commissioner_decision(d)
-
-                def _eval_critic_blockers():
-                    d = _parse_agent_json("Critic")
-                    if d is None:
-                        return "deferred", "Critic output not found", {}
-                    blockers = d.get("blockers", [])
-                    if isinstance(blockers, list) and len(blockers) > 0:
-                        return (
-                            "failed",
-                            f"{len(blockers)} blocker(s): {'; '.join(str(b) for b in blockers[:3])}",
-                            {"blockers": blockers},
-                        )
-                    return "passed", "No blockers found in Critic output", {"blockers": []}
-
-                def _eval_reviewgate():
-                    d = _parse_agent_json("ReviewGate")
-                    if d is None:
-                        return "deferred", "ReviewGate output not found", {}
-                    status = d.get("status", "")
-                    errors = d.get("errors", [])
-                    if status == "error" or (isinstance(errors, list) and len(errors) > 0):
-                        return (
-                            "failed",
-                            f"ReviewGate status: {status!r}. Errors: {'; '.join(str(e) for e in errors[:2])}",
-                            {"status": status, "errors": errors},
-                        )
-                    return "passed", f"ReviewGate passed (status: {status or 'ok'})", {"status": status}
-
-                def _eval_agent_completion():
-                    if not status_file.exists():
-                        return "deferred", "agent_status.json not found", {}
-                    try:
-                        lines = status_file.read_text(encoding="utf-8").splitlines()
-                        agent_latest: Dict[str, str] = {}
-                        for line in lines:
-                            line = line.strip()
-                            if not line:
-                                continue
-                            try:
-                                rec = json.loads(line)
-                                name = rec.get("agent")
-                                if name:
-                                    agent_latest[name] = rec.get("status", "unknown")
-                            except json.JSONDecodeError:
-                                continue
-                        incomplete = [n for n, s in agent_latest.items() if s != "complete"]
-                        if incomplete:
-                            return (
-                                "failed",
-                                f"Agents not complete: {', '.join(incomplete)}",
-                                {"incomplete": incomplete, "all": agent_latest},
-                            )
-                        return "passed", f"All {len(agent_latest)} agents completed", {"agents": agent_latest}
-                    except Exception as _e:
-                        return "deferred", f"Error reading agent_status.json: {_e}", {}
-
-                def _eval_synthesis_present():
-                    if (out_dir / "Final_Synthesis.html").exists():
-                        return "passed", "Final_Synthesis.html is present", {"file": "Final_Synthesis.html"}
-                    if (out_dir / "Final_Synthesis.txt").exists():
-                        return "passed", "Final_Synthesis.txt is present", {"file": "Final_Synthesis.txt"}
-                    return "failed", "No Final_Synthesis output found in run directory", {}
-
-                def _eval_conceptual_model_contract():
-                    contract = _parse_agent_json("ConceptualModelContract")
-                    if contract is None:
-                        return "failed", "ConceptualModelContract output not found", {}
-
-                    clarification_request = str(contract.get("clarification_request") or "").strip()
-                    if clarification_request:
-                        packet = _build_requirements_request_packet(
-                            {
-                                "summary": "ConceptualModelContract requested additional requirements before implementation can continue.",
-                                "blockers": [
-                                    {
-                                        "id": "req_1",
-                                        "question": clarification_request,
-                                        "why": "Required to convert intent into machine-verifiable acceptance criteria.",
-                                    }
-                                ],
-                            }
-                        )
-                        return (
-                            "needs_requirements",
-                            f"ConceptualModelContract requested clarification: {clarification_request}",
-                            {
-                                "requirements_request": packet,
-                                "blocking_agent": "ConceptualModelContract",
-                                "clarification_request": clarification_request,
-                            },
-                        )
-
-                    contract_errors = _validate_conceptual_model_contract(contract)
-                    if contract_errors:
-                        return (
-                            "failed",
-                            f"ConceptualModelContract invalid: {contract_errors[0]}",
-                            {"errors": contract_errors},
-                        )
-
-                    engineer = _parse_agent_json("Engineer")
-                    if engineer is None:
-                        return "failed", "Engineer output not found for traceability validation", {}
-
-                    traceability_errors = _validate_engineer_contract_traceability(engineer, contract)
-                    if traceability_errors:
-                        return (
-                            "failed",
-                            f"Engineer Contract Traceability invalid: {traceability_errors[0]}",
-                            {"errors": traceability_errors},
-                        )
-
-                    return "passed", "ConceptualModelContract and Engineer traceability passed", {}
-
-                EVALUATOR_MAP = {
-                    "commissioner_score": _eval_commissioner_score,
-                    "critic_blockers": _eval_critic_blockers,
-                    "reviewgate_status": _eval_reviewgate,
-                    "agent_completion": _eval_agent_completion,
-                    "synthesis_present": _eval_synthesis_present,
-                    "conceptual_model_contract": _eval_conceptual_model_contract,
-                }
-
-                def _pick_evaluator(check_text: str) -> str:
-                    text = check_text.lower()
-                    if any(k in text for k in ("commissioner", "value score", "score ≥", "score >=")):
-                        return "commissioner_score"
-                    if any(k in text for k in ("blocker", "high-severity", "high severity", "critical finding")):
-                        return "critic_blockers"
-                    if any(k in text for k in ("review gate", "reviewgate", "schema", "output schema")):
-                        return "reviewgate_status"
-                    if any(k in text for k in ("all agent", "agents complete", "agent completion")):
-                        return "agent_completion"
-                    if any(k in text for k in ("synthesis", "output present", "deliverable", "final output")):
-                        return "synthesis_present"
-                    if any(k in text for k in ("conceptual model contract", "traceability", "observableevidence", "acceptance_tests")):
-                        return "conceptual_model_contract"
-                    return "deferred_code_execution"  # needs Phase 4
-
-                results = []
-                for check_text in checks_to_run:
-                    evaluator_key = _pick_evaluator(check_text)
-                    evaluator_fn = EVALUATOR_MAP.get(evaluator_key)
-                    if evaluator_fn is None:
-                        results.append({
-                            "check": check_text,
-                            "evaluator": evaluator_key,
-                            "result": "deferred",
-                            "details": "Requires code execution — deferred to Phase 4 (Artifact Pipeline).",
-                            "data": {},
-                        })
-                        continue
-                    try:
-                        v_result, v_details, v_data = evaluator_fn()
-                    except Exception as _e:
-                        v_result, v_details, v_data = "deferred", f"Evaluator error: {_e}", {}
-                    results.append({
-                        "check": check_text,
-                        "evaluator": evaluator_key,
-                        "result": v_result,
-                        "details": v_details,
-                        "data": v_data,
-                    })
-
-                n_passed  = sum(1 for r in results if r["result"] == "passed")
-                n_failed  = sum(1 for r in results if r["result"] == "failed")
-                n_needs_requirements = sum(1 for r in results if r["result"] == "needs_requirements")
-                n_deferred = sum(1 for r in results if r["result"] == "deferred")
-                commissioner_hard_fail = any(
-                    r.get("evaluator") == "commissioner_score"
-                    and r.get("result") == "failed"
-                    and isinstance(r.get("data"), dict)
-                    and str(cast(Dict[str, Any], r.get("data", {})).get("commissioner_decision") or "") == "hard_fail"
-                    for r in results
-                )
-                requirements_request = next(
-                    (
-                        cast(Dict[str, Any], r.get("data", {})).get("requirements_request")
-                        for r in results
-                        if r.get("result") == "needs_requirements" and isinstance(r.get("data"), dict)
-                    ),
-                    None,
-                )
-
-                if commissioner_hard_fail:
-                    v_status = "failed"
-                elif n_needs_requirements > 0:
-                    v_status = "needs_requirements"
-                elif n_failed > 0:
-                    v_status = "failed"
-                elif n_passed > 0 and n_deferred == 0:
-                    v_status = "passed"
-                elif n_passed > 0:
-                    v_status = "partial"
-                else:
-                    v_status = "deferred"
-
-                sandbox_report = {
-                    "generated_at": now_iso(),
-                    "verification_status": v_status,
-                    "loop_iteration": 0,
-                    "checks": results,
-                    "passed_count": n_passed,
-                    "failed_count": n_failed,
-                    "needs_requirements_count": n_needs_requirements,
-                    "deferred_count": n_deferred,
-                    "requirements_request": requirements_request,
-                }
-                try:
-                    sandbox_report_path.write_text(json.dumps(sandbox_report, indent=2), encoding="utf-8")
-                except Exception as _e:
-                    print(f"[verifier] Failed to write sandbox_report.json: {_e}", file=sys.stderr)
-
-                _append_events([{
-                    "ts": now_iso(),
-                    "type": f"verify:{v_status}",
-                    "message": (
-                        f"Verification {v_status}: {n_passed} passed, {n_failed} failed, "
-                        f"{n_needs_requirements} needs_requirements, {n_deferred} deferred "
-                        f"out of {len(results)} check(s)."
-                    ),
-                }])
-                _update_manifest(lambda d: {
-                    **d,
-                    "verification_status": v_status,
-                    "sandbox_report": sandbox_report,
-                    "requirements_request": requirements_request,
-                })
-
-            _verify()
-            # ── End Phase 1 Verifier ──────────────────────────────────────────
-
-            # ── Phase 2: Knowledge ingestion ──────────────────────────────────
-            # Runs after _verify() so sandbox_report data is in the manifest.
-            try:
-                ingest_run_knowledge(run_id, out_dir, path)
-            except Exception as _ke:
-                print(f"[knowledge] Post-run ingestion error: {_ke}", file=sys.stderr)
-            # ── End Phase 2 Knowledge ingestion ──────────────────────────────
-            if cancel_event.is_set():
-                raise RuntimeError("cancelled")
-
-            # Try to populate final_synthesis from various sources
-            final_synthesis_text = None
-            
-            # First try Final_Synthesis.txt (legacy location)
-            if final_synthesis.exists():
-                try:
-                    final_synthesis_text = final_synthesis.read_text(encoding="utf-8")
-                except Exception as e:
-                    print(f"[orchestrate] Failed to read Final_Synthesis.txt: {e}", file=sys.stderr)
-            
-            # If not found, try orchestration-summary.json from run_dir
-            if not final_synthesis_text:
-                orchestration_summary = out_dir / "orchestration-summary.json"
-                if orchestration_summary.exists():
-                    try:
-                        summary_data = safe_json_load(orchestration_summary, context=f"final_synthesis:{run_id}")
-                        if summary_data is not None:
-                            # Format the summary as readable text
-                            summary_lines = [
-                                f"Goal: {summary_data.get('Goal', 'N/A')}",
-                                f"Status: {summary_data.get('Status', 'N/A')}",
-                                f"Model: {summary_data.get('Model', 'N/A')}",
-                                f"Duration: {summary_data.get('DurationSeconds', 'N/A')} seconds",
-                                f"Milestones: {summary_data.get('CompletedMilestones', 0)}/{summary_data.get('MilestonesCount', 0)} completed",
-                            ]
-                            final_synthesis_text = "\n".join(summary_lines)
-                    except Exception as e:
-                        print(f"[orchestrate] Failed to read orchestration-summary.json: {e}", file=sys.stderr)
-            
-            # Update manifest with final synthesis if found
-            if final_synthesis_text:
-                try:
-                    _update_manifest(lambda d: {**d, "final_synthesis": final_synthesis_text})
-                except Exception as e:
-                    print(f"[orchestrate] Failed to update manifest with final synthesis: {e}", file=sys.stderr)
-
-            # Materialize concrete app files from Engineer output when possible.
-            try:
-                generated_app_files = _materialize_engineer_artifacts(out_dir)
-            except Exception as e:
-                generated_app_files = []
-                print(f"[orchestrate] Failed to materialize Engineer artifacts: {e}", file=sys.stderr)
-            if generated_app_files:
-                app_production = None
-                app_production_repairs = None
-                generated_root = out_dir / "generated_app"
-                if ORCHESTRATOR_LOGGING_AVAILABLE and generated_root.exists():
-                    try:
-                        generated_logs_dir = out_dir / "logs" / "generated_app"
-                        verifier = OrchestratorVerifier(generated_root, log_dir=generated_logs_dir)
-                        install_result = verifier.verify_install()
-                        install_failed = isinstance(install_result, dict) and not bool(install_result.get("passed"))
-                        gate_results = {
-                            "install_result": install_result,
-                            "lint_result": (
-                                _make_skipped_gate_result("Lint skipped because dependency installation failed.")
-                                if install_failed else verifier.verify_lint()
-                            ),
-                            "build_result": (
-                                _make_skipped_gate_result("Build skipped because dependency installation failed.")
-                                if install_failed else verifier.verify_build()
-                            ),
-                            "unit_test_result": (
-                                _make_skipped_gate_result("Unit tests skipped because dependency installation failed.")
-                                if install_failed else verifier.verify_unit_tests()
-                            ),
-                            "smoke_test_result": (
-                                _make_skipped_gate_result("Smoke tests skipped because dependency installation failed.")
-                                if install_failed else verifier.verify_smoke_tests()
-                            ),
-                            "dev_server_result": (
-                                _make_skipped_gate_result("Dev server proof skipped because dependency installation failed.")
-                                if install_failed else verifier.verify_dev_server()
-                            ),
-                            "docker_compose_valid": verifier.verify_docker_compose(),
-                        }
-                        app_production = _summarize_app_production_gates(gate_results, out_dir, generated_root)
-                        json_path, md_path = _write_app_production_artifacts(out_dir, app_production)
-                        app_production["report_artifact"] = _to_relpath(json_path, out_dir)
-                        app_production["summary_artifact"] = _to_relpath(md_path, out_dir)
-                        app_production_repairs = _derive_app_production_repair_plan(app_production)
-                        if app_production_repairs.get("items"):
-                            app_production, app_production_repairs = _execute_app_production_repairs(
-                                out_dir,
-                                generated_root,
-                                app_production,
-                                app_production_repairs,
-                                model=str(manifest.get("model") or DEFAULT_MODEL),
-                            )
-                        else:
-                            repair_json_path, repair_md_path = _write_app_production_repair_artifacts(out_dir, app_production_repairs)
-                            app_production_repairs["report_artifact"] = _to_relpath(repair_json_path, out_dir)
-                            app_production_repairs["summary_artifact"] = _to_relpath(repair_md_path, out_dir)
-                    except Exception as e:
-                        print(f"[orchestrate] Failed to verify generated_app artifacts: {e}", file=sys.stderr)
-
-                _append_events([{
-                    "ts": now_iso(),
-                    "type": "artifact:generated_app",
-                    "message": f"Generated {len(generated_app_files)} app file(s) under generated_app/.",
-                }])
-                if app_production:
-                    _append_events([{
-                        "ts": now_iso(),
-                        "type": "verify:generated_app",
-                        "message": (
-                            f"Generated app verification {app_production['status']}: "
-                            f"{app_production['passed_count']} passed, "
-                            f"{app_production['failed_count']} failed, "
-                            f"{app_production['skipped_count']} skipped."
-                        ),
-                    }])
-                if app_production_repairs and app_production_repairs.get("items"):
-                    _append_events([{
-                        "ts": now_iso(),
-                        "type": "repair:generated_app_route",
-                        "message": (
-                            f"Generated app repair routing prepared {len(app_production_repairs['items'])} target(s)."
-                        ),
-                    }])
-                repair_execution_status = (
-                    str(app_production_repairs.get("execution_status") or "").strip().lower()
-                    if isinstance(app_production_repairs, dict)
-                    else ""
-                )
-                repair_attempts = (
-                    app_production_repairs.get("attempts")
-                    if isinstance(app_production_repairs, dict) and isinstance(app_production_repairs.get("attempts"), list)
-                    else []
-                )
-                if repair_execution_status == "blocked_missing_api_key":
-                    _append_events([{
-                        "ts": now_iso(),
-                        "type": "repair:generated_app_blocked",
-                        "message": "Generated app auto-repair skipped because OPENAI_API_KEY is not configured.",
-                    }])
-                elif repair_execution_status == "verified":
-                    _append_events([{
-                        "ts": now_iso(),
-                        "type": "repair:generated_app_verified",
-                        "message": f"Generated app auto-repair verified the app after {len(repair_attempts)} attempt(s).",
-                    }])
-                elif repair_attempts:
-                    last_attempt = repair_attempts[-1] if repair_attempts and isinstance(repair_attempts[-1], dict) else {}
-                    _append_events([{
-                        "ts": now_iso(),
-                        "type": "repair:generated_app_attempt",
-                        "message": (
-                            f"Generated app auto-repair {repair_execution_status or 'attempted'} "
-                            f"after {len(repair_attempts)} attempt(s); current status is {app_production.get('status') if isinstance(app_production, dict) else 'unknown'}."
-                        ),
-                        "details": {
-                            "attempts": len(repair_attempts),
-                            "last_gate": last_attempt.get("gate"),
-                            "last_status": last_attempt.get("status"),
-                        },
-                    }])
-                _update_manifest(lambda d: {
-                    **d,
-                    "generated_app_files": generated_app_files,
-                    "app_production": app_production or d.get("app_production"),
-                    "app_production_repairs": app_production_repairs or d.get("app_production_repairs"),
-                })
-
-            # Frontier arena: derive a canonical multi-lane manifest from the
-            # current run's evidence and adjudicate it. Today only the internal
-            # lane exists; the seam is in place for frontier provider lanes.
-            if ARENA_AVAILABLE and _arena_attach_to_manifest is not None:
-                try:
-                    arena_snapshot = safe_json_load(path, default={}, context=f"arena_snapshot:{run_id}") or {}
-                    arena_record = _arena_attach_to_manifest(arena_snapshot, out_dir)
-                    _update_manifest(lambda d: {**d, "arena": arena_record})
-                    verdict = arena_record.get("verdict") or {}
-                    _append_events([{
-                        "ts": now_iso(),
-                        "type": "arena:adjudicated",
-                        "message": (
-                            f"Arena verdict: winner=`{verdict.get('winner_lane_id')}` "
-                            f"score={verdict.get('winner_score', 0.0):.2f} "
-                            f"confidence={verdict.get('confidence', 'unknown')} "
-                            f"lanes={len(arena_record.get('lanes') or [])}."
-                        ),
-                    }])
-                except Exception as arena_err:
-                    print(f"[orchestrate] Arena adjudication failed: {arena_err}", file=sys.stderr)
-
-            data = safe_json_load(path, context=f"execute_complete:{run_id}")
-            verification_status = str(data.get("verification_status") or "").strip().lower()
-            if verification_status in {"needs_requirements", "blocked_requirements"}:
-                data["status"] = "blocked_requirements"
-                completion_message = "blocked_requirements"
-            else:
-                data["status"] = "completed"
-                completion_message = "completed"
-            data["completed_at"] = now_iso()
-            data.setdefault("events", []).append({"ts": data["completed_at"], "type": "status", "message": completion_message})
-            path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-            
-            # Log artifact manifest and run verification if logger is available
-            if orch_logger:
-                try:
-                    # Collect generated files
-                    generated_files = []
-                    if out_dir.exists():
-                        for file_path in out_dir.rglob("*"):
-                            if file_path.is_file() and file_path.name not in ["run.json", "steps.jsonl", "decisions.jsonl", "conflicts.jsonl"]:
-                                try:
-                                    generated_files.append({
-                                        "path": str(file_path.relative_to(out_dir)),
-                                        "sha256": compute_file_hash(file_path),
-                                        "size_bytes": file_path.stat().st_size,
-                                    })
-                                except Exception:
-                                    pass
-                    
-                    # Detect stacks
-                    detected = detect_stacks(out_dir)
-                    
-                    # Find entrypoints
-                    entrypoints = []
-                    for common_entry in ["main.py", "index.js", "app.py", "server.js", "index.html"]:
-                        if (out_dir / common_entry).exists():
-                            entrypoints.append(common_entry)
-                    
-                    # Log artifact manifest
-                    orch_logger.log_artifact_manifest(
-                        files=generated_files,
-                        detected_stacks=detected,
-                        entrypoints_found=entrypoints,
-                        warnings=[],
-                    )
-                    
-                    # Run verification (optional)
-                    try:
-                        verifier = OrchestratorVerifier(out_dir)
-                        verification_results = verifier.run_all_verifications()
-                        orch_logger.log_verification(**verification_results)
-                    except Exception as verify_err:
-                        logger.warning(f"Verification failed: {verify_err}")
-                        
-                except Exception as log_err:
-                    logger.warning(f"Failed to log artifacts/verification: {log_err}")
-            
-            elapsed_ms = (time.time() - start_time) * 1000
-            logger.info(f"Orchestration run {run_id} completed in {elapsed_ms:.2f}ms")
-            
-        except Exception as exc:
-            is_cancelled = str(exc).strip().lower() == "cancelled"
-            if is_cancelled:
-                try:
-                    data = safe_json_load(path, default={}, context=f"execute_cancelled:{run_id}")
-                    data["status"] = "cancelled"
-                    data["completed_at"] = now_iso()
-                    data.setdefault("events", []).append({"ts": data["completed_at"], "type": "status", "message": "cancelled"})
-                    data.setdefault("events", []).append({"ts": data["completed_at"], "type": "info", "message": "Run cancelled during execution."})
-                    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-                except Exception as e:
-                    print(f"[orchestrate] Failed to write cancelled state to manifest: {e}", file=sys.stderr)
-            else:
-                # When the subprocess exited non-zero, CalledProcessError.output holds the
-                # last 4 KB of the script's combined stdout+stderr (captured above).
-                # Decode it and attach to the error so operators can read the root cause
-                # directly from the manifest instead of hunting through log files.
-                error_log_tail = ""
-                if isinstance(exc, subprocess.CalledProcessError) and exc.output:
-                    try:
-                        raw = exc.output if isinstance(exc.output, str) else exc.output.decode("utf-8", errors="replace")
-                        error_log_tail = raw.strip()[-3000:]  # cap at 3000 chars for manifest size
-                    except Exception:
-                        pass
-                exit_code_str = f" (exit code {exc.returncode})" if isinstance(exc, subprocess.CalledProcessError) else ""
-                error_detail = f"orchestrator failed{exit_code_str}: {exc}"
-                if error_log_tail:
-                    error_detail = f"{error_detail}\n\n--- Script output (last 4 KB) ---\n{error_log_tail}"
-                print(f"[orchestrate] {error_detail}", file=sys.stderr)
-                try:
-                    _append_events(
-                        [{"ts": now_iso(), "type": "error", "message": error_detail, "error_detail": str(exc), "traceback": str(type(exc).__name__)}]
-                    )
-                    data = safe_json_load(path, default={}, context=f"execute_error:{run_id}")
-                    data["status"] = f"error:{type(exc).__name__}"
-                    data["completed_at"] = now_iso()
-                    data["error_detail"] = str(exc)
-                    if error_log_tail:
-                        data["error_log_tail"] = error_log_tail
-                    data["last_step"] = "orchestrator execution"
-                    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-                except Exception as e:
-                    print(f"[orchestrate] Failed to write error state to manifest: {e}", file=sys.stderr)
-        finally:
-            heartbeat_stop.set()
-            if heartbeat_thread is not None:
-                heartbeat_thread.join(timeout=2.0)
-            try:
-                data = safe_json_load(path, default={}, context=f"execute_finally:{run_id}")
-                status_value = str(data.get("status") or "").strip().lower()
-                if status_value == "stuck":
-                    _release_run_lease(path, reason="stale_lease_detected")
-                elif status_value in ORCH_TERMINAL_STATUSES:
-                    _release_run_lease(path, reason=f"terminal:{status_value}")
-            except Exception:
-                pass
+        """Thin wrapper that calls the top-level executor with this run's context."""
+        return _execute_orchestration_run(run_id, path, cancel_event, orch_logger)
 
     disable_exec = os.environ.get("PROMPT_API_DISABLE_ORCHESTRATION_EXEC") == "1" or bool(
         os.environ.get("PYTEST_CURRENT_TEST")
@@ -6824,6 +6866,20 @@ def respond_to_checkpoint(run_id: str, body: CheckpointResponseRequest):
             "created_at": resolved_at,
             "worker_id": None,
         }
+    _cp_cancel_event = _orch_run_state[run_id]["cancel_event"]
+    _cp_disable_exec = (
+        os.environ.get("PROMPT_API_DISABLE_ORCHESTRATION_EXEC") == "1"
+        or bool(os.environ.get("PYTEST_CURRENT_TEST"))
+    )
+    if not _cp_disable_exec:
+        _cp_future = _orch_run_executor.submit(
+            _execute_orchestration_run, run_id, run_path, _cp_cancel_event
+        )
+        with _orch_run_state_lock:
+            _cp_state = _orch_run_state.get(run_id, {})
+            _cp_state["future"] = _cp_future
+            _orch_run_state[run_id] = _cp_state
+        _cp_future.add_done_callback(lambda _f: _orch_run_state.pop(run_id, None))
 
     return {
         "status": "queued",
