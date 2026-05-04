@@ -46,6 +46,12 @@
 		"chat.mcp.gallery.enabled": true,
 		"chat.mcp.assisted.nuget.enabled": true,
 		"workbench.settings.alwaysShowAdvancedSettings": true,
-		"testing.automaticallyOpenTestResults": "neverOpen"
+		"testing.automaticallyOpenTestResults": "neverOpen",
+		"jest.projects": [
+			{
+				"rootPath": "apps/orchestration-bridge",
+				"jestCommandLine": "npx --no-install jest --config ./jest.config.cjs"
+			}
+		]
 	}
 }
