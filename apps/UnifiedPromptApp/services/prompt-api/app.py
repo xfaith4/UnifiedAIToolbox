@@ -4871,13 +4871,54 @@ def orchestrate_run(
 
             data["events"].append({"ts": now_iso(), "type": "info", "message": f"Executing {ps1.name}"})
             path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+            # ── Goal.md materialization ───────────────────────────────────────
+            # Persist the full canonical goal to <out_dir>/Goal.md and pass it via
+            # -GoalFile rather than -Goal, so long Concierge prompts cannot be
+            # truncated on the command line. fullGoal is canonical and never
+            # truncated; goalPreview, run titles, and slugs may still be
+            # truncated for display/filesystem-safety.
+            full_goal = str(goal_text or "")
+            goal_file_path = out_dir / "Goal.md"
+            try:
+                out_dir.mkdir(parents=True, exist_ok=True)
+                goal_file_path.write_text(full_goal, encoding="utf-8")
+            except Exception as _gerr:
+                print(f"[orchestrate] Failed to write Goal.md: {_gerr}", file=sys.stderr)
+                raise
+            goal_bytes = full_goal.encode("utf-8")
+            goal_sha256 = hashlib.sha256(goal_bytes).hexdigest()
+            goal_length = len(full_goal)
+            goal_preview = full_goal if goal_length <= 300 else full_goal[:300]
+            goal_metadata = {
+                "source": "file",
+                "path": "Goal.md",
+                "length": goal_length,
+                "sha256": goal_sha256,
+                "preview": goal_preview,
+            }
+            data.setdefault("events", []).append({
+                "ts": now_iso(),
+                "type": "debug",
+                "message": (
+                    f"Goal materialized to {goal_file_path.name} "
+                    f"(length={goal_length}, sha256={goal_sha256[:12]}…)"
+                ),
+            })
+            try:
+                _update_manifest(lambda d: {**d, "goal_metadata": goal_metadata})
+            except Exception:
+                # Fall back to writing the metadata directly into `data`.
+                data["goal_metadata"] = goal_metadata
+            path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
             args = [ps_exe, "-NoLogo", "-File", str(ps1)]
             if run_mode == "codex-swarm":
                 args += [
                     "-RepoRoot",
                     repo_root,
-                    "-Goal",
-                    str(goal_text),
+                    "-GoalFile",
+                    str(goal_file_path),
                     "-Model",
                     manifest.get("model") or DEFAULT_MODEL,
                     "-OutputDir",
@@ -4885,7 +4926,7 @@ def orchestrate_run(
                 ]
             else:
                 args += [
-                    "-Goal", str(goal_text),
+                    "-GoalFile", str(goal_file_path),
                     "-Model", manifest.get("model") or DEFAULT_MODEL,
                 ]
                 if manifest.get("job_type"):
@@ -7077,15 +7118,40 @@ def _materialize_engineer_artifacts(out_dir: pathlib.Path) -> List[str]:
     engineer_payload = _load_agent_json_output(out_dir / "Engineer.txt")
     if not engineer_payload:
         return []
-    implementation = engineer_payload.get("implementation")
-    if not isinstance(implementation, str) or "```" not in implementation:
-        return []
 
     generated_root = out_dir / "generated_app"
     generated_root.mkdir(parents=True, exist_ok=True)
 
     written: List[str] = []
     used: set[str] = set()
+    artifacts = engineer_payload.get("artifacts")
+    if isinstance(artifacts, list):
+        for item in artifacts:
+            if not isinstance(item, dict):
+                continue
+            raw_name = item.get("name") or item.get("path") or item.get("file")
+            content = item.get("content")
+            if not isinstance(raw_name, str) or not isinstance(content, str):
+                continue
+            rel = _safe_generated_app_relpath(raw_name)
+            if rel is None:
+                continue
+            target = (generated_root / pathlib.Path(rel.as_posix())).resolve()
+            try:
+                target.relative_to(generated_root.resolve())
+            except Exception:
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(content.rstrip() + "\n", encoding="utf-8")
+            written.append(str(target.relative_to(out_dir)))
+
+    if written:
+        return written
+
+    implementation = engineer_payload.get("implementation")
+    if not isinstance(implementation, str) or "```" not in implementation:
+        return []
+
     for idx, match in enumerate(_CODE_BLOCK_RE.finditer(implementation)):
         language = (match.group(1) or "").strip()
         code = (match.group(2) or "").strip("\n")

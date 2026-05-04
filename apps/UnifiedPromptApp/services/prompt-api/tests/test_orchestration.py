@@ -221,6 +221,61 @@ class TestOrchestrateRun:
         # Clean up the created file
         summary_path.unlink(missing_ok=True)
 
+    def test_orchestrate_run_preserves_long_concierge_prompt(self, cleanup_test_runs):
+        """
+        Regression test for Concierge prompt truncation.
+
+        A full Concierge product spec (multi-section markdown with feature lists,
+        acceptance criteria, etc.) must round-trip end-to-end without truncation.
+        Previously the goal was passed via `-Goal` on the PowerShell command line
+        and PowerShell argument parsing truncated long values, so contract agents
+        only saw the first ~150 chars and blocked on missing required sections.
+
+        The marker `UNIQUE_END_MARKER_PIXEL_BURROW_ACCEPTANCE_CRITERIA` is placed
+        deliberately near the end of the prompt — if it survives, late-section
+        acceptance criteria are no longer being lost.
+        """
+        marker = "UNIQUE_END_MARKER_PIXEL_BURROW_ACCEPTANCE_CRITERIA"
+        # Build a realistic ~4 KB Concierge spec with the marker near the end.
+        long_goal = (
+            "# Concierge Request: Build a Simple Web Arcade Game Inspired by Classic Centipede\n\n"
+            "## Goal\n\nCreate a simple, polished, browser-based arcade game.\n\n"
+            "## Features\n"
+            + "\n".join(f"- Feature {i}: " + ("x" * 80) for i in range(20))
+            + "\n\n## Inputs\n- keyboard\n- mouse\n\n## Outputs\n- canvas\n- audio\n\n"
+            "## Constraints\n- runs in modern browsers\n- no backend\n\n"
+            "## Deliverables\n- index.html\n- game.js\n\n"
+            "## Acceptance Criteria\n"
+            "- The game starts on page load.\n"
+            "- The player can move with arrow keys.\n"
+            "- Score is displayed.\n"
+            f"- {marker}\n"
+        )
+        assert len(long_goal) > 1000, "test prompt should be long enough to have a late-section marker"
+        assert marker in long_goal[-500:], "marker must be in the late section of the prompt"
+
+        payload = {"goal": long_goal, "model": "gpt-4o-mini"}
+        response = client.post("/orchestrate/run", json=payload)
+        assert response.status_code == 200
+
+        result = response.json()
+        run_id = result["run_id"]
+        manifest = result["manifest"]
+
+        # Manifest must store the full prompt, never a truncated preview.
+        assert manifest.get("goal") == long_goal, (
+            "Manifest stored a truncated goal — Concierge spec must be preserved verbatim. "
+            f"Stored length={len(manifest.get('goal') or '')}, expected={len(long_goal)}."
+        )
+        assert marker in manifest["goal"]
+
+        # The persisted manifest file must also preserve the full prompt.
+        manifest_path = app.BRIDGE_RUN_DIR / f"{run_id}.json"
+        assert manifest_path.exists()
+        on_disk = json.loads(manifest_path.read_text(encoding="utf-8"))
+        assert on_disk.get("goal") == long_goal
+        assert marker in on_disk["goal"]
+
     def test_cancel_single_queued_orchestration_run(self, cleanup_test_runs):
         """Queued runs should cancel immediately via single-run cancel endpoint."""
         payload = {

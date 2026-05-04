@@ -76,14 +76,39 @@ if ((-not $SkipCodex) -and $RunCodex -and (-not (Test-Path -LiteralPath $codexSc
     throw "Codex orchestrator script not found at $codexScript"
 }
 
-# Resolve goal text from explicit -Goal first, then goal file.
+### BEGIN: Resolve-OrchestrationGoal
+# Goal precedence:
+#   1. Explicit -GoalFile wins (full-fidelity, never truncated; never re-resolved through ContextResolver).
+#   2. Explicit -Goal is used as-is.
+#   3. Default GoalFile (legacy fallback) is read and may be context-resolved.
+$goalFileExplicit = $PSBoundParameters.ContainsKey('GoalFile') -and -not [string]::IsNullOrWhiteSpace($GoalFile)
+$goalExplicit = $PSBoundParameters.ContainsKey('Goal') -and -not [string]::IsNullOrWhiteSpace($Goal)
 $goalText = ""
-if (-not [string]::IsNullOrWhiteSpace($Goal)) {
-    $goalText = $Goal.Trim()
+$goalSource = "default_file"
+
+if ($goalFileExplicit) {
+    if (-not [System.IO.File]::Exists($GoalFile)) {
+        throw "GoalFile not found: $($GoalFile)"
+    }
+
+    $goalText = [System.IO.File]::ReadAllText($GoalFile, [System.Text.Encoding]::UTF8)
+
+    if ([string]::IsNullOrWhiteSpace($goalText)) {
+        throw "GoalFile is empty: $($GoalFile)"
+    }
+
+    if ($goalExplicit) {
+        Write-Warning "Both -Goal and -GoalFile were supplied. Using -GoalFile."
+    }
+    $goalSource = "file"
+}
+elseif ($goalExplicit) {
+    $goalText = $Goal
+    $goalSource = "inline"
 }
 else {
     if (-not (Test-Path -LiteralPath $GoalFile)) {
-        throw "Goal file not found: $GoalFile"
+        throw "Either -Goal or -GoalFile is required (default goal file not present at $GoalFile)."
     }
 
     if (-not $SkipContextResolution -and (Test-Path -LiteralPath $contextResolver)) {
@@ -95,11 +120,13 @@ else {
     }
 
     $goalText = (Get-Content -LiteralPath $GoalFile -Raw).Trim()
+    $goalSource = "default_file"
 }
 
 if ([string]::IsNullOrWhiteSpace($goalText)) {
-    $goalText = "Execute default orchestration workflow"
+    throw "Resolved orchestration goal is empty after applying -Goal/-GoalFile/default fallback."
 }
+### END: Resolve-OrchestrationGoal
 
 # Normalize output routing so POF writes directly into OutputDir when supplied.
 $targetRunId = Get-Date -Format "yyyyMMdd-HHmmss"
@@ -123,6 +150,37 @@ else {
 }
 $resolvedRunOutput = Join-Path $targetOutputRoot $targetRunId
 Ensure-OrchDirectory $resolvedRunOutput
+
+### BEGIN: Write-GoalMetadata
+# Always materialize the canonical goal in the run output and record diagnostics
+# so future truncation defects are obvious.
+$goalBytes = [System.Text.Encoding]::UTF8.GetBytes($goalText)
+$goalSha256 = ([System.BitConverter]::ToString(
+    [System.Security.Cryptography.SHA256]::Create().ComputeHash($goalBytes)
+)) -replace '-', ''
+$goalSha256 = $goalSha256.ToLowerInvariant()
+$goalLength = $goalText.Length
+$goalPreview = if ($goalLength -le 300) { $goalText } else { $goalText.Substring(0, 300) }
+
+$canonicalGoalFile = Join-Path $resolvedRunOutput "Goal.md"
+if ($goalSource -ne "file" -or (-not [System.IO.File]::Exists($canonicalGoalFile))) {
+    [System.IO.File]::WriteAllText(
+        $canonicalGoalFile,
+        $goalText,
+        (New-Object System.Text.UTF8Encoding($false))
+    )
+}
+
+$goalMetadata = [pscustomobject]@{
+    source  = $goalSource
+    path    = "Goal.md"
+    length  = $goalLength
+    sha256  = $goalSha256
+    preview = $goalPreview
+}
+$goalMetaPath = Join-Path $resolvedRunOutput "goal_metadata.json"
+$goalMetadata | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $goalMetaPath -Encoding UTF8
+### END: Write-GoalMetadata
 
 $effectiveInstruction = $Instruction
 if ([string]::IsNullOrWhiteSpace($effectiveInstruction) -and -not [string]::IsNullOrWhiteSpace($ModelInstruction)) {

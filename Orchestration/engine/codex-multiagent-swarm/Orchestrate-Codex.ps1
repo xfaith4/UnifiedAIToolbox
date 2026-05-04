@@ -50,6 +50,9 @@ param(
     [string]$Goal = "Analyze the repository and produce a practical implementation plan.",
 
     [Parameter(Mandatory = $false)]
+    [string]$GoalFile = "",
+
+    [Parameter(Mandatory = $false)]
     [string]$Model = "gpt-4o-mini",
 
     [Parameter(Mandatory = $false)]
@@ -79,6 +82,25 @@ Set-StrictMode -Version Latest
 if ($MaxParallel) {
     $MaxAgents = $MaxParallel
 }
+
+### BEGIN: Resolve-CodexGoal
+# -GoalFile wins if supplied — same precedence as Unified-Orchestration.ps1.
+$goalFileExplicit = $PSBoundParameters.ContainsKey('GoalFile') -and -not [string]::IsNullOrWhiteSpace($GoalFile)
+$goalExplicit = $PSBoundParameters.ContainsKey('Goal') -and -not [string]::IsNullOrWhiteSpace($Goal)
+if ($goalFileExplicit) {
+    if (-not [System.IO.File]::Exists($GoalFile)) {
+        throw "GoalFile not found: $($GoalFile)"
+    }
+    $resolvedGoal = [System.IO.File]::ReadAllText($GoalFile, [System.Text.Encoding]::UTF8)
+    if ([string]::IsNullOrWhiteSpace($resolvedGoal)) {
+        throw "GoalFile is empty: $($GoalFile)"
+    }
+    if ($goalExplicit) {
+        Write-Warning "Both -Goal and -GoalFile were supplied. Using -GoalFile."
+    }
+    $Goal = $resolvedGoal
+}
+### END: Resolve-CodexGoal
 
 # Agent types available in the swarm
 $AgentTypes = @{

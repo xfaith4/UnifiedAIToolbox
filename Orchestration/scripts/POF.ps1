@@ -474,6 +474,9 @@ Artifacts field rules (CRITICAL):
     }
 
     if ($Agent.name -eq "ConceptualModelContract") {
+        if ($EffectiveJobType -eq "build_new_app") {
+            $segments += "For create-new-app goals, treat an Original user request, Required features, mechanics list, expected outputs, and acceptance criteria as sufficient requirements. Do not request clarification by restating those same categories. Extract the supplied details into the runtime contract unless there is a true contradiction."
+        }
         if ($EffectiveAppType -eq "wpf") {
             $segments += "App type is WPF desktop. Do not produce DOM/web probes. Use WPF-observable probes (named controls, bound state values, visual tree state, render loop counters)."
         }
@@ -1003,6 +1006,19 @@ function Invoke-DeterministicRepoContextBuilder {
     return Get-Content -Raw -LiteralPath $result.RepoContextPath
 }
 
+function Get-ObservedGoalEvidence {
+    param(
+        [string]$GoalText,
+        [int]$PreviewMax = 300
+    )
+    $len = if ($null -eq $GoalText) { 0 } else { $GoalText.Length }
+    $preview = if ($len -le $PreviewMax) { $GoalText } else { $GoalText.Substring(0, $PreviewMax) }
+    return @{
+        observedGoalLength  = $len
+        observedGoalPreview = $preview
+    }
+}
+
 # --- MAIN ORCHESTRATION LOOP -----------------------------------------------
 try {
     $EffectiveJobType = Resolve-EffectiveJobType -GoalText $Goal -RequestedJobType $JobType
@@ -1139,6 +1155,7 @@ try {
                     -Question $validated.ClarificationText `
                     -RequirementsRequest $requirementsRequest
 
+                $goalEvidence = Get-ObservedGoalEvidence -GoalText $Goal
                 Write-AgentStatus -Agent $ContractAgent.name -Status "blocked_requirements" -ExtraData @{
                     reason               = "clarification_request"
                     clarification_text   = $validated.ClarificationText
@@ -1148,6 +1165,8 @@ try {
                     options              = $checkpointRecord.options
                     default              = $checkpointRecord.default_option
                     requirements_request = $requirementsRequest
+                    observedGoalLength   = $goalEvidence.observedGoalLength
+                    observedGoalPreview  = $goalEvidence.observedGoalPreview
                 }
                 Write-PofRequirementsCheckpointArtifacts `
                     -AgentName $ContractAgent.name `
@@ -1227,7 +1246,25 @@ try {
             if ($Agent.name -in @("ConceptualModelContract", "Engineer", "Critic")) {
                 $guidance += "Output contract JSON must be raw JSON only. Do not emit markdown, code fences, or prose."
             }
+            if ($Agent.name -eq "Engineer") {
+                $guidance += @"
+Artifacts field rules (CRITICAL):
+- For build_new_app web goals, return a complete runnable project through artifacts[].
+- Populate artifacts[] with one entry per source file to create.
+- artifacts[].name: relative file path from the project root, e.g. package.json, index.html, src/main.tsx, src/App.tsx, src/styles.css, README.md.
+- artifacts[].content: raw source code, config, or Markdown text only.
+  DO NOT wrap content in backtick code fences.
+  DO NOT use '--- filename ---' separators inside content.
+  The content value must be exactly what should be written into the file.
+- artifacts[].type: optional string like 'code/typescript', 'code/tsx', 'config/json', or 'docs/markdown'.
+- Honor the tech stack exactly as specified in the goal. If goal says Vite+React, output Vite files (vite.config.ts, src/main.tsx, index.html), NOT Next.js files (next.config.mjs, app/page.tsx).
+- Every file listed in changes[] with action 'create' or 'modify' MUST have a matching artifacts[] entry.
+"@
+            }
             if ($Agent.name -eq "ConceptualModelContract") {
+                if ($EffectiveJobType -eq "build_new_app") {
+                    $guidance += "For create-new-app goals, treat an Original user request, Required features, mechanics list, expected outputs, and acceptance criteria as sufficient requirements. Do not request clarification by restating those same categories. Extract the supplied details into the runtime contract unless there is a true contradiction."
+                }
                 if ($EffectiveAppType -eq "wpf") {
                     $guidance += "App type is WPF desktop. Do not produce DOM/web probes. Use WPF-observable probes (named controls, bound state values, visual tree state, render loop counters)."
                 }
@@ -1361,10 +1398,13 @@ Stack Trace: $($_.ScriptStackTrace)
 
             if ($r.Agent -eq "ConceptualModelContract" -and $validated.ClarificationNeeded) {
                 $requirementsRequest = New-RequirementsRequestPacket -Question $validated.ClarificationText -AgentName $r.Agent
+                $goalEvidence = Get-ObservedGoalEvidence -GoalText $Goal
                 Write-AgentStatus -Agent $r.Agent -Status "blocked_requirements" -ExtraData @{
                     reason               = "clarification_request"
                     clarification_text   = $validated.ClarificationText
                     requirements_request = $requirementsRequest
+                    observedGoalLength   = $goalEvidence.observedGoalLength
+                    observedGoalPreview  = $goalEvidence.observedGoalPreview
                 }
                 Write-PofRequirementsRequestArtifacts `
                     -AgentName $r.Agent `
