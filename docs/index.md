@@ -4,12 +4,27 @@ This index is the canonical map of documentation in the Unified AI Toolbox repos
 
 ## Canonical documents
 
-- **Roadmap (single source of truth):** `docs/roadmap.md`
-- **Information architecture:** `docs/information-architecture.md`
-- **Orchestration experience roadmap:** `docs/orchestration-experience-roadmap.md`
-- **Application production path:** `docs/application-production-path.md`
-- **Future agent handoff (app production):** `docs/future-agent-handoff-app-production.md`
-- **Frontier software factory strategy:** `docs/frontier-software-factory-strategy.md`
+- **Roadmap (single source of truth):** [ROADMAP.md](ROADMAP.md)
+- **Information architecture:** [information-architecture.md](information-architecture.md)
+- **Architecture overview:** [Unified-AI-Toolbox-Architecture.md](Unified-AI-Toolbox-Architecture.md)
+- **Orchestration experience roadmap:** [orchestration-experience-roadmap.md](orchestration-experience-roadmap.md)
+- **Application production path:** [application-production-path.md](application-production-path.md)
+- **Future agent handoff (app production):** [future-agent-handoff-app-production.md](future-agent-handoff-app-production.md)
+- **Frontier software factory strategy:** [frontier-software-factory-strategy.md](frontier-software-factory-strategy.md)
+
+## Orchestration contracts (2026-05, source of truth)
+
+- **A2A envelope:** [contracts/A2A_CONTRACT.md](contracts/A2A_CONTRACT.md)
+- **Run lifecycle (8 canonical statuses):** [contracts/RUN_LIFECYCLE.md](contracts/RUN_LIFECYCLE.md)
+- **Event taxonomy (13 canonical event types):** [contracts/EVENT_TAXONOMY.md](contracts/EVENT_TAXONOMY.md)
+- **Decision Lock (blocker severity):** [contracts/DECISION_LOCK.md](contracts/DECISION_LOCK.md)
+
+## Operating a run
+
+- **Acceptance checklist (modernization gate):** [ACCEPTANCE_CHECKLIST.md](ACCEPTANCE_CHECKLIST.md)
+- **How to evaluate a run:** [EVALUATING_A_RUN.md](EVALUATING_A_RUN.md)
+- **Troubleshooting:** [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
+- **Changelog:** [../CHANGELOG.md](../CHANGELOG.md)
 
 ## Apps and services
 

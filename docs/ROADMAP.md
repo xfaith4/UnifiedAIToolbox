@@ -1,6 +1,51 @@
 # Unified AI Toolbox Roadmap
 
-Last updated: 2026-04-21
+Last updated: 2026-05-14
+
+## Post-Modernization (2026-05) — Producer migration, drift cleanup, hardening
+
+The 2026-05 modernization pass landed the canonical contracts, run-telemetry
+infrastructure, and Run Console rewrite. The follow-on work below makes the
+infrastructure actually populated and durable. See
+[../CHANGELOG.md](../CHANGELOG.md) for what shipped and
+[ACCEPTANCE_CHECKLIST.md](ACCEPTANCE_CHECKLIST.md) for the gate.
+
+### Now (next sprint)
+
+- [ ] **Wire orchestrator + agent runners to canonical event helpers.** Replace
+  legacy `events.ndjson`/`run_state.json` writes with calls to `appendEvent`
+  (`canonicalEvents.ts`), `indexArtifact` (`artifactIndex.ts`), and
+  `writeFinalSummary` (`finalSummary.ts`). Until this lands, legacy runs show
+  empty manifests on `/api/runs/[runId]/manifest` and the Run Console depends
+  on legacy fallbacks. Contracts to honor:
+  [contracts/EVENT_TAXONOMY.md](contracts/EVENT_TAXONOMY.md),
+  [contracts/RUN_LIFECYCLE.md](contracts/RUN_LIFECYCLE.md).
+
+### Soon
+
+- [ ] **Reconcile agent-library drift.** `prompts/agent-library.active.json`
+  (hardened by Lane 1) and `Orchestration/agents/agent-library.json` are not in
+  sync. Decide on a single checksum policy and re-run
+  `Check-AgentExports.ps1`. Fix the stale Researcher checksum
+  (`"1.11111111111111E+63"`).
+- [ ] **A2A envelope adoption beyond the four hardened agents.** Extend the
+  envelope contract to Researcher, Supervisor, and Historian prompts and verify
+  with the validator at
+  `apps/unifiedtoolbox.webapp/src/lib/contracts/a2aEnvelope.ts`.
+
+### Later
+
+- [ ] **Cross-process file locking for `events.jsonl` appends on Windows.**
+  POSIX `O_APPEND` semantics are weaker on Windows; concurrent writers can
+  interleave. Current assumption is single-writer-per-run.
+- [ ] **Live tail on `/api/runs/[runId]/events/canonical`.** The SSE endpoint
+  currently replays then closes when the file ends; add a tail mode that holds
+  open and emits new lines as they arrive.
+- [ ] **E2E HTTP route tests** for `/manifest`, `/artifacts`,
+  `/events/canonical`, and `/summary` covering 200/404/invalid-runId and SSE
+  reconnect with `Last-Event-ID`.
+
+---
 
 ## Purpose
 

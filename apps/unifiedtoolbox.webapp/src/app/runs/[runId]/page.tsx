@@ -12,6 +12,7 @@ import {
 import type { OrchestrationRun, RepoOrchestrationReport } from '@/lib/types/orchestrator'
 import type { RunStatusResponse } from '@/lib/app-factory/runs/types'
 import { nodeMatchesFilter, renderMarkdown } from '@/lib/artifacts/viewerUtils'
+import { RunConsole } from '@/features/run-console'
 
 type ArtifactItem = {
   artifactId?: string
@@ -836,6 +837,10 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
           <h1 className="mt-2 text-2xl font-semibold">Run Detail</h1>
           {orchRun.goal && <p className="mt-1 text-sm text-slate-400">{orchRun.goal}</p>}
         </div>
+
+        {/* Run Console (Agent 2): canonical manifest/SSE/artifacts/final-summary.
+            Renders gracefully (legacy-state) when canonical sources are empty. */}
+        <RunConsole runId={runId} fallbackObjective={orchRun.goal ?? undefined} />
 
         <div className={`flex flex-wrap items-center gap-3 rounded-2xl border p-4 ${statusCls}`}>
           <span className={`rounded border px-2 py-1 text-xs font-semibold uppercase tracking-wide ${executionBadgeCls}`}>
@@ -1910,6 +1915,10 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
           Structured outcome view for repo orchestration runs, powered by REPORT.json.
         </p>
       </div>
+
+      {/* Run Console (Agent 2): canonical manifest/SSE/artifacts/final-summary.
+          Renders gracefully (legacy-state) when canonical sources are empty. */}
+      <RunConsole runId={runId} fallbackObjective={report?.summary?.headline ?? undefined} />
 
       <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
