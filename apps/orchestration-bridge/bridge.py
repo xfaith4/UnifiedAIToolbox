@@ -596,6 +596,15 @@ def _execute_run_manifest(manifest_path: Path) -> bool:
             run_output_dir.mkdir(parents=True, exist_ok=True)
             
             args = [ps_exe, "-File", str(orch_script), "-Goal", goal_text, "-OutputRoot", str(run_output_dir)]
+
+            # Propagate spec-level app_type so POF.ps1 honors the incoming
+            # value instead of falling through to its keyword-regex default,
+            # which greedily classifies any goal mentioning "react", "html",
+            # "dom", etc. as "web" and locks downstream agents into wrong
+            # assumptions.
+            manifest_app_type = manifest.get("app_type")
+            if isinstance(manifest_app_type, str) and manifest_app_type.strip():
+                args += ["-AppType", manifest_app_type.strip()]
             with open(log_path, "w", encoding="utf-8") as logf:
                 result = subprocess.run(args, stdout=logf, stderr=logf)
             

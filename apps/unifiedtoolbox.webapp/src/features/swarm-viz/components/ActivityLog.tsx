@@ -1,4 +1,5 @@
 import type { SwarmActivityItem } from '../types'
+import { summarizeRunMessage } from '@/lib/runs/runFailureSummary'
 
 type ActivityLogProps = {
   items: SwarmActivityItem[]
@@ -30,7 +31,7 @@ export default function ActivityLog({ items }: ActivityLogProps) {
               {item.agent && <span>{item.agent}</span>}
               {item.status && <span>{item.status}</span>}
             </div>
-            <p className="mt-1 whitespace-pre-wrap break-words">{item.message}</p>
+            <p className="mt-1 break-words">{summarizeRunMessage(item.message)}</p>
           </article>
         ))}
       </div>

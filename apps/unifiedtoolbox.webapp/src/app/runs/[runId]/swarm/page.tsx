@@ -12,6 +12,7 @@ import { buildSwarmModel } from '@/features/swarm-viz/model/swarmModel'
 import { fetchOrchestrationRun, forceCancelOrchestrationRun, requeueOrchestrationRun } from '@/lib/services/orchestratorApi'
 import { getRunContext } from '@/lib/services/runContextStore'
 import type { OrchestrationRun } from '@/lib/types/orchestrator'
+import { summarizeRunMessage } from '@/lib/runs/runFailureSummary'
 
 function safeDecode(value: string): string {
   try {
@@ -405,7 +406,7 @@ export default function RunSwarmPage({ params }: { params: Promise<{ runId: stri
 
               <div className="text-xs leading-relaxed">
                 {blockerContextAvailable
-                  ? blockerContextSummary
+                  ? summarizeRunMessage(blockerContextSummary)
                   : 'No structured blocker context was returned by the backend. Use Copy Context and Concierge to capture missing requirements, then resume this run.'}
               </div>
 

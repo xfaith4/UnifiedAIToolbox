@@ -206,6 +206,10 @@ The AI Toolbox follows a lightweight orchestration workflow for Codex-driven cha
 
 See [AGENTS.md](AGENTS.md) for orchestration rules and definition of done.
 
+### Run Storyboard
+
+For the operator-facing story of a run, including when to stay in **Run Detail** versus when to return to **Concierge**, see [docs/orchestration-run-storyboard.md](docs/orchestration-run-storyboard.md).
+
 ## 🎯 Recreate This Application Anytime
 
 **Want to rebuild or fork this platform?** We've created a comprehensive **prompt chain** that can recreate the entire UnifiedAIToolbox application from scratch using AI assistants like GPT-4 or Claude.
@@ -240,6 +244,40 @@ The prompt chain follows **industry-standard best practices**:
 - **MCP status** - [docs/MCP_LIBRARY_STATUS.md](docs/MCP_LIBRARY_STATUS.md)
 - **MCP remaining tasks** - [docs/MCP_REMAINING_TASKS.md](docs/MCP_REMAINING_TASKS.md)
 - **Historical docs archive** - [docs/archive/README.md](docs/archive/README.md)
+
+### 🔐 Orchestration contracts (source of truth, 2026-05)
+
+The canonical specs for how agents talk to each other and how a run progresses live in
+[docs/contracts/](docs/contracts/). Treat these as the authoritative reference for run
+status, events, and blocker handling — they override anything older in this README.
+
+- **A2A envelope** — [docs/contracts/A2A_CONTRACT.md](docs/contracts/A2A_CONTRACT.md)
+- **Run lifecycle (8 canonical statuses)** — [docs/contracts/RUN_LIFECYCLE.md](docs/contracts/RUN_LIFECYCLE.md)
+- **Event taxonomy (13 canonical types)** — [docs/contracts/EVENT_TAXONOMY.md](docs/contracts/EVENT_TAXONOMY.md)
+- **Blocker severity / Decision Lock** — [docs/contracts/DECISION_LOCK.md](docs/contracts/DECISION_LOCK.md)
+
+### ✅ Verifying a build
+
+- **Modernization acceptance gate** — [docs/ACCEPTANCE_CHECKLIST.md](docs/ACCEPTANCE_CHECKLIST.md)
+- **How to evaluate a run** — [docs/EVALUATING_A_RUN.md](docs/EVALUATING_A_RUN.md)
+- **Troubleshooting** — [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
+- **Changelog** — [CHANGELOG.md](CHANGELOG.md)
+
+### 🛠️ Modernization pass (2026-05)
+
+This release standardized the orchestration core. Every agent now emits a versioned
+A2A envelope with a canonical `intent`, `status`, and `blocker` shape; the run state
+machine has exactly eight statuses; and run telemetry is captured in three on-disk
+files per run (`events.jsonl`, `artifacts.index.jsonl`, `final_summary.json`) plus
+three new API endpoints (`/manifest`, `/artifacts`, `/events/canonical`). The Run
+Console reads from this canonical surface so the same information is available to
+operators in the UI and to scripts via the API.
+
+The contracts and infrastructure ship in this pass; the orchestrator and agent
+producers will be migrated to emit canonical events in the next sprint (see
+[docs/ROADMAP.md](docs/ROADMAP.md) → "Post-Modernization → Now"). Until then, legacy
+runs continue to use `events.ndjson` and `run_state.json` and will show empty
+canonical manifests — this is expected.
 
 ## 🛠️ Development
 

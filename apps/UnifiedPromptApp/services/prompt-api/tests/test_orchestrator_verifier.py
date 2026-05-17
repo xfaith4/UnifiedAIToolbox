@@ -349,3 +349,125 @@ def test_execute_app_production_repairs_applies_model_edits_and_reverifies(tmp_p
     assert updated_plan["execution_status"] == "verified"
     assert len(updated_plan["attempts"]) == 1
     assert updated_plan["attempts"][0]["status"] == "verified"
+
+
+def test_verify_install_skips_non_node_project(tmp_path, monkeypatch):
+    (tmp_path / "package.json").write_text(
+        json.dumps(
+            {
+                "name": "system-dashboard",
+                "private": True,
+                "scripts": {"start": "node -e \"console.log('stub')\""},
+                "dependencies": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "requirements.txt").write_text("flask\n", encoding="utf-8")
+    (tmp_path / "Start-SystemDashboard.ps1").write_text("# launcher\n", encoding="utf-8")
+
+    verifier = OrchestratorVerifier(tmp_path)
+
+    def _fail_if_called(*args, **kwargs):
+        raise AssertionError("verify_install must not shell out for a non-Node project")
+
+    monkeypatch.setattr(verifier, "_run_command", _fail_if_called)
+
+    result = verifier.verify_install()
+
+    assert result is not None
+    assert result["status"] == "skipped"
+    assert "Non-Node project" in result["summary"]
+    assert result["exit_code"] is None
+
+
+def test_verify_install_skips_when_package_manager_missing(tmp_path, monkeypatch):
+    (tmp_path / "package.json").write_text(
+        json.dumps(
+            {
+                "name": "real-node-app",
+                "dependencies": {"react": "18.0.0"},
+                "scripts": {"build": "vite build"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    verifier = OrchestratorVerifier(tmp_path)
+
+    monkeypatch.setattr(orchestrator_verifier.shutil, "which", lambda _: None)
+
+    def _fail_if_called(*args, **kwargs):
+        raise AssertionError("verify_install must not shell out when toolchain missing")
+
+    monkeypatch.setattr(verifier, "_run_command", _fail_if_called)
+
+    result = verifier.verify_install()
+
+    assert result is not None
+    assert result["status"] == "skipped"
+    assert "not found on PATH" in result["summary"]
+    assert result["command"] == "npm install --no-audit --no-fund"
+
+
+def test_verify_dev_server_skips_when_package_manager_missing(tmp_path, monkeypatch):
+    (tmp_path / "package.json").write_text(
+        json.dumps(
+            {
+                "name": "real-node-app",
+                "dependencies": {"react": "18.0.0"},
+                "scripts": {"dev": "vite"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    verifier = OrchestratorVerifier(tmp_path)
+
+    monkeypatch.setattr(orchestrator_verifier.shutil, "which", lambda _: None)
+
+    def _fail_if_called(*args, **kwargs):
+        raise AssertionError("verify_dev_server must not spawn when toolchain missing")
+
+    monkeypatch.setattr(orchestrator_verifier.subprocess, "Popen", _fail_if_called)
+
+    result = verifier.verify_dev_server()
+
+    assert result is not None
+    assert result["status"] == "skipped"
+    assert "not found on PATH" in result["summary"]
+
+
+def test_run_all_verifications_cascades_skipped_install_as_skipped(tmp_path, monkeypatch):
+    (tmp_path / "package.json").write_text(
+        json.dumps(
+            {
+                "name": "system-dashboard",
+                "private": True,
+                "scripts": {
+                    "start": "node -e \"console.log('stub')\"",
+                    "build": "node -e \"console.log('stub')\"",
+                    "lint": "node -e \"console.log('stub')\"",
+                },
+                "dependencies": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "requirements.txt").write_text("flask\n", encoding="utf-8")
+
+    verifier = OrchestratorVerifier(tmp_path)
+
+    def _fail_if_called(*args, **kwargs):
+        raise AssertionError("no dependent gate should shell out when install is skipped")
+
+    monkeypatch.setattr(verifier, "_run_command", _fail_if_called)
+    monkeypatch.setattr(verifier, "run_normalization", lambda: None)
+    monkeypatch.setattr(verifier, "verify_docker_compose", lambda: None)
+
+    results = verifier.run_all_verifications()
+
+    assert results["install_result"]["status"] == "skipped"
+    for key in ("lint_result", "build_result", "unit_test_result", "smoke_test_result", "dev_server_result"):
+        assert results[key]["status"] == "skipped"
+        assert "install gate was skipped" in results[key]["summary"]

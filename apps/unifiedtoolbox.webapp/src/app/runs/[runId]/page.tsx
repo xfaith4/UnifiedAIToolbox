@@ -12,6 +12,8 @@ import {
 import type { OrchestrationRun, RepoOrchestrationReport } from '@/lib/types/orchestrator'
 import type { RunStatusResponse } from '@/lib/app-factory/runs/types'
 import { nodeMatchesFilter, renderMarkdown } from '@/lib/artifacts/viewerUtils'
+import { RunConsole } from '@/features/run-console'
+import { buildFailureSummary, summarizeRunMessage } from '@/lib/runs/runFailureSummary'
 
 type ArtifactItem = {
   artifactId?: string
@@ -766,6 +768,15 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
     const blockerContextSummary = requirementsRequest?.summary || latestBlockerSignal?.message || orchRun.errorDetail || null
     const blockerContextAvailable = Boolean(blockerContextSummary)
     const showRecoveryCallout = executionStateLabel === 'Blocked requirements' || isError || failedGateCount > 0
+    const incidentSummary = buildFailureSummary({
+      executionStateLabel,
+      blockerContextSummary,
+      failedGateCount,
+      firstFailureBlocker: verificationFailures[0]?.blocker ?? null,
+      maintenanceContextMissing,
+      contractMismatchDetected,
+      requirementsBlocked: executionStateLabel === 'Blocked requirements',
+    })
     const checkpointHistory = orchRun.checkpoints ?? []
     const correctiveActions = (orchRun.correctiveActions?.length ? orchRun.correctiveActions : checkpointHistory
       .filter((checkpoint) => Boolean(checkpoint.response) || (checkpoint.answers?.length ?? 0) > 0)
@@ -836,6 +847,10 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
           <h1 className="mt-2 text-2xl font-semibold">Run Detail</h1>
           {orchRun.goal && <p className="mt-1 text-sm text-slate-400">{orchRun.goal}</p>}
         </div>
+
+        {/* Run Console (Agent 2): canonical manifest/SSE/artifacts/final-summary.
+            Renders gracefully (legacy-state) when canonical sources are empty. */}
+        <RunConsole runId={runId} fallbackObjective={orchRun.goal ?? undefined} />
 
         <div className={`flex flex-wrap items-center gap-3 rounded-2xl border p-4 ${statusCls}`}>
           <span className={`rounded border px-2 py-1 text-xs font-semibold uppercase tracking-wide ${executionBadgeCls}`}>
@@ -924,7 +939,7 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
 
             <div className="text-xs leading-relaxed">
               {blockerContextAvailable
-                ? blockerContextSummary
+                ? summarizeRunMessage(blockerContextSummary)
                 : 'No structured blocker context was returned by the backend. Use copy context plus Concierge to gather missing requirements, then resume this run.'}
             </div>
 
@@ -1008,34 +1023,28 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
         {(failedGateCount > 0 || maintenanceContextMissing || contractMismatchDetected) && (
           <div className="rounded-2xl border border-rose-800 bg-rose-950/20 p-4 text-xs text-rose-100 space-y-3">
             <div className="flex items-center justify-between gap-3">
-              <div className="font-semibold text-rose-100">
-                What failed {failedGateCount > 0 ? `(${failedGateCount} blocker${failedGateCount === 1 ? '' : 's'})` : ''}
-              </div>
-              <div className="text-[11px] text-rose-200">Completed execution != passed quality gates</div>
+              <div className="font-semibold text-rose-100">What happened</div>
+              <div className="text-[11px] text-rose-200">{incidentSummary.title}</div>
             </div>
-            {verificationFailures.map((failure, idx) => (
-              <div key={`vf-${idx}`} className="rounded-xl border border-rose-800/60 bg-rose-950/30 p-3 space-y-1">
-                <div><span className="font-semibold">Blocker:</span> {failure.blocker}</div>
-                <div><span className="font-semibold">Expected:</span> {failure.expected}</div>
-                <div><span className="font-semibold">Found:</span> {failure.found}</div>
-                <div><span className="font-semibold">Fix:</span> {failure.fix}</div>
+            <div className="rounded-xl border border-rose-800/60 bg-rose-950/30 p-3 space-y-3">
+              <div>
+                <div className="font-semibold">Summary</div>
+                <div className="mt-1 text-rose-100/90">{incidentSummary.summary}</div>
               </div>
-            ))}
-            {maintenanceContextMissing && (
-              <div className="rounded-xl border border-rose-800/60 bg-rose-950/30 p-3 space-y-1">
-                <div><span className="font-semibold">Blocker:</span> Maintenance contract context missing</div>
-                <div><span className="font-semibold">Expected:</span> `-JobType maintain_existing_app -ContractPath ...` for maintenance flow</div>
-                <div><span className="font-semibold">Found:</span> failing agents: {effectiveMaintenanceAgents.join(', ')}</div>
-                <div><span className="font-semibold">Fix:</span> rerun with maintenance contract path or use `build_new_app` mode.</div>
+              <div>
+                <div className="font-semibold">Next steps</div>
+                <ul className="mt-1 space-y-1 text-rose-100/90">
+                  {incidentSummary.nextSteps.map((step) => (
+                    <li key={step}>• {step}</li>
+                  ))}
+                </ul>
               </div>
-            )}
-            {contractMismatchDetected && (
-              <div className="rounded-xl border border-amber-700/50 bg-amber-950/20 p-3 text-amber-100 space-y-1">
-                <div><span className="font-semibold">Blocker:</span> Contract mismatch (DOM/web probes for WPF goal)</div>
-                <div><span className="font-semibold">Expected:</span> App-type-specific probe schema</div>
-                <div><span className="font-semibold">Fix:</span> set `AppType` explicitly before contract generation.</div>
-              </div>
-            )}
+              {maintenanceContextMissing && (
+                <div className="text-[11px] text-rose-200">
+                  Impacted agents: {effectiveMaintenanceAgents.join(', ')}
+                </div>
+              )}
+            </div>
             <div className="flex flex-wrap gap-2 pt-1">
               {orchRun.runDir && (
                 <a
@@ -1085,6 +1094,19 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
                   {item.why && <div><span className="font-semibold">Why:</span> {item.why}</div>}
                   {item.defaults && item.defaults.length > 0 && (
                     <div><span className="font-semibold">Defaults:</span> {item.defaults.join(' | ')}</div>
+                  )}
+                  {item.schema_hint && (
+                    <details className="mt-2" data-testid={`schema-hint-${item.id}`}>
+                      <summary className="cursor-pointer font-semibold text-amber-50">
+                        Expected output shape (click to view)
+                      </summary>
+                      <p className="mt-1 text-[11px] text-amber-200/90">
+                        Your answer should match this exact JSON shape. String fields must be strings, array fields must be arrays of structured objects — the validator rejects mismatches.
+                      </p>
+                      <pre className="mt-2 max-h-96 overflow-auto rounded-lg border border-amber-700/50 bg-slate-950/80 p-2 text-[11px] leading-snug text-amber-50 whitespace-pre-wrap break-words font-mono">
+{item.schema_hint}
+                      </pre>
+                    </details>
                   )}
                   <div className="mt-3 space-y-1">
                     <label htmlFor={`checkpoint-answer-${item.id}`} className="block font-semibold text-amber-50">
@@ -1910,6 +1932,10 @@ export default function RepoRunPage({ params }: { params: Promise<{ runId: strin
           Structured outcome view for repo orchestration runs, powered by REPORT.json.
         </p>
       </div>
+
+      {/* Run Console (Agent 2): canonical manifest/SSE/artifacts/final-summary.
+          Renders gracefully (legacy-state) when canonical sources are empty. */}
+      <RunConsole runId={runId} fallbackObjective={report?.summary?.headline ?? undefined} />
 
       <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">

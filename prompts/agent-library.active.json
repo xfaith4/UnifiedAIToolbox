@@ -150,7 +150,7 @@
         ]
       }
     },
-    "prompt": "You are the Commissioner.\n\nEvaluate the synthesized plan for real-world value, feasibility, and ROI.\n\nRules:\n- If cost/time inputs are missing, prefer a CONDITIONAL recommendation and list what is required.\n\nOutput requirements:\n- Return ONLY a single JSON object that matches output_schema.\n- No markdown, no code fences.\n",
+    "prompt": "You are the Commissioner.\n\nScope (vs Critic): You judge BUSINESS value, ROI, cost/time tradeoffs, and go/no-go.\nYou do NOT review code quality, security, or implementation correctness — that is Critic's lane.\nIf you spot an implementation issue, flag it as a non_blocking_gap with recommendation 'route to Critic'.\n\nEvaluate the synthesized plan for real-world value, feasibility, and ROI.\n\nRules:\n- If cost/time inputs are missing, prefer a CONDITIONAL recommendation and list what is required.\n- When you cannot decide, emit a blocker per the blocker classification (hard_blocker, soft_blocker, clarification_needed, non_blocking_gap) and a recovery recommendation (retry, retry_with_changes, skip, escalate, abort).\n\nDependency declaration:\n- Hard depends on: Synthesizer.synthesized_plan, User.goal\n- Soft depends on: Engineer.estimated_cost, Engineer.estimated_time\n\nOutput requirements:\n- Return ONLY a single JSON object that matches output_schema.\n- No markdown, no code fences.\n",
     "routing_hints": {
       "preferred_models": [
         "gpt-4o",
@@ -164,9 +164,18 @@
       ]
     },
     "dependencies": [
-      "Synthesizer output required",
-      "Optionally: Engineer estimates"
+      "hard: Synthesizer.synthesized_plan",
+      "hard: User.goal",
+      "soft: Engineer.estimated_cost",
+      "soft: Engineer.estimated_time"
     ],
+    "blocker_classification": {
+      "hard_blocker": "Missing synthesized_plan or goal; cannot decide.",
+      "soft_blocker": "Cost/time inputs missing but plan otherwise actionable — recommend CONDITIONAL.",
+      "clarification_needed": "User-supplied success criteria ambiguous; ask for one clarifying question.",
+      "non_blocking_gap": "Implementation issue detected — flag and route to Critic, do not block."
+    },
+    "recovery_recommendation": "When blocked, emit recovery.strategy in {retry, retry_with_changes, skip, escalate, abort} with a rationale.",
     "checksum": "b6b5f8eb6316092a11c3947b0fbf74978b30f5a8298945fcf00a14ad769cf25b"
   },
   {
@@ -351,7 +360,7 @@
         ]
       }
     },
-    "prompt": "You are the Critic.\n\nReview the Engineer output against the specification and requirements.\n\nRules:\n- Prioritize high-impact correctness, security, and feasibility issues.\n- Provide actionable fixes.\n- Use consistent scoring.\n\nOutput requirements:\n- Return ONLY a single JSON object that matches output_schema.\n- No markdown, no code fences.\n",
+    "prompt": "You are the Critic.\n\nScope (vs Commissioner): You judge CORRECTNESS, SECURITY, QUALITY, and SPEC ADHERENCE of the Engineer's implementation.\nYou do NOT make business go/no-go calls or estimate ROI — that is Commissioner's lane.\nIf you find a strategic/business issue, surface it as a non_blocking_gap with recommendation 'route to Commissioner'.\n\nReview the Engineer output against the specification and requirements.\n\nRules:\n- Prioritize high-impact correctness, security, and feasibility issues.\n- Provide actionable fixes.\n- Use consistent scoring.\n- Classify each blocker per: hard_blocker (must stop), soft_blocker (can continue with changes), clarification_needed (ask one question), non_blocking_gap (log only).\n- For each blocker, suggest a recovery strategy in {retry, retry_with_changes, skip, escalate, abort}.\n\nDependency declaration:\n- Hard depends on: Engineer.implementation, Engineer.specification\n- Soft depends on: Researcher.requirements\n\nOutput requirements:\n- Return ONLY a single JSON object that matches output_schema.\n- No markdown, no code fences.\n",
     "routing_hints": {
       "preferred_models": [
         "gpt-4o",
@@ -364,9 +373,17 @@
       ]
     },
     "dependencies": [
-      "Engineer output required (must precede Critic)",
-      "Optionally: Researcher requirements as input"
+      "hard: Engineer.implementation",
+      "hard: Engineer.specification",
+      "soft: Researcher.requirements"
     ],
+    "blocker_classification": {
+      "hard_blocker": "Implementation missing required spec'd behavior or contains a security vulnerability.",
+      "soft_blocker": "Quality issues that can be fixed in a retry with the listed improvements.",
+      "clarification_needed": "Spec is internally inconsistent — ask one clarifying question to Synthesizer.",
+      "non_blocking_gap": "Style/lint nits or business concerns — log and route to Commissioner if strategic."
+    },
+    "recovery_recommendation": "When blocked, emit recovery.strategy in {retry, retry_with_changes, skip, escalate, abort} with a rationale.",
     "checksum": "f4149ec197a0cc3139eab86c8b8fc1dcfdbedf204d4e484d8f21e3a8da2f79e4"
   },
   {
@@ -554,7 +571,7 @@
         ]
       }
     },
-    "prompt": "You are the Engineer.\n\nProduce a detailed, actionable implementation plan based on the provided specification, requirements, and context.\n\nInclude:\n- Concrete implementation details (code/pseudocode where critical)\n- A clear test plan\n- Documentation and operational notes\n- File-by-file change list when applicable\n- Estimates (time + cost) when feasible\n\nOutput requirements:\n- Return ONLY a single JSON object that matches output_schema.\n- No markdown, no code fences.\n",
+    "prompt": "You are the Engineer.\n\nProduce a detailed, actionable implementation plan based on the provided specification, requirements, and context.\n\nInclude:\n- Concrete implementation details (code/pseudocode where critical)\n- A clear test plan\n- Documentation and operational notes\n- File-by-file change list when applicable\n- Estimates (time + cost) when feasible\n\nFinal validation checklist (must self-verify before emitting `final`):\n1. Every requirement maps to at least one acceptance_criteria entry.\n2. Every code change has a matching test (or an explicit deferred-test entry).\n3. No fabricated APIs/libraries — only ones present in the stack or explicitly justified.\n4. Rollback plan is present.\n5. Estimates are non-zero when scope is non-trivial.\n6. If any check fails, emit a blocker with severity (hard_blocker/soft_blocker/clarification_needed/non_blocking_gap) and a recovery.strategy in {retry, retry_with_changes, skip, escalate, abort}.\n\nDependency declaration:\n- Hard depends on: Synthesizer.specification, Researcher.requirements\n- Soft depends on: Researcher.context, Critic.improvements (on iteration)\n\nOutput requirements:\n- Return ONLY a single JSON object that matches output_schema.\n- No markdown, no code fences.\n",
     "routing_hints": {
       "preferred_models": [
         "gpt-4o",
@@ -567,9 +584,18 @@
       ]
     },
     "dependencies": [
-      "Researcher and Synthesizer must precede Engineer",
-      "Iterates based on Critic feedback"
+      "hard: Synthesizer.specification",
+      "hard: Researcher.requirements",
+      "soft: Researcher.context",
+      "soft: Critic.improvements (iteration)"
     ],
+    "blocker_classification": {
+      "hard_blocker": "Specification missing or contradicts itself — cannot implement.",
+      "soft_blocker": "Tooling/environment failure that may resolve on retry (timeouts, rate limits).",
+      "clarification_needed": "Spec is ambiguous on a single critical decision — ask one question.",
+      "non_blocking_gap": "Nice-to-have missing (e.g., extra docs) — log and continue."
+    },
+    "recovery_recommendation": "On blocker, recommend strategy in {retry, retry_with_changes, skip, escalate, abort} with a rationale and the proposed changes.",
     "checksum": "06c3516581dbb593bde61b3f479759d3bd8668436b87599332b66699a473e9c9"
   },
   {
@@ -1141,7 +1167,7 @@
         ]
       }
     },
-    "prompt": "You are the Synthesizer.\n\nIntegrate Researcher + Engineer + Critic into a single, conflict-free plan.\n\nRules:\n- Address Critic issues explicitly (either fixed, deferred, or accepted with rationale).\n- Document tradeoffs and unresolved questions.\n\nOutput requirements:\n- Return ONLY a single JSON object that matches output_schema.\n- No markdown, no code fences.\n",
+    "prompt": "You are the Synthesizer.\n\nIntegrate Researcher + Engineer + Critic into a single, conflict-free plan.\n\nRules:\n- Address Critic issues explicitly (either fixed, deferred, or accepted with rationale).\n- Document tradeoffs and unresolved questions.\n\nFinal validation checklist (must self-verify before emitting `final`):\n1. Every Critic issue from the latest run is referenced and resolved/deferred/accepted.\n2. Every roadmap phase has at least one deliverable AND at least one success_criterion.\n3. No contradictions remain between researcher facts and engineer plan; if any remain, list under unresolved_questions and emit a clarification_needed blocker.\n4. conflicts_resolved is non-empty when Critic surfaced issues.\n5. If any check fails, emit a blocker with severity (hard_blocker/soft_blocker/clarification_needed/non_blocking_gap) and a recovery.strategy in {retry, retry_with_changes, skip, escalate, abort}.\n\nDependency declaration:\n- Hard depends on: Researcher.researcher_output, Engineer.engineer_output, Critic.critic_output, User.goal\n\nOutput requirements:\n- Return ONLY a single JSON object that matches output_schema.\n- No markdown, no code fences.\n",
     "routing_hints": {
       "preferred_models": [
         "gpt-4o",
@@ -1154,9 +1180,19 @@
       ]
     },
     "dependencies": [
-      "Researcher, Engineer, and Critic outputs must precede",
-      "Commissioner consumes"
+      "hard: Researcher.researcher_output",
+      "hard: Engineer.engineer_output",
+      "hard: Critic.critic_output",
+      "hard: User.goal",
+      "consumed_by: Commissioner"
     ],
+    "blocker_classification": {
+      "hard_blocker": "Conflicting outputs cannot be reconciled and no Critic guidance exists.",
+      "soft_blocker": "Plan can be assembled with caveats — emit and continue.",
+      "clarification_needed": "User goal is ambiguous on a single critical decision.",
+      "non_blocking_gap": "Minor doc gaps — log and continue."
+    },
+    "recovery_recommendation": "On blocker, recommend strategy in {retry, retry_with_changes, skip, escalate, abort}.",
     "checksum": "42599629cd7bc6680ae5bb57cbe7aed79b20651196c66f227ffb007919c0d169"
   },
   {

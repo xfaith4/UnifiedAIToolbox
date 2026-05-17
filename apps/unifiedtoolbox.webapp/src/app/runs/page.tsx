@@ -11,8 +11,8 @@ import {
   ORCHESTRATOR_API_BASE,
 } from '@/lib/services/orchestratorApi'
 import { listLocalRuns } from '@/lib/services/orchestratorStore'
-import { listProposals } from '@/lib/services/proposalStore'
 import { getToolAudit } from '@/lib/services/toolPermissionStore'
+import { reconcileStoredProposalStatuses } from '@/lib/services/proposalRunState'
 import type { OrchestrationQueueLimits } from '@/lib/services/orchestratorApi'
 import type { OrchestrationRun, RepoOrchestrationRunSummary } from '@/lib/types/orchestrator'
 import type { Proposal } from '@/lib/types/proposal'
@@ -263,7 +263,8 @@ export default function RunsPage() {
       setApiRuns(nextApiRuns)
       setRepoRuns(repo.status === 'fulfilled' ? repo.value : [])
       setLocalRuns(listLocalRuns())
-      setDrafts(listProposals().filter((p) => ['draft', 'approved', 'running', 'completed'].includes(p.status)))
+      const syncedProposals = reconcileStoredProposalStatuses(nextApiRuns)
+      setDrafts(syncedProposals.filter((p) => ['draft', 'approved', 'running', 'completed'].includes(p.status)))
       setQueueLimits(limits.status === 'fulfilled' ? limits.value : null)
 
       const queuedIds = new Set(nextApiRuns.filter((r) => isQueuedStatus(r.status)).map((r) => r.id))

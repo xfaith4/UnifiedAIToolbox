@@ -26,6 +26,7 @@ import { NAV_LABELS, ROUTES, ROUTE_ALIASES } from '@/lib/nav/navConfig'
 import { DocsHub } from '@/components/docs/DocsHub'
 import { FirstLaunchTour } from '@/components/tour/FirstLaunchTour'
 import { RouteStoryBanner } from '@/components/navigation/RouteStoryBanner'
+import GlobalRunPill from '@/components/runs/GlobalRunPill'
 
 // ── Active-path helper ────────────────────────────────────────────────────────
 // Treats redirect aliases as active for their canonical route.
@@ -245,6 +246,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 
         {/* First-launch tour — shown once, dismissed via localStorage */}
         <FirstLaunchTour onOpenDocs={() => setDocsOpen(true)} />
+        <GlobalRunPill />
       </body>
     </html>
   )

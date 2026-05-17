@@ -429,3 +429,37 @@ If only a small amount of work can happen first, prioritize these three moves:
 3. make run detail read like a story with checkpoints and interventions.
 
 Those three changes will do the most to transform Unified AI Toolbox from a capable orchestration workbench into a system that helps users write and refine application stories with it.
+
+## 2026-05 modernization pass — status against this roadmap
+
+The four-lane modernization pass landed canonical contracts and the run-telemetry
+surface that the experience goals above depend on. Mapping:
+
+### Satisfied (or substantially advanced)
+
+- **Phase 3 — runs feel like collaborative production.** The Run Console now has
+  a canonical agent-card surface, blockers panel, final-result panel, and
+  artifacts panel driven by the same A2A and event contracts. Status clarity
+  follows the 8-status state machine in
+  [contracts/RUN_LIFECYCLE.md](contracts/RUN_LIFECYCLE.md). Live event stream
+  has SSE replay via `Last-Event-ID` and a 15 s heartbeat
+  ([contracts/EVENT_TAXONOMY.md](contracts/EVENT_TAXONOMY.md)).
+- **Phase 4 — close the learning loop (partial).** Final summaries are now
+  written atomically to `final_summary.json` with a stable shape, giving the
+  knowledge surface a single artifact to read from. Promoting lessons into
+  recipes is still outstanding.
+- **Phase 7 — delivery readiness (partial).** The new manifest endpoint
+  consolidates status, blockers, artifacts, and validation in one document so
+  exports can cite concrete evidence.
+
+### Remaining
+
+- **Producer migration.** The orchestrator and agent runners must call the new
+  canonical helpers (`appendEvent`, `indexArtifact`, `writeFinalSummary`) for
+  the Phase 3 redesign to apply to new runs. See [ROADMAP.md](ROADMAP.md) →
+  "Post-Modernization → Now".
+- **Story threads, recipe promotion, portfolio boards (Phases 4–5).** Untouched
+  by this pass; they remain on the experience roadmap.
+- **Cast assembly UX (Phase 2).** No changes; the contracts make this easier to
+  build but don't deliver it.
+

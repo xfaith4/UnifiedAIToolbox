@@ -97,6 +97,20 @@ export default function RequirementsPanel({
               </div>
             )}
 
+            {blocker.schema_hint && (
+              <details className="pt-1" data-testid={`schema-hint-${blocker.id}`}>
+                <summary className="cursor-pointer text-[11px] font-semibold text-amber-50">
+                  Expected output shape (click to view)
+                </summary>
+                <p className="mt-1 text-[11px] text-amber-200/80">
+                  Your answer must match this JSON shape. String fields stay strings; array fields must be arrays of structured objects — the validator rejects type mismatches.
+                </p>
+                <pre className="mt-2 max-h-80 overflow-auto rounded-lg border border-amber-700/50 bg-slate-950/80 p-2 text-[11px] leading-snug text-amber-50 whitespace-pre-wrap break-words font-mono">
+{blocker.schema_hint}
+                </pre>
+              </details>
+            )}
+
             <textarea
               value={answers[blocker.id] ?? ''}
               onChange={(e) => setAnswer(blocker.id, e.target.value)}

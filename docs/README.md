@@ -4,9 +4,29 @@ Local-first orchestration platform for repeatable, auditable AI workflows — wi
 
 ## Start here
 
-- **Documentation index:** `docs/index.md`
-- **Master roadmap (canonical):** `docs/roadmap.md`
-- **Information architecture:** `docs/information-architecture.md`
+- **Documentation index:** [index.md](index.md)
+- **Master roadmap (canonical):** [ROADMAP.md](ROADMAP.md)
+- **Information architecture:** [information-architecture.md](information-architecture.md)
+- **Architecture overview:** [Unified-AI-Toolbox-Architecture.md](Unified-AI-Toolbox-Architecture.md)
+
+## Orchestration contracts (2026-05, source of truth)
+
+Canonical specs for run state, events, and agent-to-agent messaging. These
+override older statements when they conflict.
+
+- **A2A envelope:** [contracts/A2A_CONTRACT.md](contracts/A2A_CONTRACT.md)
+- **Run lifecycle (8 canonical statuses):** [contracts/RUN_LIFECYCLE.md](contracts/RUN_LIFECYCLE.md)
+- **Event taxonomy (13 canonical event types):** [contracts/EVENT_TAXONOMY.md](contracts/EVENT_TAXONOMY.md)
+- **Decision Lock (blocker severity):** [contracts/DECISION_LOCK.md](contracts/DECISION_LOCK.md)
+- **Run events base schema:** [run-events.schema.md](run-events.schema.md)
+- **Conceptual model contract:** [CONCEPTUAL_MODEL_CONTRACT.md](CONCEPTUAL_MODEL_CONTRACT.md)
+
+## Operating a run
+
+- **Acceptance checklist (modernization gate):** [ACCEPTANCE_CHECKLIST.md](ACCEPTANCE_CHECKLIST.md)
+- **How to evaluate a run:** [EVALUATING_A_RUN.md](EVALUATING_A_RUN.md)
+- **Troubleshooting:** [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
+- **Changelog:** [../CHANGELOG.md](../CHANGELOG.md)
 
 ## Repository doc discovery contract (important)
 

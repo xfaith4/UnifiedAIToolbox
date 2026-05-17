@@ -2,6 +2,13 @@ UNIFIED AI TOOLBOX
 
 Technical Architecture, Build Plan & Agent Execution Design
 
+> **2026-05 update:** The canonical run lifecycle, agent-to-agent message
+> envelope, event taxonomy, and blocker classifier are now specified in
+> [contracts/](contracts/). Section 10 below ("Run Lifecycle & Contracts
+> (2026-05)") summarizes them; the files in `contracts/` are the source of
+> truth and override any conflicting statements elsewhere in this document.
+
+
 | Origin Goal | Consolidate diverged Prompt Library, Prompt Refiner, and AI Orchestration projects into a single, coherent application with proper version control. |
 | --- | --- |
 | Source Path | G:\Development\20_Staging\AI-Toolbox\Prompt Library Projects\ |
@@ -340,3 +347,110 @@ As important as what to build is what to leave alone. The following are producti
 
 | Summary You have a production-grade orchestration runtime. The three additions that turn it into an app builder are: (1) an Architect agent that produces a file_manifest task DAG, (2) a FileWriter deterministic agent that writes files to disk, and (3) a Gate→Repair loop that validates and fixes code deterministically. Everything else — the contract system, learning loop, artifact index, SQLite store, FTS5 search, and run lifecycle — is already correct and should not be changed. |
 | --- |
+
+# 10. Run Lifecycle & Contracts (2026-05)
+
+This section summarizes the canonical orchestration surface introduced by the
+2026-05 modernization pass. The authoritative specs live in
+[contracts/](contracts/); when this section and a contract document disagree,
+the contract document wins.
+
+## 10.1 Run flow
+
+```text
+                          user / API client
+                                 |
+                                 v
+                       +---------------------+
+                       |   Orchestrator      |  (only writer of run status)
+                       +----+-----------+----+
+                            |           |
+              dispatch chain|           |aggregates envelopes
+                            v           |
+   +-------------+   +-------------+   |   +---------------+   +--------------+
+   | Researcher  |-->|  Engineer   |<--+-->|    Critic     |-->| Synthesizer  |
+   +-------------+   +-------------+       +---------------+   +------+-------+
+                                                                       |
+                                                                       v
+                                                          +-----------------------+
+                                                          | Commissioner (value)  |
+                                                          +-----------+-----------+
+                                                                      |
+                                                                      v
+                                                          +-----------+-----------+
+                                                          |  Supervisor / Historian|
+                                                          +-----------+-----------+
+                                                                      |
+                                                                      v
+                                                            final_summary.json
+```
+
+Each arrow is an A2A envelope (see
+[contracts/A2A_CONTRACT.md](contracts/A2A_CONTRACT.md)). Each transition the
+orchestrator records emits exactly one canonical event (see
+[contracts/EVENT_TAXONOMY.md](contracts/EVENT_TAXONOMY.md)).
+
+## 10.2 Canonical run statuses
+
+The 8 allowed values for run-level `status`
+(see [contracts/RUN_LIFECYCLE.md](contracts/RUN_LIFECYCLE.md) for transitions):
+
+| Status | Meaning |
+| --- | --- |
+| `queued` | Persisted, waiting for a worker. |
+| `running` | A worker has picked it up; agents are executing. |
+| `waiting_on_input` | Paused on a `clarification_needed` blocker. |
+| `recovering` | Orchestrator is applying a recovery strategy after a blocker. |
+| `blocked` | A `hard_blocker` or `soft_blocker` was raised; needs orchestrator action. |
+| `validating` | All agents reached `final`; criteria are being checked. |
+| `completed` | Terminal success. |
+| `failed` | Terminal failure (attempt budget exhausted or fatal error). |
+
+## 10.3 Canonical event types
+
+The 13 event types that may appear in `events.jsonl`
+(see [contracts/EVENT_TAXONOMY.md](contracts/EVENT_TAXONOMY.md) for payloads):
+
+| Lifecycle stage | Event types |
+| --- | --- |
+| Run boundary | `run_created`, `run_queued`, `run_started`, `run_completed`, `run_failed`, `run_recovered` |
+| Agent activity | `agent_started`, `agent_progress`, `agent_blocked`, `agent_completed` |
+| Artifacts | `artifact_created` |
+| Validation | `validation_started`, `validation_completed` |
+
+## 10.4 New API endpoints
+
+All endpoints are Next.js route handlers under
+`apps/unifiedtoolbox.webapp/src/app/api/runs/[runId]/`:
+
+| Endpoint | Purpose | Source |
+| --- | --- | --- |
+| `GET /api/runs/[runId]/manifest` | Canonical run manifest (status, agents, blockers, artifacts, validation). | `manifest.ts` |
+| `GET /api/runs/[runId]/artifacts` | Listing from `artifacts.index.jsonl`. | `artifactIndex.ts` |
+| `GET /api/runs/[runId]/events/canonical` | JSON snapshot **or** SSE replay-aware stream (with `Last-Event-ID`, 15 s heartbeat, `stream-end` sentinel). | `canonicalEvents.ts` |
+| `GET /api/runs/[runId]/summary` | Enriched final summary derived from `final_summary.json`. | `finalSummary.ts` |
+
+## 10.5 On-disk shape (per run)
+
+Each run directory under the configured runs root contains:
+
+| File | Writer | Purpose |
+| --- | --- | --- |
+| `events.jsonl` | `appendEvent` (`canonicalEvents.ts`) | Append-only canonical event log. |
+| `artifacts.index.jsonl` | `indexArtifact` (`artifactIndex.ts`) | Append-only artifact index. |
+| `final_summary.json` | `writeFinalSummary` (`finalSummary.ts`) | Atomic terminal summary (temp + rename). |
+
+Legacy files (`events.ndjson`, `run_state.json`, `agent_status.json`) continue
+to coexist for backward compatibility; they are not authoritative for the
+canonical surface.
+
+## 10.6 Contract index
+
+- A2A envelope, blocker shape, final-answer contract, recovery, versioning:
+  [contracts/A2A_CONTRACT.md](contracts/A2A_CONTRACT.md)
+- Run state machine and transition rules:
+  [contracts/RUN_LIFECYCLE.md](contracts/RUN_LIFECYCLE.md)
+- Event types and payload contracts:
+  [contracts/EVENT_TAXONOMY.md](contracts/EVENT_TAXONOMY.md)
+- Blocker severity model and recovery strategies:
+  [contracts/DECISION_LOCK.md](contracts/DECISION_LOCK.md)

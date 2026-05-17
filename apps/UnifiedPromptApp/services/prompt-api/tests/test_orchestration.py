@@ -810,6 +810,62 @@ class TestOrchestrateRun:
             f"Expected _execute_orchestration_run to be submitted, got {submitted_fn}"
         )
 
+    def test_startup_recovery_dispatches_orphaned_queued_runs(self, cleanup_test_runs):
+        """
+        Queued manifests can survive API shutdown because pending futures are cancelled
+        during executor shutdown. Startup recovery must resubmit those orphaned queued runs.
+        """
+        import unittest.mock as mock, os
+
+        run_id = f"test_recover_queued_{app.now_iso().replace(':', '-')}"
+        manifest_path = app.BRIDGE_RUN_DIR / f"{run_id}.json"
+        out_dir = app.BRIDGE_RUN_DIR / run_id
+        out_dir.mkdir(parents=True, exist_ok=True)
+        now = app.now_iso()
+
+        manifest = {
+            "run_id": run_id,
+            "status": "queued",
+            "requested_at": now,
+            "run_dir": str(out_dir),
+            "goal": "Recover an orphaned queued run",
+            "model": "gpt-4o-mini",
+            "events": [{"ts": now, "type": "status", "message": "queued"}],
+            "lease": None,
+        }
+        manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+        submitted_args = []
+
+        def mock_submit(fn, *args, **kwargs):
+            submitted_args.append((fn, args))
+            import concurrent.futures
+            f = concurrent.futures.Future()
+            f.set_result(None)
+            return f
+
+        env_backup = os.environ.pop("PYTEST_CURRENT_TEST", None)
+        try:
+            with app._orch_run_state_lock:
+                app._orch_run_state.pop(run_id, None)
+            with mock.patch.object(app._orch_run_executor, "submit", side_effect=mock_submit):
+                result = app._recover_orphaned_queued_orchestration_runs()
+        finally:
+            if env_backup is not None:
+                os.environ["PYTEST_CURRENT_TEST"] = env_backup
+            with app._orch_run_state_lock:
+                app._orch_run_state.pop(run_id, None)
+
+        assert result.get("recovered") == 1
+        assert run_id in (result.get("run_ids") or [])
+        assert len(submitted_args) == 1, f"Expected 1 executor submit, got {len(submitted_args)}"
+        submitted_fn = submitted_args[0][0]
+        assert submitted_fn is app._execute_orchestration_run, (
+            f"Expected _execute_orchestration_run to be submitted, got {submitted_fn}"
+        )
+        submitted_run_id = submitted_args[0][1][0]
+        assert submitted_run_id == run_id, f"Wrong run_id submitted: {submitted_run_id}"
+
     def test_derive_run_clears_checkpoint_stage_on_resume(self, cleanup_test_runs):
         """
         After a requirements checkpoint is answered and the run is re-queued,

@@ -205,6 +205,13 @@ export interface RequirementsRequestBlocker {
   question: string
   why: string
   defaults?: string[]
+  /**
+   * Literal expected-shape template for the agent's contract output. When
+   * present, the checkpoint UI should render this verbatim so the user (or
+   * model) can see the exact JSON structure required — including which fields
+   * are strings vs. arrays of structured objects.
+   */
+  schema_hint?: string
 }
 
 export interface RequirementsRequest {

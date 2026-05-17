@@ -23,6 +23,7 @@ import { updateRunContextStatus } from '@/lib/services/runContextStore'
 import { fetchOrchestrationRun, isOrchestratorApiHttpError } from '@/lib/services/orchestratorApi'
 import { TERMINAL_RUN_STATUSES } from '@/lib/services/conciergeRunService'
 import { getRunMonitorHref } from '@/lib/services/conciergeKickoff'
+import { syncProposalAndDraftFromRun } from '@/lib/services/proposalRunState'
 
 // ── App Factory run detection ─────────────────────────────────────────────────
 // App Factory runs use filesystem-backed storage; detected by ID prefix.
@@ -225,6 +226,13 @@ export default function CurrentRunCard({
         if (!run.status) return
         next = run.status
         completedAt = run.completedAt
+        if (entry.proposalId) {
+          syncProposalAndDraftFromRun(entry.proposalId, {
+            id: run.id,
+            status: run.status,
+            verificationStatus: run.verificationStatus,
+          })
+        }
 
         // Extract current phase from the latest status/phase event
         const events = run.events ?? []
