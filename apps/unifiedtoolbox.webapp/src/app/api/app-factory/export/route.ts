@@ -34,9 +34,15 @@ type ExportRequest = {
 const HISTORY_DIR = path.resolve(process.cwd(), '..', '..', 'data', 'orchestrator-history')
 const HISTORY_FILE = path.join(HISTORY_DIR, 'sessions.json')
 
-async function readTextIfExists(filePath: string, maxChars = 12000): Promise<string | null> {
+async function readTextIfExists(filePath: string, maxChars = 12000, baseDir?: string): Promise<string | null> {
   try {
-    const text = await fs.readFile(filePath, 'utf8')
+    const resolvedPath = path.resolve(filePath)
+    if (baseDir) {
+      const resolvedBase = path.resolve(baseDir)
+      const rel = path.relative(resolvedBase, resolvedPath)
+      if (rel.startsWith('..') || path.isAbsolute(rel)) return null
+    }
+    const text = await fs.readFile(resolvedPath, 'utf8')
     if (text.length <= maxChars) return text
     return text.slice(0, maxChars) + '\n... (truncated)\n'
   } catch {
@@ -149,14 +155,14 @@ export async function POST(req: Request) {
     })
 
     if (!result.passed) {
-      const normalizationReport = await readTextIfExists(path.join(result.repoDir, 'NORMALIZATION_REPORT.md'))
-      const gateReport = await readTextIfExists(path.join(result.repoDir, 'GATE_REPORT.md'))
-      const patchLog = await readTextIfExists(path.join(result.repoDir, 'PATCHLOG.md'))
-      const assemblyReport = await readTextIfExists(path.join(result.repoDir, 'ASSEMBLY_REPORT.md'))
-      const ownershipReport = await readTextIfExists(path.join(result.repoDir, 'OWNERSHIP_REPORT.md'))
-      const assemblerReport = await readTextIfExists(path.join(result.repoDir, 'ASSEMBLER_REPORT.md'))
-      const decisionLockReport = await readTextIfExists(path.join(result.repoDir, 'DECISION_LOCK_REPORT.md'))
-      const contractJson = await readTextIfExists(path.join(result.repoDir, 'REPO_CONTRACT.json'))
+      const normalizationReport = await readTextIfExists(path.join(result.repoDir, 'NORMALIZATION_REPORT.md'), 12000, result.repoDir)
+      const gateReport = await readTextIfExists(path.join(result.repoDir, 'GATE_REPORT.md'), 12000, result.repoDir)
+      const patchLog = await readTextIfExists(path.join(result.repoDir, 'PATCHLOG.md'), 12000, result.repoDir)
+      const assemblyReport = await readTextIfExists(path.join(result.repoDir, 'ASSEMBLY_REPORT.md'), 12000, result.repoDir)
+      const ownershipReport = await readTextIfExists(path.join(result.repoDir, 'OWNERSHIP_REPORT.md'), 12000, result.repoDir)
+      const assemblerReport = await readTextIfExists(path.join(result.repoDir, 'ASSEMBLER_REPORT.md'), 12000, result.repoDir)
+      const decisionLockReport = await readTextIfExists(path.join(result.repoDir, 'DECISION_LOCK_REPORT.md'), 12000, result.repoDir)
+      const contractJson = await readTextIfExists(path.join(result.repoDir, 'REPO_CONTRACT.json'), 12000, result.repoDir)
 
       const blockers = buildExportBlockers({ normalization: result.normalization, contractEval: result.contractEval, gateReport: result.gateReport, repair: result.repair })
       return NextResponse.json(

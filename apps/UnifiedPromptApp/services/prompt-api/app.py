@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from contextlib import asynccontextmanager
 from concurrent.futures import Future, ThreadPoolExecutor
 from typing import List, Optional, Dict, Any, Tuple, Callable
-from functools import wraps
+from functools import wraps, lru_cache
 
 from fastapi import FastAPI, HTTPException, Path, Query, Header, Depends, status, Request # pyright: ignore[reportMissingImports]
 from fastapi.middleware.cors import CORSMiddleware
@@ -62,37 +62,51 @@ except ImportError:
     apply_migrations = None  # Migrations module not available
 
 # ----------------------------
-# Simple In-Memory Cache
+# Thread-Safe In-Memory Cache
 # ----------------------------
-_cache: Dict[str, Tuple[Any, float]] = {}
+# Cache for stateless read-only endpoints using lru_cache.
+# For endpoints that need TTL-based expiry, use explicit connection pools (e.g., SQLite WAL).
+
+_cache_lock = threading.Lock()
+_cache_ttl_dict: Dict[str, Tuple[Any, float]] = {}
 CACHE_TTL = 60  # seconds
 
-def simple_cache(ttl: int = CACHE_TTL):
-    """Simple in-memory cache decorator for read-only endpoints."""
+def ttl_cache(ttl: int = CACHE_TTL):
+    """Thread-safe TTL cache decorator for read-only endpoints.
+    
+    WARNING: Under concurrent load, prefer stateless @lru_cache or connection pooling.
+    This decorator serializes cache updates via threading.Lock().
+    """
     def decorator(func: Callable):
         @wraps(func)
         def wrapper(*args, **kwargs):
             # Create cache key from function name and arguments
             cache_key = f"{func.__name__}:{str(args)}:{str(sorted(kwargs.items()))}"
             
-            # Check if cached value exists and is still valid
-            if cache_key in _cache:
-                cached_value, cached_time = _cache[cache_key]
-                if time.time() - cached_time < ttl:
-                    return cached_value
+            # Check if cached value exists and is still valid (with lock)
+            with _cache_lock:
+                if cache_key in _cache_ttl_dict:
+                    cached_value, cached_time = _cache_ttl_dict[cache_key]
+                    if time.time() - cached_time < ttl:
+                        return cached_value
             
-            # Call function and cache result
+            # Call function and cache result (with lock)
             result = func(*args, **kwargs)
-            _cache[cache_key] = (result, time.time())
-            
-            # Simple cache size management - keep last 100 entries
-            if len(_cache) > 100:
-                oldest_key = min(_cache.items(), key=lambda x: x[1][1])[0]
-                del _cache[oldest_key]
+            with _cache_lock:
+                _cache_ttl_dict[cache_key] = (result, time.time())
+                
+                # Bounded cache size: evict oldest when exceeding 100 entries.
+                # This prevents unbounded growth when TTL expiry is slow.
+                if len(_cache_ttl_dict) > 100:
+                    oldest_key = min(_cache_ttl_dict.items(), key=lambda x: x[1][1])[0]
+                    del _cache_ttl_dict[oldest_key]
             
             return result
         return wrapper
     return decorator
+
+# Alias for backward compatibility
+simple_cache = ttl_cache
 
 # ----------------------------
 # Safe JSON Loading Utilities
@@ -1257,8 +1271,24 @@ class OrchestratorTask(BaseModel):
 # ----------------------------
 # DB helpers (cache + audit)
 # ----------------------------
+
+# Thread-local connection pool for SQLite.
+# Avoids repeated open/close overhead and serialization via GIL.
+_sqlite_local = threading.local()
+
+def _get_db_connection():
+    """Get thread-local SQLite connection (lazy initialization)."""
+    if not hasattr(_sqlite_local, 'conn') or _sqlite_local.conn is None:
+        _sqlite_local.conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+        _sqlite_local.conn.row_factory = sqlite3.Row
+    return _sqlite_local.conn
+
 def init_db():
     with sqlite3.connect(DB_PATH) as conn:
+        # Enable WAL mode for better concurrent read/write performance.
+        # WAL allows readers to not block writers and vice versa.
+        conn.execute("PRAGMA journal_mode=WAL")
+        
         c = conn.cursor()
         c.execute("""
         CREATE TABLE IF NOT EXISTS cache (
@@ -1381,20 +1411,44 @@ def hash_payload(template_id: str, model: str, payload: Dict[str, Any]) -> str:
     return h.hexdigest()
 
 def cache_get(cache_key: str) -> Optional[Dict[str, Any]]:
-    with sqlite3.connect(DB_PATH) as conn:
+    conn = _get_db_connection()
+    try:
         c = conn.cursor()
         c.execute("SELECT output_json FROM cache WHERE cache_key = ?", (cache_key,))
         row = c.fetchone()
         if row:
             return json.loads(row[0])
+    except Exception:
+        # On error, try a fresh connection
+        try:
+            with sqlite3.connect(DB_PATH) as fresh_conn:
+                c = fresh_conn.cursor()
+                c.execute("SELECT output_json FROM cache WHERE cache_key = ?", (cache_key,))
+                row = c.fetchone()
+                if row:
+                    return json.loads(row[0])
+        except Exception:
+            pass
     return None
 
 def cache_put(cache_key: str, template_id: str, model: str, input_json: str, output: Dict[str, Any]):
-    with sqlite3.connect(DB_PATH) as conn:
+    conn = _get_db_connection()
+    try:
         c = conn.cursor()
         c.execute("INSERT OR REPLACE INTO cache(cache_key, template_id, model, input_json, output_json, created_at) VALUES (?,?,?,?,?,?)",
         (cache_key, template_id, model, input_json, json.dumps(output), now_iso()))
         conn.commit()
+    except Exception as e:
+        # On error, reset the connection and retry
+        _sqlite_local.conn = None
+        try:
+            conn = _get_db_connection()
+            c = conn.cursor()
+            c.execute("INSERT OR REPLACE INTO cache(cache_key, template_id, model, input_json, output_json, created_at) VALUES (?,?,?,?,?,?)",
+            (cache_key, template_id, model, input_json, json.dumps(output), now_iso()))
+            conn.commit()
+        except Exception:
+            logger.warning(f"Failed to cache result for {cache_key}: {e}")
 
 def audit_log(
     template_id: str, 
@@ -1428,7 +1482,8 @@ def audit_log(
     """
     timestamp = now_iso()
     
-    with sqlite3.connect(DB_PATH) as conn:
+    conn = _get_db_connection()
+    try:
         c = conn.cursor()
         c.execute("""
         INSERT INTO audit(template_id, model, input_json, output_json, cached, status, created_at, token_prompt, token_completion)
@@ -1436,6 +1491,21 @@ def audit_log(
         """, (template_id, model, input_json, json.dumps(output) if output else None, 1 if cached else 0, status, timestamp, token_prompt, token_completion))
         audit_id = c.lastrowid
         conn.commit()
+    except Exception as e:
+        # On error, reset connection and retry with fresh connection
+        _sqlite_local.conn = None
+        try:
+            with sqlite3.connect(DB_PATH) as fresh_conn:
+                c = fresh_conn.cursor()
+                c.execute("""
+                INSERT INTO audit(template_id, model, input_json, output_json, cached, status, created_at, token_prompt, token_completion)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (template_id, model, input_json, json.dumps(output) if output else None, 1 if cached else 0, status, timestamp, token_prompt, token_completion))
+                audit_id = c.lastrowid
+                fresh_conn.commit()
+        except Exception as retry_error:
+            logger.warning(f"Failed to write audit log: {retry_error}")
+            audit_id = -1
     
     # Record environmental metrics if tokens available and not cached (to avoid double-counting)
     if token_prompt is not None and token_completion is not None and not cached:
@@ -1665,8 +1735,14 @@ def _validate_agent_payload(agents: List[Dict[str, Any]]) -> None:
 
 
 def load_task_queue() -> List[Dict[str, Any]]:
-    with sqlite3.connect(DB_PATH) as conn:
+    conn = _get_db_connection()
+    try:
         rows = conn.execute("SELECT payload FROM orchestrator_tasks ORDER BY rowid").fetchall()
+    except Exception:
+        # Fallback to fresh connection on error
+        with sqlite3.connect(DB_PATH) as fresh_conn:
+            rows = fresh_conn.execute("SELECT payload FROM orchestrator_tasks ORDER BY rowid").fetchall()
+    
     tasks: List[Dict[str, Any]] = []
     for (payload_json,) in rows:
         try:
@@ -1677,16 +1753,30 @@ def load_task_queue() -> List[Dict[str, Any]]:
 
 
 def append_task_queue(task: Dict[str, Any]) -> None:
-    with sqlite3.connect(DB_PATH) as conn:
+    conn = _get_db_connection()
+    try:
         conn.execute(
             "INSERT OR REPLACE INTO orchestrator_tasks(id, payload) VALUES (?, ?)",
             (task["id"], json.dumps(task)),
         )
         conn.commit()
+    except Exception:
+        # Fallback to fresh connection on error
+        _sqlite_local.conn = None
+        try:
+            with sqlite3.connect(DB_PATH) as fresh_conn:
+                fresh_conn.execute(
+                    "INSERT OR REPLACE INTO orchestrator_tasks(id, payload) VALUES (?, ?)",
+                    (task["id"], json.dumps(task)),
+                )
+                fresh_conn.commit()
+        except Exception as e:
+            logger.warning(f"Failed to append task queue: {e}")
 
 
 def update_task_queue(task_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    with sqlite3.connect(DB_PATH) as conn:
+    conn = _get_db_connection()
+    try:
         row = conn.execute("SELECT payload FROM orchestrator_tasks WHERE id = ?", (task_id,)).fetchone()
         if not row:
             return None
@@ -1698,6 +1788,25 @@ def update_task_queue(task_id: str, updates: Dict[str, Any]) -> Optional[Dict[st
         )
         conn.commit()
         return payload
+    except Exception:
+        # Fallback to fresh connection on error
+        _sqlite_local.conn = None
+        try:
+            with sqlite3.connect(DB_PATH) as fresh_conn:
+                row = fresh_conn.execute("SELECT payload FROM orchestrator_tasks WHERE id = ?", (task_id,)).fetchone()
+                if not row:
+                    return None
+                payload = json.loads(row[0])
+                payload.update(updates)
+                fresh_conn.execute(
+                    "UPDATE orchestrator_tasks SET payload = ? WHERE id = ?",
+                    (json.dumps(payload), task_id),
+                )
+                fresh_conn.commit()
+                return payload
+        except Exception as e:
+            logger.warning(f"Failed to update task queue: {e}")
+            return None
 
 VAR_PATTERN = re.compile(r"\$\{([^}]+)\}")
 
@@ -3688,13 +3797,35 @@ def _canonical_job_type(job_type_value: Any) -> Optional[str]:
 
 
 def _derive_app_type(goal_text: str, requested_app_type: Optional[str] = None) -> str:
+    """Derive app_type from goal text and requested type.
+    
+    When explicit requested_app_type is provided, it always wins.
+    Otherwise, strip negation context from goal before keyword matching 
+    to avoid false positives from "do not create a web app" triggering web detection.
+    
+    Supports: web, wpf (desktop), unknown (fallback)
+    """
     if isinstance(requested_app_type, str) and requested_app_type.strip():
         return requested_app_type.strip().lower()
 
-    normalized_goal = (goal_text or "").lower()
-    if re.search(r"\b(wpf|winforms|windows forms|xaml|desktop app|windows desktop)\b", normalized_goal):
+    goal = (goal_text or "").lower()
+    
+    # Strip non-goals and negation context before keyword matching so phrases
+    # like "do not create a web app" or "do not use React" cannot trigger a
+    # false positive on the web detection branch.
+    positive_goal = re.sub(r'(?s)(non.?goals?|do not|don.?t|avoid|exclude|without)\b.*', '', goal)
+    
+    if re.search(r"\b(wpf|winforms|windows forms|xaml|desktop app|windows desktop|tkinter|pyqt|wxpython)\b", positive_goal):
         return "wpf"
-    if re.search(r"\b(web|website|browser|next\.?js|react|html|css|frontend|dom)\b", normalized_goal):
+    # Only strong, unambiguous "this is a web app" signals. Weak terms like
+    # 'react', 'html', 'css', 'dom', and bare 'web' are intentionally excluded
+    # because they appear in non-web contexts (React Native, HTML parsing,
+    # CSS-like styling, XML DOM) and were producing false 'web' classifications
+    # on desktop/CLI goals even after negation stripping.
+    if re.search(
+        r"\b(website|webpage|webapp|web\s+app(?:lication)?|browser|next\.?js|vite|svelte\s*kit|frontend|spa|pwa|progressive\s+web\s+app)\b",
+        positive_goal,
+    ):
         return "web"
     return "unknown"
 

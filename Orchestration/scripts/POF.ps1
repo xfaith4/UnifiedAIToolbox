@@ -525,7 +525,12 @@ function Resolve-AppTypeFromSpec {
     if ($positive -match '\b(wpf|winforms|windows forms|xaml|desktop app|windows desktop|tkinter|pyqt|wxpython)\b') {
         return "wpf"
     }
-    if ($positive -match '\b(web|website|browser|next\.?js|react|html|css|frontend|dom)\b') {
+    # Only strong, unambiguous "this is a web app" signals. Weak terms like
+    # 'react', 'html', 'css', 'dom', and bare 'web' are intentionally excluded
+    # because they appear in non-web contexts (React Native, HTML parsing,
+    # CSS-like styling, XML DOM) and were producing false 'web' classifications
+    # on desktop/CLI goals even after negation stripping.
+    if ($positive -match '\b(website|webpage|webapp|web\s+app(?:lication)?|browser|next\.?js|vite|svelte\s*kit|frontend|spa|pwa|progressive\s+web\s+app)\b') {
         return "web"
     }
     return "unknown"
