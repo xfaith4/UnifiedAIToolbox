@@ -2110,6 +2110,16 @@ def create_app() -> FastAPI:
         ensure_github_token()
         init_db()
         try:
+            recovery = _recover_orphaned_queued_orchestration_runs()
+            if recovery.get("recovered"):
+                logger.info(
+                    "Recovered %s orphaned queued orchestration run(s): %s",
+                    recovery["recovered"],
+                    ", ".join(cast(List[str], recovery.get("run_ids") or [])),
+                )
+        except Exception as exc:
+            logger.warning("Failed to recover orphaned queued orchestration runs on startup: %s", exc)
+        try:
             yield
         finally:
             _orch_run_executor.shutdown(wait=False, cancel_futures=True)
@@ -3906,6 +3916,66 @@ def _orchestration_queue_snapshot() -> Dict[str, int]:
         "max_queued": ORCH_RUN_MAX_QUEUED,
         "available_slots": max(0, ORCH_RUN_MAX_CONCURRENT - (running + dispatching)),
     }
+
+
+def _recover_orphaned_queued_orchestration_runs(limit: Optional[int] = None) -> Dict[str, Any]:
+    """
+    Re-dispatch queued manifests that survived a prior API process lifetime but
+    no longer have an in-memory executor future attached.
+    """
+    disable_exec = os.environ.get("PROMPT_API_DISABLE_ORCHESTRATION_EXEC") == "1" or bool(
+        os.environ.get("PYTEST_CURRENT_TEST")
+    )
+    if disable_exec:
+        return {"recovered": 0, "run_ids": [], "skipped": []}
+
+    recovered: List[str] = []
+    skipped: List[Dict[str, str]] = []
+    manifests = sorted(
+        _iter_orchestration_manifests(),
+        key=lambda item: str(item[1].get("requested_at") or ""),
+    )
+
+    for manifest_path, manifest in manifests:
+        if limit is not None and len(recovered) >= limit:
+            break
+
+        run_id = str(manifest.get("run_id") or manifest_path.stem).strip()
+        status_value = str(manifest.get("status") or "").strip().lower()
+        if not run_id or status_value not in ORCH_QUEUE_STATUSES:
+            continue
+
+        with _orch_run_state_lock:
+            state = _orch_run_state.get(run_id) or {}
+            future = state.get("future")
+            process = state.get("process")
+            if future is not None and not future.done():
+                skipped.append({"run_id": run_id, "reason": "future_active"})
+                continue
+            if process is not None and process.poll() is None:
+                skipped.append({"run_id": run_id, "reason": "process_active"})
+                continue
+            cancel_event = state.get("cancel_event")
+            if not isinstance(cancel_event, threading.Event):
+                cancel_event = threading.Event()
+            _orch_run_state[run_id] = {
+                "cancel_event": cancel_event,
+                "future": None,
+                "process": None,
+                "created_at": state.get("created_at") or now_iso(),
+                "worker_id": None,
+            }
+
+        future = _orch_run_executor.submit(_execute_orchestration_run, run_id, manifest_path, cancel_event)
+        with _orch_run_state_lock:
+            state = _orch_run_state.get(run_id, {})
+            state["future"] = future
+            _orch_run_state[run_id] = state
+
+        future.add_done_callback(lambda _f, _run_id=run_id: _orch_run_state.pop(_run_id, None))
+        recovered.append(run_id)
+
+    return {"recovered": len(recovered), "run_ids": recovered, "skipped": skipped}
 
 
 def _set_orch_run_process(run_id: str, process: Optional[subprocess.Popen]) -> None:
@@ -6201,6 +6271,11 @@ def ingest_run_knowledge(run_id: str, out_dir: pathlib.Path, manifest_path: path
 
         learning = _build_learning_payload(manifest, comm, critic, researcher, instruction_adjustments)
         knowledge_status, knowledge_score = _derive_knowledge_status_for_entry({"learning": learning})
+        app_production_repairs_payload = (
+            manifest.get("app_production_repairs")
+            if isinstance(manifest.get("app_production_repairs"), dict)
+            else {}
+        )
 
         entry: Dict[str, Any] = {
             "run_id": run_id,

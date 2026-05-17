@@ -228,6 +228,74 @@ function Update-PofRunState {
     $state | ConvertTo-Json -Depth 40 | Set-Content -LiteralPath $statePath -Encoding UTF8
 }
 
+function Get-AgentSchemaTemplate {
+    param([Parameter(Mandatory = $true)][string]$AgentName)
+
+    # Literal expected-shape templates for agents whose output_schema is
+    # heterogeneous and easy to misinterpret. The templates intentionally mirror
+    # the validator in apps/UnifiedPromptApp/services/prompt-api/app.py so the
+    # checkpoint UI can show users exactly what the contract requires.
+    switch ($AgentName) {
+        "ConceptualModelContract" {
+            return @"
+{
+  "interpretation": "<string: 2-4 sentences of plain prose describing what to build>",
+  "representation": "<one of: canvas | svg | dom-graphics | chart | simulation>",
+  "objects": [
+    {
+      "id": "<string>",
+      "description": "<string>",
+      "mustBeVisible": true,
+      "observableEvidence": {
+        "type": "<one of: dom | svg | canvas | state>",
+        "probe": "<machine-falsifiable string, e.g. querySelector('#board') exists>"
+      }
+    }
+  ],
+  "interactions": [
+    {
+      "id": "<string>",
+      "trigger": "<string>",
+      "userAction": "<string>",
+      "expectedVisibleEffect": "<string>",
+      "verification": {
+        "actionProbe": "<machine-falsifiable string>",
+        "expectedChangeProbe": "<machine-falsifiable string; must differ from actionProbe>"
+      }
+    }
+  ],
+  "dynamics": [
+    {
+      "id": "<string>",
+      "name": "<string>",
+      "whatChangesOverTime": "<string>",
+      "observableSignal": "<string>",
+      "temporalEvidence": {
+        "durationMs": <positive integer>,
+        "probe": "<machine-falsifiable string>",
+        "expectedDelta": "<string>"
+      }
+    }
+  ],
+  "data": [
+    { "name": "<string>", "source": "<string>", "usedFor": "<string>" }
+  ],
+  "non_goals": ["<string>"],
+  "acceptance_tests": [
+    {
+      "testName": "<string>",
+      "steps": ["<string>"],
+      "assertions": ["<machine-falsifiable string; avoid 'looks/appears/seems'>"],
+      "failureCondition": "<string>"
+    }
+  ]
+}
+"@
+        }
+        default { return $null }
+    }
+}
+
 function New-RequirementsRequestPacket {
     param(
         [Parameter(Mandatory = $true)][string]$Question,
@@ -241,16 +309,21 @@ function New-RequirementsRequestPacket {
         $Question.Trim()
     }
 
+    $schemaHint = Get-AgentSchemaTemplate -AgentName $AgentName
+
+    $blocker = @{
+        id       = "req_1"
+        question = $cleanQuestion
+        why      = "Required to convert intent into machine-verifiable acceptance criteria."
+        defaults = @()
+    }
+    if ($schemaHint) {
+        $blocker.schema_hint = $schemaHint
+    }
+
     return @{
         summary                   = "${AgentName} requires additional requirements before implementation can continue."
-        blockers                  = @(
-            @{
-                id       = "req_1"
-                question = $cleanQuestion
-                why      = "Required to convert intent into machine-verifiable acceptance criteria."
-                defaults = @()
-            }
-        )
+        blockers                  = @($blocker)
         proposed_acceptance_tests = @()
     }
 }
@@ -788,6 +861,44 @@ $(if ($check.normalized_json) { $check.normalized_json } else { $Output })
     }
 
     Write-Host "✅ Contract repair succeeded for $AgentName" -ForegroundColor Green
+
+    # Emit a structured run event so contract drift is visible in the run
+    # timeline instead of getting masked by the silent repair layer. Capture
+    # the original validation errors and a short preview of the raw output so
+    # operators can see *what* needed to be repaired, not just *that* it was.
+    $rawPreview = if ($Output) {
+        $previewSource = [string]$Output
+        if ($previewSource.Length -gt 400) { $previewSource.Substring(0, 400) + "..." } else { $previewSource }
+    } else { $null }
+    $initialErrors = @()
+    if ($check.errors) {
+        $initialErrors = @($check.errors | Select-Object -First 10 | ForEach-Object { [string]$_ })
+    }
+    try {
+        Write-PofEvent `
+            -Type "contract:repair" `
+            -Message "$AgentName output failed contract validation and was auto-repaired (drift detected)." `
+            -Stage "agent_activity" `
+            -Data @{
+                agent              = $AgentName
+                repair_attempted   = $true
+                repair_succeeded   = $true
+                initial_error      = [string]$check.error
+                initial_errors     = $initialErrors
+                raw_output_preview = $rawPreview
+            }
+    } catch {
+        # Event emission must never break the orchestrator; the Write-Host
+        # above remains the human-visible signal of last resort.
+        Write-Host "⚠️ Failed to emit contract:repair event for ${AgentName}: $_" -ForegroundColor Yellow
+    }
+
+    Write-AgentStatus -Agent $AgentName -Status "working" -ExtraData @{
+        contract_repair_attempted = $true
+        contract_repair_succeeded = $true
+        contract_initial_error    = [string]$check.error
+    }
+
     return @{
         Output              = $(if ($recheck.normalized_json) { $recheck.normalized_json } else { $repaired })
         ContractOk          = $true

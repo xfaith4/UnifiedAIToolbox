@@ -206,6 +206,10 @@ The AI Toolbox follows a lightweight orchestration workflow for Codex-driven cha
 
 See [AGENTS.md](AGENTS.md) for orchestration rules and definition of done.
 
+### Run Storyboard
+
+For the operator-facing story of a run, including when to stay in **Run Detail** versus when to return to **Concierge**, see [docs/orchestration-run-storyboard.md](docs/orchestration-run-storyboard.md).
+
 ## 🎯 Recreate This Application Anytime
 
 **Want to rebuild or fork this platform?** We've created a comprehensive **prompt chain** that can recreate the entire UnifiedAIToolbox application from scratch using AI assistants like GPT-4 or Claude.

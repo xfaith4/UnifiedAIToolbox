@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, Boxes, CheckCircle2, Circle, ClipboardCopy, FileText, Hammer, Layers, Workflow } from 'lucide-react'
 import type { SwarmAgent, SwarmEdge, SwarmNode } from '../types'
+import { summarizeRunMessage } from '@/lib/runs/runFailureSummary'
 
 type Point = { x: number; y: number }
 
@@ -71,7 +72,7 @@ function nodeContextText(node: SwarmNode): string {
     `First seen: ${node.firstTs}`,
     `Last updated: ${node.lastTs}`,
   ]
-  if (node.message) lines.push(`Message: ${node.message}`)
+  if (node.message) lines.push(`Message: ${summarizeRunMessage(node.message)}`)
   return lines.join('\n')
 }
 
@@ -266,7 +267,11 @@ export default function SwarmCanvas({ agents, nodes, edges, phases, groupByPhase
                   {node.agent ? ` · ${node.agent}` : ''}
                 </div>
                 <div className="mt-1 text-[10px] opacity-70">{new Date(node.lastTs).toLocaleTimeString()} · {node.eventCount} event(s)</div>
-                {node.message && <p className={`mt-1 text-[10px] opacity-80 ${isExpanded ? 'whitespace-pre-wrap' : 'line-clamp-2'}`}>{node.message}</p>}
+                {node.message && (
+                  <p className={`mt-1 text-[10px] opacity-80 ${isExpanded ? 'whitespace-pre-wrap' : 'line-clamp-2'}`}>
+                    {summarizeRunMessage(node.message)}
+                  </p>
+                )}
 
                 {isExpanded && (
                   <div className="mt-2 space-y-1 border-t border-current/20 pt-2">

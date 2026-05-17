@@ -10,6 +10,7 @@ Provides optional verification capabilities for orchestration runs including:
 """
 
 import logging
+import shutil
 import subprocess
 import json
 import os
@@ -19,6 +20,18 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple
+
+NON_NODE_PROJECT_MARKER_FILES = (
+    "requirements.txt",
+    "pyproject.toml",
+    "Pipfile",
+    "setup.py",
+    "setup.cfg",
+    "Cargo.toml",
+    "go.mod",
+)
+NON_NODE_PROJECT_MARKER_GLOBS = ("*.psm1", "*.psd1", "*.ps1")
+NODE_DEP_KEYS = ("dependencies", "devDependencies", "peerDependencies", "optionalDependencies")
 
 logger = logging.getLogger(__name__)
 
@@ -178,6 +191,28 @@ class OrchestratorVerifier:
             command = ["npm", "ci", "--no-audit", "--no-fund"]
         return command
 
+    def _resolve_node_pm_executable(self, package_manager: str) -> Optional[str]:
+        return shutil.which(package_manager)
+
+    def _has_non_node_project_markers(self) -> bool:
+        for marker in NON_NODE_PROJECT_MARKER_FILES:
+            if (self.run_dir / marker).exists():
+                return True
+        for pattern in NON_NODE_PROJECT_MARKER_GLOBS:
+            try:
+                if any(self.run_dir.glob(pattern)):
+                    return True
+            except OSError:
+                continue
+        return False
+
+    def _package_json_looks_like_placeholder(self, pkg: Dict[str, Any]) -> bool:
+        for key in NODE_DEP_KEYS:
+            deps = pkg.get(key)
+            if isinstance(deps, dict) and deps:
+                return False
+        return self._has_non_node_project_markers()
+
     def _find_available_port(self, host: str = "127.0.0.1") -> int:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
             probe.bind((host, 0))
@@ -263,7 +298,6 @@ class OrchestratorVerifier:
         scripts = self._get_package_scripts(pkg)
         script_body = scripts.get(script_name, "").lower()
         port = self._find_available_port("127.0.0.1")
-        command = self._get_package_script_command(script_name) or []
         host = "127.0.0.1"
 
         supports_next_flags = "next " in script_body or script_body.startswith("next")
@@ -278,24 +312,18 @@ class OrchestratorVerifier:
             if default_port != port and self._is_port_available(default_port, host):
                 candidate_ports.append(default_port)
 
+        extra_args: List[str] = []
         if supports_next_flags:
-            command = [
-                *command,
-                *(["--hostname", host, "--port", str(port)] if command else []),
-            ]
+            extra_args = ["--hostname", host, "--port", str(port)]
             candidate_ports = [port]
         elif supports_vite_style_flags:
-            command = [
-                *command,
-                *(["--host", host, "--port", str(port)] if command else []),
-            ]
+            extra_args = ["--host", host, "--port", str(port)]
             candidate_ports = [port]
         elif supports_port_only_flags:
-            command = [
-                *command,
-                *(["--listen", str(port)] if command else []),
-            ]
+            extra_args = ["--listen", str(port)]
             candidate_ports = [port]
+
+        command = self._get_package_script_command(script_name, extra_args=extra_args) or []
 
         probe_urls = [f"http://{host}:{candidate_port}" for candidate_port in candidate_ports]
         env = {
@@ -321,9 +349,38 @@ class OrchestratorVerifier:
             Dict with passed, output, log_path or None if no installable app found
         """
         pkg = self._load_package_json()
+        if not pkg:
+            return None
+
+        if self._package_json_looks_like_placeholder(pkg):
+            return {
+                "status": "skipped",
+                "summary": (
+                    "Non-Node project detected (package.json declares no dependencies "
+                    "and Python/PowerShell/Go/Rust project markers are present); "
+                    "skipping npm install gate."
+                ),
+                "command": None,
+                "exit_code": None,
+                "log_path": None,
+            }
+
         command = self._get_install_command(pkg)
         if not command:
             return None
+
+        package_manager = command[0]
+        if not self._resolve_node_pm_executable(package_manager):
+            return {
+                "status": "skipped",
+                "summary": (
+                    f"Node package manager '{package_manager}' was not found on PATH; "
+                    "skipping install gate."
+                ),
+                "command": " ".join(command),
+                "exit_code": None,
+                "log_path": None,
+            }
 
         passed, output, log_path, returncode = self._run_command(
             command,
@@ -538,6 +595,19 @@ class OrchestratorVerifier:
         if not pkg:
             return None
 
+        if self._package_json_looks_like_placeholder(pkg):
+            return {
+                "status": "skipped",
+                "summary": (
+                    "Non-Node project detected (package.json declares no dependencies "
+                    "and Python/PowerShell/Go/Rust project markers are present); "
+                    "skipping dev server gate."
+                ),
+                "command": None,
+                "exit_code": None,
+                "log_path": None,
+            }
+
         scripts = self._get_package_scripts(pkg)
         script_name = "dev" if "dev" in scripts else "start" if "start" in scripts else None
         if not script_name:
@@ -547,6 +617,19 @@ class OrchestratorVerifier:
         command = list(plan.get("command") or [])
         if not command:
             return None
+
+        package_manager = command[0]
+        if not self._resolve_node_pm_executable(package_manager):
+            return {
+                "status": "skipped",
+                "summary": (
+                    f"Node package manager '{package_manager}' was not found on PATH; "
+                    "skipping dev server gate."
+                ),
+                "command": " ".join(command),
+                "exit_code": None,
+                "log_path": None,
+            }
 
         log_path = self.log_dir / "dev_server.log"
         env = dict(plan.get("env") or {})
@@ -687,30 +770,62 @@ class OrchestratorVerifier:
             Dict containing all verification results and log paths
         """
         install_result = self.verify_install()
-        install_failed = isinstance(install_result, dict) and not bool(install_result.get("passed"))
+        install_dict = install_result if isinstance(install_result, dict) else None
+        install_was_skipped = bool(
+            install_dict
+            and (
+                str(install_dict.get("status") or "").lower() == "skipped"
+                or install_dict.get("skipped")
+            )
+        )
+        install_failed = bool(
+            install_dict
+            and not install_was_skipped
+            and not bool(install_dict.get("passed"))
+        )
+
+        if install_failed:
+            cascade_messages = {
+                "lint": "Lint skipped because dependency installation failed.",
+                "build": "Build skipped because dependency installation failed.",
+                "unit_tests": "Unit tests skipped because dependency installation failed.",
+                "smoke_tests": "Smoke tests skipped because dependency installation failed.",
+                "dev_server": "Dev server proof skipped because dependency installation failed.",
+            }
+        elif install_was_skipped:
+            reason = str(install_dict.get("summary") or "Install gate was skipped.").strip()
+            cascade_messages = {
+                "lint": f"Lint skipped: install gate was skipped. {reason}",
+                "build": f"Build skipped: install gate was skipped. {reason}",
+                "unit_tests": f"Unit tests skipped: install gate was skipped. {reason}",
+                "smoke_tests": f"Smoke tests skipped: install gate was skipped. {reason}",
+                "dev_server": f"Dev server proof skipped: install gate was skipped. {reason}",
+            }
+        else:
+            cascade_messages = None
 
         results = {
             "normalization_result": self.run_normalization(),
             "install_result": install_result,
             "lint_result": (
-                self._make_skipped_result("Lint skipped because dependency installation failed.")
-                if install_failed else self.verify_lint()
+                self._make_skipped_result(cascade_messages["lint"])
+                if cascade_messages else self.verify_lint()
             ),
             "build_result": (
-                self._make_skipped_result("Build skipped because dependency installation failed.")
-                if install_failed else self.verify_build()
+                self._make_skipped_result(cascade_messages["build"])
+                if cascade_messages else self.verify_build()
             ),
             "unit_test_result": (
-                self._make_skipped_result("Unit tests skipped because dependency installation failed.")
-                if install_failed else self.verify_unit_tests()
+                self._make_skipped_result(cascade_messages["unit_tests"])
+                if cascade_messages else self.verify_unit_tests()
             ),
             "smoke_test_result": (
-                self._make_skipped_result("Smoke tests skipped because dependency installation failed.")
-                if install_failed else self.verify_smoke_tests()
+                self._make_skipped_result(cascade_messages["smoke_tests"])
+                if cascade_messages else self.verify_smoke_tests()
             ),
             "dev_server_result": (
-                self._make_skipped_result("Dev server proof skipped because dependency installation failed.")
-                if install_failed else self.verify_dev_server()
+                self._make_skipped_result(cascade_messages["dev_server"])
+                if cascade_messages else self.verify_dev_server()
             ),
             "docker_compose_valid": self.verify_docker_compose(),
             "paths_to_full_logs": [],
