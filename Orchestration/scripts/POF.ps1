@@ -506,65 +506,262 @@ function Resolve-EffectiveJobType {
     }
 }
 
-function Resolve-EffectiveAppType {
-    param([string]$GoalText, [string]$RequestedAppType)
-    if (-not [string]::IsNullOrWhiteSpace($RequestedAppType)) {
-        return $RequestedAppType.Trim().ToLowerInvariant()
-    }
+function Get-PositiveGoalContext {
+    # Strip non-goals/negation context from goal text before keyword matching so
+    # phrases like "do not create a web app" or "do not use React" cannot trigger
+    # a false positive on the web detection branch. The stripping is conservative:
+    # it only removes the suffix that begins at a recognized negation phrase, so
+    # affirmative statements that come before it are preserved.
+    param([AllowNull()][string]$GoalText)
     $goal = ($GoalText ?? "").ToLowerInvariant()
-    if ($goal -match '\b(wpf|winforms|windows forms|xaml|desktop app|windows desktop)\b') { return "wpf" }
-    if ($goal -match '\b(web|website|browser|next\.?js|react|html|css|frontend|dom)\b') { return "web" }
+    return ($goal -replace '(?s)(non.?goals?|do not|don.t|avoid|exclude|without)\b.*', '')
+}
+
+function Resolve-AppTypeFromSpec {
+    # Spec inference only — does not look at any caller-supplied value.
+    # Returns "wpf", "web", or "unknown" (the correct fallback per CLAUDE.md).
+    param([AllowNull()][string]$GoalText)
+    $positive = Get-PositiveGoalContext -GoalText $GoalText
+    if ($positive -match '\b(wpf|winforms|windows forms|xaml|desktop app|windows desktop|tkinter|pyqt|wxpython)\b') {
+        return "wpf"
+    }
+    if ($positive -match '\b(web|website|browser|next\.?js|react|html|css|frontend|dom)\b') {
+        return "web"
+    }
     return "unknown"
 }
 
+function Resolve-EffectiveAppType {
+    param([string]$GoalText, [string]$RequestedAppType)
+    # Concern (a): explicit caller-supplied value always wins (unchanged).
+    if (-not [string]::IsNullOrWhiteSpace($RequestedAppType)) {
+        return $RequestedAppType.Trim().ToLowerInvariant()
+    }
+    # Concern (b): infer from spec — see Resolve-AppTypeFromSpec.
+    return Resolve-AppTypeFromSpec -GoalText $GoalText
+}
+
+# --- COMPOSABLE PROMPT BUILDER ---------------------------------------------
+# Each guidance segment is a discrete function applied to a prompt-builder
+# hashtable. Callers compose the segments they need; Get-AgentSystemPrompt
+# wires them up in the canonical order. The parallel-execution path uses the
+# same composed prompt (computed in the parent scope and passed into the
+# work item) instead of duplicating segment logic inside the parallel block.
+
+function New-PromptBuilder {
+    return @{ segments = [System.Collections.Generic.List[string]]::new() }
+}
+
+function Add-PromptSegment {
+    param(
+        [Parameter(Mandatory = $true)][hashtable]$Builder,
+        [AllowNull()][string]$Text
+    )
+    if (-not [string]::IsNullOrWhiteSpace($Text)) {
+        $Builder.segments.Add($Text.Trim()) | Out-Null
+    }
+    return $Builder
+}
+
+function Build-PromptString {
+    param([Parameter(Mandatory = $true)][hashtable]$Builder)
+    return ($Builder.segments -join "`n`n")
+}
+
+function Add-BaseInstructionSegment {
+    param([hashtable]$Builder, [AllowNull()][string]$BaseInstruction)
+    return (Add-PromptSegment -Builder $Builder -Text $BaseInstruction)
+}
+
+function Add-AgentPromptSegment {
+    param([hashtable]$Builder, [Parameter(Mandatory = $true)]$Agent)
+    return (Add-PromptSegment -Builder $Builder -Text ([string]$Agent.prompt))
+}
+
+function Add-RawJsonRequirementSegment {
+    # Applies to agents whose output_schema is strictly JSON.
+    param([hashtable]$Builder, [Parameter(Mandatory = $true)]$Agent)
+    if ($Agent.name -in @("ConceptualModelContract", "Engineer", "Critic")) {
+        return (Add-PromptSegment -Builder $Builder -Text "Output contract JSON must be raw JSON only. Do not emit markdown, code fences, or prose.")
+    }
+    return $Builder
+}
+
+function Add-EngineerArtifactRulesSegment {
+    # Canonical Engineer artifact rules. Text matches what Engineer has been
+    # receiving in the parallel-execution path (richer than the historical
+    # sequential text), so consolidating both code paths through this segment
+    # does not change Engineer's actual prompt.
+    param([hashtable]$Builder, [Parameter(Mandatory = $true)]$Agent)
+    if ($Agent.name -ne "Engineer") { return $Builder }
+    $text = @"
+Artifacts field rules (CRITICAL):
+- For build_new_app web goals, return a complete runnable project through artifacts[].
+- Populate artifacts[] with one entry per source file to create.
+- artifacts[].name: relative file path from the project root, e.g. package.json, index.html, src/main.tsx, src/App.tsx, src/styles.css, README.md.
+- artifacts[].content: raw source code, config, or Markdown text only.
+  DO NOT wrap content in backtick code fences.
+  DO NOT use '--- filename ---' separators inside content.
+  The content value must be exactly what should be written into the file.
+- artifacts[].type: optional string like 'code/typescript', 'code/tsx', 'config/json', or 'docs/markdown'.
+- Honor the tech stack exactly as specified in the goal. If goal says Vite+React, output Vite files (vite.config.ts, src/main.tsx, index.html), NOT Next.js files (next.config.mjs, app/page.tsx).
+- Every file listed in changes[] with action 'create' or 'modify' MUST have a matching artifacts[] entry.
+"@
+    return (Add-PromptSegment -Builder $Builder -Text $text)
+}
+
+function Add-CmcGuidanceSegment {
+    # ConceptualModelContract-specific guidance based on job and app type.
+    param(
+        [hashtable]$Builder,
+        [Parameter(Mandatory = $true)]$Agent,
+        [string]$EffectiveAppType,
+        [string]$EffectiveJobType
+    )
+    if ($Agent.name -ne "ConceptualModelContract") { return $Builder }
+    if ($EffectiveJobType -eq "build_new_app") {
+        $Builder = Add-PromptSegment -Builder $Builder -Text "For create-new-app goals, treat an Original user request, Required features, mechanics list, expected outputs, and acceptance criteria as sufficient requirements. Do not request clarification by restating those same categories. Extract the supplied details into the runtime contract unless there is a true contradiction."
+    }
+    if ($EffectiveAppType -eq "wpf") {
+        $Builder = Add-PromptSegment -Builder $Builder -Text "App type is WPF desktop. Do not produce DOM/web probes. Use WPF-observable probes (named controls, bound state values, visual tree state, render loop counters)."
+    }
+    elseif ($EffectiveAppType -eq "web") {
+        $Builder = Add-PromptSegment -Builder $Builder -Text "App type is web. DOM/SVG/canvas probes are allowed and should be machine-verifiable."
+    }
+    return $Builder
+}
+
+function Add-MaintenanceOutOfScopeSegment {
+    # On build_new_app runs, tell maintenance-only agents to treat their
+    # gating concerns as out of scope.
+    param(
+        [hashtable]$Builder,
+        [Parameter(Mandatory = $true)]$Agent,
+        [string]$EffectiveJobType
+    )
+    if ($EffectiveJobType -eq "build_new_app" -and $Agent.name -in @("ReviewGate", "PRPublisher", "RepoContextBuilder")) {
+        return (Add-PromptSegment -Builder $Builder -Text "This is a create-new-app run. Maintenance-only gating is out of scope for this run.")
+    }
+    return $Builder
+}
+
+function Get-PofPhasePlan {
+    # Declarative phase plan. Each entry describes one dispatch phase as data:
+    #   - Name             : human-readable phase label
+    #   - Handler          : strategy identifier (used by future plan-driven
+    #                        dispatch; current pipeline body still inlines the
+    #                        per-phase logic)
+    #   - ExecutionMode    : "Sequential" or "Parallel"
+    #   - Agents           : array of agent definitions to dispatch in this phase
+    #   - MaintenanceOnly  : if $true, phase only fires when job_type is
+    #                        maintain_existing_app; otherwise agents are
+    #                        marked "skipped" with reason "maintenance_only"
+    #   - CanBlock         : whether this phase may halt the run with a
+    #                        requirements clarification blocker. Only Contract
+    #                        is allowed to block.
+    #   - ClarificationGate: when CanBlock is $true, declares the gate's
+    #                        Behavior ("Advisory" for build_new_app —
+    #                        clarification is logged and the run continues;
+    #                        "Halt" otherwise — clarification stops the run).
+    #                        Gate behavior is fixed at plan-construction time
+    #                        from job_type rather than re-derived inside the
+    #                        execution loop.
+    param(
+        [Parameter(Mandatory = $true)][array]$Agents,
+        [Parameter(Mandatory = $true)][string]$EffectiveJobType
+    )
+
+    $clarificationBehavior = if ($EffectiveJobType -eq "build_new_app") { "Advisory" } else { "Halt" }
+
+    $reservedContributorExclusions = @(
+        "Commissioner", "Synthesizer", "ValidationAuditor", "Supervisor",
+        "Historian", "ConceptualModelContract", "RepoContextBuilder",
+        "ReviewGate", "PRPublisher"
+    )
+
+    $byName = @{}
+    foreach ($a in $Agents) { if ($a -and $a.name) { $byName[[string]$a.name] = $a } }
+    function _pick { param([hashtable]$Map, [string[]]$Names)
+        @($Names | ForEach-Object { if ($Map.ContainsKey($_)) { $Map[$_] } } | Where-Object { $_ })
+    }
+
+    return @(
+        [PSCustomObject]@{
+            Name = "Pre/RepoContext"; Handler = "MaintenanceRepoContext"
+            ExecutionMode = "Sequential"
+            Agents = (_pick $byName @("RepoContextBuilder"))
+            MaintenanceOnly = $true; CanBlock = $false; ClarificationGate = $null
+        },
+        [PSCustomObject]@{
+            Name = "Pre/MaintenanceFallback"; Handler = "MaintenanceFallback"
+            ExecutionMode = "Sequential"
+            Agents = (_pick $byName @("ReviewGate", "PRPublisher"))
+            MaintenanceOnly = $true; CanBlock = $false; ClarificationGate = $null
+        },
+        [PSCustomObject]@{
+            Name = "Contract"; Handler = "Contract"
+            ExecutionMode = "Sequential"
+            Agents = (_pick $byName @("ConceptualModelContract"))
+            MaintenanceOnly = $false; CanBlock = $true
+            ClarificationGate = [PSCustomObject]@{ Behavior = $clarificationBehavior }
+        },
+        [PSCustomObject]@{
+            Name = "Contributors"; Handler = "ParallelContributors"
+            ExecutionMode = "Parallel"
+            Agents = @($Agents | Where-Object { $_ -and $_.name -and $_.name -notin $reservedContributorExclusions })
+            MaintenanceOnly = $false; CanBlock = $false; ClarificationGate = $null
+        },
+        [PSCustomObject]@{
+            Name = "Synthesis"; Handler = "StandardSequential"
+            ExecutionMode = "Sequential"
+            Agents = (_pick $byName @("Synthesizer"))
+            MaintenanceOnly = $false; CanBlock = $false; ClarificationGate = $null
+        },
+        [PSCustomObject]@{
+            Name = "Validation"; Handler = "AuditSequential"
+            ExecutionMode = "Sequential"
+            Agents = (_pick $byName @("ValidationAuditor"))
+            MaintenanceOnly = $false; CanBlock = $false; ClarificationGate = $null
+        },
+        [PSCustomObject]@{
+            Name = "Evaluation"; Handler = "Commissioner"
+            ExecutionMode = "Sequential"
+            Agents = (_pick $byName @("Commissioner"))
+            MaintenanceOnly = $false; CanBlock = $false; ClarificationGate = $null
+        },
+        [PSCustomObject]@{
+            Name = "Supervision"; Handler = "AggregateSequential"
+            ExecutionMode = "Sequential"
+            Agents = (_pick $byName @("Supervisor"))
+            MaintenanceOnly = $false; CanBlock = $false; ClarificationGate = $null
+        },
+        [PSCustomObject]@{
+            Name = "History"; Handler = "AggregateSequential"
+            ExecutionMode = "Sequential"
+            Agents = (_pick $byName @("Historian"))
+            MaintenanceOnly = $false; CanBlock = $false; ClarificationGate = $null
+        }
+    )
+}
+
 function Get-AgentSystemPrompt {
+    # Canonical assembly of an agent's system prompt. Used by both sequential
+    # and parallel execution paths so the prompt is identical regardless of
+    # how the agent is dispatched.
     param(
         [Parameter(Mandatory = $true)]$Agent,
         [string]$BaseInstruction,
         [string]$EffectiveAppType,
         [string]$EffectiveJobType
     )
-
-    $segments = @()
-    if (-not [string]::IsNullOrWhiteSpace($BaseInstruction)) { $segments += $BaseInstruction.Trim() }
-    $segments += [string]$Agent.prompt
-
-    if ($Agent.name -in @("ConceptualModelContract", "Engineer", "Critic")) {
-        $segments += "Output contract JSON must be raw JSON only. Do not emit markdown, code fences, or prose."
-    }
-
-    if ($Agent.name -eq "Engineer") {
-        $segments += @"
-Artifacts field rules (CRITICAL):
-- Populate artifacts[] with one entry per source file to create or modify.
-- artifacts[].name: relative file path from the project root, e.g. src/App.tsx or vite.config.ts
-- artifacts[].content: raw source code or config text only.
-  DO NOT wrap content in backtick code fences.
-  DO NOT use '--- filename ---' separators inside content.
-  The content value must be exactly what you would write into the file.
-- artifacts[].type: optional string like 'code/typescript', 'code/tsx', 'config/json'.
-- Honor the tech stack exactly as specified in the goal. If goal says Vite+React, output Vite files (vite.config.ts, src/main.tsx, index.html), NOT Next.js files (next.config.mjs, app/page.tsx).
-- Every file listed in changes[] with action 'create' or 'modify' MUST have a matching artifacts[] entry.
-"@
-    }
-
-    if ($Agent.name -eq "ConceptualModelContract") {
-        if ($EffectiveJobType -eq "build_new_app") {
-            $segments += "For create-new-app goals, treat an Original user request, Required features, mechanics list, expected outputs, and acceptance criteria as sufficient requirements. Do not request clarification by restating those same categories. Extract the supplied details into the runtime contract unless there is a true contradiction."
-        }
-        if ($EffectiveAppType -eq "wpf") {
-            $segments += "App type is WPF desktop. Do not produce DOM/web probes. Use WPF-observable probes (named controls, bound state values, visual tree state, render loop counters)."
-        }
-        elseif ($EffectiveAppType -eq "web") {
-            $segments += "App type is web. DOM/SVG/canvas probes are allowed and should be machine-verifiable."
-        }
-    }
-
-    if ($EffectiveJobType -eq "build_new_app" -and $Agent.name -in @("ReviewGate", "PRPublisher", "RepoContextBuilder")) {
-        $segments += "This is a create-new-app run. Maintenance-only gating is out of scope for this run."
-    }
-
-    return ($segments -join "`n`n")
+    $b = New-PromptBuilder
+    $b = Add-BaseInstructionSegment       -Builder $b -BaseInstruction $BaseInstruction
+    $b = Add-AgentPromptSegment           -Builder $b -Agent $Agent
+    $b = Add-RawJsonRequirementSegment    -Builder $b -Agent $Agent
+    $b = Add-EngineerArtifactRulesSegment -Builder $b -Agent $Agent
+    $b = Add-CmcGuidanceSegment           -Builder $b -Agent $Agent -EffectiveAppType $EffectiveAppType -EffectiveJobType $EffectiveJobType
+    $b = Add-MaintenanceOutOfScopeSegment -Builder $b -Agent $Agent -EffectiveJobType $EffectiveJobType
+    return Build-PromptString -Builder $b
 }
 
 function Normalize-AgentContractObject {
@@ -1135,6 +1332,11 @@ function Get-ObservedGoalEvidence {
 }
 
 # --- MAIN ORCHESTRATION LOOP -----------------------------------------------
+# Test-mode guard: when POF_LOAD_ONLY is set, callers can dot-source POF.ps1 to
+# load its function definitions without firing the orchestration loop. This is
+# used by Pester characterization tests so pure functions can be exercised
+# without an OpenAI API key or live network calls.
+if (-not $env:POF_LOAD_ONLY) {
 try {
     $EffectiveJobType = Resolve-EffectiveJobType -GoalText $Goal -RequestedJobType $JobType
     $EffectiveAppType = Resolve-EffectiveAppType -GoalText $Goal -RequestedAppType $AppType
@@ -1153,29 +1355,27 @@ try {
         Write-Host "`nIteration $i/$MaxIterations" -ForegroundColor Yellow
 
         # --- Agent Pipeline -------------------------------------------------
-        # Phase 0 (sequential gate): ConceptualModelContract
-        # Phase 1 (parallel): contributor agents after the contract is valid
-        # Phase 2 (sequential): Synthesizer
-        # Phase 3 (sequential): ValidationAuditor
-        # Phase 4 (sequential): Commissioner
-        # Phase 5 (sequential): Supervisor
-        # Phase 6 (sequential): Historian
-        $Commissioner = $Agents | Where-Object { $_.name -eq "Commissioner" }
-        $Synthesizer = $Agents | Where-Object { $_.name -eq "Synthesizer" }
-        $ValidationAuditor = $Agents | Where-Object { $_.name -eq "ValidationAuditor" }
-        $Supervisor = $Agents | Where-Object { $_.name -eq "Supervisor" }
-        $Historian = $Agents | Where-Object { $_.name -eq "Historian" }
-        $Phase1Agents = $Agents | Where-Object { $_.name -notin @("Commissioner", "Synthesizer", "ValidationAuditor", "Supervisor", "Historian") }
-        $ContractAgents = @($Phase1Agents | Where-Object { $_.name -eq "ConceptualModelContract" })
-        $Phase1Agents = @($Phase1Agents | Where-Object { $_.name -ne "ConceptualModelContract" })
+        # Agent partitioning and gate behavior come from a declarative plan
+        # (Get-PofPhasePlan) so phase definitions live as data, not as a
+        # cascade of Where-Object filters inline here.
+        $Plan = Get-PofPhasePlan -Agents $Agents -EffectiveJobType $EffectiveJobType
+        $PlanByName = @{}
+        foreach ($p in $Plan) { $PlanByName[$p.Name] = $p }
+
+        $repoContextAgents          = @($PlanByName['Pre/RepoContext'].Agents)
+        $maintenanceFallbackAgents  = @($PlanByName['Pre/MaintenanceFallback'].Agents)
+        $ContractAgents             = @($PlanByName['Contract'].Agents)
+        $ContractClarificationGate  = $PlanByName['Contract'].ClarificationGate
+        $Phase1Agents               = @($PlanByName['Contributors'].Agents)
+        $Synthesizer                = @($PlanByName['Synthesis'].Agents)
+        $ValidationAuditor          = @($PlanByName['Validation'].Agents)
+        $Commissioner               = @($PlanByName['Evaluation'].Agents)
+        $Supervisor                 = @($PlanByName['Supervision'].Agents)
+        $Historian                  = @($PlanByName['History'].Agents)
 
         # Track per-iteration outputs by agent name for downstream Supervisor/Historian inputs.
         $AgentOutputs = @{}
         $requirementsBlocker = $null
-
-        $repoContextAgents = @($Phase1Agents | Where-Object { $_.name -eq "RepoContextBuilder" })
-        $maintenanceFallbackAgents = @($Phase1Agents | Where-Object { $_.name -in @("ReviewGate", "PRPublisher") })
-        $Phase1Agents = @($Phase1Agents | Where-Object { $_.name -notin @("RepoContextBuilder", "ReviewGate", "PRPublisher") })
 
         foreach ($rcb in $repoContextAgents) {
             if (-not $IsMaintenanceRun) {
@@ -1264,9 +1464,13 @@ try {
             $AgentOutputs[$ContractAgent.name] = $finalOutput
 
             ### BEGIN: Advisory ConceptualModelContract Clarifications For App Builds
+            # Gate behavior was fixed at plan-construction time from job_type
+            # (see Get-PofPhasePlan). Read it here instead of re-deriving the
+            # conditional inline; this is the first-class-gate boundary.
             $TreatClarificationAsAdvisory = (
                 $ContractAgent.name -eq "ConceptualModelContract" -and
-                $EffectiveJobType -eq "build_new_app"
+                $ContractClarificationGate -and
+                $ContractClarificationGate.Behavior -eq "Advisory"
             )
 
             if ($validated.ClarificationNeeded -and $TreatClarificationAsAdvisory) {
@@ -1349,6 +1553,11 @@ try {
         }
 
         # --- Prepare work items --------------------------------------------
+        # SystemPrompt is composed in the parent scope via the same builder
+        # the sequential path uses, then passed into the parallel runspace.
+        # This eliminates the duplicate inline prompt-assembly logic that
+        # used to live inside the ForEach-Object -Parallel block, where it
+        # could drift away from Get-AgentSystemPrompt unnoticed.
         $WorkItems = foreach ($A in $Phase1Agents) {
             [PSCustomObject]@{
                 Agent            = $A
@@ -1358,6 +1567,7 @@ try {
                 Instruction      = $Instruction
                 EffectiveAppType = $EffectiveAppType
                 EffectiveJobType = $EffectiveJobType
+                SystemPrompt     = (Get-AgentSystemPrompt -Agent $A -BaseInstruction $Instruction -EffectiveAppType $EffectiveAppType -EffectiveJobType $EffectiveJobType)
             }
         }
 
@@ -1381,41 +1591,12 @@ try {
             }
             $statusObj | ConvertTo-Json -Compress | Add-Content -Path $statusPath
 
-            $guidance = @()
-            if ($Agent.name -in @("ConceptualModelContract", "Engineer", "Critic")) {
-                $guidance += "Output contract JSON must be raw JSON only. Do not emit markdown, code fences, or prose."
-            }
-            if ($Agent.name -eq "Engineer") {
-                $guidance += @"
-Artifacts field rules (CRITICAL):
-- For build_new_app web goals, return a complete runnable project through artifacts[].
-- Populate artifacts[] with one entry per source file to create.
-- artifacts[].name: relative file path from the project root, e.g. package.json, index.html, src/main.tsx, src/App.tsx, src/styles.css, README.md.
-- artifacts[].content: raw source code, config, or Markdown text only.
-  DO NOT wrap content in backtick code fences.
-  DO NOT use '--- filename ---' separators inside content.
-  The content value must be exactly what should be written into the file.
-- artifacts[].type: optional string like 'code/typescript', 'code/tsx', 'config/json', or 'docs/markdown'.
-- Honor the tech stack exactly as specified in the goal. If goal says Vite+React, output Vite files (vite.config.ts, src/main.tsx, index.html), NOT Next.js files (next.config.mjs, app/page.tsx).
-- Every file listed in changes[] with action 'create' or 'modify' MUST have a matching artifacts[] entry.
-"@
-            }
-            if ($Agent.name -eq "ConceptualModelContract") {
-                if ($EffectiveJobType -eq "build_new_app") {
-                    $guidance += "For create-new-app goals, treat an Original user request, Required features, mechanics list, expected outputs, and acceptance criteria as sufficient requirements. Do not request clarification by restating those same categories. Extract the supplied details into the runtime contract unless there is a true contradiction."
-                }
-                if ($EffectiveAppType -eq "wpf") {
-                    $guidance += "App type is WPF desktop. Do not produce DOM/web probes. Use WPF-observable probes (named controls, bound state values, visual tree state, render loop counters)."
-                }
-                elseif ($EffectiveAppType -eq "web") {
-                    $guidance += "App type is web. DOM/SVG/canvas probes are allowed and should be machine-verifiable."
-                }
-            }
-            $systemPrompt = @()
-            if (-not [string]::IsNullOrWhiteSpace($Instruction)) { $systemPrompt += $Instruction.Trim() }
-            $systemPrompt += [string]$Agent.prompt
-            if ($guidance.Count -gt 0) { $systemPrompt += ($guidance -join "`n") }
-            $systemPrompt = $systemPrompt -join "`n`n"
+            # SystemPrompt was assembled in the parent scope via the
+            # canonical composable builder (Get-AgentSystemPrompt) and shipped
+            # into this runspace through the work item. Do NOT re-derive it
+            # here — that historical inline copy is what drifted from the
+            # sequential path.
+            $systemPrompt = $Work.SystemPrompt
 
             $Messages = @(
                 @{ role = "system"; content = $systemPrompt },
@@ -1536,8 +1717,14 @@ Stack Trace: $($_.ScriptStackTrace)
             $AgentOutputs[$r.Agent] = $finalOutput
 
             ### BEGIN: Advisory ConceptualModelContract Clarifications In Parallel Collection
-            if ($r.Agent -eq "ConceptualModelContract" -and $validated.ClarificationNeeded -and $EffectiveJobType -eq "build_new_app") {
-                Write-Warning "ConceptualModelContract clarification detected during result collection, but this is build_new_app. Treating as advisory."
+            # Read clarification behavior from the plan-declared gate (see
+            # Get-PofPhasePlan). NOTE: ConceptualModelContract is partitioned
+            # out of the parallel block at the start of the iteration, so this
+            # branch is effectively defensive code that should never fire on
+            # current rosters; the conditional remains for symmetry with the
+            # sequential contract handler.
+            if ($r.Agent -eq "ConceptualModelContract" -and $validated.ClarificationNeeded -and $ContractClarificationGate -and $ContractClarificationGate.Behavior -eq "Advisory") {
+                Write-Warning "ConceptualModelContract clarification detected during result collection, but gate is Advisory. Treating as advisory."
 
                 $requirementsRequest = New-RequirementsRequestPacket -Question $validated.ClarificationText -AgentName $r.Agent
 
@@ -1972,4 +2159,5 @@ finally {
         Write-Host "⚠️ Failed to generate Final_Synthesis.html: $_" -ForegroundColor Yellow
     }
 }
+} # end if (-not $env:POF_LOAD_ONLY)
 ### END FILE: POF.ps1
