@@ -66,10 +66,32 @@ class TestSanitizeRunId:
         long_string = "a" * 200
         result = sanitize_run_id(long_string, max_length=120)
         assert len(result) == 120
-        
+
         # Test with custom max_length
         result = sanitize_run_id(long_string, max_length=50)
         assert len(result) == 50
+
+    def test_default_max_length_keeps_run_dir_under_windows_max_path(self):
+        """The default max_length must keep the run-dir basename short enough
+        that ``runs/<basename>/generated_app/node_modules/<deep-pkg>/...`` stays
+        under Windows' 260-char MAX_PATH. A 50-char base + 21-char timestamp
+        gives a ~75-char basename, leaving ~185 chars for the deepest
+        node_modules path — enough for typical React/Vite installs."""
+        long_goal = "Build a single-page Markdown previewer web application using Vite + React + TypeScript. " * 5
+        result = sanitize_run_id(long_goal)
+        assert len(result) <= 50, f"default-truncated id should be ≤ 50 chars; got {len(result)}"
+
+    def test_combined_run_dir_basename_budget(self):
+        """End-to-end budget check: sanitized base + timestamp suffix should
+        leave room for the Windows MAX_PATH-sensitive node_modules tree."""
+        long_goal = "A" * 500
+        base = sanitize_run_id(long_goal)
+        timestamp_suffix = ".2026-05-17T19-20-26Z"  # 21 chars (typical)
+        full_basename = f"{base}{timestamp_suffix}"
+        assert len(full_basename) <= 80, (
+            f"run-dir basename must be ≤ 80 chars to stay under Windows MAX_PATH "
+            f"once nested under runs/.../generated_app/node_modules/...; got {len(full_basename)}"
+        )
     
     def test_max_length_with_trailing_chars(self):
         """When truncating, trailing dots/spaces/underscores should still be stripped."""

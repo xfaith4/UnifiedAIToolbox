@@ -228,6 +228,52 @@ function Update-PofRunState {
     $state | ConvertTo-Json -Depth 40 | Set-Content -LiteralPath $statePath -Encoding UTF8
 }
 
+function Complete-PofRunStateIfNeeded {
+    param(
+        [AllowNull()][string]$ErrorMessage = $null
+    )
+
+    $statePath = Join-Path $OutDir "run_state.json"
+    $currentState = @{}
+    if (Test-Path -LiteralPath $statePath) {
+        try {
+            $loaded = Get-Content -Raw -LiteralPath $statePath | ConvertFrom-Json -Depth 40 -AsHashtable
+            if ($loaded -is [hashtable]) {
+                $currentState = $loaded
+            }
+        }
+        catch {
+            $currentState = @{}
+        }
+    }
+
+    $currentStatus = [string]($currentState.status)
+    $currentStage = [string]($currentState.current_stage)
+
+    if (-not [string]::IsNullOrWhiteSpace($ErrorMessage)) {
+        Update-PofRunState -Status "error" -CurrentStage "failed" -Errors @($ErrorMessage) -Complete
+        Write-PofEvent -Type "status" -Message "error" -Stage "failed" -Data @{ error = $ErrorMessage }
+        return
+    }
+
+    if ($currentStatus -in @("blocked_requirements", "needs_requirements", "cancelled", "canceled", "completed", "success", "succeeded")) {
+        if (-not $currentState.ContainsKey('ended_at') -or [string]::IsNullOrWhiteSpace([string]$currentState.ended_at)) {
+            Update-PofRunState -Status $currentStatus -CurrentStage $currentStage -Complete
+        }
+        return
+    }
+
+    if ($currentStatus -like "error*") {
+        if (-not $currentState.ContainsKey('ended_at') -or [string]::IsNullOrWhiteSpace([string]$currentState.ended_at)) {
+            Update-PofRunState -Status $currentStatus -CurrentStage $(if ([string]::IsNullOrWhiteSpace($currentStage)) { "failed" } else { $currentStage }) -Complete
+        }
+        return
+    }
+
+    Update-PofRunState -Status "completed" -CurrentStage "completed" -Complete
+    Write-PofEvent -Type "status" -Message "completed" -Stage "completed"
+}
+
 function Get-AgentSchemaTemplate {
     param([Parameter(Mandatory = $true)][string]$AgentName)
 
@@ -608,6 +654,15 @@ Artifacts field rules (CRITICAL):
   DO NOT wrap content in backtick code fences.
   DO NOT use '--- filename ---' separators inside content.
   The content value must be exactly what should be written into the file.
+
+JSON escape semantics for artifacts[].content (CRITICAL — repeated runs have failed on this):
+- artifacts[].content is a JSON string. Every backslash you emit inside it is interpreted as a JSON escape.
+- For a newline in the file, write a single backslash followed by n (`\n`). JSON decodes that into one newline byte.
+- DO NOT write `\\n` to encode a newline. That decodes to a literal backslash followed by the letter n, which produces a one-line file with `\n` text in it — package.json will be invalid JSON and the install gate will skip.
+- For a literal backslash in the file (rare — Windows paths, regex), write `\\`.
+- For a literal `\n` characters in the file content (extremely rare), write `\\n`.
+- Same rules for tabs (`\t`), carriage returns (`\r`), quotes (`\"`).
+- When in doubt, write the smallest escape: `\n` for newline, `\"` for quote, `\\` for backslash. Anything more is wrong.
 - artifacts[].type: optional string like 'code/typescript', 'code/tsx', 'config/json', or 'docs/markdown'.
 - Honor the tech stack exactly as specified in the goal. If goal says Vite+React, output Vite files (vite.config.ts, src/main.tsx, index.html), NOT Next.js files (next.config.mjs, app/page.tsx).
 - Every file listed in changes[] with action 'create' or 'modify' MUST have a matching artifacts[] entry.
@@ -634,6 +689,40 @@ function Add-CmcGuidanceSegment {
         $Builder = Add-PromptSegment -Builder $Builder -Text "App type is web. DOM/SVG/canvas probes are allowed and should be machine-verifiable."
     }
     return $Builder
+}
+
+function Add-CmcSchemaTemplateSegment {
+    # Bake the literal expected-shape template into ConceptualModelContract's
+    # system prompt so the model sees the contract on its first attempt
+    # instead of being told a schema exists, guessing, and getting repaired
+    # against an error message. Reuses Get-AgentSchemaTemplate so the
+    # checkpoint UI and the agent prompt stay in sync from one source.
+    param(
+        [hashtable]$Builder,
+        [Parameter(Mandatory = $true)]$Agent
+    )
+    if ($Agent.name -ne "ConceptualModelContract") { return $Builder }
+    $template = Get-AgentSchemaTemplate -AgentName $Agent.name
+    if ([string]::IsNullOrWhiteSpace($template)) { return $Builder }
+    $segment = @"
+Required output shape (your JSON MUST match this exactly):
+
+$template
+
+Field rules:
+- "interpretation" is a single string of plain prose. It is NOT an object or array.
+- "representation" MUST be one of these exact enum values: canvas, svg, dom-graphics, chart, simulation. Pick using this guide:
+    * canvas       -> canvas-based rendering (lightweight-charts, Chart.js, candlestick charts, 2D game canvas, WebGL)
+    * svg          -> SVG-based visualizations (D3, custom SVG, scalable vector UI)
+    * dom-graphics -> mostly HTML/CSS layout with light visual elements (dashboards, list/detail UIs, forms)
+    * chart        -> generic charting component when the library is undetermined
+    * simulation   -> animated worlds, physics, particle systems, or continuously updating scenes
+  "web", "html", "react", "next", and other framework names are NOT valid values for "representation".
+- "objects", "interactions", "dynamics", "data", "acceptance_tests" are arrays of structured objects matching the inner shapes shown. Do NOT collapse them into prose strings.
+- "non_goals" is an array of strings.
+- Do not invent additional top-level fields. Do not wrap the response in another object such as orchestration_plan, agent_assignments, or acceptance_gates -- those belong to other agents.
+"@
+    return (Add-PromptSegment -Builder $Builder -Text $segment)
 }
 
 function Add-MaintenanceOutOfScopeSegment {
@@ -765,6 +854,7 @@ function Get-AgentSystemPrompt {
     $b = Add-RawJsonRequirementSegment    -Builder $b -Agent $Agent
     $b = Add-EngineerArtifactRulesSegment -Builder $b -Agent $Agent
     $b = Add-CmcGuidanceSegment           -Builder $b -Agent $Agent -EffectiveAppType $EffectiveAppType -EffectiveJobType $EffectiveJobType
+    $b = Add-CmcSchemaTemplateSegment     -Builder $b -Agent $Agent
     $b = Add-MaintenanceOutOfScopeSegment -Builder $b -Agent $Agent -EffectiveJobType $EffectiveJobType
     return Build-PromptString -Builder $b
 }
@@ -988,6 +1078,113 @@ function Write-ContractFailureArtifact {
     return $path
 }
 
+function Get-ContractRepairMaxAttempts {
+    # Configurable retry budget for contract repair. Default is 3 (covers the
+    # most common pattern: attempt 1 misses shape, attempt 2 misses an enum,
+    # attempt 3 nails it once the model has both prior failures + the schema
+    # template in context). Capped at 5 to bound worst-case cost.
+    $value = 3
+    if (-not [string]::IsNullOrWhiteSpace($env:POF_CONTRACT_REPAIR_MAX_ATTEMPTS)) {
+        $parsed = 0
+        if ([int]::TryParse($env:POF_CONTRACT_REPAIR_MAX_ATTEMPTS, [ref]$parsed) -and $parsed -ge 1) {
+            $value = [Math]::Min($parsed, 5)
+        }
+    }
+    return $value
+}
+
+function Build-ContractRepairPrompt {
+    # Pure prompt builder for a single contract-repair attempt. Each attempt
+    # gets progressively richer context: attempt 1 = schema + errors; attempt
+    # 2 = + prior-attempt history; attempt 3+ = + few-shot schema template +
+    # final-attempt framing. Pure (no I/O) so it is unit-testable in isolation.
+    param(
+        [Parameter(Mandatory = $true)][int]$AttemptNumber,
+        [Parameter(Mandatory = $true)][int]$MaxAttempts,
+        [Parameter(Mandatory = $true)][string]$AgentName,
+        [Parameter(Mandatory = $true)]$Schema,
+        [Parameter(Mandatory = $true)][array]$CurrentErrors,
+        [Parameter(Mandatory = $true)][string]$PreviousOutput,
+        [Parameter(Mandatory = $true)][string]$UserPrompt,
+        [array]$AttemptHistory = @(),
+        [AllowNull()][string]$SchemaTemplate = $null
+    )
+
+    $schemaJson = $Schema | ConvertTo-Json -Depth 60
+    $errorsText = ($CurrentErrors | ForEach-Object { "- $_" }) -join "`n"
+
+    $stageGuidance = switch ($true) {
+        ($AttemptNumber -eq 1) {
+            "This is repair attempt 1 of ${MaxAttempts}. Fix the validation errors below by returning a corrected JSON document."
+            break
+        }
+        ($AttemptNumber -eq $MaxAttempts) {
+@"
+This is repair attempt $AttemptNumber of $MaxAttempts (FINAL ATTEMPT). After this the run will halt.
+
+Common failure patterns to avoid:
+- A "string" field MUST be a string, not an object or array.
+- "enum" fields MUST be one of the exact allowed values listed in the schema (case-sensitive).
+- Required fields at every nesting level MUST be present.
+- Do not invent new top-level keys. Do not wrap your response in another object.
+
+If the task genuinely cannot be satisfied under this schema, prefer a minimal-but-valid response over another type-mismatched one.
+"@
+            break
+        }
+        default {
+@"
+This is repair attempt $AttemptNumber of $MaxAttempts. Your previous repair attempt also failed.
+
+Pay close attention to:
+- Field types: a "string" field must be a string, not an object or array.
+- Enum values: must be an exact, case-sensitive match to one of the values listed in the schema.
+- Required fields at every nesting level must be present.
+- Do not invent new top-level keys.
+"@
+        }
+    }
+
+    $historyText = ""
+    if ($AttemptHistory -and $AttemptHistory.Count -gt 0) {
+        $historyLines = @()
+        foreach ($entry in $AttemptHistory) {
+            $errs = if ($entry.errors -and $entry.errors.Count -gt 0) {
+                ($entry.errors | Select-Object -First 3 | ForEach-Object { [string]$_ }) -join '; '
+            } else { [string]$entry.error }
+            $historyLines += "  Attempt $($entry.attempt): $errs"
+        }
+        $historyText = "`nPrior repair attempts (oldest first):`n" + ($historyLines -join "`n") + "`n"
+    }
+
+    $templateSection = ""
+    if ($AttemptNumber -ge 2 -and -not [string]::IsNullOrWhiteSpace($SchemaTemplate)) {
+        $templateSection = @"
+
+Example shape (placeholder values; replace with content matching the task):
+$SchemaTemplate
+"@
+    }
+
+    return @"
+$stageGuidance
+
+JSON Schema:
+$schemaJson
+$templateSection
+Validation errors (current attempt):
+$errorsText
+$historyText
+Original task:
+$UserPrompt
+
+Most recent invalid output:
+$PreviousOutput
+
+Return ONLY valid JSON (no markdown, no code fences).
+"@
+}
+
 function Resolve-AgentOutputWithContract {
     param(
         [Parameter(Mandatory = $true)][string]$AgentName,
@@ -1012,105 +1209,138 @@ function Resolve-AgentOutputWithContract {
         }
     }
 
-    Write-Host "⚠️ Contract validation failed for ${AgentName}: $($check.error)" -ForegroundColor Yellow
-    $schemaJson = $check.schema | ConvertTo-Json -Depth 60
-    $errorsText = ($check.errors | ForEach-Object { "- $_" }) -join "`n"
-    $repairPrompt = @"
-Your previous response failed contract validation.
-Return ONLY valid JSON (no markdown, no code fences).
+    $maxAttempts = Get-ContractRepairMaxAttempts
+    Write-Host "⚠️ Contract validation failed for ${AgentName}: $($check.error). Entering repair loop (max $maxAttempts attempts)." -ForegroundColor Yellow
 
-JSON Schema:
-$schemaJson
+    $schemaTemplate = Get-AgentSchemaTemplate -AgentName $AgentName
 
-Validation errors:
-$errorsText
+    # Carry state across attempts so each retry is materially smarter than the last.
+    $initialErrors   = @($check.errors)
+    $currentErrors   = @($check.errors)
+    $previousOutput  = if ($check.normalized_json) { [string]$check.normalized_json } else { $Output }
+    $attemptHistory  = @()
+    $recheck         = $null
+    $repaired        = $null
 
-Original task:
-$UserPrompt
-
-Invalid output:
-$(if ($check.normalized_json) { $check.normalized_json } else { $Output })
-"@
-
-    $repairMessages = @(
-        @{ role = "system"; content = $SystemPrompt },
-        @{ role = "user"; content = $repairPrompt }
-    )
-    $repaired = Invoke-OpenAIRequest -Messages $repairMessages -AgentName $AgentName
-    if (-not $repaired) {
-        $artifact = Write-ContractFailureArtifact `
+    for ($attemptNum = 1; $attemptNum -le $maxAttempts; $attemptNum++) {
+        $repairPrompt = Build-ContractRepairPrompt `
+            -AttemptNumber $attemptNum `
+            -MaxAttempts $maxAttempts `
             -AgentName $AgentName `
             -Schema $check.schema `
-            -InitialErrors @($check.errors) `
-            -RawOutput $Output
-        Write-AgentStatus -Agent $AgentName -Status "error" -ExtraData @{ contract_error = $check.error; contract_failure_artifact = $artifact }
-        throw "Contract repair failed for $AgentName. Artifact: $artifact"
-    }
+            -CurrentErrors $currentErrors `
+            -PreviousOutput $previousOutput `
+            -UserPrompt $UserPrompt `
+            -AttemptHistory $attemptHistory `
+            -SchemaTemplate $schemaTemplate
 
-    $recheck = Assert-AgentContractOutput -AgentName $AgentName -RawOutput $repaired
-    $recheckClarificationNeeded = $recheck.ContainsKey('clarification_needed') -and [bool]$recheck['clarification_needed']
-    $recheckClarificationText = if ($recheck.ContainsKey('clarification_text')) { [string]$recheck['clarification_text'] } else { $null }
-    if (-not $recheck.ok) {
-        $artifact = Write-ContractFailureArtifact `
-            -AgentName $AgentName `
-            -Schema $check.schema `
-            -InitialErrors @($check.errors) `
-            -RawOutput $Output `
-            -RepairedOutput $repaired `
-            -RepairErrors @($recheck.errors)
-        Write-AgentStatus -Agent $AgentName -Status "error" -ExtraData @{ contract_error = $recheck.error; contract_failure_artifact = $artifact }
-        throw "Contract validation failed for $AgentName after one repair retry. Artifact: $artifact"
-    }
+        $repairMessages = @(
+            @{ role = "system"; content = $SystemPrompt },
+            @{ role = "user"; content = $repairPrompt }
+        )
+        $repaired = Invoke-OpenAIRequest -Messages $repairMessages -AgentName $AgentName
 
-    Write-Host "✅ Contract repair succeeded for $AgentName" -ForegroundColor Green
+        if (-not $repaired) {
+            $errMsg = "Repair model returned no output."
+            $attemptHistory += @{ attempt = $attemptNum; error = $errMsg; errors = @($errMsg) }
+            $currentErrors = @($errMsg)
+            try {
+                Write-PofEvent `
+                    -Type "contract:repair_attempt_failed" `
+                    -Message "$AgentName repair attempt $attemptNum/$maxAttempts produced no output." `
+                    -Stage "agent_activity" `
+                    -Data @{ agent = $AgentName; attempt = $attemptNum; max_attempts = $maxAttempts; reason = $errMsg }
+            } catch { }
+            continue
+        }
 
-    # Emit a structured run event so contract drift is visible in the run
-    # timeline instead of getting masked by the silent repair layer. Capture
-    # the original validation errors and a short preview of the raw output so
-    # operators can see *what* needed to be repaired, not just *that* it was.
-    $rawPreview = if ($Output) {
-        $previewSource = [string]$Output
-        if ($previewSource.Length -gt 400) { $previewSource.Substring(0, 400) + "..." } else { $previewSource }
-    } else { $null }
-    $initialErrors = @()
-    if ($check.errors) {
-        $initialErrors = @($check.errors | Select-Object -First 10 | ForEach-Object { [string]$_ })
-    }
-    try {
-        Write-PofEvent `
-            -Type "contract:repair" `
-            -Message "$AgentName output failed contract validation and was auto-repaired (drift detected)." `
-            -Stage "agent_activity" `
-            -Data @{
-                agent              = $AgentName
-                repair_attempted   = $true
-                repair_succeeded   = $true
-                initial_error      = [string]$check.error
-                initial_errors     = $initialErrors
-                raw_output_preview = $rawPreview
+        $recheck = Assert-AgentContractOutput -AgentName $AgentName -RawOutput $repaired
+        if ($recheck.ok) {
+            $recheckClarificationNeeded = $recheck.ContainsKey('clarification_needed') -and [bool]$recheck['clarification_needed']
+            $recheckClarificationText   = if ($recheck.ContainsKey('clarification_text')) { [string]$recheck['clarification_text'] } else { $null }
+
+            Write-Host "✅ Contract repair succeeded for $AgentName on attempt $attemptNum/$maxAttempts" -ForegroundColor Green
+
+            $rawPreview = if ($Output) {
+                $previewSource = [string]$Output
+                if ($previewSource.Length -gt 400) { $previewSource.Substring(0, 400) + "..." } else { $previewSource }
+            } else { $null }
+            $initialErrorsSlice = @($initialErrors | Select-Object -First 10 | ForEach-Object { [string]$_ })
+            try {
+                Write-PofEvent `
+                    -Type "contract:repair" `
+                    -Message "$AgentName output failed contract validation and was auto-repaired on attempt $attemptNum/$maxAttempts." `
+                    -Stage "agent_activity" `
+                    -Data @{
+                        agent              = $AgentName
+                        repair_attempted   = $true
+                        repair_succeeded   = $true
+                        attempts_used      = $attemptNum
+                        max_attempts       = $maxAttempts
+                        initial_error      = [string]$check.error
+                        initial_errors     = $initialErrorsSlice
+                        raw_output_preview = $rawPreview
+                    }
+            } catch {
+                Write-Host "⚠️ Failed to emit contract:repair event for ${AgentName}: $_" -ForegroundColor Yellow
             }
-    } catch {
-        # Event emission must never break the orchestrator; the Write-Host
-        # above remains the human-visible signal of last resort.
-        Write-Host "⚠️ Failed to emit contract:repair event for ${AgentName}: $_" -ForegroundColor Yellow
+
+            Write-AgentStatus -Agent $AgentName -Status "working" -ExtraData @{
+                contract_repair_attempted = $true
+                contract_repair_succeeded = $true
+                contract_repair_attempts  = $attemptNum
+                contract_initial_error    = [string]$check.error
+            }
+
+            return @{
+                Output              = $(if ($recheck.normalized_json) { $recheck.normalized_json } else { $repaired })
+                ContractOk          = $true
+                ContractError       = $null
+                RepairAttempted     = $true
+                RepairSucceeded     = $true
+                AttemptsUsed        = $attemptNum
+                FailureArtifact     = $null
+                ClarificationNeeded = $recheckClarificationNeeded
+                ClarificationText   = $recheckClarificationText
+            }
+        }
+
+        # This attempt failed; record history and prepare for the next attempt.
+        $errSlice = @($recheck.errors | Select-Object -First 5 | ForEach-Object { [string]$_ })
+        $attemptHistory += @{ attempt = $attemptNum; errors = $errSlice }
+        $currentErrors  = @($recheck.errors)
+        $previousOutput = if ($recheck.normalized_json) { [string]$recheck.normalized_json } else { $repaired }
+
+        try {
+            Write-PofEvent `
+                -Type "contract:repair_attempt_failed" `
+                -Message "$AgentName repair attempt $attemptNum/$maxAttempts failed validation." `
+                -Stage "agent_activity" `
+                -Data @{
+                    agent          = $AgentName
+                    attempt        = $attemptNum
+                    max_attempts   = $maxAttempts
+                    attempt_errors = $errSlice
+                }
+        } catch { }
     }
 
-    Write-AgentStatus -Agent $AgentName -Status "working" -ExtraData @{
-        contract_repair_attempted = $true
-        contract_repair_succeeded = $true
-        contract_initial_error    = [string]$check.error
+    # All attempts exhausted. Write the failure artifact with full history and throw.
+    $finalErrors = @($currentErrors | ForEach-Object { [string]$_ })
+    $artifact = Write-ContractFailureArtifact `
+        -AgentName $AgentName `
+        -Schema $check.schema `
+        -InitialErrors $initialErrors `
+        -RawOutput $Output `
+        -RepairedOutput $previousOutput `
+        -RepairErrors $finalErrors
+    Write-AgentStatus -Agent $AgentName -Status "error" -ExtraData @{
+        contract_error            = ($finalErrors -join "; ")
+        contract_failure_artifact = $artifact
+        contract_repair_attempts  = $maxAttempts
+        contract_repair_succeeded = $false
     }
-
-    return @{
-        Output              = $(if ($recheck.normalized_json) { $recheck.normalized_json } else { $repaired })
-        ContractOk          = $true
-        ContractError       = $null
-        RepairAttempted     = $true
-        RepairSucceeded     = $true
-        FailureArtifact     = $null
-        ClarificationNeeded = $recheckClarificationNeeded
-        ClarificationText   = $recheckClarificationText
-    }
+    throw "Contract validation failed for $AgentName after $maxAttempts repair attempts. Artifact: $artifact"
 }
 
 # --- SWARMS ENGINE INTEGRATION --------------------------------------------
@@ -1342,6 +1572,7 @@ function Get-ObservedGoalEvidence {
 # used by Pester characterization tests so pure functions can be exercised
 # without an OpenAI API key or live network calls.
 if (-not $env:POF_LOAD_ONLY) {
+$script:PofTerminalError = $null
 try {
     $EffectiveJobType = Resolve-EffectiveJobType -GoalText $Goal -RequestedJobType $JobType
     $EffectiveAppType = Resolve-EffectiveAppType -GoalText $Goal -RequestedAppType $AppType
@@ -2145,7 +2376,12 @@ Stack Trace: $($_.ScriptStackTrace)
 
     Write-Host "`n🧠 Iteration loop complete. Preparing final synthesis..." -ForegroundColor DarkCyan
 }
+catch {
+    $script:PofTerminalError = $_.Exception.Message
+    throw
+}
 finally {
+    Complete-PofRunStateIfNeeded -ErrorMessage $script:PofTerminalError
     $FinalPath = Join-Path $OutDir "Final_Synthesis.txt"
     $Context | Out-File $FinalPath -Encoding UTF8
     Write-Host "`n🎯 Final synthesis saved to $FinalPath"

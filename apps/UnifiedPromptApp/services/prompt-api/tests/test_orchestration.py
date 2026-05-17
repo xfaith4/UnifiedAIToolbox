@@ -635,6 +635,67 @@ class TestOrchestrateRun:
         assert repairs[0]["gate"] == "build"
         assert repairs[0]["agent"] == "Engineer"
 
+    def test_get_run_hydrates_from_disk_without_overriding_terminal_manifest_status(self, cleanup_test_runs):
+        run_id = f"test_hydrate_disk_{app.now_iso().replace(':', '-')}"
+        manifest_path = app.BRIDGE_RUN_DIR / f"{run_id}.json"
+        out_dir = app.BRIDGE_RUN_DIR / run_id
+        out_dir.mkdir(parents=True, exist_ok=True)
+        now = app.now_iso()
+
+        manifest_path.write_text(
+            json.dumps(
+                {
+                    "run_id": run_id,
+                    "status": "completed",
+                    "requested_at": now,
+                    "run_dir": str(out_dir),
+                    "events": [],
+                    "lease": None,
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        (out_dir / "run_state.json").write_text(
+            json.dumps(
+                {
+                    "run_id": run_id,
+                    "status": "running",
+                    "goal": "Hydrate finished run details from disk",
+                    "job_type": "build_new_app",
+                    "app_type": "web",
+                    "current_stage": "completed",
+                    "warnings": ["state file was not finalized previously"],
+                    "started_at": now,
+                    "ended_at": now,
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        (out_dir / "events.ndjson").write_text(
+            "\n".join(
+                [
+                    json.dumps({"ts": now, "type": "status", "message": "running"}),
+                    json.dumps({"ts": now, "type": "status", "message": "completed"}),
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        res = client.get(f"/orchestrate/run/{run_id}")
+        assert res.status_code == 200
+        body = res.json()
+        assert body.get("status") == "completed"
+        assert body.get("goal") == "Hydrate finished run details from disk"
+        assert body.get("job_type") == "build_new_app"
+        assert body.get("app_type") == "web"
+        assert body.get("current_stage") == "completed"
+        assert body.get("completed_at") == now
+        assert len(body.get("events") or []) == 2
+        assert (body.get("warnings") or [])[0] == "state file was not finalized previously"
+
     def test_checkpoint_resume_dispatches_to_executor(self, cleanup_test_runs):
         """
         Regression test for the requirements resume path stuck at queued(resume_requirements).

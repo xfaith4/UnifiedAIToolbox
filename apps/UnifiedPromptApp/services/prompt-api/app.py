@@ -508,13 +508,15 @@ def _validate_engineer_contract_traceability(engineer_payload: Any, contract_pay
 
     traced_ids: Dict[str, str] = {}
     traceability_entries = engineer_payload.get("contract_traceability")
+    if traceability_entries is None:
+        traceability_entries = engineer_payload.get("traceability")
     if traceability_entries is not None:
         if not isinstance(traceability_entries, list) or len(traceability_entries) == 0:
-            errors.append("Engineer.contract_traceability must be a non-empty array")
+            errors.append("Engineer.contract_traceability/traceability must be a non-empty array")
         else:
             for idx, entry in enumerate(traceability_entries):
                 if not isinstance(entry, dict):
-                    errors.append(f"Engineer.contract_traceability[{idx}] must be an object")
+                    errors.append(f"Engineer.contract_traceability/traceability[{idx}] must be an object")
                     continue
                 contract_id = (
                     entry.get("contract_id")
@@ -524,7 +526,7 @@ def _validate_engineer_contract_traceability(engineer_payload: Any, contract_pay
                     or entry.get("id")
                 )
                 if not isinstance(contract_id, str) or not contract_id.strip():
-                    errors.append(f"Engineer.contract_traceability[{idx}] missing contract_id/requirement_id")
+                    errors.append(f"Engineer.contract_traceability/traceability[{idx}] missing contract_id/requirement_id")
                     continue
                 probe = (
                     entry.get("runtime_probe_explanation")
@@ -534,7 +536,7 @@ def _validate_engineer_contract_traceability(engineer_payload: Any, contract_pay
                 )
                 if not isinstance(probe, str) or not probe.strip():
                     errors.append(
-                        f"Engineer.contract_traceability[{idx}] missing runtimeProbeExplanation/probe"
+                        f"Engineer.contract_traceability/traceability[{idx}] missing runtimeProbeExplanation/probe"
                     )
                     continue
                 traced_ids[contract_id.strip()] = probe.strip()
@@ -550,7 +552,8 @@ def _validate_engineer_contract_traceability(engineer_payload: Any, contract_pay
 
         section = implementation[idx + len(marker):]
         trace_lines = []
-        for raw_line in section.splitlines():
+        normalized_section = section.replace("\\r\\n", "\n").replace("\\n", "\n")
+        for raw_line in normalized_section.splitlines():
             line = raw_line.strip()
             if not line:
                 continue
@@ -946,7 +949,7 @@ ORCH_RUN_MAX_CONCURRENT = _positive_int_env("PROMPT_API_ORCH_MAX_CONCURRENT", 2)
 ORCH_RUN_MAX_QUEUED = _positive_int_env("PROMPT_API_ORCH_MAX_QUEUED", 100)
 ORCH_LEASE_TTL_SECONDS = _positive_int_env("PROMPT_API_ORCH_LEASE_TTL_SECONDS", 45)
 ORCH_HEARTBEAT_INTERVAL_SECONDS = _positive_int_env("PROMPT_API_ORCH_HEARTBEAT_INTERVAL_SECONDS", 10)
-APP_PRODUCTION_REPAIR_MAX_ATTEMPTS = _positive_int_env("PROMPT_API_APP_PRODUCTION_REPAIR_ATTEMPTS", 1)
+APP_PRODUCTION_REPAIR_MAX_ATTEMPTS = _positive_int_env("PROMPT_API_APP_PRODUCTION_REPAIR_ATTEMPTS", 3)
 ORCH_QUEUE_STATUSES = {"queued", "pending"}
 ORCH_DISPATCHING_STATUSES = {"dispatching"}
 ORCH_RUNNING_STATUSES = {
@@ -1342,14 +1345,14 @@ def normalize(obj: Any) -> str:
     """Deterministic JSON for hashing & storage."""
     return json.dumps(obj, sort_keys=True, separators=(",", ":"))
 
-def sanitize_run_id(raw: str, max_length: int = 120) -> str:
+def sanitize_run_id(raw: str, max_length: int = 50) -> str:
     """
     Sanitize a run ID/goal string to be safe for Windows filesystem paths.
-    
+
     Windows filesystem has strict constraints on valid path characters, and certain
     characters like newlines, colons, and other control characters cause errors when
     creating directories (e.g., WinError 123).
-    
+
     This function:
     - Treats None as empty string
     - Strips leading/trailing whitespace including \\r and \\n
@@ -1359,11 +1362,19 @@ def sanitize_run_id(raw: str, max_length: int = 120) -> str:
     - Strips trailing dots and spaces (Windows doesn't allow these at the end of names)
     - Defaults to "run" if the result is empty
     - Enforces a maximum length to avoid excessively long path segments
-    
+
+    Default max_length is 50: combined with the timestamp suffix (~21 chars),
+    that keeps the run-dir basename under ~75 chars, leaving headroom under
+    the Windows 260-char MAX_PATH for downstream artifacts. The previous
+    default of 120 produced 140-char basenames that, combined with the
+    bridge run prefix and ``generated_app/node_modules/...`` depth, broke
+    ``npm install`` cleanup with EPERM/ENOENT errors. Callers needing a
+    longer human label can still pass ``max_length`` explicitly.
+
     Args:
         raw: The raw string to sanitize (e.g., a goal or prompt ID)
-        max_length: Maximum length for the sanitized result (default: 120)
-    
+        max_length: Maximum length for the sanitized result (default: 50)
+
     Returns:
         A filesystem-safe string suitable for use as a single path component
     """
@@ -3928,6 +3939,62 @@ def _derive_run_runtime_fields(manifest: Dict[str, Any]) -> Dict[str, Any]:
         data["current_agent"] = current_agent
     if current_stage:
         data["current_stage"] = current_stage
+    return data
+
+
+def _hydrate_orchestration_run_from_disk(manifest: Dict[str, Any], out_dir: pathlib.Path) -> Dict[str, Any]:
+    data = dict(manifest)
+    if not out_dir.exists():
+        return data
+
+    state_path = out_dir / "run_state.json"
+    state = safe_json_load(state_path, default={}, context=f"run_state:{out_dir.name}") if state_path.exists() else {}
+    if isinstance(state, dict):
+        merge_fields = (
+            "goal",
+            "job_type",
+            "app_type",
+            "current_stage",
+            "requirements_request",
+            "warnings",
+            "errors",
+            "started_at",
+            "updated_at",
+        )
+        for field_name in merge_fields:
+            existing = data.get(field_name)
+            state_value = state.get(field_name)
+            if existing in (None, "", [], {}) and state_value not in (None, "", [], {}):
+                data[field_name] = state_value
+
+        if not data.get("completed_at") and state.get("ended_at"):
+            data["completed_at"] = state.get("ended_at")
+
+        manifest_status = str(data.get("status") or "").strip().lower()
+        state_status = str(state.get("status") or "").strip().lower()
+        if manifest_status not in ORCH_TERMINAL_STATUSES and state_status:
+            data["status"] = state_status
+
+    events = data.get("events") if isinstance(data.get("events"), list) else []
+    if not events:
+        event_path = out_dir / "events.ndjson"
+        if event_path.exists():
+            hydrated_events: List[Dict[str, Any]] = []
+            try:
+                for line in event_path.read_text(encoding="utf-8").splitlines():
+                    if not line.strip():
+                        continue
+                    try:
+                        record = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if isinstance(record, dict):
+                        hydrated_events.append(record)
+            except Exception:
+                hydrated_events = []
+            if hydrated_events:
+                data["events"] = hydrated_events
+
     return data
 
 
@@ -6686,6 +6753,7 @@ def get_orchestration_run(run_id: str):
         run_dir_value = str(data.get("run_dir") or "").strip()
         out_dir = pathlib.Path(run_dir_value) if run_dir_value else BRIDGE_RUN_DIR / run_id
         if out_dir.exists():
+            data = _hydrate_orchestration_run_from_disk(data, out_dir)
             data["agent_improvements"] = _load_agent_improvements(out_dir)
             if "corrective_actions" not in data:
                 data["corrective_actions"] = _build_corrective_actions_from_manifest(data)
@@ -7376,6 +7444,40 @@ def _extract_code_target(code: str, prelude: str, language: str, index: int, use
     return candidate
 
 
+def _unescape_doubly_escaped_artifact_content(name: str, content: str) -> str:
+    """Heuristic recovery for the recurring Engineer double-escape failure.
+
+    When the Engineer emits ``artifacts[].content`` where every newline is
+    written as ``\\n`` (two literal characters) instead of ``\n`` (the JSON
+    escape that decodes to one byte), the file lands on disk as a single line
+    with the literal text ``\n`` between fields. ``package.json`` becomes
+    invalid JSON, the install gate skips with "no applicable config", and
+    the whole verification cascade silently degrades.
+
+    This is a known LLM failure mode. The Engineer prompt now warns against
+    it, but we apply a conservative belt-and-suspenders unescape here:
+    if the content has ZERO real newlines AND contains the literal sequence
+    ``\\n`` somewhere, treat that as the unambiguous double-escape signature
+    and unescape it once. No legitimate generated source file fits both
+    conditions (a 100+ char source file with zero newlines is impossible in
+    practice). Logged when activated so the source bug stays visible.
+    """
+    if not content:
+        return content
+    if "\n" in content:
+        return content
+    if "\\n" not in content:
+        return content
+    recovered = content.encode("utf-8").decode("unicode_escape")
+    logger.warning(
+        "Engineer artifact %s arrived double-escaped (no real newlines, %d literal '\\n' sequences). "
+        "Auto-recovered via unicode_escape decode. The Engineer prompt should be reinforcing the JSON-escape rule.",
+        name,
+        content.count("\\n"),
+    )
+    return recovered
+
+
 def _materialize_engineer_artifacts(out_dir: pathlib.Path) -> List[str]:
     engineer_payload = _load_agent_json_output(out_dir / "Engineer.txt")
     if not engineer_payload:
@@ -7404,6 +7506,7 @@ def _materialize_engineer_artifacts(out_dir: pathlib.Path) -> List[str]:
             except Exception:
                 continue
             target.parent.mkdir(parents=True, exist_ok=True)
+            content = _unescape_doubly_escaped_artifact_content(raw_name, content)
             target.write_text(content.rstrip() + "\n", encoding="utf-8")
             written.append(str(target.relative_to(out_dir)))
 
@@ -8210,6 +8313,9 @@ def _build_app_production_repair_messages(
     app_dir: pathlib.Path,
     app_production: Dict[str, Any],
     repair_target: Dict[str, Any],
+    attempt_number: int = 1,
+    max_attempts: int = 1,
+    prior_attempts: Optional[List[Dict[str, Any]]] = None,
 ) -> List[Dict[str, str]]:
     checks = app_production.get("checks") if isinstance(app_production.get("checks"), list) else []
     check_lines = []
@@ -8278,6 +8384,54 @@ def _build_app_production_repair_messages(
             "Prefer fixing package scripts, dependency metadata, imports, config, or runtime wiring based on the evidence above.",
         ]
     )
+
+    # Per-attempt staging so each retry is materially smarter than the last.
+    if max_attempts > 1:
+        if attempt_number == 1:
+            user_lines.extend(
+                [
+                    "",
+                    f"This is repair attempt 1 of {max_attempts}.",
+                ]
+            )
+        elif attempt_number >= max_attempts:
+            user_lines.extend(
+                [
+                    "",
+                    f"This is repair attempt {attempt_number} of {max_attempts} (FINAL ATTEMPT).",
+                    "Critical guidance:",
+                    "- Environment failures (missing npm/python/binary on PATH) CANNOT be fixed by editing files. If the failure log shows a tool was not found on the system, return an empty files array and explain in notes.",
+                    "- Wrong-project-type failures (npm run against a Python project, etc.) also CANNOT be fixed by editing package.json. Diagnose and explain in notes instead of editing.",
+                    "- If your prior attempts edited files that did not address the root cause, do something different now or stop.",
+                ]
+            )
+        else:
+            user_lines.extend(
+                [
+                    "",
+                    f"This is repair attempt {attempt_number} of {max_attempts}. Your previous attempt did not pass verification.",
+                    "Re-examine the failing log excerpt for the actual root cause before editing more files.",
+                ]
+            )
+
+    if prior_attempts:
+        user_lines.extend(["", "Prior repair attempts (oldest first):"])
+        for prior in prior_attempts:
+            attempt_idx = prior.get("attempt", "?")
+            summary = str(prior.get("summary") or "").strip()
+            verification = str(prior.get("verification_status") or "").strip()
+            files_written = prior.get("files_written") or []
+            error = str(prior.get("error") or "").strip()
+            line_parts = [f"  Attempt {attempt_idx}:"]
+            if summary:
+                line_parts.append(f"summary='{summary[:160]}'")
+            if files_written:
+                line_parts.append(f"files={','.join(str(f) for f in files_written[:5])}")
+            if verification:
+                line_parts.append(f"verification={verification}")
+            if error:
+                line_parts.append(f"error='{error[:160]}'")
+            user_lines.append(" ".join(line_parts))
 
     return [
         {"role": "system", "content": system},
@@ -8410,7 +8564,15 @@ def _execute_app_production_repairs(
             try:
                 payload, _usage = call_provider_chat(
                     chosen_model,
-                    _build_app_production_repair_messages(out_dir, app_dir, current_app_production, repair_target),
+                    _build_app_production_repair_messages(
+                        out_dir,
+                        app_dir,
+                        current_app_production,
+                        repair_target,
+                        attempt_number=attempt_number,
+                        max_attempts=APP_PRODUCTION_REPAIR_MAX_ATTEMPTS,
+                        prior_attempts=attempts,
+                    ),
                 )
                 if not isinstance(payload, dict):
                     raise ValueError("Repair model returned a non-object payload.")

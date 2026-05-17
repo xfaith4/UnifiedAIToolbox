@@ -650,3 +650,49 @@ Describe 'Get-ObservedGoalEvidence' {
         $ev.observedGoalLength | Should -Be 0
     }
 }
+
+Describe 'Complete-PofRunStateIfNeeded' {
+    BeforeEach {
+        $statePath = Join-Path $OutDir 'run_state.json'
+        $eventsPath = Join-Path $OutDir 'events.ndjson'
+        Remove-Item -LiteralPath $statePath -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $eventsPath -ErrorAction SilentlyContinue
+    }
+
+    It 'marks a running state as completed and appends a completed event' {
+        Update-PofRunState -Status 'running' -CurrentStage 'agent_activity'
+
+        Complete-PofRunStateIfNeeded
+
+        $state = Get-Content -Raw -LiteralPath (Join-Path $OutDir 'run_state.json') | ConvertFrom-Json
+        $events = Get-Content -LiteralPath (Join-Path $OutDir 'events.ndjson')
+        $state.status | Should -Be 'completed'
+        $state.current_stage | Should -Be 'completed'
+        [string]::IsNullOrWhiteSpace([string]$state.ended_at) | Should -BeFalse
+        ($events | Select-String -SimpleMatch '"message":"completed"').Count | Should -Be 1
+    }
+
+    It 'preserves blocked_requirements and only backfills ended_at' {
+        Update-PofRunState -Status 'blocked_requirements' -CurrentStage 'checkpoint'
+
+        Complete-PofRunStateIfNeeded
+
+        $state = Get-Content -Raw -LiteralPath (Join-Path $OutDir 'run_state.json') | ConvertFrom-Json
+        $state.status | Should -Be 'blocked_requirements'
+        $state.current_stage | Should -Be 'checkpoint'
+        [string]::IsNullOrWhiteSpace([string]$state.ended_at) | Should -BeFalse
+    }
+
+    It 'marks the run as error when a terminal exception is supplied' {
+        Update-PofRunState -Status 'running' -CurrentStage 'agent_activity'
+
+        Complete-PofRunStateIfNeeded -ErrorMessage 'boom'
+
+        $state = Get-Content -Raw -LiteralPath (Join-Path $OutDir 'run_state.json') | ConvertFrom-Json
+        $events = Get-Content -LiteralPath (Join-Path $OutDir 'events.ndjson')
+        $state.status | Should -Be 'error'
+        $state.current_stage | Should -Be 'failed'
+        ($state.errors | Select-Object -First 1) | Should -Be 'boom'
+        ($events | Select-String -SimpleMatch '"message":"error"').Count | Should -Be 1
+    }
+}

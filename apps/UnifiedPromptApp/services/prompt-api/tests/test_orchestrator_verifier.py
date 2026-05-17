@@ -5,6 +5,40 @@ import orchestrator_verifier
 from orchestrator_verifier import OrchestratorVerifier
 
 
+def test_resolve_command_executable_uses_full_path_when_shim_present(tmp_path, monkeypatch):
+    """On Windows, ``subprocess.run(["npm", ...])`` raises FileNotFoundError when
+    npm is installed as ``npm.CMD`` even though ``shutil.which`` finds it.
+    Pin the resolution behavior so the install/build/test gates can actually
+    execute the package manager they detected."""
+    verifier = OrchestratorVerifier(tmp_path)
+    monkeypatch.setattr(orchestrator_verifier.shutil, "which", lambda name: r"C:\Program Files\nodejs\npm.CMD")
+    resolved = verifier._resolve_command_executable(["npm", "install", "--no-audit"])
+    assert resolved == [r"C:\Program Files\nodejs\npm.CMD", "install", "--no-audit"]
+
+
+def test_resolve_command_executable_passes_through_when_not_found(tmp_path, monkeypatch):
+    """If shutil.which can't locate the command, return the command unchanged
+    so the existing exception path in _run_command produces a meaningful error."""
+    verifier = OrchestratorVerifier(tmp_path)
+    monkeypatch.setattr(orchestrator_verifier.shutil, "which", lambda name: None)
+    resolved = verifier._resolve_command_executable(["mystery-tool", "--flag"])
+    assert resolved == ["mystery-tool", "--flag"]
+
+
+def test_resolve_command_executable_passes_through_absolute_path(tmp_path):
+    """Already-absolute paths should not be re-resolved (avoid pointless work
+    and avoid the case where a caller passes a path that shutil.which might
+    map to something else with the same basename)."""
+    verifier = OrchestratorVerifier(tmp_path)
+    resolved = verifier._resolve_command_executable([r"C:\custom\npm.CMD", "install"])
+    assert resolved == [r"C:\custom\npm.CMD", "install"]
+
+
+def test_resolve_command_executable_handles_empty_command(tmp_path):
+    verifier = OrchestratorVerifier(tmp_path)
+    assert verifier._resolve_command_executable([]) == []
+
+
 def test_detects_package_manager_and_build_command(tmp_path):
     (tmp_path / "package.json").write_text(
         json.dumps(

@@ -208,6 +208,59 @@ def test_validate_engineer_contract_traceability_accepts_json_field():
     assert errors == []
 
 
+def test_validate_engineer_contract_traceability_accepts_traceability_alias():
+    contract = {
+        "objects": [{"id": "obj_a"}],
+        "interactions": [{"id": "int_a"}],
+        "dynamics": [{"id": "dyn_a"}],
+    }
+    engineer = {
+        "traceability": [
+            {
+                "contractId": "obj_a",
+                "filePath": "src/a.ts",
+                "symbol": "renderObjA",
+                "runtimeProbeExplanation": "document.querySelector('#a') returns a non-null element",
+            },
+            {
+                "contractId": "int_a",
+                "filePath": "src/a.ts",
+                "symbol": "onClickA",
+                "runtimeProbeExplanation": "click event changes state.a from false to true",
+            },
+            {
+                "contractId": "dyn_a",
+                "filePath": "src/a.ts",
+                "symbol": "tick",
+                "runtimeProbeExplanation": "state.t increases over 500ms",
+            },
+        ]
+    }
+
+    errors = app._validate_engineer_contract_traceability(engineer, contract)
+    assert errors == []
+
+
+def test_validate_engineer_contract_traceability_normalizes_escaped_newlines_in_markdown_fallback():
+    contract = {
+        "objects": [{"id": "healthAPI"}],
+        "interactions": [{"id": "detectionsList"}],
+        "dynamics": [{"id": "liveEventStream"}],
+    }
+    engineer = {
+        "implementation": (
+            "Overview\\n"
+            "### Contract Traceability\\n"
+            "healthAPI -> src/api/health.ts : healthCheck : Returns health status of the API\\n"
+            "detectionsList -> src/pages/detections.tsx : DetectionsList : Displays a list of detections on the page\\n"
+            "liveEventStream -> src/components/LiveEventStream.tsx : LiveEventStream : Displays live event updates on the UI"
+        )
+    }
+
+    errors = app._validate_engineer_contract_traceability(engineer, contract)
+    assert errors == []
+
+
 def test_evaluate_commissioner_decision_returns_needs_requirements_for_low_score():
     decision, details, data = app._evaluate_commissioner_decision(
         {

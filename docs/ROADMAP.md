@@ -1,6 +1,6 @@
 # Unified AI Toolbox Roadmap
 
-Last updated: 2026-05-14
+Last updated: 2026-05-17
 
 ## Post-Modernization (2026-05) — Producer migration, drift cleanup, hardening
 
@@ -382,6 +382,31 @@ Every roadmap-impacting tradeoff gets a `DEC-###` record in `IMPLEMENTATION_SUMM
   Date opened: 2026-04-05  
   Ref: `docs/application-production-path.md`  
   Notes: A run should end with a clear readiness state such as `repair_needed`, `verified`, or `ready_for_delivery`, backed by build/smoke evidence and artifact completeness.
+
+- [ ] Enforce one final machine-readable agent artifact per stage output.  
+  Date opened: 2026-05-17  
+  Ref: run `Goal_Build_CupHandleDetector_as_a_standalone_web_a.2026-05-17T22-16-38Z`  
+  Notes: Completed run artifacts showed concatenated JSON payloads in `ConceptualModelContract.txt`, `Engineer.txt`, `Critic.txt`, and `Supervisor.txt`; app-production and contract gates need a single final object per agent output instead of accepting appended retries.
+
+- [ ] Freeze conceptual-model contract IDs across retries and require full Engineer traceability coverage before completion.  
+  Date opened: 2026-05-17  
+  Ref: run `Goal_Build_CupHandleDetector_as_a_standalone_web_a.2026-05-17T22-16-38Z`  
+  Notes: The CupHandleDetector run drifted between IDs such as `detectionsList` and `detections-list`, then failed the sandbox contract gate on missing traceability coverage; retries must preserve canonical IDs and block completion until every contract ID has a runtime-backed Engineer traceability entry.
+
+- [ ] Fail generated-app verification on post-startup runtime errors, not just successful startup banners.  
+  Date opened: 2026-05-17  
+  Ref: run `Goal_Build_CupHandleDetector_as_a_standalone_web_a.2026-05-17T22-16-38Z`  
+  Notes: `generated_app_verification.json` marked `dev_server` as passed even though `dev_server.log` recorded repeated Turbopack path-length failures after startup; verifier health checks must inspect runtime logs and/or an actual page probe before claiming readiness.
+
+- [ ] Add declared-vs-materialized artifact completeness checks for generated apps.  
+  Date opened: 2026-05-17  
+  Ref: run `Goal_Build_CupHandleDetector_as_a_standalone_web_a.2026-05-17T22-16-38Z`  
+  Notes: The Engineer output declared files such as `src/pages/index.tsx`, `src/pages/symbol/[symbol].tsx`, `src/api/runs.ts`, and `README.md`, but the generated app only materialized a smaller subset; app-production should compare claimed deliverables against on-disk outputs before marking a run credible.
+
+- [ ] Reconcile terminal run-state artifacts so completed runs do not present stale agent or `running` status.  
+  Date opened: 2026-05-17  
+  Ref: run `Goal_Build_CupHandleDetector_as_a_standalone_web_a.2026-05-17T22-16-38Z`  
+  Notes: `run_state.json` completed cleanly while `overseer_advisory.json` still reported `Historian=working` and `final_status=running`; terminal artifact writes need one final synchronized completion pass for run summary, overseer status, and agent completion state.
 
 ## RM-012 Worklist (Frontier software factory)
 

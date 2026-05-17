@@ -78,7 +78,8 @@ class OrchestratorVerifier:
         """
         cwd = cwd or self.run_dir
         log_path = None
-        
+        command = self._resolve_command_executable(command)
+
         try:
             result = subprocess.run(
                 command,
@@ -193,6 +194,32 @@ class OrchestratorVerifier:
 
     def _resolve_node_pm_executable(self, package_manager: str) -> Optional[str]:
         return shutil.which(package_manager)
+
+    def _resolve_command_executable(self, command: List[str]) -> List[str]:
+        """
+        Resolve command[0] to its full path via shutil.which when possible.
+
+        Windows-specific quirk: ``subprocess.run(["npm", ...])`` raises
+        ``FileNotFoundError`` when npm is installed as ``npm.CMD`` because
+        ``_winapi.CreateProcess`` doesn't honor PATHEXT shim resolution the
+        way shells do. ``shutil.which`` *does* find the .CMD shim, but
+        subprocess can only execute it when given the resolved absolute path.
+        Resolving here closes the gap so the install/build/test gates can
+        actually run the package manager they detected.
+
+        If the first arg is already absolute, or shutil.which returns nothing,
+        the command is returned unchanged so the existing exception-handling
+        path in _run_command preserves backward-compatible behavior.
+        """
+        if not command:
+            return command
+        first = command[0]
+        if not first or os.path.isabs(first):
+            return command
+        resolved = shutil.which(first)
+        if not resolved:
+            return command
+        return [resolved, *command[1:]]
 
     def _has_non_node_project_markers(self) -> bool:
         for marker in NON_NODE_PROJECT_MARKER_FILES:
@@ -634,11 +661,15 @@ class OrchestratorVerifier:
         log_path = self.log_dir / "dev_server.log"
         env = dict(plan.get("env") or {})
         probe_urls = [str(url) for url in (plan.get("probe_urls") or [])]
+        # Keep ``command`` (display-friendly, e.g. ``npm run dev --host ...``)
+        # for the result payload while passing the resolved-path variant to
+        # subprocess.Popen so Windows ``.CMD`` shims can actually execute.
+        exec_command = self._resolve_command_executable(command)
         process: Optional[subprocess.Popen] = None
         try:
             with open(log_path, "w", encoding="utf-8") as log_file:
                 process = subprocess.Popen(
-                    command,
+                    exec_command,
                     cwd=self.run_dir,
                     stdout=log_file,
                     stderr=subprocess.STDOUT,
