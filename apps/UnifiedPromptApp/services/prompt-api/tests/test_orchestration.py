@@ -749,6 +749,31 @@ class TestOrchestrateRun:
         assert len(body.get("events") or []) == 2
         assert (body.get("events") or [])[0].get("event_type") == "run_started"
 
+    def test_shared_runtime_event_helper_updates_manifest_and_canonical_log(self, cleanup_test_runs):
+        run_id = f"test_runtime_helper_{app.now_iso().replace(':', '-')}"
+        out_dir = app.BRIDGE_RUN_DIR / run_id
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        manifest = {"run_id": run_id, "events": []}
+        runtime_events = [
+            {"ts": app.now_iso(), "type": "info", "message": "run created"},
+            {"ts": app.now_iso(), "type": "status", "message": "queued"},
+        ]
+
+        app._append_runtime_events_to_manifest(manifest, out_dir, run_id, runtime_events)
+
+        assert len(manifest.get("events") or []) == 2
+        assert manifest["events"][0]["message"] == "run created"
+        assert manifest["events"][1]["message"] == "queued"
+
+        canonical_path = out_dir / "events.jsonl"
+        assert canonical_path.exists()
+        rows = [json.loads(line) for line in canonical_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+        assert len(rows) == 2
+        assert rows[0].get("run_id") == run_id
+        assert rows[0].get("event_type") == "run_created"
+        assert rows[1].get("event_type") == "run_queued"
+
     def test_run_evidence_viewer_minimum_success_profile_requires_smoke_proof(self):
         profile = app._evaluate_minimum_success_profile(
             goal_text=(
@@ -943,6 +968,63 @@ class TestOrchestrateRun:
         summary = json.loads((out_dir / "final_summary.json").read_text(encoding="utf-8"))
         assert summary.get("outcome") == "failed"
 
+    def test_terminal_evidence_relaxes_failed_traceability_when_app_verified(self, cleanup_test_runs):
+        run_id = f"test_terminal_evidence_relax_traceability_{app.now_iso().replace(':', '-')}"
+        out_dir = app.BRIDGE_RUN_DIR / run_id
+        out_dir.mkdir(parents=True, exist_ok=True)
+        manifest_path = app.BRIDGE_RUN_DIR / f"{run_id}.json"
+        manifest = {
+            "run_id": run_id,
+            "status": "completed",
+            "verification_status": "failed",
+            "minimum_success_profile": {"required": True, "passed": True},
+            "app_production": {"status": "verified"},
+            "sandbox_report": {
+                "checks": [
+                    {
+                        "evaluator": "conceptual_model_contract",
+                        "result": "failed",
+                        "details": "Engineer Contract Traceability invalid: Missing traceability coverage for contract IDs: folder-selection",
+                    }
+                ]
+            },
+            "run_dir": str(out_dir),
+        }
+        manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+        healed = app._ensure_terminal_evidence_artifacts(run_id, manifest_path, dict(manifest), out_dir)
+        assert healed.get("status") == "completed_with_errors"
+        assert healed.get("verification_status") == "partial"
+        assert healed.get("failure_artifact") is None
+
+        summary = json.loads((out_dir / "final_summary.json").read_text(encoding="utf-8"))
+        assert summary.get("outcome") == "completed_with_warnings"
+
+    def test_should_relax_failed_verification_when_only_traceability_failed_and_app_verified(self):
+        manifest = {
+            "verification_status": "failed",
+            "sandbox_report": {
+                "checks": [
+                    {
+                        "evaluator": "conceptual_model_contract",
+                        "result": "failed",
+                        "details": "Engineer Contract Traceability invalid: Missing traceability coverage for contract IDs: folder-selection",
+                    },
+                    {
+                        "evaluator": "deferred_code_execution",
+                        "result": "deferred",
+                        "details": "Requires code execution",
+                    },
+                ]
+            },
+        }
+        minimum_success = {"required": True, "passed": True}
+        app_production = {"status": "verified"}
+
+        should_relax, reason = app._should_relax_failed_verification(manifest, minimum_success, app_production)
+        assert should_relax is True
+        assert "traceability" in reason
+
     def test_checkpoint_resume_dispatches_to_executor(self, cleanup_test_runs):
         """
         Regression test for the requirements resume path stuck at queued(resume_requirements).
@@ -1114,9 +1196,7 @@ class TestOrchestrateRun:
 
         assert len(submitted_args) == 1, f"Expected 1 executor submit, got {len(submitted_args)}"
         submitted_fn = submitted_args[0][0]
-        assert submitted_fn is app._execute_orchestration_run, (
-            f"Expected _execute_orchestration_run to be submitted, got {submitted_fn}"
-        )
+        assert submitted_fn is app._execute_orchestration_run
 
     def test_startup_recovery_dispatches_orphaned_queued_runs(self, cleanup_test_runs):
         """

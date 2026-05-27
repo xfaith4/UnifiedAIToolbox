@@ -4038,8 +4038,22 @@ def _ensure_terminal_evidence_artifacts(run_id: str, manifest_path: pathlib.Path
     needs_requirements = verification_status in {"needs_requirements", "blocked_requirements"}
     terminal_status = status_value in ORCH_TERMINAL_STATUSES
     stalled_run_detail = _build_stalled_run_detail(out_dir)
+    minimum_success_profile = data.get("minimum_success_profile") if isinstance(data.get("minimum_success_profile"), dict) else {}
+    app_production = data.get("app_production") if isinstance(data.get("app_production"), dict) else {}
 
     changed = False
+    relax_failed, relax_reason = _should_relax_failed_verification(data, minimum_success_profile, app_production)
+    if relax_failed:
+        data["verification_status"] = "partial"
+        verification_status = "partial"
+        needs_requirements = False
+        data["status"] = "completed_with_errors"
+        status_value = "completed_with_errors"
+        data["error_detail"] = relax_reason
+        if data.get("failure_artifact") == "run_failure.md":
+            data.pop("failure_artifact", None)
+        changed = True
+
     if needs_requirements and status_value == "completed":
         data["status"] = "blocked_requirements"
         status_value = "blocked_requirements"
@@ -4156,6 +4170,10 @@ def _is_run_evidence_viewer_goal(goal_text: str) -> bool:
 def _canonical_event_type_for_legacy(event_type: str, message: str) -> str:
     event_type_l = str(event_type or "").strip().lower()
     message_l = str(message or "").strip().lower()
+    if message_l == "run created":
+        return "run_created"
+    if message_l == "run queued" or message_l == "queued":
+        return "run_queued"
     if event_type_l == "status":
         if message_l.startswith("queued"):
             return "run_queued"
@@ -4232,6 +4250,43 @@ def _append_canonical_events(out_dir: pathlib.Path, run_id: str, events: List[Di
     with _orch_events_file_lock:
         with open(canonical_path, "a", encoding="utf-8") as handle:
             handle.write("\n".join(lines) + "\n")
+
+
+def _append_runtime_events_to_manifest(
+    manifest: Dict[str, Any],
+    out_dir: pathlib.Path,
+    run_id: str,
+    events: List[Dict[str, Any]],
+) -> None:
+    if not events:
+        return
+    manifest.setdefault("events", [])
+    manifest_events = manifest.get("events")
+    if not isinstance(manifest_events, list):
+        manifest_events = []
+        manifest["events"] = manifest_events
+    manifest_events.extend(events)
+    _append_canonical_events(out_dir, run_id, events)
+
+
+def _append_runtime_events_atomic(path: pathlib.Path, events: List[Dict[str, Any]]) -> Dict[str, Any]:
+    if not events:
+        return safe_json_load(path, default={}, context=f"runtime_events_atomic:{path.stem}")
+
+    def _apply(data: Dict[str, Any]) -> Dict[str, Any]:
+        data.setdefault("events", [])
+        manifest_events = data.get("events")
+        if not isinstance(manifest_events, list):
+            manifest_events = []
+            data["events"] = manifest_events
+        manifest_events.extend(events)
+        return data
+
+    updated = _update_manifest_atomic(path, _apply)
+    run_id = str(updated.get("run_id") or path.stem)
+    out_dir = pathlib.Path(str(updated.get("run_dir") or BRIDGE_RUN_DIR / run_id))
+    _append_canonical_events(out_dir, run_id, events)
+    return updated
 
 
 def _write_terminal_summary(out_dir: pathlib.Path, summary: Dict[str, Any]) -> pathlib.Path:
@@ -4420,6 +4475,38 @@ def _evaluate_minimum_success_profile(
     return result
 
 
+def _should_relax_failed_verification(
+    manifest: Dict[str, Any],
+    minimum_success: Dict[str, Any],
+    app_production: Optional[Dict[str, Any]],
+) -> Tuple[bool, str]:
+    verification_status = str(manifest.get("verification_status") or "").strip().lower()
+    if verification_status != "failed":
+        return False, ""
+
+    if not bool(minimum_success.get("required")) or not bool(minimum_success.get("passed")):
+        return False, ""
+
+    if str((app_production or {}).get("status") or "").strip().lower() != "verified":
+        return False, ""
+
+    sandbox_report = manifest.get("sandbox_report") if isinstance(manifest.get("sandbox_report"), dict) else {}
+    checks = sandbox_report.get("checks") if isinstance(sandbox_report.get("checks"), list) else []
+    failed_checks = [check for check in checks if isinstance(check, dict) and str(check.get("result") or "").strip().lower() == "failed"]
+    if not failed_checks:
+        return False, ""
+
+    for check in failed_checks:
+        evaluator = str(check.get("evaluator") or "").strip().lower()
+        details = str(check.get("details") or "").strip().lower()
+        if evaluator != "conceptual_model_contract":
+            return False, ""
+        if "traceability" not in details:
+            return False, ""
+
+    return True, "failed verification came only from conceptual traceability drift while generated app gates passed"
+
+
 def _lease_payload(run_id: str, worker_id: str) -> Dict[str, Any]:
     now_ts = datetime.datetime.now(datetime.timezone.utc)
     expires = now_ts + datetime.timedelta(seconds=ORCH_LEASE_TTL_SECONDS)
@@ -4442,12 +4529,14 @@ def _acquire_run_lease(run_id: str, path: pathlib.Path, worker_id: str) -> Dict[
         if current_status in ORCH_QUEUE_STATUSES:
             data["status"] = "dispatching"
         data["lease"] = _lease_payload(run_id, worker_id)
-        data.setdefault("events", []).append(
-            {"ts": now_iso(), "type": "lease", "message": f"Lease acquired by {worker_id}."}
-        )
         return data
 
-    return _update_manifest_atomic(path, _apply)
+    updated = _update_manifest_atomic(path, _apply)
+    _append_runtime_events_atomic(
+        path,
+        [{"ts": now_iso(), "type": "lease", "message": f"Lease acquired by {worker_id}."}],
+    )
+    return updated
 
 
 def _heartbeat_run_lease(path: pathlib.Path) -> Dict[str, Any]:
@@ -4480,11 +4569,12 @@ def _release_run_lease(path: pathlib.Path, reason: str) -> Dict[str, Any]:
 def _set_run_status_atomic(path: pathlib.Path, status_value: str, event_message: Optional[str] = None) -> Dict[str, Any]:
     def _apply(data: Dict[str, Any]) -> Dict[str, Any]:
         data["status"] = status_value
-        if event_message:
-            data.setdefault("events", []).append({"ts": now_iso(), "type": "status", "message": event_message})
         return data
 
-    return _update_manifest_atomic(path, _apply)
+    updated = _update_manifest_atomic(path, _apply)
+    if event_message:
+        _append_runtime_events_atomic(path, [{"ts": now_iso(), "type": "status", "message": event_message}])
+    return updated
 
 
 def _orchestration_queue_snapshot() -> Dict[str, int]:
@@ -4665,9 +4755,16 @@ def _cancel_orchestration_run_internal(run_id: str, reason: str = "manual") -> D
     if status_value in ORCH_QUEUE_STATUSES or cancel_result["future_cancelled"]:
         data["status"] = "cancelled"
         data["completed_at"] = now
-        data.setdefault("events", []).append({"ts": now, "type": "status", "message": "cancelled"})
-        data.setdefault("events", []).append(
-            {"ts": now, "type": "info", "message": f"Run cancelled before execution ({reason})."}
+        cancel_events = [
+            {"ts": now, "type": "status", "message": "cancelled"},
+            {"ts": now, "type": "info", "message": f"Run cancelled before execution ({reason})."},
+            {"ts": now, "type": "error", "message": f"Run cancelled before execution ({reason})."},
+        ]
+        _append_runtime_events_to_manifest(
+            data,
+            pathlib.Path(str(data.get("run_dir") or BRIDGE_RUN_DIR / run_id)),
+            run_id,
+            cancel_events,
         )
         try:
             failure_artifact = _write_failure_visibility_artifact(
@@ -4683,14 +4780,6 @@ def _cancel_orchestration_run_internal(run_id: str, reason: str = "manual") -> D
                 blocker_detail=f"Run cancelled before execution ({reason}).",
             )
             _write_terminal_summary(pathlib.Path(str(data.get("run_dir") or BRIDGE_RUN_DIR / run_id)), summary)
-            _append_canonical_events(
-                pathlib.Path(str(data.get("run_dir") or BRIDGE_RUN_DIR / run_id)),
-                run_id,
-                [
-                    {"ts": now, "type": "status", "message": "cancelled"},
-                    {"ts": now, "type": "error", "message": f"Run cancelled before execution ({reason})."},
-                ],
-            )
         except Exception:
             pass
         manifest_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
@@ -4708,8 +4797,11 @@ def _cancel_orchestration_run_internal(run_id: str, reason: str = "manual") -> D
             "message": "Queued run cancelled.",
         }
 
-    data.setdefault("events", []).append(
-        {"ts": now, "type": "info", "message": f"Cancellation requested ({reason})."}
+    _append_runtime_events_to_manifest(
+        data,
+        pathlib.Path(str(data.get("run_dir") or BRIDGE_RUN_DIR / run_id)),
+        run_id,
+        [{"ts": now, "type": "info", "message": f"Cancellation requested ({reason})."}],
     )
     data["cancel_requested"] = True
     manifest_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
@@ -4745,9 +4837,15 @@ def _force_cancel_orchestration_run_internal(run_id: str, reason: str = "force")
     data["status"] = "cancelled"
     data["completed_at"] = now
     data["cancel_requested"] = False
-    data.setdefault("events", []).append({"ts": now, "type": "status", "message": "cancelled"})
-    data.setdefault("events", []).append(
-        {"ts": now, "type": "info", "message": f"Force cancellation executed ({reason})."}
+    _append_runtime_events_to_manifest(
+        data,
+        pathlib.Path(str(data.get("run_dir") or BRIDGE_RUN_DIR / run_id)),
+        run_id,
+        [
+            {"ts": now, "type": "status", "message": "cancelled"},
+            {"ts": now, "type": "info", "message": f"Force cancellation executed ({reason})."},
+            {"ts": now, "type": "error", "message": f"Force cancellation executed ({reason})."},
+        ],
     )
     try:
         force_out_dir = pathlib.Path(str(data.get("run_dir") or BRIDGE_RUN_DIR / run_id))
@@ -4764,14 +4862,6 @@ def _force_cancel_orchestration_run_internal(run_id: str, reason: str = "force")
             blocker_detail=f"Force cancellation executed ({reason}).",
         )
         _write_terminal_summary(force_out_dir, summary)
-        _append_canonical_events(
-            force_out_dir,
-            run_id,
-            [
-                {"ts": now, "type": "status", "message": "cancelled"},
-                {"ts": now, "type": "error", "message": f"Force cancellation executed ({reason})."},
-            ],
-        )
     except Exception:
         pass
     manifest_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
@@ -4806,12 +4896,13 @@ def _requeue_orchestration_run_internal(run_id: str, reason: str = "manual_reque
         data["started_at"] = None
         data["completed_at"] = None
         data["lease"] = None
-        data.setdefault("events", []).append(
-            {"ts": now_iso(), "type": "status", "message": f"queued ({reason})"}
-        )
         return data
 
     _update_manifest_atomic(manifest_path, _apply)
+    _append_runtime_events_atomic(
+        manifest_path,
+        [{"ts": now_iso(), "type": "status", "message": f"queued ({reason})"}],
+    )
     new_cancel_event = threading.Event()
     with _orch_run_state_lock:
         _orch_run_state[run_id] = {
@@ -4847,9 +4938,6 @@ def _release_stale_leases_internal() -> Dict[str, Any]:
             def _apply(data: Dict[str, Any]) -> Dict[str, Any]:
                 data["status"] = "stuck"
                 data["cancel_requested"] = False
-                data.setdefault("events", []).append(
-                    {"ts": now_iso(), "type": "warn", "message": "Lease expired; run marked STUCK."}
-                )
                 lease = data.get("lease")
                 if isinstance(lease, dict):
                     lease["released_at"] = now_iso()
@@ -4858,6 +4946,10 @@ def _release_stale_leases_internal() -> Dict[str, Any]:
                 return data
 
             _update_manifest_atomic(manifest_path, _apply)
+            _append_runtime_events_atomic(
+                manifest_path,
+                [{"ts": now_iso(), "type": "warn", "message": "Lease expired; run marked STUCK."}],
+            )
             with _orch_run_state_lock:
                 _orch_run_state.pop(run_id, None)
             released.append(run_id)
@@ -5095,17 +5187,18 @@ def _execute_orchestration_run(run_id_hint: str, path: pathlib.Path, cancel_even
         # choose orchestrator script based on normalized run_mode
         run_mode = str(data.get("run_mode") or "default")
         ps1_candidate = pathlib.Path(CODEX_SWARM_PS1 if run_mode == "codex-swarm" else ORCH_PS1)
-        data.setdefault("events", []).append({
-            "ts": now_iso(),
-            "type": "debug",
-            "message": f"Resolved ORCH_PS1={ORCH_PS1}, POF_PS1={POF_PS1}",
-        })
-        data.setdefault("events", []).append({
-            "ts": now_iso(),
-            "type": "debug",
-            "message": f"Resolving orchestrator script: ROOT={ROOT_DIR}, candidate={ps1_candidate}, exists={ps1_candidate.exists()}, run_mode={run_mode}",
-        })
-        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        _append_events([
+            {
+                "ts": now_iso(),
+                "type": "debug",
+                "message": f"Resolved ORCH_PS1={ORCH_PS1}, POF_PS1={POF_PS1}",
+            },
+            {
+                "ts": now_iso(),
+                "type": "debug",
+                "message": f"Resolving orchestrator script: ROOT={ROOT_DIR}, candidate={ps1_candidate}, exists={ps1_candidate.exists()}, run_mode={run_mode}",
+            },
+        ])
         env_snapshot = {
             "root": str(ROOT_DIR),
             "candidate": str(ps1_candidate),
@@ -5223,13 +5316,15 @@ def _execute_orchestration_run(run_id_hint: str, path: pathlib.Path, cancel_even
                         "responded_at": None,
                         "resolved_by": None,
                     })
-                    d.setdefault("events", []).append({
+                    return d
+                _update_manifest(_apply)
+                _append_events([
+                    {
                         "ts": now_iso(),
                         "type": "checkpoint:pending",
                         "message": f"[{agent_name}] {question}",
-                    })
-                    return d
-                _update_manifest(_apply)
+                    }
+                ])
 
             def _resolve_checkpoint(response: str, resolved_by: str) -> None:
                 """Resolve active checkpoint — write response file and update manifest."""
@@ -5252,14 +5347,15 @@ def _execute_orchestration_run(run_id_hint: str, path: pathlib.Path, cancel_even
                             cp["responded_at"] = now_iso()
                             cp["resolved_by"] = resolved_by
                             break
-                    ev_type = "checkpoint:timed_out" if resolved_by == "timeout" else "checkpoint:resolved"
-                    d.setdefault("events", []).append({
-                        "ts": now_iso(),
-                        "type": ev_type,
-                        "message": f"Checkpoint resolved by {resolved_by}: {response!r}",
-                    })
                     return d
                 _update_manifest(_apply)
+                _append_events([
+                    {
+                        "ts": now_iso(),
+                        "type": "checkpoint:timed_out" if resolved_by == "timeout" else "checkpoint:resolved",
+                        "message": f"Checkpoint resolved by {resolved_by}: {response!r}",
+                    }
+                ])
             # ── End Phase 3 checkpoint state ──────────────────────────────
 
             def _build_error_directive(agent_name: str, error_msgs: list) -> str:
@@ -5529,8 +5625,9 @@ def _execute_orchestration_run(run_id_hint: str, path: pathlib.Path, cancel_even
                 print(f"[knowledge] Context build error: {_kce}", file=sys.stderr)
         # ── End Phase 2 Knowledge context injection ───────────────────────
 
-        data["events"].append({"ts": now_iso(), "type": "info", "message": f"Executing {ps1.name}"})
-        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        _append_events([
+            {"ts": now_iso(), "type": "info", "message": f"Executing {ps1.name}"}
+        ])
 
         # ── Goal.md materialization ───────────────────────────────────────
         # Persist the full canonical goal to <out_dir>/Goal.md and pass it via
@@ -5557,14 +5654,6 @@ def _execute_orchestration_run(run_id_hint: str, path: pathlib.Path, cancel_even
             "sha256": goal_sha256,
             "preview": goal_preview,
         }
-        data.setdefault("events", []).append({
-            "ts": now_iso(),
-            "type": "debug",
-            "message": (
-                f"Goal materialized to {goal_file_path.name} "
-                f"(length={goal_length}, sha256={goal_sha256[:12]}…)"
-            ),
-        })
         try:
             _update_manifest(lambda d: {**d, "goal_metadata": goal_metadata})
         except Exception:
@@ -5605,12 +5694,21 @@ def _execute_orchestration_run(run_id_hint: str, path: pathlib.Path, cancel_even
             args += [
                 "-OutputDir", str(out_dir),
             ]
-        data.setdefault("events", []).append({
-            "ts": now_iso(),
-            "type": "debug",
-            "message": f"Prepared orchestration run with script {ps1} and args {args}",
-        })
-        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        _append_events([
+            {
+                "ts": now_iso(),
+                "type": "debug",
+                "message": (
+                    f"Goal materialized to {goal_file_path.name} "
+                    f"(length={goal_length}, sha256={goal_sha256[:12]}…)"
+                ),
+            },
+            {
+                "ts": now_iso(),
+                "type": "debug",
+                "message": f"Prepared orchestration run with script {ps1} and args {args}",
+            },
+        ])
         if cancel_event.is_set():
             raise RuntimeError("cancelled")
         try:
@@ -6125,6 +6223,31 @@ def _execute_orchestration_run(run_id_hint: str, path: pathlib.Path, cancel_even
                         }
                     ])
 
+            manifest_after_gates = safe_json_load(path, default={}, context=f"verify_reconcile:{run_id}")
+            should_relax, relax_reason = _should_relax_failed_verification(
+                manifest_after_gates if isinstance(manifest_after_gates, dict) else {},
+                minimum_success,
+                app_production,
+            )
+            if should_relax:
+                _update_manifest(lambda d: {
+                    **d,
+                    "verification_status": "partial",
+                    "verification_reconciliation": {
+                        "applied": True,
+                        "reason": relax_reason,
+                        "applied_at": now_iso(),
+                    },
+                })
+                _append_events([
+                    {
+                        "ts": now_iso(),
+                        "type": "verify:reconciled",
+                        "message": "Verification relaxed from failed to partial after generated app verification succeeded.",
+                        "details": {"reason": relax_reason},
+                    }
+                ])
+
         # Frontier arena: derive a canonical multi-lane manifest from the
         # current run's evidence and adjudicate it. Today only the internal
         # lane exists; the seam is in place for frontier provider lanes.
@@ -6202,6 +6325,9 @@ def _execute_orchestration_run(run_id_hint: str, path: pathlib.Path, cancel_even
                     "message": f"Requirements visibility artifact written to {data['failure_artifact']}.",
                 }
             ])
+        elif verification_status == "partial":
+            data["status"] = "completed_with_errors"
+            completion_message = "completed_with_warnings"
         else:
             data["status"] = "completed"
             completion_message = "completed"
@@ -6448,10 +6574,7 @@ def orchestrate_run(
         "run_dir": str(out_dir),
         "log_path": str(log_path),
         "repo_root": req.repo_root or REPO_ROOT_DEFAULT,
-        "events": [
-            {"ts": now_iso(), "type": "info", "message": "run created"},
-            {"ts": now_iso(), "type": "status", "message": "queued"},
-        ],
+        "events": [],
         "scratchpad": [],
         "acceptance_checks": req.acceptance_checks,
         "verification_status": "pending",
@@ -6460,12 +6583,17 @@ def orchestrate_run(
         "lease": None,
         "cancel_requested": False,
     }
+    _append_runtime_events_to_manifest(
+        manifest,
+        out_dir,
+        run_id,
+        [
+            {"ts": now_iso(), "type": "info", "message": "run created"},
+            {"ts": now_iso(), "type": "status", "message": "queued"},
+        ],
+    )
     path = BRIDGE_RUN_DIR / f"{run_id}.json"
     path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-    try:
-        _append_canonical_events(out_dir, run_id, cast(List[Dict[str, Any]], manifest.get("events") or []))
-    except Exception as _ce:
-        print(f"[orchestrate] canonical event append failed at run creation: {_ce}", file=sys.stderr)
     cancel_event = threading.Event()
     with _orch_run_state_lock:
         _orch_run_state[run_id] = {
@@ -7673,6 +7801,11 @@ def respond_to_checkpoint(run_id: str, body: CheckpointResponseRequest):
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to write requirements answers: {exc}")
 
+    resume_events = [
+        {"ts": resolved_at, "type": "checkpoint:resolved", "message": f"Requirements checkpoint answered: {response_text[:160]}"},
+        {"ts": resolved_at, "type": "status", "message": "queued (resume_requirements)"},
+    ]
+
     def _apply(data: Dict[str, Any]) -> Dict[str, Any]:
         data["status"] = "queued"
         data["cancel_requested"] = False
@@ -7718,13 +7851,10 @@ def respond_to_checkpoint(run_id: str, body: CheckpointResponseRequest):
                 }
             )
 
-        data.setdefault("events", []).append(
-            {"ts": resolved_at, "type": "checkpoint:resolved", "message": f"Requirements checkpoint answered: {response_text[:160]}"}
-        )
-        data["events"].append({"ts": resolved_at, "type": "status", "message": "queued (resume_requirements)"})
         return data
 
     _update_manifest_atomic(run_path, _apply)
+    _append_runtime_events_atomic(run_path, resume_events)
 
     try:
         checkpoint_pending_path.unlink(missing_ok=True)
