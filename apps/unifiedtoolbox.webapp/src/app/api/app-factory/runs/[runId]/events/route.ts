@@ -88,10 +88,10 @@ function parseEvent(line: string, runId: string): RunStreamEvent {
 }
 
 async function loadHistoryEvents(runDir: string, runId: string, limit: number, since?: string | null): Promise<RunStreamEvent[]> {
-  const eventsPath = (await fileExists(path.join(runDir, 'events.ndjson')))
-    ? path.join(runDir, 'events.ndjson')
-    : (await fileExists(path.join(runDir, 'events.jsonl')))
-      ? path.join(runDir, 'events.jsonl')
+  const eventsPath = (await fileExists(path.join(runDir, 'events.jsonl')))
+    ? path.join(runDir, 'events.jsonl')
+    : (await fileExists(path.join(runDir, 'events.ndjson')))
+      ? path.join(runDir, 'events.ndjson')
       : (await fileExists(path.join(runDir, 'events.log')))
         ? path.join(runDir, 'events.log')
         : null
@@ -210,10 +210,10 @@ export async function GET(req: Request, { params: _params }: { params: Promise<{
   }
 
   if (!wantsSse && offset != null) {
-    const streamPath = (await fileExists(path.join(runDir, 'events.ndjson')))
-      ? path.join(runDir, 'events.ndjson')
-      : (await fileExists(path.join(runDir, 'events.jsonl')))
-        ? path.join(runDir, 'events.jsonl')
+    const streamPath = (await fileExists(path.join(runDir, 'events.jsonl')))
+      ? path.join(runDir, 'events.jsonl')
+      : (await fileExists(path.join(runDir, 'events.ndjson')))
+        ? path.join(runDir, 'events.ndjson')
         : null
     if (!streamPath) {
       return NextResponse.json({ runId, events: [], offset, nextOffset: offset }, { status: 200 })

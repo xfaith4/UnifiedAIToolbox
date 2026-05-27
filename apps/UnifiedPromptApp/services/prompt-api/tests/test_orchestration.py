@@ -389,7 +389,8 @@ class TestOrchestrateRun:
         run_res = client.get(f"/orchestrate/run/{run_id}")
         assert run_res.status_code == 200
         run_payload = run_res.json()
-        assert run_payload.get("status") == "stuck"
+        assert run_payload.get("status") == "failed"
+        assert "stalled" in str(run_payload.get("error_detail") or "").lower() or "lease" in str(run_payload.get("error_detail") or "").lower()
 
     def test_requeue_endpoint_sets_queued(self, cleanup_test_runs):
         run_id = f"test_requeue_{app.now_iso().replace(':', '-')}"

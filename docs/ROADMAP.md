@@ -169,18 +169,20 @@ Populate the canonical run infrastructure consistently so Run Console and API co
     - `docs/contracts/EVENT_TAXONOMY.md`
     - `docs/contracts/RUN_LIFECYCLE.md`
 
-- [ ] Complete prompt-api producer migration.
+- [x] Complete prompt-api producer migration.
   - Ensure prompt-api run creation, stage transitions, checkpoint pauses, failure paths, and terminal paths emit canonical events.
   - Ensure prompt-api artifacts are indexed as they are created, not retroactively guessed by the UI.
   - Additional progress (2026-05-27): prompt-api run creation/execution/cancel paths now append canonical `events.jsonl`; run hydration prefers canonical events and now loads `final_summary.json` when present.
   - Additional progress (2026-05-27): terminal summary enforcement added for success/failure/cancel via `final_summary.json`; failure visibility artifact (`run_failure.md`) is written for non-successful runs.
   - Additional progress (2026-05-27): minimum Run Evidence Viewer MVP success profile added (concierge acceptance + materialized output + smoke/dev-server proof) and enforced as a terminal failure when unmet.
+  - Additional progress (2026-05-27): runtime event writes now route through shared helper paths in prompt-api (run creation, lease/status transitions, cancel/force-cancel/requeue/stale-lease, checkpoint resume, and executor debug/checkpoint events), with canonical append centralized.
   - Touched files: `apps/UnifiedPromptApp/services/prompt-api/app.py`, `apps/UnifiedPromptApp/services/prompt-api/tests/test_orchestration.py`.
-  - Verification: targeted pytest checks passed for canonical hydration and Tic-Tac-Toe minimum success profile.
+  - Verification: `pytest apps/UnifiedPromptApp/services/prompt-api/tests/test_orchestration.py` (33 passed).
 
 - [ ] Complete App Factory producer migration.
   - Partial progress already exists for run start/cancel routes and launcher error artifact indexing.
   - Additional progress (2026-05-26): shared runtime emitter now writes canonical `events.jsonl` via `appendEvent`; runtime event normalization now maps canonical fields (`event_type`, `severity`, `agent_name`), and offset-based event reads now fall back to `events.jsonl` when `events.ndjson` is absent.
+  - Additional progress (2026-05-27): App Factory run consumers now prioritize canonical `events.jsonl` before legacy `events.ndjson` in run status loading and `/api/app-factory/runs/[runId]/events` history/offset paths.
   - Touched files: `apps/unifiedtoolbox.webapp/src/lib/app-factory/runs/runEvents.ts`, `apps/unifiedtoolbox.webapp/src/lib/app-factory/runs/runtimeEventUtils.ts`, `apps/unifiedtoolbox.webapp/src/app/api/app-factory/runs/[runId]/events/route.ts`, `apps/unifiedtoolbox.webapp/src/lib/app-factory/runs/runStatus.ts`.
   - Verification: targeted vitest run for run telemetry helpers/routes passed; `npm --prefix apps/unifiedtoolbox.webapp run typecheck` passed.
   - Finish remaining App Factory paths that still depend on legacy fallback state.

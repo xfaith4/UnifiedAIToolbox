@@ -124,9 +124,9 @@ function parseLogLine(line: string): RunEvent {
 }
 
 async function readEvents(runDir: string, limit: number): Promise<RunEvent[]> {
-  const ndjsonPath = path.join(runDir, 'events.ndjson')
-  if (await fileExists(ndjsonPath)) {
-    const lines = await readTailLines(ndjsonPath, limit)
+  const jsonlPath = path.join(runDir, 'events.jsonl')
+  if (await fileExists(jsonlPath)) {
+    const lines = await readTailLines(jsonlPath, limit)
     const events: RunEvent[] = []
     for (const line of lines) {
       try {
@@ -150,9 +150,9 @@ async function readEvents(runDir: string, limit: number): Promise<RunEvent[]> {
     return events
   }
 
-  const jsonlPath = path.join(runDir, 'events.jsonl')
-  if (await fileExists(jsonlPath)) {
-    const lines = await readTailLines(jsonlPath, limit)
+  const ndjsonPath = path.join(runDir, 'events.ndjson')
+  if (await fileExists(ndjsonPath)) {
+    const lines = await readTailLines(ndjsonPath, limit)
     const events: RunEvent[] = []
     for (const line of lines) {
       try {
