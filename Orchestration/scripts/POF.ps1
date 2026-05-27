@@ -14,6 +14,7 @@ param(
     [string]$Model = "gpt-5",
     [string]$Instruction = "",
     [int]$MaxIterations = 3,
+    [int]$RefinementDepth = 0,
     [string]$AgentConfigPath = "",
     [string]$CanonicalAgentLibraryPath = "$PSScriptRoot\..\agents\agent-library.json",
     [switch]$UseLegacyAgentConfig,
@@ -2239,49 +2240,62 @@ Stack Trace: $($_.ScriptStackTrace)
                         break
                     }
 
-                    Write-Host "🔁 Commissioner conditional (value_score=$Score) — triggering refinement..." -ForegroundColor Yellow
-                    $feedbackLines = New-Object System.Collections.Generic.List[string]
-                    if ($null -ne $commission) {
-                        if ($commission.rationale) {
-                            $feedbackLines.Add("Rationale: $($commission.rationale)")
-                        }
-                        foreach ($condition in @($commission.conditions)) {
-                            if (-not [string]::IsNullOrWhiteSpace([string]$condition)) {
-                                $feedbackLines.Add("Condition: $condition")
-                            }
-                        }
-                        foreach ($improvement in @($commission.improvements)) {
-                            if (-not [string]::IsNullOrWhiteSpace([string]$improvement)) {
-                                $feedbackLines.Add("Improvement: $improvement")
-                            }
-                        }
-                    }
-
-                    $RefineDirective = "Refine the plan to raise commissioner value_score from $Score to >=7 while preserving the original goal and deliverables."
-                    if ($feedbackLines.Count -gt 0) {
-                        $RefineDirective += "`nCommissioner feedback:`n- " + (($feedbackLines.ToArray()) -join "`n- ")
-                    }
-
-                    $nextInstruction = if ([string]::IsNullOrWhiteSpace($Instruction)) {
-                        $RefineDirective
+                    $maxRefinementDepth = [Math]::Max(0, $MaxIterations - 1)
+                    if ($RefinementDepth -ge $maxRefinementDepth) {
+                        Write-Host "⚠️ Commissioner conditional persists after reaching the refinement limit ($RefinementDepth/$maxRefinementDepth). Continuing without further self-invocation." -ForegroundColor Yellow
+                        $Context += "`n[Refinement Limit Reached]: Commissioner remained conditional at value_score=$Score after $RefinementDepth refinement pass(es)."
                     }
                     else {
-                        "$Instruction`n`n$RefineDirective"
-                    }
+                        Write-Host "🔁 Commissioner conditional (value_score=$Score) — triggering refinement pass $($RefinementDepth + 1)/$maxRefinementDepth..." -ForegroundColor Yellow
+                        $feedbackLines = New-Object System.Collections.Generic.List[string]
+                        if ($null -ne $commission) {
+                            if ($commission.rationale) {
+                                $feedbackLines.Add("Rationale: $($commission.rationale)")
+                            }
+                            foreach ($condition in @($commission.conditions)) {
+                                if (-not [string]::IsNullOrWhiteSpace([string]$condition)) {
+                                    $feedbackLines.Add("Condition: $condition")
+                                }
+                            }
+                            foreach ($improvement in @($commission.improvements)) {
+                                if (-not [string]::IsNullOrWhiteSpace([string]$improvement)) {
+                                    $feedbackLines.Add("Improvement: $improvement")
+                                }
+                            }
+                        }
 
-                    $Context += "`n[Refinement Triggered]: $RefineDirective"
-                    & $PSCommandPath `
-                        -Goal $Goal `
-                        -Model $Model `
-                        -Instruction $nextInstruction `
-                        -MaxIterations $MaxIterations `
-                        -AgentConfigPath $AgentConfigPath `
-                        -CanonicalAgentLibraryPath $CanonicalAgentLibraryPath `
-                        -UseLegacyAgentConfig:$legacyConfigRequested `
-                        -JobType $EffectiveJobType `
-                        -AppType $EffectiveAppType
-                    $Script:ShouldExit = $true
-                    return
+                        $RefineDirective = "Refine the plan to raise commissioner value_score from $Score to >=7 while preserving the original goal and deliverables."
+                        if ($feedbackLines.Count -gt 0) {
+                            $RefineDirective += "`nCommissioner feedback:`n- " + (($feedbackLines.ToArray()) -join "`n- ")
+                        }
+
+                        $nextInstruction = if ([string]::IsNullOrWhiteSpace($Instruction)) {
+                            $RefineDirective
+                        }
+                        else {
+                            "$Instruction`n`n$RefineDirective"
+                        }
+
+                        $Context += "`n[Refinement Triggered]: $RefineDirective"
+                        & $PSCommandPath `
+                            -Goal $Goal `
+                            -Model $Model `
+                            -Instruction $nextInstruction `
+                            -MaxIterations $MaxIterations `
+                            -RefinementDepth ($RefinementDepth + 1) `
+                            -AgentConfigPath $AgentConfigPath `
+                            -CanonicalAgentLibraryPath $CanonicalAgentLibraryPath `
+                            -UseLegacyAgentConfig:$legacyConfigRequested `
+                            -VerboseMode:$VerboseMode `
+                            -JobType $EffectiveJobType `
+                            -AppType $EffectiveAppType `
+                            -LogPath $LogPath `
+                            -TrendPath $TrendPath `
+                            -RunId $RunId `
+                            -OutputRoot $OutputRoot
+                        $Script:ShouldExit = $true
+                        return
+                    }
                 }
             }
         }

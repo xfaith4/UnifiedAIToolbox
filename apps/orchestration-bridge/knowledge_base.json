@@ -1,5 +1,435 @@
 [
   {
+    "run_id": "Build_a_polished_Run_Evidence_Viewer_as_a_Vite_Rea.2026-05-27T05-21-47Z",
+    "ingested_at": "2026-05-27T05:27:11Z",
+    "goal": "Build a polished Run Evidence Viewer as a Vite + React + TypeScript web app. The app must let a user choose a local run folder from disk, load run evidence files from that folder, and render five sections: 1) status header, 2) canonical event timeline from events.jsonl, 3) artifact list, 4) final summary panel from final_summary.json, and 5) verification/failure panel from generated_app_verification.json or run_failure.md. Include an empty state when no folder is selected. Use a clean two-column desktop layout and responsive mobile layout. Do not add auth, backend services, or database. Definition of done: npm install succeeds, npm run build succeeds, npm run dev starts, and the app can render a sample run folder with events.jsonl plus final_summary.json.",
+    "goal_tokens": [
+      "build",
+      "polished",
+      "evidence",
+      "viewer",
+      "vite",
+      "react",
+      "typescript",
+      "must",
+      "user",
+      "choose",
+      "local",
+      "folder",
+      "from",
+      "disk",
+      "load",
+      "evidence",
+      "files",
+      "from",
+      "that",
+      "folder",
+      "render",
+      "five",
+      "sections",
+      "status",
+      "header",
+      "canonical",
+      "event",
+      "timeline",
+      "from",
+      "events",
+      "jsonl",
+      "artifact",
+      "list",
+      "final",
+      "summary",
+      "panel",
+      "from",
+      "final_summary",
+      "json",
+      "verification",
+      "failure",
+      "panel",
+      "from",
+      "generated_app_verification",
+      "json",
+      "run_failure",
+      "include",
+      "empty",
+      "state",
+      "when",
+      "folder",
+      "selected",
+      "clean",
+      "column",
+      "desktop",
+      "layout",
+      "responsive",
+      "mobile",
+      "layout",
+      "auth",
+      "backend",
+      "services",
+      "database",
+      "definition",
+      "done",
+      "install",
+      "succeeds",
+      "build",
+      "succeeds",
+      "starts",
+      "render",
+      "sample",
+      "folder",
+      "with",
+      "events",
+      "jsonl",
+      "plus",
+      "final_summary",
+      "json"
+    ],
+    "status": "running",
+    "verification_status": "failed",
+    "knowledge_status": "pass",
+    "knowledge_score": 8.1,
+    "learning": {
+      "classification": "verification_gate_failure",
+      "what_broke": "One or more verification gates failed after orchestration execution.",
+      "root_cause": "Agent outputs did not satisfy required schema/traceability checks.",
+      "evidence": [
+        "failed_check:conceptual_model_contract:Engineer Contract Traceability invalid: Missing traceability coverage for contract IDs: folder-selection, data-loading",
+        "deferred_check:deferred_code_execution:Requires code execution \u2014 deferred to Phase 4 (Artifact Pipeline).",
+        "deferred_check:deferred_code_execution:Requires code execution \u2014 deferred to Phase 4 (Artifact Pipeline).",
+        "[Engineer] stuck_working (60s)",
+        "critic_blocker:Missing required traceability for all UI components.",
+        "commissioner_score:7",
+        "commissioner_recommendation:conditional"
+      ],
+      "prevention_patches": [
+        {
+          "target": "agent_prompt_contracts",
+          "change": "Enforce strict JSON output and required traceability fields before finalization."
+        }
+      ],
+      "regression_checks": [
+        "Failing gate details include evaluator + actionable fix text"
+      ],
+      "questions_needed": [],
+      "context_facts": [
+        "Problem: The proposal lacks a detailed breakdown of UI components and acceptance criteria, which may lead to misalignment with user needs and increase implementation risk.",
+        "Success criteria: The app must render five sections (status header, event timeline, artifact list, final summary panel, verification/failure panel) and display an empty state when no folder is selected. It must pass defined acceptance tests.",
+        "Constraints: The app must be built with Vite, React, and TypeScript. It should not require authentication, backend services, or a database. The layout must be responsive for desktop and mobile."
+      ],
+      "critic_blockers": [
+        "Missing required traceability for all UI components."
+      ],
+      "corrective_actions": [],
+      "instruction_adjustments": []
+    },
+    "agents": [],
+    "model": "gpt-4o-mini",
+    "checkpoint_history": [],
+    "corrective_actions": [],
+    "app_production_repairs": {},
+    "instruction_adjustments": [],
+    "synthesis_present": true,
+    "commissioner_score": 7,
+    "commissioner_recommendation": "conditional",
+    "commissioner_rationale": "The synthesized plan outlines a structured approach to building the Run Evidence Viewer app with clear phases, deliverables, and acceptance criteria. However, it still requires detailed traceability for all UI components and measurable acceptance tests to ensure successful implementation.",
+    "commissioner_improvements": [
+      "Provide a comprehensive breakdown of expected UI components and their functionalities.",
+      "Define and document acceptance tests that cover visibility and functionality of all UI components."
+    ],
+    "critic_blockers": [
+      "Missing required traceability for all UI components."
+    ],
+    "critic_ratings": {
+      "completeness": 3,
+      "feasibility": 4,
+      "quality": 2
+    },
+    "researcher_facts": [
+      "Problem: The proposal lacks a detailed breakdown of UI components and acceptance criteria, which may lead to misalignment with user needs and increase implementation risk.",
+      "Success criteria: The app must render five sections (status header, event timeline, artifact list, final summary panel, verification/failure panel) and display an empty state when no folder is selected. It must pass defined acceptance tests.",
+      "Constraints: The app must be built with Vite, React, and TypeScript. It should not require authentication, backend services, or a database. The layout must be responsive for desktop and mobile.",
+      "Option A: Use Vite as the build tool (pros: fast development, easy setup; cons: requires familiarity with Vite). Choose if rapid development is prioritized.",
+      "Option B: Use React for UI (pros: component-based, large community support; cons: requires understanding of JSX and component lifecycle). Choose if a modular UI is desired."
+    ],
+    "overseer_warnings": [
+      "[Engineer] stuck_working (60s)"
+    ],
+    "acceptance_checks_summary": {
+      "passed": 0,
+      "failed": 1,
+      "deferred": 4
+    }
+  },
+  {
+    "run_id": "Build_a_polished_Run_Evidence_Viewer_as_a_Vite_Rea.2026-05-27T05-16-28Z",
+    "ingested_at": "2026-05-27T05:22:29Z",
+    "goal": "Build a polished Run Evidence Viewer as a Vite + React + TypeScript web app. The app must let a user choose a local run folder from disk, load run evidence files from that folder, and render five sections: 1) status header, 2) canonical event timeline from events.jsonl, 3) artifact list, 4) final summary panel from final_summary.json, and 5) verification/failure panel from generated_app_verification.json or run_failure.md. Include an empty state when no folder is selected. Use a clean two-column desktop layout and responsive mobile layout. Do not add auth, backend services, or database. Definition of done: npm install succeeds, npm run build succeeds, npm run dev starts, and the app can render a sample run folder with events.jsonl plus final_summary.json.",
+    "goal_tokens": [
+      "build",
+      "polished",
+      "evidence",
+      "viewer",
+      "vite",
+      "react",
+      "typescript",
+      "must",
+      "user",
+      "choose",
+      "local",
+      "folder",
+      "from",
+      "disk",
+      "load",
+      "evidence",
+      "files",
+      "from",
+      "that",
+      "folder",
+      "render",
+      "five",
+      "sections",
+      "status",
+      "header",
+      "canonical",
+      "event",
+      "timeline",
+      "from",
+      "events",
+      "jsonl",
+      "artifact",
+      "list",
+      "final",
+      "summary",
+      "panel",
+      "from",
+      "final_summary",
+      "json",
+      "verification",
+      "failure",
+      "panel",
+      "from",
+      "generated_app_verification",
+      "json",
+      "run_failure",
+      "include",
+      "empty",
+      "state",
+      "when",
+      "folder",
+      "selected",
+      "clean",
+      "column",
+      "desktop",
+      "layout",
+      "responsive",
+      "mobile",
+      "layout",
+      "auth",
+      "backend",
+      "services",
+      "database",
+      "definition",
+      "done",
+      "install",
+      "succeeds",
+      "build",
+      "succeeds",
+      "starts",
+      "render",
+      "sample",
+      "folder",
+      "with",
+      "events",
+      "jsonl",
+      "plus",
+      "final_summary",
+      "json"
+    ],
+    "status": "running",
+    "verification_status": "failed",
+    "knowledge_status": "pass",
+    "knowledge_score": 8.3,
+    "learning": {
+      "classification": "verification_gate_failure",
+      "what_broke": "One or more verification gates failed after orchestration execution.",
+      "root_cause": "Agent outputs did not satisfy required schema/traceability checks.",
+      "evidence": [
+        "failed_check:conceptual_model_contract:Engineer Contract Traceability invalid: Missing traceability coverage for contract IDs: folder-selection",
+        "deferred_check:deferred_code_execution:Requires code execution \u2014 deferred to Phase 4 (Artifact Pipeline).",
+        "deferred_check:deferred_code_execution:Requires code execution \u2014 deferred to Phase 4 (Artifact Pipeline).",
+        "[Critic] stuck_working (60s)",
+        "[Critic] stuck_working_critical (181s) \u2014 Critic has been working for 181s with no status change. Commissioner should consider synthesizing from available partial output or reducing scope and retrying.",
+        "critic_blocker:Missing required acceptance criteria and feature specifications.",
+        "critic_blocker:Interactions do not demonstrate measurable state changes.",
+        "commissioner_score:4",
+        "commissioner_recommendation:conditional"
+      ],
+      "prevention_patches": [
+        {
+          "target": "agent_prompt_contracts",
+          "change": "Enforce strict JSON output and required traceability fields before finalization."
+        }
+      ],
+      "regression_checks": [
+        "Failing gate details include evaluator + actionable fix text"
+      ],
+      "questions_needed": [],
+      "context_facts": [
+        "Problem: Users need a way to visualize run evidence from a local folder in a web app format.",
+        "Success criteria: The app must render five distinct sections based on the loaded files and handle folder selection appropriately.",
+        "Constraints: The app must be built using Vite, React, and TypeScript; it must not involve authentication, backend services, or databases."
+      ],
+      "critic_blockers": [
+        "Missing required acceptance criteria and feature specifications.",
+        "Interactions do not demonstrate measurable state changes."
+      ],
+      "corrective_actions": [],
+      "instruction_adjustments": []
+    },
+    "agents": [],
+    "model": "gpt-4o-mini",
+    "checkpoint_history": [],
+    "corrective_actions": [],
+    "app_production_repairs": {},
+    "instruction_adjustments": [],
+    "synthesis_present": true,
+    "commissioner_score": 4,
+    "commissioner_recommendation": "conditional",
+    "commissioner_rationale": "The proposed plan outlines a basic framework for the Run Evidence Viewer web app but lacks critical details in acceptance criteria and measurable assertions, which are essential for ensuring functionality and user experience. There are significant gaps that could lead to rework and misalignment with user needs.",
+    "commissioner_improvements": [
+      "Add detailed acceptance tests that check for specific content in each rendered section.",
+      "Implement a clear mechanism to handle the empty state when no folder is selected."
+    ],
+    "critic_blockers": [
+      "Missing required acceptance criteria and feature specifications.",
+      "Interactions do not demonstrate measurable state changes."
+    ],
+    "critic_ratings": {
+      "completeness": 10,
+      "feasibility": 0,
+      "quality": 0
+    },
+    "researcher_facts": [
+      "Problem: Users need a way to visualize run evidence from a local folder in a web app format.",
+      "Success criteria: The app must render five distinct sections based on the loaded files and handle folder selection appropriately.",
+      "Constraints: The app must be built using Vite, React, and TypeScript; it must not involve authentication, backend services, or databases.",
+      "Option A: Use Vite for development and bundling. (Pros: Fast development server, modern features; Cons: Learning curve for new users.)",
+      "Option B: Use React for building UI components. (Pros: Component-based architecture, large ecosystem; Cons: Requires understanding of hooks and state management.)"
+    ],
+    "overseer_warnings": [
+      "[Critic] stuck_working (60s)",
+      "[Critic] stuck_working_critical (181s) \u2014 Critic has been working for 181s with no status change. Commissioner should consider synthesizing from available partial output or reducing scope and retrying."
+    ],
+    "acceptance_checks_summary": {
+      "passed": 0,
+      "failed": 1,
+      "deferred": 4
+    }
+  },
+  {
+    "run_id": "Build_a_small_polished_Run_Evidence_Viewer_web_app.2026-05-27T05-13-13Z",
+    "ingested_at": "2026-05-27T05:15:37Z",
+    "goal": "Build a small polished Run Evidence Viewer web app that reads a local run folder and displays run events, artifacts, final summary, status, and verification evidence in a clean review UI.",
+    "goal_tokens": [
+      "build",
+      "small",
+      "polished",
+      "evidence",
+      "viewer",
+      "that",
+      "reads",
+      "local",
+      "folder",
+      "displays",
+      "events",
+      "artifacts",
+      "final",
+      "summary",
+      "status",
+      "verification",
+      "evidence",
+      "clean",
+      "review"
+    ],
+    "status": "completed",
+    "verification_status": "needs_requirements",
+    "knowledge_status": "pass",
+    "knowledge_score": 8.3,
+    "learning": {
+      "classification": "requirements_gap",
+      "what_broke": "Requirements were incomplete for machine-verifiable implementation.",
+      "root_cause": "Commissioner detected unresolved requirement gaps and requested follow-up inputs.",
+      "evidence": [
+        "requirements_request_blockers:1",
+        "critic_blocker:Missing required acceptance criteria and feature specifications.",
+        "commissioner_score:2",
+        "commissioner_recommendation:no-go"
+      ],
+      "prevention_patches": [
+        {
+          "target": "commissioner_evaluator",
+          "change": "Route incomplete requirements to needs_requirements with structured blockers instead of failed.",
+          "artifact_ref": "sandbox_report.requirements_request"
+        },
+        {
+          "target": "concierge_ui",
+          "change": "Render blockers as concise follow-up questions with defaults for fast-path responses.",
+          "artifact_ref": "requirements_request.blockers"
+        }
+      ],
+      "regression_checks": [
+        "Commissioner low-score + resolvable blockers yields verification_status=needs_requirements",
+        "Concierge receives blockers/questions payload and keeps run non-failure"
+      ],
+      "questions_needed": [],
+      "context_facts": [
+        "Problem: The proposal lacks clear specifications for features, UI components, and acceptance criteria for the Run Evidence Viewer web app.",
+        "Success criteria: The app must read a local run folder and display run events, artifacts, final summary, status, and verification evidence in a clean review UI with defined acceptance criteria.",
+        "Constraints: The app is a web application; must be built to read local files, likely requiring security considerations; specific tech stack not defined."
+      ],
+      "critic_blockers": [
+        "Missing required acceptance criteria and feature specifications."
+      ],
+      "corrective_actions": [],
+      "instruction_adjustments": []
+    },
+    "agents": [],
+    "model": "gpt-4o-mini",
+    "checkpoint_history": [],
+    "corrective_actions": [],
+    "app_production_repairs": {},
+    "instruction_adjustments": [],
+    "synthesis_present": true,
+    "commissioner_score": 2,
+    "commissioner_recommendation": "no-go",
+    "commissioner_rationale": "The proposal is fundamentally flawed due to a lack of clear specifications for features, UI components, and acceptance criteria. Without these, it is impossible to ensure that the application will meet user needs or function as intended, resulting in high risk of misalignment and wasted resources.",
+    "commissioner_improvements": [
+      "Provide a detailed breakdown of expected UI components and their functionalities.",
+      "Establish machine-verifiable acceptance criteria that clearly define success metrics for the application."
+    ],
+    "critic_blockers": [
+      "Missing required acceptance criteria and feature specifications."
+    ],
+    "critic_ratings": {
+      "completeness": 0,
+      "feasibility": 0,
+      "quality": 0
+    },
+    "researcher_facts": [
+      "Problem: The proposal lacks clear specifications for features, UI components, and acceptance criteria for the Run Evidence Viewer web app.",
+      "Success criteria: The app must read a local run folder and display run events, artifacts, final summary, status, and verification evidence in a clean review UI with defined acceptance criteria.",
+      "Constraints: The app is a web application; must be built to read local files, likely requiring security considerations; specific tech stack not defined.",
+      "Option A: Use React for the UI (pros: component-based architecture, strong community support; cons: steeper learning curve for beginners).",
+      "Option B: Use Vue.js for the UI (pros: simplicity and ease of integration; cons: smaller community compared to React)."
+    ],
+    "overseer_warnings": [],
+    "acceptance_checks_summary": {
+      "passed": 0,
+      "failed": 0,
+      "deferred": 0
+    }
+  },
+  {
     "run_id": "Build_a_small_polished_Run_Evidence_Viewer_web_app.2026-05-27T04-43-24Z",
     "ingested_at": "2026-05-27T04:46:04Z",
     "goal": "Build a small polished Run Evidence Viewer web app that reads a local run folder and displays run events, artifacts, final summary, status, and verification evidence in a clean review UI.",

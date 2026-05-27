@@ -4008,17 +4008,65 @@ def _hydrate_orchestration_run_from_disk(manifest: Dict[str, Any], out_dir: path
     return data
 
 
+def _build_stalled_run_detail(out_dir: pathlib.Path) -> Optional[str]:
+    advisory_path = out_dir / "overseer_advisory.json"
+    if not advisory_path.exists():
+        return None
+    advisory = safe_json_load(advisory_path, default=None, context=f"overseer_advisory:{out_dir.name}")
+    if not isinstance(advisory, dict):
+        return None
+    observations = advisory.get("observations") if isinstance(advisory.get("observations"), list) else []
+    for observation in reversed(observations):
+        if not isinstance(observation, dict):
+            continue
+        finding = str(observation.get("finding") or "").strip().lower()
+        severity = str(observation.get("severity") or "").strip().lower()
+        if finding != "stuck_working_critical" or severity != "critical":
+            continue
+        agent = str(observation.get("agent") or "an agent").strip()
+        duration = observation.get("duration_s")
+        duration_suffix = ""
+        if isinstance(duration, (int, float)):
+            duration_suffix = f" for {duration:.0f}s"
+        return f"Run stalled while {agent} remained in working state{duration_suffix}."
+    return None
+
+
 def _ensure_terminal_evidence_artifacts(run_id: str, manifest_path: pathlib.Path, data: Dict[str, Any], out_dir: pathlib.Path) -> Dict[str, Any]:
     status_value = str(data.get("status") or "").strip().lower()
     verification_status = str(data.get("verification_status") or "").strip().lower()
     needs_requirements = verification_status in {"needs_requirements", "blocked_requirements"}
     terminal_status = status_value in ORCH_TERMINAL_STATUSES
+    stalled_run_detail = _build_stalled_run_detail(out_dir)
 
     changed = False
     if needs_requirements and status_value == "completed":
         data["status"] = "blocked_requirements"
         status_value = "blocked_requirements"
         terminal_status = True
+        changed = True
+
+    if verification_status == "failed" and status_value == "completed":
+        data["status"] = "failed"
+        status_value = "failed"
+        terminal_status = True
+        if not data.get("error_detail"):
+            data["error_detail"] = "Run verification failed before reaching readiness."
+        changed = True
+
+    if status_value == "stuck":
+        data["status"] = "failed"
+        status_value = "failed"
+        terminal_status = True
+        if not data.get("error_detail"):
+            data["error_detail"] = stalled_run_detail or "Run stalled after its execution lease expired."
+        changed = True
+
+    if status_value in ORCH_RUNNING_STATUSES and stalled_run_detail:
+        data["status"] = "failed"
+        status_value = "failed"
+        terminal_status = True
+        data["error_detail"] = stalled_run_detail
         changed = True
 
     if needs_requirements and not data.get("failure_artifact"):
@@ -4039,6 +4087,15 @@ def _ensure_terminal_evidence_artifacts(run_id: str, manifest_path: pathlib.Path
             out_dir,
             "Requirements clarification needed",
             "\n".join(detail_lines),
+        )
+        data["failure_artifact"] = _to_relpath(failure_artifact, out_dir)
+        changed = True
+
+    if status_value == "failed" and not data.get("failure_artifact"):
+        failure_artifact = _write_failure_visibility_artifact(
+            out_dir,
+            "Run failed",
+            str(data.get("error_detail") or stalled_run_detail or "Run did not complete successfully."),
         )
         data["failure_artifact"] = _to_relpath(failure_artifact, out_dir)
         changed = True
@@ -6101,6 +6158,16 @@ def _execute_orchestration_run(run_id_hint: str, path: pathlib.Path, cancel_even
             completion_message = "failed_minimum_success"
             failure_reason = str(minimum_success_profile.get("failure_reason") or "Minimum success profile failed.")
             failure_artifact = _write_failure_visibility_artifact(out_dir, "Minimum success profile failed", failure_reason)
+            data["failure_artifact"] = _to_relpath(failure_artifact, out_dir)
+            _append_events([
+                {"ts": now_iso(), "type": "artifact:failure_visibility", "message": f"Failure visibility artifact written to {data['failure_artifact']}."},
+                {"ts": now_iso(), "type": "error", "message": failure_reason},
+            ])
+        elif verification_status == "failed":
+            data["status"] = "failed"
+            completion_message = "failed_verification"
+            failure_reason = str(data.get("error_detail") or "Run verification failed before reaching readiness.")
+            failure_artifact = _write_failure_visibility_artifact(out_dir, "Run verification failed", failure_reason)
             data["failure_artifact"] = _to_relpath(failure_artifact, out_dir)
             _append_events([
                 {"ts": now_iso(), "type": "artifact:failure_visibility", "message": f"Failure visibility artifact written to {data['failure_artifact']}."},

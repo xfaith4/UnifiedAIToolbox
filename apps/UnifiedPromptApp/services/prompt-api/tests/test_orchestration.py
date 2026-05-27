@@ -857,6 +857,92 @@ class TestOrchestrateRun:
         blockers = summary.get("blockers") or []
         assert blockers and blockers[0].get("severity") == "clarification_needed"
 
+    def test_terminal_evidence_self_heals_stuck_status_to_failed(self, cleanup_test_runs):
+        run_id = f"test_terminal_evidence_stuck_{app.now_iso().replace(':', '-')}"
+        out_dir = app.BRIDGE_RUN_DIR / run_id
+        out_dir.mkdir(parents=True, exist_ok=True)
+        manifest_path = app.BRIDGE_RUN_DIR / f"{run_id}.json"
+        manifest = {
+            "run_id": run_id,
+            "status": "stuck",
+            "verification_status": "pending",
+            "run_dir": str(out_dir),
+        }
+        manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+        healed = app._ensure_terminal_evidence_artifacts(run_id, manifest_path, dict(manifest), out_dir)
+        assert healed.get("status") == "failed"
+        assert healed.get("failure_artifact") == "run_failure.md"
+        assert (out_dir / "run_failure.md").exists()
+        assert (out_dir / "final_summary.json").exists()
+
+        summary = json.loads((out_dir / "final_summary.json").read_text(encoding="utf-8"))
+        assert summary.get("outcome") == "failed"
+
+    def test_terminal_evidence_self_heals_running_with_overseer_critical(self, cleanup_test_runs):
+        run_id = f"test_terminal_evidence_overseer_{app.now_iso().replace(':', '-')}"
+        out_dir = app.BRIDGE_RUN_DIR / run_id
+        out_dir.mkdir(parents=True, exist_ok=True)
+        manifest_path = app.BRIDGE_RUN_DIR / f"{run_id}.json"
+        manifest = {
+            "run_id": run_id,
+            "status": "running",
+            "verification_status": "pending",
+            "run_dir": str(out_dir),
+        }
+        manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        (out_dir / "overseer_advisory.json").write_text(
+            json.dumps(
+                {
+                    "run_id": run_id,
+                    "observations": [
+                        {
+                            "ts": app.now_iso(),
+                            "severity": "critical",
+                            "finding": "stuck_working_critical",
+                            "agent": "Engineer",
+                            "duration_s": 181.0,
+                        }
+                    ],
+                    "commissioner_directives": [],
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+
+        healed = app._ensure_terminal_evidence_artifacts(run_id, manifest_path, dict(manifest), out_dir)
+        assert healed.get("status") == "failed"
+        assert "Engineer" in str(healed.get("error_detail") or "")
+        assert healed.get("failure_artifact") == "run_failure.md"
+        assert (out_dir / "run_failure.md").exists()
+        assert (out_dir / "final_summary.json").exists()
+
+        summary = json.loads((out_dir / "final_summary.json").read_text(encoding="utf-8"))
+        assert summary.get("outcome") == "failed"
+
+    def test_terminal_evidence_self_heals_completed_status_with_failed_verification(self, cleanup_test_runs):
+        run_id = f"test_terminal_evidence_failed_verification_{app.now_iso().replace(':', '-')}"
+        out_dir = app.BRIDGE_RUN_DIR / run_id
+        out_dir.mkdir(parents=True, exist_ok=True)
+        manifest_path = app.BRIDGE_RUN_DIR / f"{run_id}.json"
+        manifest = {
+            "run_id": run_id,
+            "status": "completed",
+            "verification_status": "failed",
+            "run_dir": str(out_dir),
+        }
+        manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+        healed = app._ensure_terminal_evidence_artifacts(run_id, manifest_path, dict(manifest), out_dir)
+        assert healed.get("status") == "failed"
+        assert healed.get("failure_artifact") == "run_failure.md"
+        assert (out_dir / "run_failure.md").exists()
+        assert (out_dir / "final_summary.json").exists()
+
+        summary = json.loads((out_dir / "final_summary.json").read_text(encoding="utf-8"))
+        assert summary.get("outcome") == "failed"
+
     def test_checkpoint_resume_dispatches_to_executor(self, cleanup_test_runs):
         """
         Regression test for the requirements resume path stuck at queued(resume_requirements).
