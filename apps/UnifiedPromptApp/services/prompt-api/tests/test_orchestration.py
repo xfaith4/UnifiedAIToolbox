@@ -29,14 +29,14 @@ def cleanup_test_runs():
 
 class TestOrchestrateRun:
     """Test suite for /orchestrate/run endpoint."""
-    
+
     def test_orchestrate_run_with_newline_in_goal(self, cleanup_test_runs):
         """
         Test that orchestration runs can be created even when the goal contains
         newlines, which previously caused WinError 123 on Windows.
-        
+
         This is a regression test for the bug where:
-        OSError: [WinError 123] The filename, directory name, or volume label 
+        OSError: [WinError 123] The filename, directory name, or volume label
         syntax is incorrect: 'G:\\...\\runs\\Will_orchestration_work_under_pressure\\n...'
         """
         # This is the exact scenario that caused the original bug
@@ -45,49 +45,49 @@ class TestOrchestrateRun:
             "model": "gpt-4o-mini",
             "run_mode": "default"
         }
-        
+
         response = client.post("/orchestrate/run", json=payload)
-        
+
         # Should succeed (status 200)
         assert response.status_code == 200
-        
+
         # Check the response contains the expected fields
         result = response.json()
         assert "run_id" in result
         assert "manifest" in result
         assert "status" in result["manifest"]
-        
+
         # Verify the run_id doesn't contain a newline
         run_id = result["run_id"]
         assert "\n" not in run_id
         assert "\r" not in run_id
-        
+
         # Verify the directory was actually created without error
         # The run_id should be safe for filesystem use
         expected_dir = app.BRIDGE_RUN_DIR / run_id
         assert expected_dir.exists(), f"Run directory should exist: {expected_dir}"
-    
+
     def test_orchestrate_run_with_multiline_goal(self, cleanup_test_runs):
         """Test with multiple newlines in the goal."""
         payload = {
             "goal": "Test\nmulti\nline\ngoal",
             "model": "gpt-4o-mini"
         }
-        
+
         response = client.post("/orchestrate/run", json=payload)
         assert response.status_code == 200
-        
+
         result = response.json()
         run_id = result["run_id"]
-        
+
         # Should have replaced newlines with underscores
         assert "\n" not in run_id
         assert "Test_multi_line_goal" in run_id
-        
+
         # Directory should exist
         expected_dir = app.BRIDGE_RUN_DIR / run_id
         assert expected_dir.exists()
-    
+
     def test_orchestrate_run_with_invalid_windows_chars(self, cleanup_test_runs):
         """Test with various invalid Windows path characters in goal."""
         # Test with characters that are invalid in Windows paths
@@ -95,85 +95,85 @@ class TestOrchestrateRun:
             "goal": "test<goal>with:invalid*chars?",
             "model": "gpt-4o-mini"
         }
-        
+
         response = client.post("/orchestrate/run", json=payload)
         assert response.status_code == 200
-        
+
         result = response.json()
         run_id = result["run_id"]
-        
+
         # Should have sanitized all invalid characters
         for invalid_char in '<>:"/\\|?*':
             assert invalid_char not in run_id
-        
+
         # Directory should exist without error
         expected_dir = app.BRIDGE_RUN_DIR / run_id
         assert expected_dir.exists()
-    
+
     def test_orchestrate_run_with_windows_newlines(self, cleanup_test_runs):
         """Test with Windows-style CRLF newlines."""
         payload = {
             "goal": "Test\r\nWindows\r\nNewlines",
             "model": "gpt-4o-mini"
         }
-        
+
         response = client.post("/orchestrate/run", json=payload)
         assert response.status_code == 200
-        
+
         result = response.json()
         run_id = result["run_id"]
-        
+
         # Should have cleaned CRLF
         assert "\r\n" not in run_id
         assert "\n" not in run_id
         assert "\r" not in run_id
-        
+
         expected_dir = app.BRIDGE_RUN_DIR / run_id
         assert expected_dir.exists()
-    
+
     def test_orchestrate_run_normal_goal(self, cleanup_test_runs):
         """Test that normal goals still work correctly."""
         payload = {
             "goal": "Normal test goal",
             "model": "gpt-4o-mini"
         }
-        
+
         response = client.post("/orchestrate/run", json=payload)
         assert response.status_code == 200
-        
+
         result = response.json()
         run_id = result["run_id"]
-        
+
         # Should have a clean run_id with underscores for spaces
         assert "Normal_test_goal" in run_id
-        
+
         expected_dir = app.BRIDGE_RUN_DIR / run_id
         assert expected_dir.exists()
-    
+
     def test_orchestrate_run_with_prompt_id(self, cleanup_test_runs):
         """Test using prompt_id instead of goal."""
         payload = {
             "prompt_id": "test.prompt.id",
             "model": "gpt-4o-mini"
         }
-        
+
         response = client.post("/orchestrate/run", json=payload)
         assert response.status_code == 200
-        
+
         result = response.json()
         run_id = result["run_id"]
-        
+
         # prompt_id should be used and sanitized
         assert "test.prompt.id" in run_id
-        
+
         expected_dir = app.BRIDGE_RUN_DIR / run_id
         assert expected_dir.exists()
-    
+
     def test_orchestrate_run_dir_matches_manifest(self, cleanup_test_runs):
         """
         Test that run_dir in manifest matches the actual output directory
         where artifacts should be written.
-        
+
         This is a regression test for the bug where -OutputDir was passed
         as BRIDGE_RUN_DIR instead of the per-run directory.
         """
@@ -181,25 +181,25 @@ class TestOrchestrateRun:
             "goal": "Test run_dir consistency",
             "model": "gpt-4o-mini"
         }
-        
+
         response = client.post("/orchestrate/run", json=payload)
         assert response.status_code == 200
-        
+
         result = response.json()
         run_id = result["run_id"]
         manifest = result["manifest"]
-        
+
         # Verify run_dir is set in manifest
         assert "run_dir" in manifest
         run_dir = pathlib.Path(manifest["run_dir"])
-        
+
         # Verify run_dir points to the per-run subdirectory, not the root runs folder
         assert run_dir.name == run_id
         assert run_dir.parent == app.BRIDGE_RUN_DIR
-        
+
         # Verify the directory exists
         assert run_dir.exists()
-        
+
         # Simulate orchestration completion by creating orchestration-summary.json
         summary_data = {
             "Goal": "Test run_dir consistency",
@@ -211,13 +211,13 @@ class TestOrchestrateRun:
         }
         summary_path = run_dir / "orchestration-summary.json"
         summary_path.write_text(json.dumps(summary_data, indent=2))
-        
+
         # Test that artifacts would be written to run_dir, not BRIDGE_RUN_DIR
         # This verifies the -OutputDir fix
         assert summary_path.exists()
         assert summary_path.parent == run_dir
         assert summary_path.parent != app.BRIDGE_RUN_DIR
-        
+
         # Clean up the created file
         summary_path.unlink(missing_ok=True)
 
@@ -695,6 +695,167 @@ class TestOrchestrateRun:
         assert body.get("completed_at") == now
         assert len(body.get("events") or []) == 2
         assert (body.get("warnings") or [])[0] == "state file was not finalized previously"
+
+    def test_get_run_hydrates_from_canonical_events_jsonl(self, cleanup_test_runs):
+        run_id = f"test_hydrate_canonical_{app.now_iso().replace(':', '-')}"
+        manifest_path = app.BRIDGE_RUN_DIR / f"{run_id}.json"
+        out_dir = app.BRIDGE_RUN_DIR / run_id
+        out_dir.mkdir(parents=True, exist_ok=True)
+        now = app.now_iso()
+
+        manifest_path.write_text(
+            json.dumps(
+                {
+                    "run_id": run_id,
+                    "status": "completed",
+                    "requested_at": now,
+                    "run_dir": str(out_dir),
+                    "events": [],
+                    "lease": None,
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        (out_dir / "events.jsonl").write_text(
+            "\n".join(
+                [
+                    json.dumps({
+                        "event_id": "e1",
+                        "run_id": run_id,
+                        "timestamp": now,
+                        "event_type": "run_started",
+                        "severity": "info",
+                        "message": "running",
+                    }),
+                    json.dumps({
+                        "event_id": "e2",
+                        "run_id": run_id,
+                        "timestamp": now,
+                        "event_type": "run_completed",
+                        "severity": "info",
+                        "message": "completed",
+                    }),
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        res = client.get(f"/orchestrate/run/{run_id}")
+        assert res.status_code == 200
+        body = res.json()
+        assert body.get("status") == "completed"
+        assert len(body.get("events") or []) == 2
+        assert (body.get("events") or [])[0].get("event_type") == "run_started"
+
+    def test_run_evidence_viewer_minimum_success_profile_requires_smoke_proof(self):
+        profile = app._evaluate_minimum_success_profile(
+            goal_text=(
+                "Build a small polished Run Evidence Viewer web app that reads a local run folder "
+                "and displays events, artifacts, final summary, status, and verification evidence."
+            ),
+            verification_status="passed",
+            generated_app_files=["generated_app/src/main.tsx"],
+            app_production={
+                "checks": [
+                    {"name": "smoke_tests", "status": "failed"},
+                    {"name": "dev_server", "status": "failed"},
+                ]
+            },
+        )
+        assert profile["required"] is True
+        assert profile["passed"] is False
+        assert "minimal_smoke_proof" in str(profile.get("failure_reason") or "")
+
+        passing_profile = app._evaluate_minimum_success_profile(
+            goal_text=(
+                "Build a small polished Run Evidence Viewer web app that reads a local run folder "
+                "and displays events, artifacts, final summary, status, and verification evidence."
+            ),
+            verification_status="passed",
+            generated_app_files=["generated_app/src/main.tsx"],
+            app_production={
+                "checks": [
+                    {"name": "smoke_tests", "status": "passed"},
+                ]
+            },
+        )
+        assert passing_profile["required"] is True
+        assert passing_profile["passed"] is True
+
+    def test_terminal_summary_blocked_requirements_has_clarification_blocker_and_failure_artifact(self, cleanup_test_runs):
+        run_id = f"test_blocked_requirements_summary_{app.now_iso().replace(':', '-')}"
+        out_dir = app.BRIDGE_RUN_DIR / run_id
+        out_dir.mkdir(parents=True, exist_ok=True)
+        manifest = {
+            "run_id": run_id,
+            "status": "blocked_requirements",
+            "verification_status": "needs_requirements",
+            "goal": "Build a Run Evidence Viewer web app.",
+            "requirements_request": {
+                "summary": "Need stack and runtime clarifications.",
+                "blockers": [
+                    {
+                        "id": "req_1",
+                        "question": "Which frontend stack should be used?",
+                        "why": "Needed to produce a machine-verifiable implementation contract.",
+                    }
+                ],
+            },
+        }
+
+        artifact_path = app._write_failure_visibility_artifact(
+            out_dir,
+            "Requirements clarification needed",
+            "Need stack and runtime clarifications.",
+        )
+        assert artifact_path.exists()
+
+        summary = app._build_terminal_summary_from_manifest(
+            run_id,
+            manifest,
+            out_dir,
+        )
+        assert summary.get("outcome") == "completed_with_warnings"
+        blockers = summary.get("blockers") or []
+        assert len(blockers) >= 1
+        assert blockers[0].get("severity") == "clarification_needed"
+        assert "clarifications" in str(blockers[0].get("summary") or "").lower()
+
+    def test_terminal_evidence_self_heals_completed_status_with_needs_requirements(self, cleanup_test_runs):
+        run_id = f"test_terminal_evidence_self_heal_{app.now_iso().replace(':', '-')}"
+        out_dir = app.BRIDGE_RUN_DIR / run_id
+        out_dir.mkdir(parents=True, exist_ok=True)
+        manifest_path = app.BRIDGE_RUN_DIR / f"{run_id}.json"
+        manifest = {
+            "run_id": run_id,
+            "status": "completed",
+            "verification_status": "needs_requirements",
+            "requirements_request": {
+                "summary": "Need platform/runtime clarifications.",
+                "blockers": [
+                    {
+                        "id": "req_1",
+                        "question": "Should this target Vite or Next.js?",
+                        "why": "Framework choice affects generated output and smoke proof checks.",
+                    }
+                ],
+            },
+            "run_dir": str(out_dir),
+        }
+        manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+        healed = app._ensure_terminal_evidence_artifacts(run_id, manifest_path, dict(manifest), out_dir)
+        assert healed.get("status") == "blocked_requirements"
+        assert healed.get("failure_artifact")
+        assert (out_dir / "run_failure.md").exists()
+        assert (out_dir / "final_summary.json").exists()
+
+        summary = json.loads((out_dir / "final_summary.json").read_text(encoding="utf-8"))
+        assert summary.get("outcome") == "completed_with_warnings"
+        blockers = summary.get("blockers") or []
+        assert blockers and blockers[0].get("severity") == "clarification_needed"
 
     def test_checkpoint_resume_dispatches_to_executor(self, cleanup_test_runs):
         """

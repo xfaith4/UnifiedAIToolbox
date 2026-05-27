@@ -1,5 +1,310 @@
 [
   {
+    "run_id": "Build_a_small_polished_Run_Evidence_Viewer_web_app.2026-05-27T04-43-24Z",
+    "ingested_at": "2026-05-27T04:46:04Z",
+    "goal": "Build a small polished Run Evidence Viewer web app that reads a local run folder and displays run events, artifacts, final summary, status, and verification evidence in a clean review UI.",
+    "goal_tokens": [
+      "build",
+      "small",
+      "polished",
+      "evidence",
+      "viewer",
+      "that",
+      "reads",
+      "local",
+      "folder",
+      "displays",
+      "events",
+      "artifacts",
+      "final",
+      "summary",
+      "status",
+      "verification",
+      "evidence",
+      "clean",
+      "review"
+    ],
+    "status": "completed",
+    "verification_status": "needs_requirements",
+    "knowledge_status": "pass",
+    "knowledge_score": 8.3,
+    "learning": {
+      "classification": "requirements_gap",
+      "what_broke": "Requirements were incomplete for machine-verifiable implementation.",
+      "root_cause": "Commissioner detected unresolved requirement gaps and requested follow-up inputs.",
+      "evidence": [
+        "requirements_request_blockers:1",
+        "critic_blocker:Missing required acceptance criteria and feature specifications.",
+        "commissioner_score:3",
+        "commissioner_recommendation:no-go"
+      ],
+      "prevention_patches": [
+        {
+          "target": "commissioner_evaluator",
+          "change": "Route incomplete requirements to needs_requirements with structured blockers instead of failed.",
+          "artifact_ref": "sandbox_report.requirements_request"
+        },
+        {
+          "target": "concierge_ui",
+          "change": "Render blockers as concise follow-up questions with defaults for fast-path responses.",
+          "artifact_ref": "requirements_request.blockers"
+        }
+      ],
+      "regression_checks": [
+        "Commissioner low-score + resolvable blockers yields verification_status=needs_requirements",
+        "Concierge receives blockers/questions payload and keeps run non-failure"
+      ],
+      "questions_needed": [],
+      "context_facts": [
+        "Problem: Need to build a web app that can read local run folders and display various run-related data in a user-friendly interface.",
+        "Success criteria: The app must display run events, artifacts, a final summary, status, and verification evidence clearly and provide a clean review UI for users.",
+        "Constraints: The app should be built as a web application; specific technologies (e.g., React, Vue, etc.) and data formats need to be defined."
+      ],
+      "critic_blockers": [
+        "Missing required acceptance criteria and feature specifications."
+      ],
+      "corrective_actions": [],
+      "instruction_adjustments": []
+    },
+    "agents": [],
+    "model": "gpt-4o-mini",
+    "checkpoint_history": [],
+    "corrective_actions": [],
+    "app_production_repairs": {},
+    "instruction_adjustments": [],
+    "synthesis_present": true,
+    "commissioner_score": 3,
+    "commissioner_recommendation": "no-go",
+    "commissioner_rationale": "The proposal lacks critical details on features, UI components, and acceptance criteria, making it infeasible to implement effectively. Without well-defined requirements, there is a high risk of misalignment with user needs and potential rework.",
+    "commissioner_improvements": [
+      "Provide a detailed breakdown of expected UI components.",
+      "Define data structures for run events, artifacts, final summary, status, and verification evidence.",
+      "Establish specific acceptance criteria for functionality."
+    ],
+    "critic_blockers": [
+      "Missing required acceptance criteria and feature specifications."
+    ],
+    "critic_ratings": {
+      "completeness": 0,
+      "feasibility": 0,
+      "quality": 0
+    },
+    "researcher_facts": [
+      "Problem: Need to build a web app that can read local run folders and display various run-related data in a user-friendly interface.",
+      "Success criteria: The app must display run events, artifacts, a final summary, status, and verification evidence clearly and provide a clean review UI for users.",
+      "Constraints: The app should be built as a web application; specific technologies (e.g., React, Vue, etc.) and data formats need to be defined.",
+      "Option A: Use React for building the UI. (pros: strong community support, reusable components; cons: learning curve if not familiar; choose if rapid development is needed)",
+      "Option B: Use Vue.js for the UI. (pros: easier learning curve, flexible; cons: smaller community than React; choose if simplicity is key)"
+    ],
+    "overseer_warnings": [],
+    "acceptance_checks_summary": {
+      "passed": 0,
+      "failed": 0,
+      "deferred": 0
+    }
+  },
+  {
+    "run_id": "Build_a_small_polished_Run_Evidence_Viewer_web_app.2026-05-27T04-41-55Z",
+    "ingested_at": "2026-05-27T04:42:16Z",
+    "goal": "Build a small polished Run Evidence Viewer web app that reads a local run folder and displays run events, artifacts, final summary, status, and verification evidence in a clean review UI.",
+    "goal_tokens": [
+      "build",
+      "small",
+      "polished",
+      "evidence",
+      "viewer",
+      "that",
+      "reads",
+      "local",
+      "folder",
+      "displays",
+      "events",
+      "artifacts",
+      "final",
+      "summary",
+      "status",
+      "verification",
+      "evidence",
+      "clean",
+      "review"
+    ],
+    "status": "running",
+    "verification_status": "needs_requirements",
+    "knowledge_status": "pass",
+    "knowledge_score": 8.1,
+    "learning": {
+      "classification": "requirements_gap",
+      "what_broke": "Requirements were incomplete for machine-verifiable implementation.",
+      "root_cause": "Commissioner detected unresolved requirement gaps and requested follow-up inputs.",
+      "evidence": [
+        "requirements_request_blockers:1",
+        "critic_blocker:Missing required details on features, UI components, and acceptance criteria."
+      ],
+      "prevention_patches": [
+        {
+          "target": "commissioner_evaluator",
+          "change": "Route incomplete requirements to needs_requirements with structured blockers instead of failed.",
+          "artifact_ref": "sandbox_report.requirements_request"
+        },
+        {
+          "target": "concierge_ui",
+          "change": "Render blockers as concise follow-up questions with defaults for fast-path responses.",
+          "artifact_ref": "requirements_request.blockers"
+        }
+      ],
+      "regression_checks": [
+        "Commissioner low-score + resolvable blockers yields verification_status=needs_requirements",
+        "Concierge receives blockers/questions payload and keeps run non-failure"
+      ],
+      "questions_needed": [],
+      "context_facts": [
+        "Problem: The project lacks clear specifications on UI components, data structures, and acceptance criteria for the Run Evidence Viewer.",
+        "Success criteria: A functioning web app that displays run events, artifacts, final summary, status, and verification evidence, with clear acceptance tests defined.",
+        "Constraints: The app must be web-based, able to read local files, and include a polished UI. Specific technologies (e.g., JavaScript frameworks) are not defined."
+      ],
+      "critic_blockers": [
+        "Missing required details on features, UI components, and acceptance criteria."
+      ],
+      "corrective_actions": [],
+      "instruction_adjustments": []
+    },
+    "agents": [],
+    "model": "gpt-4o-mini",
+    "checkpoint_history": [],
+    "corrective_actions": [],
+    "app_production_repairs": {},
+    "instruction_adjustments": [],
+    "synthesis_present": true,
+    "commissioner_score": null,
+    "commissioner_recommendation": null,
+    "commissioner_rationale": "",
+    "commissioner_improvements": [],
+    "critic_blockers": [
+      "Missing required details on features, UI components, and acceptance criteria."
+    ],
+    "critic_ratings": {
+      "completeness": 0,
+      "feasibility": 0,
+      "quality": 0
+    },
+    "researcher_facts": [
+      "Problem: The project lacks clear specifications on UI components, data structures, and acceptance criteria for the Run Evidence Viewer.",
+      "Success criteria: A functioning web app that displays run events, artifacts, final summary, status, and verification evidence, with clear acceptance tests defined.",
+      "Constraints: The app must be web-based, able to read local files, and include a polished UI. Specific technologies (e.g., JavaScript frameworks) are not defined.",
+      "Option A: Use React for the frontend (pros: component-based architecture, strong community support; cons: larger bundle size, learning curve for newcomers).",
+      "Option B: Use Vue.js for the frontend (pros: simpler syntax, easier to integrate; cons: smaller community compared to React)."
+    ],
+    "overseer_warnings": [],
+    "acceptance_checks_summary": {
+      "passed": 0,
+      "failed": 0,
+      "deferred": 0
+    }
+  },
+  {
+    "run_id": "Build_a_small_polished_Run_Evidence_Viewer_web_app.2026-05-27T04-39-46Z",
+    "ingested_at": "2026-05-27T04:41:35Z",
+    "goal": "Build a small polished Run Evidence Viewer web app that reads a local run folder and displays run events, artifacts, final summary, status, and verification evidence in a clean review UI.",
+    "goal_tokens": [
+      "build",
+      "small",
+      "polished",
+      "evidence",
+      "viewer",
+      "that",
+      "reads",
+      "local",
+      "folder",
+      "displays",
+      "events",
+      "artifacts",
+      "final",
+      "summary",
+      "status",
+      "verification",
+      "evidence",
+      "clean",
+      "review"
+    ],
+    "status": "completed",
+    "verification_status": "needs_requirements",
+    "knowledge_status": "pass",
+    "knowledge_score": 8.3,
+    "learning": {
+      "classification": "requirements_gap",
+      "what_broke": "Requirements were incomplete for machine-verifiable implementation.",
+      "root_cause": "Commissioner detected unresolved requirement gaps and requested follow-up inputs.",
+      "evidence": [
+        "requirements_request_blockers:1",
+        "critic_blocker:Required to convert intent into machine-verifiable acceptance criteria.",
+        "commissioner_score:3",
+        "commissioner_recommendation:no-go"
+      ],
+      "prevention_patches": [
+        {
+          "target": "commissioner_evaluator",
+          "change": "Route incomplete requirements to needs_requirements with structured blockers instead of failed.",
+          "artifact_ref": "sandbox_report.requirements_request"
+        },
+        {
+          "target": "concierge_ui",
+          "change": "Render blockers as concise follow-up questions with defaults for fast-path responses.",
+          "artifact_ref": "requirements_request.blockers"
+        }
+      ],
+      "regression_checks": [
+        "Commissioner low-score + resolvable blockers yields verification_status=needs_requirements",
+        "Concierge receives blockers/questions payload and keeps run non-failure"
+      ],
+      "questions_needed": [],
+      "context_facts": [
+        "Problem: Need to build a web app that reads a local run folder and presents run events, artifacts, final summary, status, and verification evidence.",
+        "Success criteria: The app should display all relevant run information in a clean, user-friendly interface and allow for interactions that verify evidence.",
+        "Constraints: Must be a web application compatible with modern browsers, possibly developed in JavaScript or TypeScript, and should handle local file access securely."
+      ],
+      "critic_blockers": [
+        "Required to convert intent into machine-verifiable acceptance criteria."
+      ],
+      "corrective_actions": [],
+      "instruction_adjustments": []
+    },
+    "agents": [],
+    "model": "gpt-4o-mini",
+    "checkpoint_history": [],
+    "corrective_actions": [],
+    "app_production_repairs": {},
+    "instruction_adjustments": [],
+    "synthesis_present": true,
+    "commissioner_score": 3,
+    "commissioner_recommendation": "no-go",
+    "commissioner_rationale": "The project lacks clear acceptance criteria and specific features, making it infeasible to implement effectively. Without well-defined requirements, the risk of misalignment with user needs and potential rework is high.",
+    "commissioner_improvements": [
+      "Clarify the expected UI components and data structures for run events and artifacts.",
+      "Establish a set of acceptance tests to verify functionality."
+    ],
+    "critic_blockers": [
+      "Required to convert intent into machine-verifiable acceptance criteria."
+    ],
+    "critic_ratings": {
+      "completeness": 0,
+      "feasibility": 0,
+      "quality": 0
+    },
+    "researcher_facts": [
+      "Problem: Need to build a web app that reads a local run folder and presents run events, artifacts, final summary, status, and verification evidence.",
+      "Success criteria: The app should display all relevant run information in a clean, user-friendly interface and allow for interactions that verify evidence.",
+      "Constraints: Must be a web application compatible with modern browsers, possibly developed in JavaScript or TypeScript, and should handle local file access securely.",
+      "Option A: Use React for the UI (pros: component-based architecture, large community support; cons: requires build tooling and learning curve).",
+      "Option B: Use Vue.js for the UI (pros: simpler syntax, easier learning curve; cons: smaller ecosystem compared to React)."
+    ],
+    "overseer_warnings": [],
+    "acceptance_checks_summary": {
+      "passed": 0,
+      "failed": 0,
+      "deferred": 0
+    }
+  },
+  {
     "run_id": "Goal_Build_CupHandleDetector_as_a_standalone_web_a.2026-05-17T22-16-38Z",
     "ingested_at": "2026-05-17T22:26:45Z",
     "goal": "Goal:\nBuild CupHandleDetector as a standalone web application.\n\nOriginal user request:\nYou are the Concierge for an AI Orchestration run.\n\nYour job is to turn the CupHandleDetector roadmap into a coordinated, high-quality implementation plan and execution package for a standalone web application.\n\nProject: CupHandleDetector\nGoal: Build CupHandleDetector as a standalone web application that reads existing detector outputs, surfaces detections clearly, provides chart-based evidence, supports live events, and prepares the project for a credible v1.0 release.\n\nContext:\nCupHandleDetector is already a functioning PowerShell-based cup-and-handle pattern detection engine. Phases 0\u20137 are complete, covering ingestion, normalization, resampling, indicators, pattern detection, breakout confirmation, scoring, persistence, alerts, and batch scanning. Several later phases are partially complete or planned. The project already produces key artifacts such as detections.json, events.jsonl, stage_history.csv, and per-symbol batch output folders.\n\nThe roadmap must be respected as the source of truth. Do not randomly redesign the system. The correct approach is to preserve the existing detector engine and build a clean standalone web application around its outputs.\n\nPrimary Outcome:\nProduce a working standalone web application with:\n1. A polished Next.js application shell.\n2. Health and run discovery APIs.\n3. A detections list view.\n4. Per-symbol detail view with chart overlays.\n5. Entry zone and risk information surfaced where available.\n6. Live event streaming from events.jsonl using SSE or WebSocket.\n7. Clear documentation, tests, and release-readiness improvements.\n\nExecution Rules:\n- Work phase-by-phase.\n- Keep each phase small enough for one coding agent context window.\n- Do not mark any phase complete unless implementation, tests, and docs are complete.\n- Preserve append-only contracts for events.jsonl and stage_history.csv.\n- Preserve config-first behavior. New behavior must be configured through defaults/config schema where applicable.\n- Do not break existing PowerShell detector functionality.\n- The web application should consume detector output artifacts rather than reimplementing detection logic in the frontend.\n- Prefer deterministic, testable behavior over clever abstractions.\n- Treat CI, tests, and documentation as part of the feature, not as cleanup.\n\nRecommended Orchestration Structure:\n\nCreate a multi-agent run with the following agents.\n\nAgent 1 \u2014 Roadmap Analyst / Scope Controller\nRole:\nAnalyze the roadmap and produce a precise execution sequence. Identify dependencies, blockers, and safe cut lines.\n\nResponsibilities:\n- Confirm which phases are complete, in progress, or planned.\n- Prioritize unfinished phases that are prerequisites for the web app.\n- Convert roadmap phases into coding-agent work packets.\n- Enforce the \u201csingle context window per phase\u201d rule.\n- Prevent overlap between agents.\n- Maintain a checklist of acceptance criteria.\n\nExpected Output:\n- A phase execution plan.\n- A dependency map.\n- A clear definition of done for each active phase.\n- A list of files likely to be touched per phase.\n\nAgent 2 \u2014 Backend/API Integration Agent\nRole:\nBuild the standalone web app\u2019s backend APIs around existing detector outputs.\n\nFocus Phases:\n- Phase 15: Web UI scaffold and health API\n- Phase 16: Detections list data source\n- Phase 18: Live event stream\n- Supporting parts of Phase 10 and Phase 11 if needed\n\nResponsibilities:\n- Implement or repair /api/health.\n- Implement /api/runs to read recent run folders from the output directory.\n- Implement detection-loading APIs that read detections.json across configured output locations.\n- Validate and safely parse malformed or missing JSON.\n- Implement an SSE endpoint, preferably over WebSocket unless a stronger reason exists.\n- Support reconnect behavior with last-event-id if feasible.\n- Ensure backend APIs never mutate detector output files.\n- Add tests for happy path, empty output, malformed JSON, and missing files.\n\nExpected Output:\n- Working API routes.\n- Typed response contracts.\n- Error-safe file reading utilities.\n- Tests.\n- Documentation for API behavior.\n\nAgent 3 \u2014 Frontend UX Agent\nRole:\nBuild the standalone web application UI with a clean, professional financial-analysis feel without implying financial advice or trading signal certainty.\n\nFocus Phases:\n- Phase 15: Next.js shell\n- Phase 16: Detections list view\n- Phase 17: Per-symbol chart and overlays\n- Phase 18: Live event UI\n\nResponsibilities:\n- Create an app-router layout with header, navigation, and dark-mode toggle.\n- Build a dashboard/home page that summarizes detector status and recent runs.\n- Build /detections list view with sorting/filtering by symbol, urgency, confidence, and timestamp.\n- Add detail drawer or detail page showing evidence, stage, confidence, urgency, and entry-zone block.\n- Build /symbols/[symbol] chart page or equivalent detail view.\n- Integrate a candlestick chart library such as lightweight-charts unless the repo already has another suitable choice.\n- Render overlays for cup arc, handle box, pivot line, breakout marker, entry band, and stop band where the data exists.\n- Add clear empty states and malformed-data states.\n- Make the UI accessible and fast.\n- Avoid language that suggests guaranteed financial performance.\n\nExpected Output:\n- Working frontend pages.\n- Reusable components.\n- Basic loading/error/empty states.\n- Component or smoke tests.\n- Lighthouse accessibility target of at least 95 for detections page, if test tooling supports it.\n\nAgent 4 \u2014 Detection Output / Risk Surface Agent\nRole:\nEnsure the detector outputs contain enough structured information for the UI to show entry zones, risk, and evidence cleanly.\n\nFocus Phases:\n- Phase 10: Entry zones and risk parameters surfaced in output\n- Related docs/tests\n\nResponsibilities:\n- Compute pivot using handle_high with right_rim fallback.\n- Compute entry price as pivot + atr_add_k * ATR, capped by max_chase_atr.\n- Compute stop as handle_low - atr_buffer_k * ATR, clamped by max_stop_pct.\n- Compute reward/risk.\n- Flag or reject candidates failing min_rr.\n- Add entry_zone block to detections.json and breakout_confirmed events.\n- Preserve existing output contracts.\n- Add Pester tests for computation and min_rr rejection.\n- Document fields in docs/USAGE.md.\n\nExpected Output:\n- Updated detector output schema.\n- Entry zone fields available to the web UI.\n- Pester coverage.\n- Documentation.\n\nAgent 5 \u2014 Telemetry / Observability Agent\nRole:\nAdd deterministic telemetry so detector runs can be visualized and diagnosed by the web app.\n\nFocus Phases:\n- Phase 11: telemetry.jsonl\n- Supporting Phase 15 health summary\n\nResponsibilities:\n- Define telemetry record schema:\n  - timestamp\n  - run_id\n  - symbol\n  - stage\n  - duration_ms\n  - decision\n  - evidence_keys\n  - status\n  - error, if applicable\n- Emit telemetry from Compute-Indicators, Detect-Stages, Confirm-Breakout, and Persist-History.\n- Honor persistence.telemetry.enabled and configured file name.\n- Add tests proving telemetry can be disabled.\n- Add tests proving each stage emits exactly one record per run when enabled.\n- Document schema in docs/USAGE.md.\n- Ensure telemetry is append-only if written as JSONL.\n\nExpected Output:\n- telemetry.jsonl support.\n- Schema documentation.\n- Pester tests.\n- Health API can summarize last-run status from telemetry or run artifacts.\n\nAgent 6 \u2014 Test/CI Hardening Agent\nRole:\nMake the project trustworthy by ensuring tests are complete, useful, and green.\n\nFocus Phases:\n- Phase 8: CI baseline\n- Phase 9: Indicator and pattern test hardening\n- UI smoke/build tests from Phase 15+\n\nResponsibilities:\n- Verify local test suite.\n- Repair any skipped tests that should not be skipped.\n- Add NaN, short-series, single-bar, all-flat, and regime-extreme test cases.\n- Add rejection-reason coverage for DetectCup and DetectHandle gates.\n- Add Confirm-Breakout tests for regime-scaled threshold cases.\n- Add fixture-based end-to-end test that runs the full pipeline on a checked-in synthetic CSV.\n- Ensure CI runs Pester and web build/typecheck tests.\n- Keep CI under the stated performance target where practical.\n\nExpected Output:\n- Green local tests.\n- Green CI configuration.\n- Coverage matrix in docs/USAGE.md mapping gates to tests.\n- No hidden \u201ccomplete\u201d status where tests are failing.\n\nAgent 7 \u2014 Documentation / Release Agent\nRole:\nPrepare the project for credible public use and v1.0 release readiness.\n\nFocus Phases:\n- Phase 20: Documentation polish and v1.0 release\n- Documentation requirements from all active phases\n\nResponsibilities:\n- Update README with:\n  - What the app does\n  - What it does not do\n  - Financial disclaimer\n  - Quickstart\n  - Web app usage\n  - Detector CLI usage\n  - Example output\n- Update docs/USAGE.md with:\n  - Output schemas\n  - Entry zone fields\n  - telemetry.jsonl schema\n  - Backtest and sweep placeholders if not implemented yet\n  - Web UI workflow\n  - Scheduled market-data update instructions\n- Add or update CHANGELOG.md.\n- Ensure every public cmdlet has comment-based help matching docs.\n- Recommend LICENSE if missing, but do not choose one without explicit project owner intent unless instructed.\n- Prepare a v1.0 readiness checklist.\n\nExpected Output:\n- Updated README.\n- Updated docs/USAGE.md.\n- CHANGELOG.md.\n- v1.0 release checklist.\n- Clear disclaimer language.\n\nExecution Priority:\nRun the work in this order unless the Roadmap Analyst finds a stronger dependency reason:\n\n1. Stabilize tests and CI:\n   - Complete Phase 8 verification.\n   - Advance Phase 9 test hardening.\n\n2. Surface risk/entry output:\n   - Complete Phase 10.\n\n3. Build web app scaffold:\n   - Complete Phase 15.\n\n4. Build detections UI:\n   - Complete Phase 16.\n\n5. Build chart detail view:\n   - Complete Phase 17.\n\n6. Add live events:\n   - Complete Phase 18.\n\n7. Add telemetry:\n   - Complete Phase 11, or implement enough telemetry to support the health/status dashboard.\n\n8. Harden market-data update path:\n   - Complete Phase 14 if time allows.\n\n9. Documentation and release:\n   - Complete Phase 20 readiness tasks.\n\nImportant Implementation Guidance:\n- The web app should not be a toy wrapper. It should feel like a real analysis console.\n- However, it must not present detections as guaranteed buy/sell signals.\n- Use terms such as \u201ccandidate,\u201d \u201cdetected pattern,\u201d \u201cconfidence,\u201d \u201curgency,\u201d \u201cevidence,\u201d and \u201crisk parameters.\u201d\n- Add visible disclaimer language in the UI and README:\n  \u201cThis project is for educational and research purposes. It does not provide financial advice, trade recommendations, or guaranteed signals.\u201d\n- Make malformed data survivable. A single bad symbol output should not crash the entire dashboard.\n- Make empty states useful. If there are no runs yet, tell the user exactly how to generate one.\n- Keep styling professional, restrained, and data-centric.\n\nAcceptance Criteria for the Overall Orchestration Run:\n- npm install succeeds.\n- npm run build succeeds with zero critical warnings.\n- npm run lint and npm run typecheck pass if configured.\n- PowerShell Pester tests pass.\n- Visiting / returns a usable dashboard.\n- Visiting /api/health returns 200 and includes pipeline version and last-run summary when available.\n- Visiting /detections renders 0, 1, and many detections correctly.\n- A selected symbol can display chart/evidence details when fixture data exists.\n- Entry-zone fields appear in detections and events when applicable.\n- Live event stream updates the UI when events.jsonl receives a new row, if Phase 18 is implemented in this run.\n- README and docs/USAGE.md explain how to run the detector and web app from a fresh clone.\n- The roadmap checkboxes are updated only for work actually completed.\n\nDeliverables:\n1. Implementation summary.\n2. Files changed grouped by phase.\n3. Tests run and results.\n4. Remaining gaps.\n5. Any risks or assumptions.\n6. Updated roadmap checkboxes for completed work only.\n7. Recommended next orchestration run prompt if not all phases fit in this run.\n\nConstraints:\n- Do not rewrite the whole detector engine.\n- Do not replace PowerShell pipeline behavior unless required by a failing test or explicit roadmap item.\n- Do not silently change output schemas without documentation.\n- Do not delete append-only history.\n- Do not hardcode local machine paths.\n- Do not include secrets in repo files.\n- Do not treat market detections as financial advice.\n\nBegin by producing:\n1. A concise orchestration plan.\n2. Agent assignments.\n3. First-phase implementation tasks.\n4. Exact acceptance gates for the first PR.\n\nContext:\nThe project is already a functioning PowerShell-based detector engine, and the goal is to create a web application that utilizes its outputs.\n\nConstraints:\n- Do not rewrite the whole detector engine.\n- Do not replace PowerShell pipeline behavior unless required.\n- Do not silently change output schemas without documentation.\n- Do not delete append-only history.\n\nPlan:\n- CI Baseline Verification: Verify the local test suite, repair skipped tests, and ensure CI configuration is reliable.\n\nAcceptance checks:\n- All local tests pass with no failures\n- CI configuration is verified and runs successfully\n- Coverage matrix is documented in docs/USAGE.md\n- No hidden 'complete' status where tests are failing\n\nAssumptions:\n- Assumption: The existing PowerShell detector engine will remain intact.\n- Assumption: The project will follow the provided roadmap without random redesigns.\n- Assumption: All phases will be executed in a sequential manner as per the roadmap.",

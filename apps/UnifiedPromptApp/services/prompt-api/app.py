@@ -73,7 +73,7 @@ CACHE_TTL = 60  # seconds
 
 def ttl_cache(ttl: int = CACHE_TTL):
     """Thread-safe TTL cache decorator for read-only endpoints.
-    
+
     WARNING: Under concurrent load, prefer stateless @lru_cache or connection pooling.
     This decorator serializes cache updates via threading.Lock().
     """
@@ -82,25 +82,25 @@ def ttl_cache(ttl: int = CACHE_TTL):
         def wrapper(*args, **kwargs):
             # Create cache key from function name and arguments
             cache_key = f"{func.__name__}:{str(args)}:{str(sorted(kwargs.items()))}"
-            
+
             # Check if cached value exists and is still valid (with lock)
             with _cache_lock:
                 if cache_key in _cache_ttl_dict:
                     cached_value, cached_time = _cache_ttl_dict[cache_key]
                     if time.time() - cached_time < ttl:
                         return cached_value
-            
+
             # Call function and cache result (with lock)
             result = func(*args, **kwargs)
             with _cache_lock:
                 _cache_ttl_dict[cache_key] = (result, time.time())
-                
+
                 # Bounded cache size: evict oldest when exceeding 100 entries.
                 # This prevents unbounded growth when TTL expiry is slow.
                 if len(_cache_ttl_dict) > 100:
                     oldest_key = min(_cache_ttl_dict.items(), key=lambda x: x[1][1])[0]
                     del _cache_ttl_dict[oldest_key]
-            
+
             return result
         return wrapper
     return decorator
@@ -114,41 +114,41 @@ simple_cache = ttl_cache
 def safe_json_load(file_path: pathlib.Path, default: Any = None, context: str = "") -> Any:
     """
     Safely load JSON from a file with enhanced error reporting.
-    
+
     Args:
         file_path: Path to the JSON file
         default: Default value to return on error (None by default)
         context: Context string for error messages (e.g., "agent_status", "run_manifest")
-    
+
     Returns:
         Parsed JSON data or default value on error
-    
+
     Raises:
         ValueError: If file is empty or contains invalid JSON (with detailed error message)
     """
     content = None
     file_size = None
-    
+
     try:
         if not file_path.exists():
             raise FileNotFoundError(f"JSON file not found: {file_path}")
-        
+
         file_size = file_path.stat().st_size
         if file_size == 0:
             error_msg = f"Empty JSON file (0 bytes): {file_path}"
             if context:
                 error_msg = f"[{context}] {error_msg}"
             raise ValueError(error_msg)
-        
+
         content = file_path.read_text(encoding="utf-8")
         if not content.strip():
             error_msg = f"JSON file contains only whitespace: {file_path}"
             if context:
                 error_msg = f"[{context}] {error_msg}"
             raise ValueError(error_msg)
-        
+
         return json.loads(content)
-    
+
     except json.JSONDecodeError as e:
         # Enhanced error message with file details and content preview
         content_preview = content[:200] if content else "<unable to read>"
@@ -160,17 +160,17 @@ def safe_json_load(file_path: pathlib.Path, default: Any = None, context: str = 
         )
         if context:
             error_msg = f"[{context}] {error_msg}"
-        
+
         if default is not None:
             print(f"WARNING: {error_msg}\nReturning default value.", file=sys.stderr)
             return default
         raise ValueError(error_msg)
-    
+
     except Exception as e:
         error_msg = f"Failed to load JSON from {file_path}: {type(e).__name__}: {e}"
         if context:
             error_msg = f"[{context}] {error_msg}"
-        
+
         if default is not None:
             print(f"WARNING: {error_msg}\nReturning default value.", file=sys.stderr)
             return default
@@ -982,6 +982,7 @@ _orch_run_executor = ThreadPoolExecutor(
 _orch_run_state_lock = threading.Lock()
 _orch_run_state: Dict[str, Dict[str, Any]] = {}
 _orch_manifest_lock = threading.Lock()
+_orch_events_file_lock = threading.Lock()
 
 REGISTRY_SRC = ROOT_DIR / "packages" / "prompt-registry" / "src"
 if REGISTRY_SRC.exists():
@@ -1291,7 +1292,7 @@ def init_db():
         # Enable WAL mode for better concurrent read/write performance.
         # WAL allows readers to not block writers and vice versa.
         conn.execute("PRAGMA journal_mode=WAL")
-        
+
         c = conn.cursor()
         c.execute("""
         CREATE TABLE IF NOT EXISTS cache (
@@ -1325,7 +1326,7 @@ def init_db():
         """)
         conn.commit()
     _migrate_legacy_task_queue()
-    
+
     # Apply database migrations for new features
     if apply_migrations:
         try:
@@ -1380,16 +1381,16 @@ def sanitize_run_id(raw: str, max_length: int = 50) -> str:
     """
     if raw is None:
         raw = ""
-    
+
     # Strip leading/trailing whitespace including carriage returns and newlines
     result = raw.strip()
-    
+
     # Replace any whitespace character (space, tab, newline, carriage return) with underscore
     result = re.sub(r'\s+', '_', result)
-    
+
     # Define invalid Windows path characters
     INVALID_PATH_CHARS = '<>:"/\\|?*'
-    
+
     # Replace each invalid character with underscore
     for char in INVALID_PATH_CHARS:
         result = result.replace(char, '_')
@@ -1397,21 +1398,21 @@ def sanitize_run_id(raw: str, max_length: int = 50) -> str:
     # Replace any remaining unsafe characters (including [] and commas) with underscores
     # Keep Unicode letters/digits, dot, dash, and underscore to avoid shell/glob issues.
     result = re.sub(r'[^\w._-]+', '_', result, flags=re.UNICODE)
-    
+
     # Collapse multiple consecutive underscores into a single underscore
     result = re.sub(r'_+', '_', result)
-    
+
     # Strip trailing dots, spaces, and underscores (Windows doesn't allow dots/spaces at end)
     result = result.rstrip('_. ')
-    
+
     # If the result is empty, default to "run"
     if not result:
         result = "run"
-    
+
     # Enforce maximum length
     if len(result) > max_length:
         result = result[:max_length].rstrip('_. ')
-    
+
     return result
 
 def hash_payload(template_id: str, model: str, payload: Dict[str, Any]) -> str:
@@ -1462,20 +1463,20 @@ def cache_put(cache_key: str, template_id: str, model: str, input_json: str, out
             logger.warning(f"Failed to cache result for {cache_key}: {e}")
 
 def audit_log(
-    template_id: str, 
-    model: str, 
-    input_json: str, 
-    output: Optional[Dict[str, Any]], 
-    cached: bool, 
-    status: str, 
-    token_prompt: Optional[int], 
+    template_id: str,
+    model: str,
+    input_json: str,
+    output: Optional[Dict[str, Any]],
+    cached: bool,
+    status: str,
+    token_prompt: Optional[int],
     token_completion: Optional[int],
     run_id: Optional[str] = None,
     agent_name: Optional[str] = None
 ) -> int:
     """
     Log API call to audit table and optionally record environmental metrics.
-    
+
     Args:
         template_id: Template/prompt ID
         model: Model name
@@ -1487,12 +1488,12 @@ def audit_log(
         token_completion: Output/completion tokens
         run_id: Optional orchestration run ID
         agent_name: Optional agent name
-        
+
     Returns:
         Audit log entry ID
     """
     timestamp = now_iso()
-    
+
     conn = _get_db_connection()
     try:
         c = conn.cursor()
@@ -1517,7 +1518,7 @@ def audit_log(
         except Exception as retry_error:
             logger.warning(f"Failed to write audit log: {retry_error}")
             audit_id = -1
-    
+
     # Record environmental metrics if tokens available and not cached (to avoid double-counting)
     if token_prompt is not None and token_completion is not None and not cached:
         try:
@@ -1535,7 +1536,7 @@ def audit_log(
         except Exception as e:
             # Don't fail the audit log if metrics recording fails
             print(f"Warning: Failed to record cost metrics: {e}")
-    
+
     return audit_id
 
 def read_templates() -> Dict[str, Dict[str, Any]]:
@@ -1753,7 +1754,7 @@ def load_task_queue() -> List[Dict[str, Any]]:
         # Fallback to fresh connection on error
         with sqlite3.connect(DB_PATH) as fresh_conn:
             rows = fresh_conn.execute("SELECT payload FROM orchestrator_tasks ORDER BY rowid").fetchall()
-    
+
     tasks: List[Dict[str, Any]] = []
     for (payload_json,) in rows:
         try:
@@ -1938,12 +1939,12 @@ def _write_manifest(spec, review_policy: str) -> pathlib.Path:
 def _invoke_power_shell_refiner(spec, manifest: pathlib.Path, dry_run: bool) -> None:
     """
     Invoke the PowerShell refiner script to process a prompt.
-    
+
     This intentionally uses PowerShell as a worker process to leverage the existing
     OpenAI_Refiner.ps1 script that handles goal refinement and AI interaction.
     The design allows the Python API to orchestrate PowerShell-based AI workflows
     without reimplementing the refinement logic.
-    
+
     For language-agnostic orchestration, consider using the orchestration-bridge
     service which provides a more flexible task queue system.
     """
@@ -2002,7 +2003,7 @@ def build_messages(tpl: Dict[str, Any], req: RequestPayload) -> List[Dict[str, s
     # 3) Output contract (enforce response shape)
     contract = textwrap.dedent("""\
     Output Contract:
-    - Always return a JSON object with keys requested in 'desired_output'. 
+    - Always return a JSON object with keys requested in 'desired_output'.
     - If 'executive_summary' is requested, provide 2-4 crisp bullets with trend direction and business impact.
     - If 'technical_json' is requested, include fields: probable_cause, recommended_action (1-3 sentences each).
     - If 'chart_recommendations' is requested, return a small array of chart specs with 'type','metric','granularity'.
@@ -2131,7 +2132,7 @@ import time
 # Import security utilities
 try:
     from security import (
-        RateLimitMiddleware, AuditLoggingMiddleware, 
+        RateLimitMiddleware, AuditLoggingMiddleware,
         get_security_headers, initialize_security
     )
     SECURITY_ENABLED = True
@@ -2147,7 +2148,7 @@ except ImportError as security_import_error:
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
-        
+
         # Apply security headers
         if SECURITY_ENABLED:
             headers = get_security_headers()
@@ -2167,7 +2168,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             response.headers["X-Frame-Options"] = "DENY"
             response.headers["X-XSS-Protection"] = "1; mode=block"
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-        
+
         # Allow caching for static resources but not for API responses with sensitive data
         if request.url.path.startswith("/static/") or request.url.path.endswith((".css", ".js", ".png", ".jpg", ".svg")):
             response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
@@ -2194,15 +2195,15 @@ def create_app() -> FastAPI:
 
     # Add compression middleware (first for response compression)
     fastapi_app.add_middleware(GZipMiddleware, minimum_size=1000)
-    
+
     # Add security middleware (rate limiting and audit logging)
     if SECURITY_ENABLED:
         fastapi_app.add_middleware(AuditLoggingMiddleware)
         fastapi_app.add_middleware(RateLimitMiddleware)
-    
+
     # Add performance tracking middleware
     fastapi_app.add_middleware(PerformanceMiddleware)
-    
+
     # Add security headers middleware
     fastapi_app.add_middleware(SecurityHeadersMiddleware)
 
@@ -2298,10 +2299,10 @@ if AUTH_ENABLED:
                 detail="Incorrect username or password",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        
+
         access_token = create_access_token(data={"sub": user.username, "role": user.role.value})
         refresh_token = create_refresh_token(data={"sub": user.username, "role": user.role.value})
-        
+
         return Token(access_token=access_token, refresh_token=refresh_token)
 
     @app.post("/auth/register", response_model=User)
@@ -2351,7 +2352,7 @@ def receive_telemetry(batch: TelemetryBatchRequest):
     """
     Receive telemetry events from dashboard and other clients.
     Writes events to JSONL file in artifacts/telemetry directory.
-    
+
     Note: In high-concurrency scenarios, consider using a message queue
     or database for better reliability.
     """
@@ -2359,22 +2360,22 @@ def receive_telemetry(batch: TelemetryBatchRequest):
         # Ensure telemetry directory exists
         telemetry_dir = ROOT_DIR / "artifacts" / "telemetry"
         telemetry_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # Get today's telemetry file
         date_str = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
         telemetry_file = telemetry_dir / f"telemetry_{date_str}.jsonl"
-        
+
         # Write events as JSONL with atomic-like operation
         # Serialize all events first
         json_lines = []
         for event in batch.events:
             event_dict = event.model_dump()
             json_lines.append(json.dumps(event_dict) + "\n")
-        
+
         # Write all lines in one operation to minimize race window
         with open(telemetry_file, "a", encoding="utf-8") as f:
             f.writelines(json_lines)
-        
+
         return {
             "ok": True,
             "events_received": len(batch.events),
@@ -2391,7 +2392,7 @@ def get_telemetry_stats(days: int = Query(7, ge=1, le=90)):
     """
     Get telemetry statistics for the specified number of days.
     Returns aggregated metrics from cost, quality, and run data.
-    
+
     Compatible with migrations 4-6 (cost metrics, run aggregates, quality tracking).
     Returns sane defaults when no data exists.
     """
@@ -2399,7 +2400,7 @@ def get_telemetry_stats(days: int = Query(7, ge=1, le=90)):
         # Calculate date range
         end_date = datetime.datetime.now(datetime.timezone.utc)
         start_date = end_date - datetime.timedelta(days=days)
-        
+
         # Initialize response with safe defaults
         stats = {
             "total_events": 0,
@@ -2410,27 +2411,27 @@ def get_telemetry_stats(days: int = Query(7, ge=1, le=90)):
             "by_source": {},
             "by_day": {}
         }
-        
+
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            
+
             # Check if new tables exist (from migrations 4-6)
             cursor.execute("""
-                SELECT name FROM sqlite_master 
+                SELECT name FROM sqlite_master
                 WHERE type='table' AND name IN (
                     'orchestration_cost_metrics',
-                    'orchestration_run_aggregates', 
+                    'orchestration_run_aggregates',
                     'run_quality_metrics'
                 )
             """)
             available_tables = {row[0] for row in cursor.fetchall()}
-            
+
             # Query run aggregates if table exists (migration 5)
             if 'orchestration_run_aggregates' in available_tables:
                 try:
                     cursor.execute("""
-                        SELECT 
+                        SELECT
                             COUNT(*) as run_count,
                             SUM(total_cost_usd) as total_cost,
                             SUM(total_tokens_input + total_tokens_output) as total_tokens,
@@ -2439,24 +2440,24 @@ def get_telemetry_stats(days: int = Query(7, ge=1, le=90)):
                         WHERE datetime(created_at) >= datetime(?)
                           AND datetime(created_at) <= datetime(?)
                     """, (start_date.isoformat(), end_date.isoformat()))
-                    
+
                     row = cursor.fetchone()
                     if row and row['run_count'] > 0:
                         stats['total_events'] = row['run_count'] or 0
                         stats['by_event_type']['OrchestrationRun.Completed'] = row['run_count'] or 0
-                        
+
                         # Add cost summary to metadata (not breaking schema)
                         if row['total_cost'] is not None:
                             stats['by_event_type']['OrchestrationRun.TotalCost'] = float(row['total_cost'])
-                
+
                 except sqlite3.OperationalError as e:
                     logger.warning(f"Failed to query run_aggregates: {e}")
-            
+
             # Query quality metrics if table exists (migration 6)
             if 'run_quality_metrics' in available_tables:
                 try:
                     cursor.execute("""
-                        SELECT 
+                        SELECT
                             COUNT(*) as total_runs,
                             SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as successful_runs,
                             AVG(quality_score) as avg_quality
@@ -2464,24 +2465,24 @@ def get_telemetry_stats(days: int = Query(7, ge=1, le=90)):
                         WHERE datetime(created_at) >= datetime(?)
                           AND datetime(created_at) <= datetime(?)
                     """, (start_date.isoformat(), end_date.isoformat()))
-                    
+
                     row = cursor.fetchone()
                     if row and row['total_runs'] > 0:
                         stats['by_event_type']['QualityMetrics.Total'] = row['total_runs'] or 0
                         stats['by_event_type']['QualityMetrics.Successful'] = row['successful_runs'] or 0
-                        
+
                         failed_runs = (row['total_runs'] or 0) - (row['successful_runs'] or 0)
                         if failed_runs > 0:
                             stats['by_event_type']['QualityMetrics.Failed'] = failed_runs
-                
+
                 except sqlite3.OperationalError as e:
                     logger.warning(f"Failed to query quality_metrics: {e}")
-            
+
             # Query cost metrics for daily breakdown if table exists (migration 4)
             if 'orchestration_cost_metrics' in available_tables:
                 try:
                     cursor.execute("""
-                        SELECT 
+                        SELECT
                             DATE(timestamp) as day,
                             COUNT(*) as call_count,
                             SUM(cost_usd) as daily_cost
@@ -2491,17 +2492,17 @@ def get_telemetry_stats(days: int = Query(7, ge=1, le=90)):
                         GROUP BY DATE(timestamp)
                         ORDER BY day ASC
                     """, (start_date.isoformat(), end_date.isoformat()))
-                    
+
                     for row in cursor.fetchall():
                         day = row['day']
                         count = row['call_count'] or 0
                         if day:
                             stats['by_day'][day] = count
                             stats['total_events'] += count
-                
+
                 except sqlite3.OperationalError as e:
                     logger.warning(f"Failed to query cost_metrics: {e}")
-            
+
             # Fallback: Try reading JSONL telemetry files if no database data
             if stats['total_events'] == 0:
                 try:
@@ -2519,45 +2520,45 @@ def get_telemetry_stats(days: int = Query(7, ge=1, le=90)):
                                             event_time = datetime.datetime.fromisoformat(
                                                 event.get('timestamp', '').replace('Z', '+00:00')
                                             )
-                                            
+
                                             if start_date <= event_time <= end_date:
                                                 stats['total_events'] += 1
-                                                
+
                                                 # Count by event type
                                                 event_type = event.get('eventType', 'Unknown')
                                                 stats['by_event_type'][event_type] = \
                                                     stats['by_event_type'].get(event_type, 0) + 1
-                                                
+
                                                 # Count by source
                                                 source = event.get('source', 'Unknown')
                                                 stats['by_source'][source] = \
                                                     stats['by_source'].get(source, 0) + 1
-                                                
+
                                                 # Count by day
                                                 day = event_time.strftime('%Y-%m-%d')
                                                 stats['by_day'][day] = stats['by_day'].get(day, 0) + 1
-                                        
+
                                         except (json.JSONDecodeError, ValueError, KeyError) as e:
                                             # Skip malformed events
                                             logger.debug(f"Skipping malformed event: {e}")
                                             continue
-                            
+
                             except Exception as e:
                                 logger.warning(f"Failed to read telemetry file {jsonl_file}: {e}")
                                 continue
-                
+
                 except Exception as e:
                     logger.warning(f"Failed to read JSONL telemetry files: {e}")
-        
+
         # Ensure all values are JSON-safe (no None, Decimal, etc.)
         stats['total_events'] = int(stats['total_events'] or 0)
-        
+
         return stats
-        
+
     except Exception as e:
         # Log the error for debugging
         logger.error(f"Telemetry stats endpoint error: {e}", exc_info=True)
-        
+
         # Return safe fallback response instead of raising
         return {
             "total_events": 0,
@@ -2628,7 +2629,7 @@ def search_prompts(
             with sqlite3.connect(prompts_db) as conn:
                 conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
-                
+
                 where_clauses = []
                 params = {}
 
@@ -2636,7 +2637,7 @@ def search_prompts(
                     # Prefer FTS if available
                     try:
                         fts_query = """
-                            SELECT p.id, p.title, p.version, p.category, p.owner, p.tags, 
+                            SELECT p.id, p.title, p.version, p.category, p.owner, p.tags,
                                    p.description, p.updated_utc, rank AS relevance
                             FROM prompts p
                             JOIN prompts_fts fts ON p.rowid = fts.rowid
@@ -2850,7 +2851,7 @@ def refine_bulk_prompts(request: Dict[str, Any]):
     prompt_ids = request.get("prompt_ids", [])
     if not prompt_ids:
         raise HTTPException(status_code=400, detail="No prompt_ids provided")
-    
+
     results = []
     for prompt_id in prompt_ids:
         try:
@@ -2859,7 +2860,7 @@ def refine_bulk_prompts(request: Dict[str, Any]):
             results.append({"prompt_id": prompt_id, "status": "success", "result": result})
         except Exception as e:
             results.append({"prompt_id": prompt_id, "status": "error", "error": str(e)})
-    
+
     return {"status": "completed", "results": results}
 
 
@@ -3161,7 +3162,7 @@ def audit_htm(limit: int = Query(100, ge=1, le=500)):
     with sqlite3.connect(DB_PATH) as conn:
         c = conn.cursor()
         c.execute("""
-        SELECT id, created_at, template_id, model, status, cached, 
+        SELECT id, created_at, template_id, model, status, cached,
                IFNULL(token_prompt,0), IFNULL(token_completion,0)
         FROM audit ORDER BY id DESC LIMIT ?
         """, (limit,))
@@ -3312,14 +3313,14 @@ def get_cost_summary(
 ):
     """Get total cost summary for a time period."""
     _require_admin_access(admin_token)
-    
+
     total_cost = cost_tracker.get_total_cost(
         start_date=start_date,
         end_date=end_date,
         provider=provider,
         user_id=user_id
     )
-    
+
     return CostSummaryResponse(
         total_cost=total_cost,
         start_date=start_date,
@@ -3338,23 +3339,23 @@ def get_cost_breakdown(
 ):
     """Get detailed cost breakdown by provider, model, and day."""
     _require_admin_access(admin_token)
-    
+
     by_provider = cost_tracker.get_cost_by_provider(
         start_date=start_date,
         end_date=end_date
     )
-    
+
     by_model = cost_tracker.get_cost_by_model(
         start_date=start_date,
         end_date=end_date,
         provider=provider
     )
-    
+
     daily = cost_tracker.get_daily_costs(
         days=days,
         provider=provider
     )
-    
+
     return CostBreakdownResponse(
         by_provider=by_provider,
         by_model=by_model,
@@ -3371,13 +3372,13 @@ def check_budget_status(
 ):
     """Check if costs are within budget."""
     _require_admin_access(admin_token)
-    
+
     budget_status = cost_tracker.check_budget(
         budget_amount=budget_amount,
         period_days=period_days,
         provider=provider
     )
-    
+
     return BudgetStatusResponse(**budget_status)
 
 
@@ -3393,7 +3394,7 @@ def get_costs_by_run(
     Shows token usage and costs attributed to each run.
     """
     _require_admin_access(admin_token)
-    
+
     return cost_tracker.get_cost_by_run(
         run_id=run_id,
         start_date=start_date,
@@ -3420,7 +3421,7 @@ def metrics_cost_summary(
 ):
     """
     Get comprehensive summary of cost and environmental impact metrics.
-    
+
     Returns:
     - Total cost, energy (kWh), and water usage (liters)
     - Top models and agents by cost
@@ -3451,7 +3452,7 @@ def metrics_cost_runs(
 ):
     """
     Get paginated list of orchestration runs with cost and environmental metrics.
-    
+
     Supports filtering by:
     - Model name
     - Agent name
@@ -3481,7 +3482,7 @@ def metrics_cost_models(
 ):
     """
     Get aggregated cost and environmental metrics by model.
-    
+
     Returns per-model aggregates including:
     - Total tokens, cost, energy, and water
     - Average cost per call
@@ -3515,7 +3516,7 @@ def quality_rating(
 ):
     """
     Submit a human quality rating for a run.
-    
+
     Records success status, quality score, notes, and whether manual fixes were needed.
     This endpoint is designed for web UI integration to capture human feedback.
     """
@@ -3537,7 +3538,7 @@ def automated_test(
 ):
     """
     Record automated test results for a run.
-    
+
     Captures boolean success status and numeric test scores from automated test suites.
     Use this when runs are part of a test suite that can programmatically assess quality.
     """
@@ -3555,7 +3556,7 @@ def automated_test(
 def quality_metrics_for_run(run_id: str):
     """
     Get quality metrics for a specific run.
-    
+
     Returns all quality data including success status, scores, and ratings.
     """
     result = get_run_quality(db_path=DB_PATH, run_id=run_id)
@@ -3572,7 +3573,7 @@ def quality_summary(
 ):
     """
     Get summary statistics for quality metrics.
-    
+
     Returns:
     - Overall success rate and average quality
     - Breakdown by strategy
@@ -3593,12 +3594,12 @@ def cost_quality_efficiency(
 ):
     """
     Get cost efficiency metrics based on quality outcomes.
-    
+
     Computes:
     - Cost per successful run
     - Cost per high-quality run (quality >= threshold)
     - Quality-adjusted cost index (lower is better)
-    
+
     This endpoint helps identify which strategies and models provide
     the best value by balancing cost with outcome quality.
     """
@@ -3618,7 +3619,7 @@ def runs_with_quality(
 ):
     """
     Get paginated list of runs with both cost and quality metrics.
-    
+
     Joins cost data with quality data to provide a complete view of run efficiency.
     Includes computed cost_efficiency metric (cost / quality).
     """
@@ -3636,7 +3637,7 @@ def runs_with_quality(
 def metrics_cost_prometheus():
     """
     Export metrics in Prometheus text format for scraping.
-    
+
     Metrics include:
     - unified_ai_cost_usd_total
     - unified_ai_energy_kwh_total
@@ -3809,23 +3810,23 @@ def _canonical_job_type(job_type_value: Any) -> Optional[str]:
 
 def _derive_app_type(goal_text: str, requested_app_type: Optional[str] = None) -> str:
     """Derive app_type from goal text and requested type.
-    
+
     When explicit requested_app_type is provided, it always wins.
-    Otherwise, strip negation context from goal before keyword matching 
+    Otherwise, strip negation context from goal before keyword matching
     to avoid false positives from "do not create a web app" triggering web detection.
-    
+
     Supports: web, wpf (desktop), unknown (fallback)
     """
     if isinstance(requested_app_type, str) and requested_app_type.strip():
         return requested_app_type.strip().lower()
 
     goal = (goal_text or "").lower()
-    
+
     # Strip non-goals and negation context before keyword matching so phrases
     # like "do not create a web app" or "do not use React" cannot trigger a
     # false positive on the web detection branch.
     positive_goal = re.sub(r'(?s)(non.?goals?|do not|don.?t|avoid|exclude|without)\b.*', '', goal)
-    
+
     if re.search(r"\b(wpf|winforms|windows forms|xaml|desktop app|windows desktop|tkinter|pyqt|wxpython)\b", positive_goal):
         return "wpf"
     # Only strong, unambiguous "this is a web app" signals. Weak terms like
@@ -3977,9 +3978,11 @@ def _hydrate_orchestration_run_from_disk(manifest: Dict[str, Any], out_dir: path
 
     events = data.get("events") if isinstance(data.get("events"), list) else []
     if not events:
-        event_path = out_dir / "events.ndjson"
-        if event_path.exists():
-            hydrated_events: List[Dict[str, Any]] = []
+        hydrated_events: List[Dict[str, Any]] = []
+        event_candidates = [out_dir / "events.jsonl", out_dir / "events.ndjson"]
+        for event_path in event_candidates:
+            if not event_path.exists():
+                continue
             try:
                 for line in event_path.read_text(encoding="utf-8").splitlines():
                     if not line.strip():
@@ -3994,6 +3997,67 @@ def _hydrate_orchestration_run_from_disk(manifest: Dict[str, Any], out_dir: path
                 hydrated_events = []
             if hydrated_events:
                 data["events"] = hydrated_events
+                break
+
+    final_summary_path = out_dir / "final_summary.json"
+    if final_summary_path.exists() and not isinstance(data.get("final_summary"), dict):
+        summary = safe_json_load(final_summary_path, default=None, context=f"final_summary:{out_dir.name}")
+        if isinstance(summary, dict):
+            data["final_summary"] = summary
+
+    return data
+
+
+def _ensure_terminal_evidence_artifacts(run_id: str, manifest_path: pathlib.Path, data: Dict[str, Any], out_dir: pathlib.Path) -> Dict[str, Any]:
+    status_value = str(data.get("status") or "").strip().lower()
+    verification_status = str(data.get("verification_status") or "").strip().lower()
+    needs_requirements = verification_status in {"needs_requirements", "blocked_requirements"}
+    terminal_status = status_value in ORCH_TERMINAL_STATUSES
+
+    changed = False
+    if needs_requirements and status_value == "completed":
+        data["status"] = "blocked_requirements"
+        status_value = "blocked_requirements"
+        terminal_status = True
+        changed = True
+
+    if needs_requirements and not data.get("failure_artifact"):
+        req = data.get("requirements_request") if isinstance(data.get("requirements_request"), dict) else {}
+        req_summary = str(req.get("summary") or "Additional requirements are needed before implementation can continue.").strip()
+        detail_lines = [req_summary]
+        blockers = req.get("blockers") if isinstance(req.get("blockers"), list) else []
+        for blocker in blockers[:5]:
+            if not isinstance(blocker, dict):
+                continue
+            q = str(blocker.get("question") or "").strip()
+            why = str(blocker.get("why") or "").strip()
+            if q:
+                detail_lines.append(f"- Question: {q}")
+            if why:
+                detail_lines.append(f"  Why: {why}")
+        failure_artifact = _write_failure_visibility_artifact(
+            out_dir,
+            "Requirements clarification needed",
+            "\n".join(detail_lines),
+        )
+        data["failure_artifact"] = _to_relpath(failure_artifact, out_dir)
+        changed = True
+
+    final_summary_path = out_dir / "final_summary.json"
+    if (terminal_status or needs_requirements) and not final_summary_path.exists():
+        summary = _build_terminal_summary_from_manifest(
+            run_id,
+            data,
+            out_dir,
+            blocker_detail=None if status_value == "completed" else str(data.get("error_detail") or data.get("failure_artifact") or "Run did not complete successfully."),
+        )
+        written_summary = _write_terminal_summary(out_dir, summary)
+        data["final_summary_path"] = _to_relpath(written_summary, out_dir)
+        data["final_summary"] = summary
+        changed = True
+
+    if changed:
+        manifest_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
     return data
 
@@ -4006,6 +4070,297 @@ def _update_manifest_atomic(path: pathlib.Path, update_fn: Callable[[Dict[str, A
         updated = update_fn(dict(current))
         path.write_text(json.dumps(updated, indent=2), encoding="utf-8")
         return updated
+
+
+_CANONICAL_EVENT_TYPES = {
+    "run_created",
+    "run_queued",
+    "run_started",
+    "agent_started",
+    "agent_progress",
+    "agent_blocked",
+    "agent_completed",
+    "artifact_created",
+    "validation_started",
+    "validation_completed",
+    "run_completed",
+    "run_failed",
+    "run_recovered",
+}
+
+
+def _is_run_evidence_viewer_goal(goal_text: str) -> bool:
+    text = str(goal_text or "").lower()
+    if "run evidence viewer" in text:
+        return True
+    return all(token in text for token in ["run", "events", "artifacts", "summary", "status", "verification"])
+
+
+def _canonical_event_type_for_legacy(event_type: str, message: str) -> str:
+    event_type_l = str(event_type or "").strip().lower()
+    message_l = str(message or "").strip().lower()
+    if event_type_l == "status":
+        if message_l.startswith("queued"):
+            return "run_queued"
+        if message_l.startswith("running") or message_l.startswith("dispatching"):
+            return "run_started"
+        if message_l.startswith("completed"):
+            return "run_completed"
+        if message_l.startswith("cancelled") or message_l.startswith("failed") or message_l.startswith("error"):
+            return "run_failed"
+    if event_type_l.startswith("agent:"):
+        return "agent_progress"
+    if event_type_l.startswith("artifact:"):
+        return "artifact_created"
+    if event_type_l.startswith("verify:"):
+        return "validation_completed"
+    if event_type_l.startswith("repair:"):
+        return "run_recovered"
+    if event_type_l.startswith("checkpoint:"):
+        return "agent_blocked"
+    if event_type_l.startswith("overseer:warn") or event_type_l.startswith("overseer:critical"):
+        return "agent_blocked"
+    if event_type_l == "error":
+        return "run_failed"
+    return "agent_progress"
+
+
+def _canonical_severity_for_legacy(event_type: str, message: str) -> str:
+    event_type_l = str(event_type or "").strip().lower()
+    message_l = str(message or "").strip().lower()
+    if event_type_l in {"error"} or "error" in message_l or "failed" in message_l:
+        return "error"
+    if event_type_l.startswith("warn") or event_type_l.startswith("overseer:warn") or event_type_l.startswith("overseer:critical"):
+        return "warn"
+    return "info"
+
+
+def _append_canonical_events(out_dir: pathlib.Path, run_id: str, events: List[Dict[str, Any]]) -> None:
+    if not events:
+        return
+    out_dir.mkdir(parents=True, exist_ok=True)
+    canonical_path = out_dir / "events.jsonl"
+    lines: List[str] = []
+    for idx, event in enumerate(events):
+        if not isinstance(event, dict):
+            continue
+        timestamp = str(event.get("ts") or event.get("timestamp") or now_iso())
+        legacy_type = str(event.get("type") or "")
+        message = str(event.get("message") or "event")
+        canonical_type = _canonical_event_type_for_legacy(legacy_type, message)
+        if canonical_type not in _CANONICAL_EVENT_TYPES:
+            canonical_type = "agent_progress"
+        severity = _canonical_severity_for_legacy(legacy_type, message)
+        agent_name = None
+        if legacy_type.startswith("agent:"):
+            agent_name = legacy_type.split(":", 1)[1] or None
+        payload = {
+            "event_id": str(uuid.uuid4()),
+            "run_id": run_id,
+            "timestamp": timestamp,
+            "event_type": canonical_type,
+            "severity": severity,
+            "agent_name": agent_name,
+            "message": message,
+            "data": {
+                "legacy_type": legacy_type,
+                "legacy_index": idx,
+                "legacy": {k: v for k, v in event.items() if k not in {"ts", "timestamp", "type", "message"}},
+            },
+        }
+        lines.append(json.dumps(payload, separators=(",", ":")))
+
+    if not lines:
+        return
+    with _orch_events_file_lock:
+        with open(canonical_path, "a", encoding="utf-8") as handle:
+            handle.write("\n".join(lines) + "\n")
+
+
+def _write_terminal_summary(out_dir: pathlib.Path, summary: Dict[str, Any]) -> pathlib.Path:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    summary_path = out_dir / "final_summary.json"
+    summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    return summary_path
+
+
+def _write_failure_visibility_artifact(out_dir: pathlib.Path, title: str, detail: str) -> pathlib.Path:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    artifact_path = out_dir / "run_failure.md"
+    content = "\n".join(
+        [
+            "# Run Failure",
+            "",
+            f"## {title}",
+            "",
+            detail.strip() or "No additional detail provided.",
+            "",
+            "## Next Step",
+            "- Fix the reported issue and rerun orchestration.",
+        ]
+    )
+    artifact_path.write_text(content, encoding="utf-8")
+    return artifact_path
+
+
+def _build_terminal_summary_from_manifest(
+    run_id: str,
+    manifest: Dict[str, Any],
+    out_dir: pathlib.Path,
+    blocker_detail: Optional[str] = None,
+) -> Dict[str, Any]:
+    status_value = str(manifest.get("status") or "").strip().lower()
+    verification_status = str(manifest.get("verification_status") or "").strip().lower()
+    app_production = manifest.get("app_production") if isinstance(manifest.get("app_production"), dict) else {}
+    checks = app_production.get("checks") if isinstance(app_production.get("checks"), list) else []
+
+    if status_value in {"completed", "success", "succeeded"} and verification_status in {"passed", "partial"}:
+        outcome = "completed"
+    elif status_value in {"completed_with_errors", "blocked_requirements"}:
+        outcome = "completed_with_warnings"
+    else:
+        outcome = "failed"
+
+    validation_results: List[Dict[str, Any]] = []
+    for check in checks:
+        if not isinstance(check, dict):
+            continue
+        check_status = str(check.get("status") or "").strip().lower()
+        normalized_status = "deferred"
+        if check_status in {"passed", "failed"}:
+            normalized_status = check_status
+        elif check_status in {"skipped"}:
+            normalized_status = "deferred"
+        validation_results.append(
+            {
+                "name": str(check.get("name") or "check"),
+                "status": normalized_status,
+                "detail": str(check.get("summary") or "").strip() or None,
+            }
+        )
+
+    generated_files = manifest.get("generated_app_files") if isinstance(manifest.get("generated_app_files"), list) else []
+    created_artifacts: List[str] = []
+    for candidate in [
+        "generated_app_verification.json",
+        "generated_app_verification.md",
+        "generated_app_repairs.json",
+        "generated_app_repairs.md",
+        "sandbox_report.json",
+        "run_failure.md",
+    ]:
+        if (out_dir / candidate).exists():
+            created_artifacts.append(candidate)
+
+    blockers: List[Dict[str, Any]] = []
+    if status_value in {"blocked_requirements", "needs_requirements"}:
+        req = manifest.get("requirements_request") if isinstance(manifest.get("requirements_request"), dict) else {}
+        req_summary = str(req.get("summary") or "Additional requirements are needed before implementation can continue.").strip()
+        blockers.append(
+            {
+                "severity": "clarification_needed",
+                "summary": req_summary,
+                "agent": "ConceptualModelContract",
+            }
+        )
+    elif outcome == "failed":
+        blockers.append(
+            {
+                "severity": "hard_blocker",
+                "summary": blocker_detail or str(manifest.get("error_detail") or "Run failed before reaching readiness."),
+                "agent": "orchestrator",
+            }
+        )
+
+    warnings = [str(v) for v in (manifest.get("warnings") or []) if str(v).strip()]
+    return {
+        "schema_version": 1,
+        "run_id": run_id,
+        "objective": str(manifest.get("goal") or manifest.get("prompt_id") or ""),
+        "outcome": outcome,
+        "completed_work": [
+            "Orchestration execution completed" if outcome != "failed" else "Orchestration execution ended in failure"
+        ],
+        "changed_files": [str(v) for v in generated_files if isinstance(v, str)],
+        "created_artifacts": created_artifacts,
+        "validation_results": validation_results,
+        "blockers": blockers,
+        "warnings": warnings,
+        "next_steps": [
+            "Review generated app verification report and rerun with targeted fixes." if outcome != "failed" else "Review run_failure.md and logs before rerun."
+        ],
+        "generated_at": now_iso(),
+    }
+
+
+def _evaluate_minimum_success_profile(
+    goal_text: str,
+    verification_status: str,
+    generated_app_files: List[str],
+    app_production: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    required = _is_run_evidence_viewer_goal(goal_text)
+    result: Dict[str, Any] = {
+        "profile": "minimum_success",
+        "required": required,
+        "name": "run_evidence_viewer_mvp_success",
+        "passed": True,
+        "checks": [],
+        "failure_reason": None,
+    }
+    if not required:
+        return result
+
+    checks: List[Tuple[str, bool, str]] = []
+    concierge_accepts = str(verification_status or "").strip().lower() not in {
+        "failed",
+        "needs_requirements",
+        "blocked_requirements",
+    }
+    checks.append(
+        (
+            "concierge_acceptance",
+            concierge_accepts,
+            "Concierge/contract gate accepted the well-described Run Evidence Viewer MVP request.",
+        )
+    )
+
+    has_materialized_output = bool(generated_app_files)
+    checks.append(
+        (
+            "materialized_output",
+            has_materialized_output,
+            "Orchestrator materialized generated app files.",
+        )
+    )
+
+    smoke_passed = False
+    if isinstance(app_production, dict):
+        for check in app_production.get("checks") or []:
+            if not isinstance(check, dict):
+                continue
+            name = str(check.get("name") or "").strip().lower()
+            status = str(check.get("status") or "").strip().lower()
+            if name in {"smoke_tests", "dev_server"} and status == "passed":
+                smoke_passed = True
+                break
+    checks.append(
+        (
+            "minimal_smoke_proof",
+            smoke_passed,
+            "At least one minimal run proof passed for the generated web app (smoke_tests or dev_server).",
+        )
+    )
+
+    failed_checks = [name for name, ok, _desc in checks if not ok]
+    result["checks"] = [
+        {"name": name, "passed": ok, "description": desc}
+        for name, ok, desc in checks
+    ]
+    result["passed"] = not failed_checks
+    if failed_checks:
+        result["failure_reason"] = f"Failed minimum success checks: {', '.join(failed_checks)}"
+    return result
 
 
 def _lease_payload(run_id: str, worker_id: str) -> Dict[str, Any]:
@@ -4257,6 +4612,30 @@ def _cancel_orchestration_run_internal(run_id: str, reason: str = "manual") -> D
         data.setdefault("events", []).append(
             {"ts": now, "type": "info", "message": f"Run cancelled before execution ({reason})."}
         )
+        try:
+            failure_artifact = _write_failure_visibility_artifact(
+                pathlib.Path(str(data.get("run_dir") or BRIDGE_RUN_DIR / run_id)),
+                "Run cancelled",
+                f"Run cancelled before execution ({reason}).",
+            )
+            data["failure_artifact"] = _to_relpath(failure_artifact, pathlib.Path(str(data.get("run_dir") or BRIDGE_RUN_DIR / run_id)))
+            summary = _build_terminal_summary_from_manifest(
+                run_id,
+                data,
+                pathlib.Path(str(data.get("run_dir") or BRIDGE_RUN_DIR / run_id)),
+                blocker_detail=f"Run cancelled before execution ({reason}).",
+            )
+            _write_terminal_summary(pathlib.Path(str(data.get("run_dir") or BRIDGE_RUN_DIR / run_id)), summary)
+            _append_canonical_events(
+                pathlib.Path(str(data.get("run_dir") or BRIDGE_RUN_DIR / run_id)),
+                run_id,
+                [
+                    {"ts": now, "type": "status", "message": "cancelled"},
+                    {"ts": now, "type": "error", "message": f"Run cancelled before execution ({reason})."},
+                ],
+            )
+        except Exception:
+            pass
         manifest_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
         with _orch_run_state_lock:
             _orch_run_state.pop(run_id, None)
@@ -4313,6 +4692,31 @@ def _force_cancel_orchestration_run_internal(run_id: str, reason: str = "force")
     data.setdefault("events", []).append(
         {"ts": now, "type": "info", "message": f"Force cancellation executed ({reason})."}
     )
+    try:
+        force_out_dir = pathlib.Path(str(data.get("run_dir") or BRIDGE_RUN_DIR / run_id))
+        failure_artifact = _write_failure_visibility_artifact(
+            force_out_dir,
+            "Run force-cancelled",
+            f"Force cancellation executed ({reason}).",
+        )
+        data["failure_artifact"] = _to_relpath(failure_artifact, force_out_dir)
+        summary = _build_terminal_summary_from_manifest(
+            run_id,
+            data,
+            force_out_dir,
+            blocker_detail=f"Force cancellation executed ({reason}).",
+        )
+        _write_terminal_summary(force_out_dir, summary)
+        _append_canonical_events(
+            force_out_dir,
+            run_id,
+            [
+                {"ts": now, "type": "status", "message": "cancelled"},
+                {"ts": now, "type": "error", "message": f"Force cancellation executed ({reason})."},
+            ],
+        )
+    except Exception:
+        pass
     manifest_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
     try:
         _release_run_lease(manifest_path, reason=f"force_cancel:{reason}")
@@ -4510,6 +4914,10 @@ def _execute_orchestration_run(run_id_hint: str, path: pathlib.Path, cancel_even
             data["events"].extend(events)
             return data
         _update_manifest(_inner)
+        try:
+            _append_canonical_events(out_dir, run_id_hint, events)
+        except Exception as _ce:
+            print(f"[orchestrate] canonical event append failed: {_ce}", file=sys.stderr)
 
     def _append_scratchpad(entries: List[Dict[str, Any]]):
         def _inner(data):
@@ -4562,7 +4970,7 @@ def _execute_orchestration_run(run_id_hint: str, path: pathlib.Path, cancel_even
                             "message": rec.get("status") or "",
                         }
                     )
-                    
+
                     # Log agent step if orchestrator logger is available
                     if orch_logger and rec.get("agent"):
                         try:
@@ -4579,7 +4987,7 @@ def _execute_orchestration_run(run_id_hint: str, path: pathlib.Path, cancel_even
                             )
                         except Exception as log_err:
                             logger.warning(f"Failed to log step: {log_err}")
-                    
+
                 except json.JSONDecodeError as e:
                     print(f"[orchestrate] Invalid JSON in {status_file} at line {line_num}: {e.msg} - Content: {line[:100]}", file=sys.stderr)
                     continue
@@ -4595,14 +5003,21 @@ def _execute_orchestration_run(run_id_hint: str, path: pathlib.Path, cancel_even
         if cancel_event.is_set():
             data["status"] = "cancelled"
             data["completed_at"] = now_iso()
-            data.setdefault("events", []).append({"ts": data["completed_at"], "type": "status", "message": "cancelled"})
-            data.setdefault("events", []).append({"ts": data["completed_at"], "type": "info", "message": "Run cancelled before execution started."})
+            _append_events([
+                {"ts": data["completed_at"], "type": "status", "message": "cancelled"},
+                {"ts": data["completed_at"], "type": "info", "message": "Run cancelled before execution started."},
+            ])
             path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            try:
+                summary = _build_terminal_summary_from_manifest(run_id, data, out_dir, blocker_detail="Run cancelled before execution started.")
+                _write_terminal_summary(out_dir, summary)
+            except Exception as _summary_exc:
+                print(f"[orchestrate] failed to write terminal summary: {_summary_exc}", file=sys.stderr)
             _release_run_lease(path, reason="cancelled_before_start")
             return
         data["status"] = "running"
         data["started_at"] = now_iso()
-        data.setdefault("events", []).append({"ts": data["started_at"], "type": "status", "message": "running"})
+        _append_events([{"ts": data["started_at"], "type": "status", "message": "running"}])
         data["mode"] = "executed"
         path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
@@ -5459,14 +5874,14 @@ def _execute_orchestration_run(run_id_hint: str, path: pathlib.Path, cancel_even
 
         # Try to populate final_synthesis from various sources
         final_synthesis_text = None
-        
+
         # First try Final_Synthesis.txt (legacy location)
         if final_synthesis.exists():
             try:
                 final_synthesis_text = final_synthesis.read_text(encoding="utf-8")
             except Exception as e:
                 print(f"[orchestrate] Failed to read Final_Synthesis.txt: {e}", file=sys.stderr)
-        
+
         # If not found, try orchestration-summary.json from run_dir
         if not final_synthesis_text:
             orchestration_summary = out_dir / "orchestration-summary.json"
@@ -5485,7 +5900,7 @@ def _execute_orchestration_run(run_id_hint: str, path: pathlib.Path, cancel_even
                         final_synthesis_text = "\n".join(summary_lines)
                 except Exception as e:
                     print(f"[orchestrate] Failed to read orchestration-summary.json: {e}", file=sys.stderr)
-        
+
         # Update manifest with final synthesis if found
         if final_synthesis_text:
             try:
@@ -5621,6 +6036,38 @@ def _execute_orchestration_run(run_id_hint: str, path: pathlib.Path, cancel_even
                 "app_production_repairs": app_production_repairs or d.get("app_production_repairs"),
             })
 
+            minimum_success = _evaluate_minimum_success_profile(
+                goal_text=str(data.get("goal") or ""),
+                verification_status=str(data.get("verification_status") or ""),
+                generated_app_files=generated_app_files,
+                app_production=app_production,
+            )
+            _update_manifest(lambda d: {
+                **d,
+                "minimum_success_profile": minimum_success,
+                "verification_status": "failed"
+                if minimum_success.get("required") and not minimum_success.get("passed")
+                else d.get("verification_status"),
+            })
+            if minimum_success.get("required"):
+                if minimum_success.get("passed"):
+                    _append_events([
+                        {
+                            "ts": now_iso(),
+                            "type": "verify:minimum_success_passed",
+                            "message": "Minimum tic-tac-toe success profile passed (concierge acceptance, materialized output, smoke proof).",
+                        }
+                    ])
+                else:
+                    _append_events([
+                        {
+                            "ts": now_iso(),
+                            "type": "verify:minimum_success_failed",
+                            "message": str(minimum_success.get("failure_reason") or "Minimum tic-tac-toe success profile failed."),
+                            "details": minimum_success,
+                        }
+                    ])
+
         # Frontier arena: derive a canonical multi-lane manifest from the
         # current run's evidence and adjudicate it. Today only the internal
         # lane exists; the seam is in place for frontier provider lanes.
@@ -5645,16 +6092,68 @@ def _execute_orchestration_run(run_id_hint: str, path: pathlib.Path, cancel_even
 
         data = safe_json_load(path, context=f"execute_complete:{run_id}")
         verification_status = str(data.get("verification_status") or "").strip().lower()
-        if verification_status in {"needs_requirements", "blocked_requirements"}:
+        minimum_success_profile = data.get("minimum_success_profile") if isinstance(data.get("minimum_success_profile"), dict) else {}
+        minimum_required = bool(minimum_success_profile.get("required"))
+        minimum_passed = bool(minimum_success_profile.get("passed"))
+        if minimum_required and not minimum_passed:
+            data["status"] = "failed"
+            data["verification_status"] = "failed"
+            completion_message = "failed_minimum_success"
+            failure_reason = str(minimum_success_profile.get("failure_reason") or "Minimum success profile failed.")
+            failure_artifact = _write_failure_visibility_artifact(out_dir, "Minimum success profile failed", failure_reason)
+            data["failure_artifact"] = _to_relpath(failure_artifact, out_dir)
+            _append_events([
+                {"ts": now_iso(), "type": "artifact:failure_visibility", "message": f"Failure visibility artifact written to {data['failure_artifact']}."},
+                {"ts": now_iso(), "type": "error", "message": failure_reason},
+            ])
+        elif verification_status in {"needs_requirements", "blocked_requirements"}:
             data["status"] = "blocked_requirements"
             completion_message = "blocked_requirements"
+            req = data.get("requirements_request") if isinstance(data.get("requirements_request"), dict) else {}
+            req_summary = str(req.get("summary") or "Additional requirements are needed before implementation can continue.").strip()
+            detail_lines = [req_summary]
+            blockers = req.get("blockers") if isinstance(req.get("blockers"), list) else []
+            for blocker in blockers[:5]:
+                if not isinstance(blocker, dict):
+                    continue
+                q = str(blocker.get("question") or "").strip()
+                why = str(blocker.get("why") or "").strip()
+                if q:
+                    detail_lines.append(f"- Question: {q}")
+                if why:
+                    detail_lines.append(f"  Why: {why}")
+            failure_artifact = _write_failure_visibility_artifact(
+                out_dir,
+                "Requirements clarification needed",
+                "\n".join(detail_lines),
+            )
+            data["failure_artifact"] = _to_relpath(failure_artifact, out_dir)
+            _append_events([
+                {
+                    "ts": now_iso(),
+                    "type": "artifact:failure_visibility",
+                    "message": f"Requirements visibility artifact written to {data['failure_artifact']}.",
+                }
+            ])
         else:
             data["status"] = "completed"
             completion_message = "completed"
         data["completed_at"] = now_iso()
-        data.setdefault("events", []).append({"ts": data["completed_at"], "type": "status", "message": completion_message})
+        _append_events([{"ts": data["completed_at"], "type": "status", "message": completion_message}])
         path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-        
+        try:
+            summary = _build_terminal_summary_from_manifest(
+                run_id,
+                data,
+                out_dir,
+                blocker_detail=None if data.get("status") == "completed" else str(data.get("error_detail") or data.get("failure_artifact") or "Run failed."),
+            )
+            summary_path = _write_terminal_summary(out_dir, summary)
+            data["final_summary_path"] = _to_relpath(summary_path, out_dir)
+            path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        except Exception as _summary_exc:
+            print(f"[orchestrate] failed to write terminal summary: {_summary_exc}", file=sys.stderr)
+
         # Log artifact manifest and run verification if logger is available
         if orch_logger:
             try:
@@ -5671,16 +6170,16 @@ def _execute_orchestration_run(run_id_hint: str, path: pathlib.Path, cancel_even
                                 })
                             except Exception:
                                 pass
-                
+
                 # Detect stacks
                 detected = detect_stacks(out_dir)
-                
+
                 # Find entrypoints
                 entrypoints = []
                 for common_entry in ["main.py", "index.js", "app.py", "server.js", "index.html"]:
                     if (out_dir / common_entry).exists():
                         entrypoints.append(common_entry)
-                
+
                 # Log artifact manifest
                 orch_logger.log_artifact_manifest(
                     files=generated_files,
@@ -5688,7 +6187,7 @@ def _execute_orchestration_run(run_id_hint: str, path: pathlib.Path, cancel_even
                     entrypoints_found=entrypoints,
                     warnings=[],
                 )
-                
+
                 # Run verification (optional)
                 try:
                     verifier = OrchestratorVerifier(out_dir)
@@ -5696,13 +6195,13 @@ def _execute_orchestration_run(run_id_hint: str, path: pathlib.Path, cancel_even
                     orch_logger.log_verification(**verification_results)
                 except Exception as verify_err:
                     logger.warning(f"Verification failed: {verify_err}")
-                    
+
             except Exception as log_err:
                 logger.warning(f"Failed to log artifacts/verification: {log_err}")
-        
+
         elapsed_ms = (time.time() - start_time) * 1000
         logger.info(f"Orchestration run {run_id} completed in {elapsed_ms:.2f}ms")
-        
+
     except Exception as exc:
         is_cancelled = str(exc).strip().lower() == "cancelled"
         if is_cancelled:
@@ -5710,9 +6209,24 @@ def _execute_orchestration_run(run_id_hint: str, path: pathlib.Path, cancel_even
                 data = safe_json_load(path, default={}, context=f"execute_cancelled:{run_id_hint}")
                 data["status"] = "cancelled"
                 data["completed_at"] = now_iso()
-                data.setdefault("events", []).append({"ts": data["completed_at"], "type": "status", "message": "cancelled"})
-                data.setdefault("events", []).append({"ts": data["completed_at"], "type": "info", "message": "Run cancelled during execution."})
+                _append_events([
+                    {"ts": data["completed_at"], "type": "status", "message": "cancelled"},
+                    {"ts": data["completed_at"], "type": "info", "message": "Run cancelled during execution."},
+                ])
+                failure_artifact = _write_failure_visibility_artifact(
+                    out_dir,
+                    "Run cancelled",
+                    "The orchestration run was cancelled before completion.",
+                )
+                data["failure_artifact"] = _to_relpath(failure_artifact, out_dir)
                 path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+                summary = _build_terminal_summary_from_manifest(
+                    run_id_hint,
+                    data,
+                    out_dir,
+                    blocker_detail="Run cancelled during execution.",
+                )
+                _write_terminal_summary(out_dir, summary)
             except Exception as e:
                 print(f"[orchestrate] Failed to write cancelled state to manifest: {e}", file=sys.stderr)
         else:
@@ -5743,7 +6257,20 @@ def _execute_orchestration_run(run_id_hint: str, path: pathlib.Path, cancel_even
                 if error_log_tail:
                     data["error_log_tail"] = error_log_tail
                 data["last_step"] = "orchestrator execution"
+                failure_artifact = _write_failure_visibility_artifact(
+                    out_dir,
+                    "Orchestrator execution failed",
+                    error_detail,
+                )
+                data["failure_artifact"] = _to_relpath(failure_artifact, out_dir)
                 path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+                summary = _build_terminal_summary_from_manifest(
+                    run_id_hint,
+                    data,
+                    out_dir,
+                    blocker_detail=error_detail,
+                )
+                _write_terminal_summary(out_dir, summary)
             except Exception as e:
                 print(f"[orchestrate] Failed to write error state to manifest: {e}", file=sys.stderr)
     finally:
@@ -5804,7 +6331,7 @@ def orchestrate_run(
         try:
             artifacts_root = ROOT_DIR / "artifacts"
             orch_logger = OrchestratorLogger(artifacts_root, run_id=run_id)
-            
+
             # Log run metadata
             prompt_library_hash = compute_prompt_hash(str(PROMPT_SYNC_FILE.read_text() if PROMPT_SYNC_FILE.exists() else ""))
             orch_logger.log_run_metadata(
@@ -5855,6 +6382,7 @@ def orchestrate_run(
         "log_path": str(log_path),
         "repo_root": req.repo_root or REPO_ROOT_DEFAULT,
         "events": [
+            {"ts": now_iso(), "type": "info", "message": "run created"},
             {"ts": now_iso(), "type": "status", "message": "queued"},
         ],
         "scratchpad": [],
@@ -5867,6 +6395,10 @@ def orchestrate_run(
     }
     path = BRIDGE_RUN_DIR / f"{run_id}.json"
     path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    try:
+        _append_canonical_events(out_dir, run_id, cast(List[Dict[str, Any]], manifest.get("events") or []))
+    except Exception as _ce:
+        print(f"[orchestrate] canonical event append failed at run creation: {_ce}", file=sys.stderr)
     cancel_event = threading.Event()
     with _orch_run_state_lock:
         _orch_run_state[run_id] = {
@@ -6754,6 +7286,7 @@ def get_orchestration_run(run_id: str):
         out_dir = pathlib.Path(run_dir_value) if run_dir_value else BRIDGE_RUN_DIR / run_id
         if out_dir.exists():
             data = _hydrate_orchestration_run_from_disk(data, out_dir)
+            data = _ensure_terminal_evidence_artifacts(run_id, path, data, out_dir)
             data["agent_improvements"] = _load_agent_improvements(out_dir)
             if "corrective_actions" not in data:
                 data["corrective_actions"] = _build_corrective_actions_from_manifest(data)
@@ -9754,10 +10287,10 @@ def submit_run_feedback(run_id: str, feedback: RunFeedbackRequest):
     with sqlite3.connect(DB_PATH) as conn:
         c = conn.cursor()
         now = now_iso()
-        
+
         # Insert feedback
         c.execute("""
-            INSERT INTO run_feedback 
+            INSERT INTO run_feedback
             (run_id, quality_score, feedback_json, insights_json, agent_scores_json, created_at)
             VALUES (?, ?, ?, ?, ?, ?)
         """, (
@@ -9768,10 +10301,10 @@ def submit_run_feedback(run_id: str, feedback: RunFeedbackRequest):
             json.dumps(feedback.agent_scores),
             now
         ))
-        
+
         feedback_id = c.lastrowid
         conn.commit()
-        
+
         return RunFeedbackResponse(
             id=feedback_id,
             run_id=run_id,
@@ -9786,17 +10319,17 @@ def get_run_feedback(run_id: str):
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         c = conn.cursor()
-        
+
         c.execute("""
-            SELECT id, run_id, quality_score, feedback_json, insights_json, 
+            SELECT id, run_id, quality_score, feedback_json, insights_json,
                    agent_scores_json, created_at
             FROM run_feedback
             WHERE run_id = ?
             ORDER BY created_at DESC
         """, (run_id,))
-        
+
         rows = c.fetchall()
-        
+
         feedback_list = []
         for row in rows:
             feedback_list.append({
@@ -9808,7 +10341,7 @@ def get_run_feedback(run_id: str):
                 "agent_scores": json.loads(row["agent_scores_json"]) if row["agent_scores_json"] else {},
                 "created_at": row["created_at"]
             })
-        
+
         return {"run_id": run_id, "feedback": feedback_list}
 
 
@@ -9818,7 +10351,7 @@ def get_recent_feedback(limit: int = Query(10, ge=1, le=100)):
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         c = conn.cursor()
-        
+
         c.execute("""
             SELECT id, run_id, quality_score, feedback_json, insights_json,
                    agent_scores_json, created_at
@@ -9826,9 +10359,9 @@ def get_recent_feedback(limit: int = Query(10, ge=1, le=100)):
             ORDER BY created_at DESC
             LIMIT ?
         """, (limit,))
-        
+
         rows = c.fetchall()
-        
+
         feedback_list = []
         for row in rows:
             feedback_list.append({
@@ -9840,7 +10373,7 @@ def get_recent_feedback(limit: int = Query(10, ge=1, le=100)):
                 "agent_scores": json.loads(row["agent_scores_json"]) if row["agent_scores_json"] else {},
                 "created_at": row["created_at"]
             })
-        
+
         return {"feedback": feedback_list}
 
 
@@ -9850,7 +10383,7 @@ def get_learning_patterns(pattern_type: Optional[str] = None, limit: int = Query
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         c = conn.cursor()
-        
+
         if pattern_type:
             c.execute("""
                 SELECT id, pattern_type, pattern_data, source_run_ids, quality_score,
@@ -9868,9 +10401,9 @@ def get_learning_patterns(pattern_type: Optional[str] = None, limit: int = Query
                 ORDER BY quality_score DESC, usage_count DESC
                 LIMIT ?
             """, (limit,))
-        
+
         rows = c.fetchall()
-        
+
         patterns = []
         for row in rows:
             patterns.append({
@@ -9884,7 +10417,7 @@ def get_learning_patterns(pattern_type: Optional[str] = None, limit: int = Query
                 "created_at": row["created_at"],
                 "last_used_at": row["last_used_at"]
             })
-        
+
         return {"patterns": patterns}
 
 
@@ -9908,10 +10441,10 @@ class CloneProgressResponse(BaseModel):
 def search_github_repositories(request: GitHubSearchRequest):
     """
     Search for repositories on GitHub.
-    
+
     Args:
         request: Search request with query and max results
-        
+
     Returns:
         List of repository information
     """
@@ -9927,11 +10460,11 @@ def search_github_repositories(request: GitHubSearchRequest):
 def get_repository_info(owner: str, repo_name: str):
     """
     Get detailed information about a specific repository.
-    
+
     Args:
         owner: Repository owner
         repo_name: Repository name
-        
+
     Returns:
         Repository information
     """
@@ -9947,10 +10480,10 @@ def get_repository_info(owner: str, repo_name: str):
 def clone_repository(request: CloneRequest):
     """
     Clone a GitHub repository.
-    
+
     Args:
         request: Clone request with repo URL and optional branch/depth
-        
+
     Returns:
         Clone progress response with clone ID
     """
@@ -9961,12 +10494,12 @@ def clone_repository(request: CloneRequest):
             branch=request.branch,
             depth=request.depth
         )
-        
+
         # Get initial progress
         progress = cloner.get_progress(clone_id)
         if not progress:
             raise HTTPException(status_code=500, detail="Failed to start clone")
-        
+
         return CloneProgressResponse(
             clone_id=clone_id,
             repo_url=progress.repo_url,
@@ -9989,19 +10522,19 @@ def clone_repository(request: CloneRequest):
 def get_clone_progress(clone_id: str):
     """
     Get the progress of a clone operation.
-    
+
     Args:
         clone_id: Clone operation ID
-        
+
     Returns:
         Clone progress information
     """
     cloner = get_github_cloner()
     progress = cloner.get_progress(clone_id)
-    
+
     if not progress:
         raise HTTPException(status_code=404, detail="Clone operation not found")
-    
+
     return CloneProgressResponse(
         clone_id=clone_id,
         repo_url=progress.repo_url,
@@ -10022,20 +10555,20 @@ def get_clone_progress(clone_id: str):
 def get_file_tree(clone_id: str, max_depth: int = Query(3, ge=1, le=10)):
     """
     Get the file tree of a cloned repository.
-    
+
     Args:
         clone_id: Clone operation ID
         max_depth: Maximum depth to traverse
-        
+
     Returns:
         File tree as nested JSON
     """
     cloner = get_github_cloner()
     tree = cloner.get_file_tree(clone_id, max_depth)
-    
+
     if tree is None:
         raise HTTPException(status_code=404, detail="Clone not found or not completed")
-    
+
     return tree
 
 
@@ -10043,19 +10576,19 @@ def get_file_tree(clone_id: str, max_depth: int = Query(3, ge=1, le=10)):
 def cleanup_clone(clone_id: str):
     """
     Clean up a cloned repository.
-    
+
     Args:
         clone_id: Clone operation ID
-        
+
     Returns:
         Success message
     """
     cloner = get_github_cloner()
     success = cloner.cleanup_clone(clone_id)
-    
+
     if not success:
         raise HTTPException(status_code=404, detail="Clone not found or cleanup failed")
-    
+
     return {"message": "Clone cleaned up successfully"}
 
 
@@ -10063,13 +10596,13 @@ def cleanup_clone(clone_id: str):
 def list_clones():
     """
     List all tracked clone operations.
-    
+
     Returns:
         List of clone progress information
     """
     cloner = get_github_cloner()
     clones = cloner.list_clones()
-    
+
     return [
         CloneProgressResponse(
             clone_id=f"{int(progress.start_time.timestamp())}_{hash(progress.repo_url)}",

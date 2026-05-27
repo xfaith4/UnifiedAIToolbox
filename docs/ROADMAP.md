@@ -172,6 +172,11 @@ Populate the canonical run infrastructure consistently so Run Console and API co
 - [ ] Complete prompt-api producer migration.
   - Ensure prompt-api run creation, stage transitions, checkpoint pauses, failure paths, and terminal paths emit canonical events.
   - Ensure prompt-api artifacts are indexed as they are created, not retroactively guessed by the UI.
+  - Additional progress (2026-05-27): prompt-api run creation/execution/cancel paths now append canonical `events.jsonl`; run hydration prefers canonical events and now loads `final_summary.json` when present.
+  - Additional progress (2026-05-27): terminal summary enforcement added for success/failure/cancel via `final_summary.json`; failure visibility artifact (`run_failure.md`) is written for non-successful runs.
+  - Additional progress (2026-05-27): minimum Run Evidence Viewer MVP success profile added (concierge acceptance + materialized output + smoke/dev-server proof) and enforced as a terminal failure when unmet.
+  - Touched files: `apps/UnifiedPromptApp/services/prompt-api/app.py`, `apps/UnifiedPromptApp/services/prompt-api/tests/test_orchestration.py`.
+  - Verification: targeted pytest checks passed for canonical hydration and Tic-Tac-Toe minimum success profile.
 
 - [ ] Complete App Factory producer migration.
   - Partial progress already exists for run start/cancel routes and launcher error artifact indexing.
