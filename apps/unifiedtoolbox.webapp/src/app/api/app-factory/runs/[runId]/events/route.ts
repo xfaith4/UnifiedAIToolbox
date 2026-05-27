@@ -210,11 +210,15 @@ export async function GET(req: Request, { params: _params }: { params: Promise<{
   }
 
   if (!wantsSse && offset != null) {
-    const ndjsonPath = path.join(runDir, 'events.ndjson')
-    if (!(await fileExists(ndjsonPath))) {
+    const streamPath = (await fileExists(path.join(runDir, 'events.ndjson')))
+      ? path.join(runDir, 'events.ndjson')
+      : (await fileExists(path.join(runDir, 'events.jsonl')))
+        ? path.join(runDir, 'events.jsonl')
+        : null
+    if (!streamPath) {
       return NextResponse.json({ runId, events: [], offset, nextOffset: offset }, { status: 200 })
     }
-    const { text, nextOffset } = await readFileChunk(ndjsonPath, offset)
+    const { text, nextOffset } = await readFileChunk(streamPath, offset)
     const { events, remainder } = parseNdjsonChunk(text, runId)
     const adjustedOffset = remainder ? nextOffset - Buffer.byteLength(remainder, 'utf8') : nextOffset
     return NextResponse.json({ runId, events, offset, nextOffset: adjustedOffset }, { status: 200 })

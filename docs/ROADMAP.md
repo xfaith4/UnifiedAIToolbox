@@ -1,579 +1,645 @@
 # Unified AI Toolbox Roadmap
 
-Last updated: 2026-05-17
-
-## Post-Modernization (2026-05) — Producer migration, drift cleanup, hardening
-
-The 2026-05 modernization pass landed the canonical contracts, run-telemetry
-infrastructure, and Run Console rewrite. The follow-on work below makes the
-infrastructure actually populated and durable. See
-[../CHANGELOG.md](../CHANGELOG.md) for what shipped and
-[ACCEPTANCE_CHECKLIST.md](ACCEPTANCE_CHECKLIST.md) for the gate.
-
-### Now (next sprint)
-
-- [ ] **Wire orchestrator + agent runners to canonical event helpers.** Replace
-  legacy `events.ndjson`/`run_state.json` writes with calls to `appendEvent`
-  (`canonicalEvents.ts`), `indexArtifact` (`artifactIndex.ts`), and
-  `writeFinalSummary` (`finalSummary.ts`). Until this lands, legacy runs show
-  empty manifests on `/api/runs/[runId]/manifest` and the Run Console depends
-  on legacy fallbacks. Contracts to honor:
-  [contracts/EVENT_TAXONOMY.md](contracts/EVENT_TAXONOMY.md),
-  [contracts/RUN_LIFECYCLE.md](contracts/RUN_LIFECYCLE.md).
-
-### Soon
-
-- [ ] **Reconcile agent-library drift.** `prompts/agent-library.active.json`
-  (hardened by Lane 1) and `Orchestration/agents/agent-library.json` are not in
-  sync. Decide on a single checksum policy and re-run
-  `Check-AgentExports.ps1`. Fix the stale Researcher checksum
-  (`"1.11111111111111E+63"`).
-- [ ] **A2A envelope adoption beyond the four hardened agents.** Extend the
-  envelope contract to Researcher, Supervisor, and Historian prompts and verify
-  with the validator at
-  `apps/unifiedtoolbox.webapp/src/lib/contracts/a2aEnvelope.ts`.
-
-### Later
-
-- [ ] **Cross-process file locking for `events.jsonl` appends on Windows.**
-  POSIX `O_APPEND` semantics are weaker on Windows; concurrent writers can
-  interleave. Current assumption is single-writer-per-run.
-- [ ] **Live tail on `/api/runs/[runId]/events/canonical`.** The SSE endpoint
-  currently replays then closes when the file ends; add a tail mode that holds
-  open and emits new lines as they arrive.
-- [ ] **E2E HTTP route tests** for `/manifest`, `/artifacts`,
-  `/events/canonical`, and `/summary` covering 200/404/invalid-runId and SSE
-  reconnect with `Last-Event-ID`.
-
----
+Last updated: 2026-05-26
 
 ## Purpose
 
-This file is the single roadmap source for active feature delivery.
+This file is the canonical roadmap and implementation ledger for active Unified AI Toolbox delivery.
+
+Use this roadmap to keep coding agents focused on a coherent product path:
+
+`Intent -> Proposal -> Cast -> Run -> Observe -> Decide -> Resume or Reframe -> Learn -> Improve the next run`
+
+The project is no longer proving that orchestration is possible. The next goal is to make orchestration durable, observable, and capable of producing verified application outputs.
+
+## Product north star
+
+Unified AI Toolbox is a local-first orchestration platform for repeatable, auditable AI workflows. It combines prompt libraries, agent rosters, governed tools, run tracking, artifact evidence, and learning capture into a coherent application-production studio.
+
+The product should help an operator:
+
+1. describe an idea or repository task clearly,
+2. convert that intent into a proposal and executable run plan,
+3. supervise an agent collective with visible gates and evidence,
+4. recover from blockers without losing run context,
+5. produce runnable, reviewable deliverables,
+6. preserve lessons so future runs improve.
+
+## Roadmap rules for coding agents
+
+### Single source of truth
+
+- Update this file for active roadmap work.
+- Do not create parallel roadmap, remaining-task, or implementation-summary files.
+- Completed checklist items must stay near the feature track they complete.
+- Historical or supporting docs may exist, but this file decides active delivery order.
+
+### Implementation discipline
+
+- Prefer small, reversible PRs or change sets.
+- Preserve existing routes and behavior unless a roadmap item explicitly changes them.
+- Do not start broad refactors while a higher-priority gate is failing.
+- Every completed item must include:
+  - completion date,
+  - touched files or run reference,
+  - brief implementation note,
+  - verification evidence when applicable.
+
+### Run evidence standard
+
+A run is not credible because agents produced text. A run is credible when the system can show:
+
+- canonical events,
+- indexed artifacts,
+- terminal summary,
+- gate results,
+- blocker or decision state,
+- repair history when repairs occurred,
+- final readiness state.
 
 ## Status key
 
-- `planned`: scoped but not started
-- `in_progress`: active delivery
-- `at_risk`: blocked or uncertain path
-- `done`: delivered and logged in `IMPLEMENTATION_SUMMARY.md`
+| Status | Meaning |
+| --- | --- |
+| `planned` | Scoped, not started |
+| `in_progress` | Active delivery |
+| `at_risk` | Blocked, ambiguous, or dependent on unresolved architecture |
+| `done` | Delivered and logged with evidence |
+| `deferred` | Intentionally postponed; do not implement without reopening |
+
+## Current delivery focus
+
+### Now — next sprint
+
+1. **Wire all run producers to canonical event, artifact, and summary helpers.**
+   - Replace legacy-only writes with canonical helpers.
+   - Keep compatibility fallbacks until canonical output is proven.
+   - This is the top priority because Run Console, manifest APIs, acceptance gates, and future arena evaluation depend on canonical run evidence.
+
+2. **Make terminal run state authoritative.**
+   - Ensure `run_state.json`, final summary, overseer/advisory state, agent cards, and manifest outcome agree at completion, failure, cancellation, or pause.
+   - A completed run must not leave stale `running`, `working`, or partial agent states in terminal artifacts.
+
+3. **Harden generated-app verification.**
+   - Fail verification when runtime logs or route probes show post-startup errors.
+   - Compare declared artifacts against materialized files.
+   - Require a final delivery/readiness state backed by evidence.
+
+### Soon — after canonical producer wiring
+
+1. **Reconcile agent-library drift.**
+   - Resolve divergence between `prompts/agent-library.active.json` and `Orchestration/agents/agent-library.json`.
+   - Choose one checksum/export policy.
+   - Re-run `Check-AgentExports.ps1`.
+   - Fix the stale Researcher checksum value.
+
+2. **Complete A2A envelope adoption.**
+   - Extend envelope contract usage to Researcher, Supervisor, and Historian.
+   - Validate with `apps/unifiedtoolbox.webapp/src/lib/contracts/a2aEnvelope.ts`.
+
+3. **Add browser-level frontend evidence.**
+   - Route checks, section-presence checks, primary interaction checks, responsive screenshots or equivalent proof.
+   - This applies to App Factory and future arena lanes.
+
+### Later — after evidence is reliable
+
+1. Add live-tail mode for `/api/runs/[runId]/events/canonical`.
+2. Add E2E HTTP route tests for manifest, artifacts, canonical events, and summary APIs.
+3. Add Windows-safe cross-process file locking for `events.jsonl` append paths if multi-writer runs become supported.
+4. Add optional frontier provider lanes behind the canonical lane contract.
+5. Feed arena outcomes into Knowledge and recipe recommendations.
+
+---
 
 ## Main roadmap
 
 | ID | Feature track | Status | Horizon | Definition of done |
 | --- | --- | --- | --- | --- |
-| RM-001 | Platform reliability (build, CI, launch, core typing) | done | now | CI stable, local launch reproducible, high-impact type/build blockers closed |
-| RM-002 | Documentation governance and concise project traceability | done | now | Canonical docs hub, roadmap IDs, implementation ledger, side-track method in use |
-| RM-003 | Concierge staged evolution (IA -> proposal -> execution narration) | done | now/next | Stage-based PR flow complete with stable UX and run handoff |
-| RM-004 | MCP governance end-to-end (registry, policy, runtime enforcement) | done | now/next | MCP APIs/UI integrated with runtime enforcement and run-level audit visibility |
-| RM-005 | Run observability and reporting | done | next | Runs view provides reliable status, agent visibility, and decision/audit context |
-| RM-006 | Export hardening and artifact quality gates | done | next | Export remains accessible with clear risk signaling and contract/gate evidence |
-| RM-007 | Web deployment strategy for dynamic Next.js app | done | next | Target hosting chosen and deployment workflow aligned with API route requirements |
-| RM-008 | Run lifecycle control + lease/heartbeat safety | done | now/next | Canonical run state/lease model with cancel/force-cancel/requeue/stale-lease recovery and STUCK visibility |
-| RM-009 | App Factory Phase 1 — Closed Feedback Loop | done | next | Sandbox engine, acceptance-check evaluator, refinement loop controller, verify/refine API endpoints, and Run Detail Verification tab all delivered |
-| RM-010 | Orchestration experience unification (story-led UX, recipe reuse, cast assembly) | in_progress | next | Product narrative unified from intake through run review; prompts/agents/tools reusable in-context; run experience organized around story, chapters, and lessons |
-| RM-011 | App production loop (generated app verification, repair routing, functioning-app completion) | in_progress | next | `build_new_app` runs produce a materialized app with executable gate evidence, targeted repair routing, and a deliverable that is verifiably runnable |
-| RM-012 | Frontier software factory (multi-lane arena, trace-graded adjudication, frontier agent lanes) | in_progress | next | One run can execute multiple isolated candidate lanes, compare them with explicit evidence and traces, and promote the best verified outcome instead of relying on a single implementation lane |
+| RM-001 | Platform reliability | done | complete | CI, build, launch, and high-impact typing blockers are stable enough for continued development |
+| RM-002 | Documentation governance | done | complete | Docs hub, roadmap discipline, and traceability rules are established |
+| RM-003 | Concierge staged evolution | done | complete | Concierge supports IA, proposal generation, recipe handoff, narration, tool audit, and modes |
+| RM-004 | MCP governance | done | complete | Registry, installs, collections, allowlists, runtime enforcement, audit viewer, and violations dashboard are delivered |
+| RM-005 | Run observability and reporting | done | complete | Runs and Run Detail expose status, heartbeat, stuck state, event visibility, blockers, and runtime activity |
+| RM-006 | Export hardening and artifact quality gates | done | complete | Exports include quality evidence and risk signaling |
+| RM-007 | Web deployment strategy | done | complete | Dynamic Next.js deployment target and workflow constraints are documented |
+| RM-008 | Run lifecycle control and lease safety | done | complete | Canonical run state, leases, heartbeat, cancel, force-cancel, requeue, and stuck recovery are implemented |
+| RM-009 | App Factory Phase 1 — Closed Feedback Loop | done | complete | Sandbox engine, acceptance evaluator, refinement controller, verify/refine endpoints, and verification UI are delivered |
+| RM-010 | Orchestration experience unification | in_progress | next | Product narrative is unified from intake through run review; prompts, agents, and tools are reusable in context |
+| RM-011 | App production loop | in_progress | next | `build_new_app` produces materialized applications with executable gate evidence, repair routing, browser proof, and final readiness state |
+| RM-012 | Frontier software factory | in_progress | next | Multiple isolated candidate lanes can be evaluated, adjudicated with evidence, and promoted based on verified outcomes |
+| RM-013 | Canonical producer migration and run-evidence hardening | in_progress | now | Every run producer emits canonical events, artifact indexes, and final summaries without relying on legacy fallbacks |
+
+---
+
+## RM-013 — Canonical producer migration and run-evidence hardening
+
+**Status:** `in_progress`
+**Horizon:** `now`
+**Owner:** orchestration/runtime
+
+### Goal
+
+Populate the canonical run infrastructure consistently so Run Console and API consumers can trust one event stream, one artifact index, and one terminal summary.
+
+### Scope
+
+- Orchestrator run producers
+- Prompt API run producers
+- App Factory run producers
+- Agent runner outputs
+- Manifest, artifact, event, and summary APIs
+- Terminal state reconciliation
+
+### Out of scope
+
+- New UX redesigns
+- New provider lanes
+- New repair strategies
+- Broad run-store replacement
+
+### Worklist
+
+- [ ] Wire orchestrator and agent runners to canonical event helpers.
+  - Replace legacy-only `events.ndjson` and ad-hoc `run_state.json` writes with calls to:
+    - `appendEvent`
+    - `indexArtifact`
+    - `writeFinalSummary`
+  - Preserve legacy fallbacks until the acceptance checklist passes against new runs.
+  - Contracts:
+    - `docs/contracts/EVENT_TAXONOMY.md`
+    - `docs/contracts/RUN_LIFECYCLE.md`
+
+- [ ] Complete prompt-api producer migration.
+  - Ensure prompt-api run creation, stage transitions, checkpoint pauses, failure paths, and terminal paths emit canonical events.
+  - Ensure prompt-api artifacts are indexed as they are created, not retroactively guessed by the UI.
+
+- [ ] Complete App Factory producer migration.
+  - Partial progress already exists for run start/cancel routes and launcher error artifact indexing.
+  - Additional progress (2026-05-26): shared runtime emitter now writes canonical `events.jsonl` via `appendEvent`; runtime event normalization now maps canonical fields (`event_type`, `severity`, `agent_name`), and offset-based event reads now fall back to `events.jsonl` when `events.ndjson` is absent.
+  - Touched files: `apps/unifiedtoolbox.webapp/src/lib/app-factory/runs/runEvents.ts`, `apps/unifiedtoolbox.webapp/src/lib/app-factory/runs/runtimeEventUtils.ts`, `apps/unifiedtoolbox.webapp/src/app/api/app-factory/runs/[runId]/events/route.ts`, `apps/unifiedtoolbox.webapp/src/lib/app-factory/runs/runStatus.ts`.
+  - Verification: targeted vitest run for run telemetry helpers/routes passed; `npm --prefix apps/unifiedtoolbox.webapp run typecheck` passed.
+  - Finish remaining App Factory paths that still depend on legacy fallback state.
+
+- [ ] Add canonical terminal summary enforcement.
+  - Every terminal run must have exactly one final summary.
+  - Summary must include:
+    - final status,
+    - quality outcome,
+    - blocker state,
+    - generated-app readiness if applicable,
+    - artifact index pointer,
+    - verification evidence pointer.
+
+- [ ] Reconcile terminal run-state artifacts.
+  - `run_state.json`, manifest, final summary, overseer/advisory artifacts, and agent status display must agree.
+  - Stale `running`, `working`, or partial agent values must be corrected during finalization.
+
+- [ ] Add E2E route coverage for canonical run APIs.
+  - Cover:
+    - `/api/runs/[runId]/manifest`
+    - `/api/runs/[runId]/artifacts`
+    - `/api/runs/[runId]/events/canonical`
+    - `/api/runs/[runId]/summary`
+  - Include 200, 404, invalid-runId, empty-run, and terminal-run cases.
+
+- [ ] Add SSE reconnect and replay tests.
+  - Validate `Last-Event-ID` behavior.
+  - Validate replay consistency between file-backed canonical events and SSE output.
+
+### Acceptance criteria
+
+- A newly created run emits canonical lifecycle bookends.
+- Run Console does not need legacy fallbacks for new runs.
+- Manifest, artifacts, canonical events, and summary APIs agree on run identity and final state.
+- The modernization acceptance checklist passes for new runs.
+- Legacy runs degrade clearly without corrupting new-run behavior.
+
+---
+
+## RM-011 — App production loop
+
+**Status:** `in_progress`
+**Horizon:** `next`
+**Owner:** app-production/runtime
+
+### Goal
+
+Make `build_new_app` converge on a functioning application rather than a plausible artifact set.
+
+The canonical path is:
+
+`Intent -> Contract -> Requirements checkpoint if needed -> Plan -> Generate files -> Install dependencies -> Build -> Test -> Smoke -> Repair targeted failures -> Re-test -> Package deliverables -> Learn -> Improve next run`
+
+### Scope
+
+- Generated app materialization
+- Dependency install
+- Build proof
+- Test and smoke proof
+- Browser/UX evidence for frontend apps
+- Targeted repair routing
+- Delivery readiness state
+- Generated-app packaging evidence
+
+### Out of scope
+
+- Unlimited autonomous repair loops
+- Provider-specific arena lanes
+- Full production hosting deployment
+- Replacing the existing verifier without cause
+
+### Completed
+
+- [x] Document optimal application-production path and future-agent continuation plan.
+  - Date: 2026-04-05
+  - Ref: `docs/application-production-path.md`, `docs/future-agent-handoff-app-production.md`
+  - Notes: Established the target path from intent to functioning app and the continuation order for future agents.
+
+- [x] Persist generated-app production gate summaries and surface them in Run Detail.
+  - Date: 2026-04-05
+  - Ref: `apps/UnifiedPromptApp/services/prompt-api/app.py`, `apps/unifiedtoolbox.webapp/src/app/runs/[runId]/page.tsx`
+  - Notes: Generated app verification is stored in the manifest and visible to operators.
+
+- [x] Add deterministic install/build/dev-start gate execution for generated web apps.
+  - Date: 2026-04-05
+  - Ref: `apps/UnifiedPromptApp/services/prompt-api/orchestrator_verifier.py`, `apps/UnifiedPromptApp/services/prompt-api/app.py`
+  - Notes: Package-manager-aware dependency installation and bounded dev-server proof are implemented.
+
+- [x] Route failing generated-app gates into targeted repair loops.
+  - Date: 2026-04-21
+  - Ref: `apps/UnifiedPromptApp/services/prompt-api/app.py`, `apps/unifiedtoolbox.webapp/src/app/runs/[runId]/page.tsx`
+  - Notes: Actionable failed gates trigger bounded repair when credentials are present, persist repair artifacts, and rerun verification.
+
+### Worklist
+
+- [ ] Add browser-level UX smoke verification for frontend app briefs.
+  - Verify expected sections from the brief.
+  - Probe primary routes.
+  - Exercise one or more declared interactions.
+  - Capture responsive evidence or an equivalent machine-readable report.
+
+- [ ] Fail generated-app verification on post-startup runtime errors.
+  - Dev-server startup alone is not sufficient.
+  - Inspect runtime logs and perform actual page probes before marking `dev_server` or `runtime` as passed.
+
+- [ ] Add declared-vs-materialized artifact completeness checks.
+  - Compare Engineer-declared deliverables against files written to `generated_app/`.
+  - Missing required files must block readiness.
+
+- [ ] Enforce one final machine-readable agent artifact per stage output.
+  - Agent retry output must resolve to one final object.
+  - Concatenated JSON payloads must fail validation or be normalized before downstream gates run.
+
+- [ ] Freeze conceptual-model contract IDs across retries.
+  - Object, interaction, and dynamic IDs must remain stable across repair attempts.
+  - Engineer traceability must cover every contract ID before completion.
+
+- [ ] Package delivery readiness as a first-class run outcome.
+  - Add readiness states:
+    - `not_generated`
+    - `generated_unverified`
+    - `repair_needed`
+    - `verified`
+    - `ready_for_delivery`
+  - Readiness must be backed by gate evidence and artifact completeness.
+
+- [ ] Add generated-app delivery package manifest.
+  - Include generated files, build evidence, smoke evidence, repair history, known limitations, and operator review instructions.
+
+### Acceptance criteria
+
+- A generated frontend app cannot be marked ready based only on files existing.
+- Runtime errors after server startup fail the verification gate.
+- Missing declared deliverables are visible and block readiness.
+- Final delivery state is explicit and machine-readable.
+- Run Detail shows exactly why an app is ready, repairable, or blocked.
+
+---
+
+## RM-010 — Orchestration experience unification
+
+**Status:** `in_progress`
+**Horizon:** `next`
+**Owner:** product/web
+
+### Goal
+
+Make the product feel like one guided orchestration studio instead of unrelated screens.
+
+The user story is:
+
+`Intent -> Proposal -> Cast -> Run -> Review -> Learn -> Next chapter`
+
+### Completed
+
+- [x] Make `/` the canonical Home route and replace the placeholder screen with a story-led front door.
+  - Date: 2026-04-05
+  - Ref: `apps/unifiedtoolbox.webapp/src/app/page.tsx`, `apps/unifiedtoolbox.webapp/src/lib/nav/navConfig.ts`
+
+- [x] Add shared route-aware workflow guidance across main product surfaces.
+  - Date: 2026-04-05
+  - Ref: `apps/unifiedtoolbox.webapp/src/components/navigation/RouteStoryBanner.tsx`, `apps/unifiedtoolbox.webapp/src/app/layout.tsx`
+
+- [x] Align tour, docs hub, and fallback navigation with the story-led workflow.
+  - Date: 2026-04-05
+  - Ref: `apps/unifiedtoolbox.webapp/src/components/tour/FirstLaunchTour.tsx`, `apps/unifiedtoolbox.webapp/src/components/docs/DocsHub.tsx`, `apps/unifiedtoolbox.webapp/src/app/error.tsx`
+
+- [x] Restore information architecture documentation.
+  - Date: 2026-04-05
+  - Ref: `docs/information-architecture.md`
+
+- [x] Introduce lightweight recipe model for prompt- and agent-led reuse.
+  - Date: 2026-04-05
+  - Ref: `apps/unifiedtoolbox.webapp/src/lib/types/recipes.ts`, `apps/unifiedtoolbox.webapp/src/lib/services/recipeStore.ts`
+
+- [x] Add recipe actions to Prompt Library and Agent Library.
+  - Date: 2026-04-05
+  - Ref: `apps/unifiedtoolbox.webapp/src/app/prompts/page.tsx`, `apps/unifiedtoolbox.webapp/src/app/agents/page.tsx`
+
+- [x] Make Concierge recipe-aware.
+  - Date: 2026-04-05
+  - Ref: `apps/unifiedtoolbox.webapp/src/app/concierge/page.tsx`
+
+- [x] Support recipe-based prefills in Playground and App Lifecycle.
+  - Date: 2026-04-05
+  - Ref: `apps/unifiedtoolbox.webapp/src/app/orchestrator/page.tsx`, `apps/unifiedtoolbox.webapp/src/app/engine/_source/App.tsx`
+
+- [x] Surface corrective actions and learning-agent instruction adjustments.
+  - Date: 2026-04-05
+  - Ref: `apps/UnifiedPromptApp/services/prompt-api/app.py`, `apps/unifiedtoolbox.webapp/src/app/runs/[runId]/page.tsx`, `apps/unifiedtoolbox.webapp/src/app/knowledge/page.tsx`
+
+### Worklist
+
+- [ ] Clarify Run Detail versus Concierge recovery paths.
+  - Run Detail handles current-run recovery.
+  - Concierge handles reinterpretation, scope change, and new proposal creation.
+  - UI should always resolve a stopped run into:
+    - resume this run, or
+    - reframe outside this run.
+
+- [ ] Add proposal history and branch-from-run affordances.
+  - Successful or failed runs should be usable as a starting point for a revised proposal.
+  - Preserve the distinction between resuming a blocked run and starting a reframed run.
+
+- [ ] Make recipe selection visible during run setup.
+  - Show which prompt kits, agent roles, tool scopes, and acceptance checks came from a recipe.
+  - Allow operator removal before launch.
+
+- [ ] Add story-centric initiative view.
+  - Home should eventually show active initiatives and application stories, not only route guidance or telemetry.
+
+### Acceptance criteria
+
+- A user can infer where to start, where to watch work, and where to recover from failure.
+- Run recovery does not bounce users unnecessarily back to Concierge.
+- Recipes feel reusable in context, not trapped in library pages.
+- The product narrative remains stable across Home, Ideas, Build, Runs, Memory, and Admin.
+
+---
+
+## RM-012 — Frontier software factory
+
+**Status:** `in_progress`
+**Horizon:** `later` until canonical evidence is reliable
+**Owner:** arena/evaluation
+
+### Goal
+
+Allow a single run to evaluate multiple isolated implementation candidates and promote the best verified outcome based on explicit evidence.
+
+### Guardrail
+
+Do not add external frontier provider lanes until canonical run evidence, generated-app readiness, and browser-level verification are reliable for the internal lane.
+
+### Completed
+
+- [x] Define canonical multi-lane candidate manifest and event schema.
+  - Date: 2026-04-21
+  - Ref: `docs/frontier-software-factory-strategy.md`, `apps/UnifiedPromptApp/services/prompt-api/arena.py`, `apps/unifiedtoolbox.webapp/src/lib/types/orchestrator.ts`
+  - Notes: Schema version `1` wraps the current internal run as `internal-default` without breaking the single-lane contract.
+
+- [x] Add arena adjudication artifact.
+  - Date: 2026-04-21
+  - Ref: `apps/UnifiedPromptApp/services/prompt-api/arena.py`, `apps/UnifiedPromptApp/services/prompt-api/app.py`, `apps/unifiedtoolbox.webapp/src/app/runs/[runId]/page.tsx`
+  - Notes: `arena.json` and `arena.md` compare lanes using gate pass rate, delivery readiness, repair efficiency, patch-size penalty, and verification status.
+
+### Worklist
+
+- [ ] Add frontend browser-evidence verification as a first-class evaluation lane.
+  - Depends on RM-011 browser-level UX smoke verification.
+
+- [ ] Introduce optional frontier provider lanes behind the canonical lane contract.
+  - Provider-specific logic must remain outside the core run model.
+  - Each lane must produce comparable evidence.
+
+- [ ] Feed arena outcomes back into Knowledge and recipe recommendations.
+  - Capture which lane, model, repair strategy, and recipe worked best for a goal archetype.
+
+### Acceptance criteria
+
+- Arena comparison is evidence-based, not preference-based.
+- Candidate lanes are isolated and comparable.
+- The promoted winner has stronger verification evidence than the alternatives.
+- Arena outcomes improve future run planning.
+
+---
+
+## RM-004 — MCP governance
+
+**Status:** `done`
+
+### Delivered scope
+
+- MCP policy engine
+- Runtime enforcer
+- Storage models
+- JSONL audit logger
+- Server search and detail APIs
+- Collections CRUD
+- Install management
+- Allowlist CRUD and binding
+- Registry sync and source management
+- Runtime middleware integration
+- Run-scoped allowlist creation
+- Audit Log Viewer UI
+- Policy violations backend
+- Integration tests
+- Pydantic v2 hardening
+
+### Maintenance rules
+
+- MCP execution must remain deny-by-default.
+- Runtime enforcement must fail secure.
+- Audit records must redact tokens and secrets.
+- Tool enablement must be least-privilege and run-scoped when possible.
+
+---
+
+## RM-005 — Run observability and reporting
+
+**Status:** `done`, with follow-on work moved to RM-013
+
+### Delivered scope
+
+- Backend run-state derivation
+- STUCK detection
+- Runs UI state clarity
+- Run Detail heartbeat and stage visibility
+- Swarm View graceful degradation
+- Runtime event schema
+- SSE-primary and file-tail fallback endpoints
+- Runtime Activity drawer
+- Long-stage progress pulses
+- Runtime activity tests
+- Local runtime-event simulator
+- Dual state display: execution state plus quality outcome
+- Explicit blocker panel
+
+### Maintenance rules
+
+- Execution state and quality outcome must remain separate.
+- Missing event streams should degrade clearly.
+- Stuck and blocked states must be operator-actionable.
+
+---
+
+## RM-008 — Run lifecycle control and lease safety
+
+**Status:** `done`, with follow-on work moved to RM-013
+
+### Delivered scope
+
+- Canonical run lease model
+- Queued -> dispatching -> running transitions
+- Worker heartbeat renewal
+- Stuck detection
+- Cancel, force-cancel, requeue, and stale-lease recovery
+- UI support for transitional and stuck states
+
+### Maintenance rules
+
+- Lease state must not conflict with terminal state.
+- A terminal run cannot continue heartbeating.
+- Requeue must preserve enough prior evidence for review.
+
+---
+
+## RM-009 — App Factory Phase 1: Closed Feedback Loop
+
+**Status:** `done`
+
+### Delivered scope
+
+- Sandbox execution engine
+- Acceptance-check evaluator
+- Refinement loop controller
+- Verify/refine API endpoints
+- Run Detail Verification tab
+- Unit and integration coverage for loop behavior
+
+### Maintenance rules
+
+- Refinement loops must stay bounded.
+- Verification must distinguish failed prerequisites from downstream skipped checks.
+- Operator-visible evidence is required for every pass/fail claim.
+
+---
+
+## Completed foundation tracks
+
+### RM-001 — Platform reliability
+
+**Status:** `done`
+
+Platform reliability work stabilized build, CI, launch behavior, and core typing enough for the current roadmap to proceed.
+
+### RM-002 — Documentation governance
+
+**Status:** `done`
+
+Documentation governance established the canonical docs hub, roadmap IDs, implementation traceability, and the rule that active roadmap work belongs in this file.
+
+### RM-003 — Concierge staged evolution
+
+**Status:** `done`
+
+Concierge stages 0-5 delivered workflow IA, proposal generation, proposal-to-run mapping, live narration, tool enablement/audit, and modes/personalization.
+
+### RM-006 — Export hardening and artifact quality gates
+
+**Status:** `done`
+
+Export behavior now surfaces blockers and includes gate evidence in run artifact packages.
+
+### RM-007 — Web deployment strategy
+
+**Status:** `done`
+
+Dynamic Next.js hosting requirements and deployment strategy are documented.
+
+---
 
 ## Side-track policy
 
-When urgent bugs/tasks pull effort from the roadmap, track them as side tracks.
+Use side tracks when urgent bugs or support tasks pull effort away from roadmap work.
 
-Required fields for each side track entry:
+Each side track must include:
 
-- `ST ID` (`ST-###`)
-- `Date opened` and `date closed` (if resolved)
-- `Roadmap impact` (one or more `RM-###` IDs)
-- `Reason for diversion` (what forced the detour)
-- `Decision link` (`DEC-###`)
-- `Outcome` (shipped, deferred, or dropped)
+| Field | Required content |
+| --- | --- |
+| ST ID | `ST-###` |
+| Date opened | `YYYY-MM-DD` |
+| Date closed | `YYYY-MM-DD` or blank |
+| Roadmap impact | One or more `RM-###` IDs |
+| Reason for diversion | What forced the detour |
+| Decision link | `DEC-###` |
+| Outcome | `shipped`, `deferred`, or `dropped` |
+
+### Side-track log
+
+_No active side tracks recorded in this rewrite._
+
+---
 
 ## Decision linkage policy
 
-Every roadmap-impacting tradeoff gets a `DEC-###` record in `IMPLEMENTATION_SUMMARY.md` and must cite:
+Every roadmap-impacting tradeoff requires a `DEC-###` record.
 
-- triggering roadmap item(s)
-- related side track(s), if any
-- accepted tradeoff and expected effect
+Each decision must include:
 
-## Implementation trace policy (Roadmap-as-ledger)
+- date,
+- triggering roadmap item,
+- related side track if any,
+- options considered,
+- accepted tradeoff,
+- expected effect,
+- reversal condition.
 
-- `ROADMAP.md` is the canonical checklist and implementation ledger for active work.
-- Each completed checklist line must include:
-  - completion date (`YYYY-MM-DD`)
-  - PR link or local run id
-  - 1-2 line implementation note
-- Do not create parallel "implementation summary" docs for active roadmap items.
-- If work is partial, leave the box unchecked and add a blocker/note inline.
+### Decision log
 
-## RM-005 Worklist (Run observability and reporting)
+_No new decisions recorded in this rewrite._
 
-- [x] Normalize run state derivation in backend responses (`status`, `raw_status`, heartbeat metadata).  
-  Date: 2026-02-28  
-  Ref: run `local-2026-02-28-roadmap-rm005-derive-status`  
-  Notes: `/orchestrate/runs` and `/orchestrate/run/{id}` now use shared derivation logic and expose heartbeat + event timing metadata.
+---
 
-- [x] Add STUCK detection from lease heartbeat expiry and surface in run payloads.  
-  Date: 2026-02-28  
-  Ref: run `local-2026-02-28-roadmap-rm005-stuck`  
-  Notes: stale lease now maps to derived `status=stuck`; payload includes `heartbeat_stale`, `last_heartbeat_at`, `last_event_at`.
+## Acceptance checklist for roadmap completion
 
-- [x] Runs UI: show STUCK state and prevent queued/running ambiguity by honoring dispatching state.  
-  Date: 2026-02-28  
-  Ref: run `local-2026-02-28-roadmap-rm005-runs-ui`  
-  Notes: status badges support `dispatching` and `stuck`; queue safeguard callout includes running/dispatching/queued/stuck counts.
+Before marking any active roadmap item complete, verify:
 
-- [x] Run detail UI: show heartbeat/event timing and current agent/stage with STUCK banner.  
-  Date: 2026-02-28  
-  Ref: run `local-2026-02-28-roadmap-rm005-run-detail`  
-  Notes: run detail now surfaces last heartbeat, last event, current agent/stage, and explicit STUCK warning.
+- [ ] The implementation is linked to a run, PR, or changed file list.
+- [ ] Tests or manual verification are documented.
+- [ ] New run behavior emits canonical evidence when applicable.
+- [ ] UI changes preserve old routes or include redirects.
+- [ ] Failure states are explicit and operator-actionable.
+- [ ] The roadmap checkbox includes completion date and notes.
+- [ ] No new parallel planning document was created for active work.
 
-- [x] Swarm View graceful degradation when event stream/status endpoints are missing.  
-  Date: 2026-02-28  
-  Ref: run `local-2026-02-28-roadmap-rm005-swarm-fallback`  
-  Notes: Swarm view falls back to orchestration run summary and shows "events unavailable" instead of hard run-not-found failure.
+## Do-not-start list
 
-- [x] Define structured runtime event schema for App Factory run lifecycle telemetry.  
-  Date: 2026-02-28  
-  Ref: run `local-2026-02-28-roadmap-rm005-runtime-schema`  
-  Notes: Added `docs/run-events.schema.md` with stage/type/metric contracts and export-specific progress event conventions.
+Do not start these until their dependencies are complete:
 
-- [x] Add SSE-primary + file-tail fallback endpoints for runtime event transport.  
-  Date: 2026-02-28  
-  Ref: run `local-2026-02-28-roadmap-rm005-runtime-transport`  
-  Notes: Added `/api/runs/{run_id}/events/stream`, `/api/runs/{run_id}/events/file`, and `/api/runs/{run_id}/summary` aliases over App Factory run observability APIs.
-
-- [x] App Factory: bottom Runtime Log/Activity drawer with tabs, filters, copy, and stuck heuristics.  
-  Date: 2026-02-28  
-  Ref: run `local-2026-02-28-roadmap-rm005-runtime-drawer`  
-  Notes: Added collapsible drawer (Live/Steps/Errors/Artifacts), auto-open on warn/error/long stage, and fallback-mode banner when SSE is unavailable.
-
-- [x] Emit periodic progress signals during validate/repair/export long-running stages.  
-  Date: 2026-02-28  
-  Ref: run `local-2026-02-28-roadmap-rm005-progress-pulse`  
-  Notes: Added 5s pulse events in hardening/repair loops plus export enumeration/zip metric events (files, exclusions, bytes, pass counters).
-
-- [x] Add runtime activity tests (event parsing/filtering + panel smoke render).  
-  Date: 2026-02-28  
-  Ref: run `local-2026-02-28-roadmap-rm005-runtime-tests`  
-  Notes: Added `runtimeEventUtils` unit coverage and a `RuntimeActivityDrawer` integration smoke test with sample fallback/live indicators.
-
-- [x] Add local dev simulator for events.ndjson playback without full orchestration run.  
-  Date: 2026-02-28  
-  Ref: run `local-2026-02-28-roadmap-rm005-runtime-sim`  
-  Notes: Added `npm run dev:runtime-sim` script to generate staged runtime telemetry and status snapshots in a local run folder.
-
-- [x] Run Detail UX: separate execution state from quality outcome and surface explicit blocker panel.  
-  Date: 2026-02-28  
-  Ref: run `local-2026-02-28-roadmap-rm005-run-detail-dual-state`  
-  Notes: Run detail now shows dual badges (`Run State` + `Outcome`), a persistent "What failed" panel, and JSON-native traceability expectation wording.
-
-## RM-008 Worklist (Run lifecycle control + lease/heartbeat safety)
-
-- [x] Add run lease model (TTL + heartbeat metadata) to canonical run manifest.  
-  Date: 2026-02-28  
-  Ref: run `local-2026-02-28-roadmap-rm008-lease-model`  
-  Notes: manifest now records `lease` payload (`worker_id`, `heartbeat_at`, `expires_at`, release metadata).
-
-- [x] Worker pickup acquires lease and transitions queued -> dispatching -> running.  
-  Date: 2026-02-28  
-  Ref: run `local-2026-02-28-roadmap-rm008-dispatch`  
-  Notes: execution thread acquires lease at pickup and marks transitional dispatching state before running.
-
-- [x] Worker heartbeat renewal every 10s while run is active.  
-  Date: 2026-02-28  
-  Ref: run `local-2026-02-28-roadmap-rm008-heartbeat`  
-  Notes: background heartbeat thread updates lease expiry continuously until terminal state.
-
-- [x] Cancel endpoint supports queued and running runs without hard-kill by default.  
-  Date: 2026-02-28  
-  Ref: run `local-2026-02-28-roadmap-rm008-cancel`  
-  Notes: normal cancel now sets `cancel_requested`; queued runs cancel immediately, active runs stop cleanly through cancel event.
-
-- [x] Force-cancel endpoint kills worker process, releases lease, and clears active worker state.  
-  Date: 2026-02-28  
-  Ref: run `local-2026-02-28-roadmap-rm008-force-cancel`  
-  Notes: `/api/runs/{id}/cancel?force=1` performs terminate/kill fallback, marks cancelled, and releases lease.
-
-- [x] Add lifecycle API aliases for run control and stale lease recovery.  
-  Date: 2026-02-28  
-  Ref: run `local-2026-02-28-roadmap-rm008-api-aliases`  
-  Notes: added `/api/runs/{id}/cancel`, `/api/runs/{id}/requeue`, `/api/runs/release-stale-leases`.
-
-- [x] Add stale lease release operation and STUCK transition.  
-  Date: 2026-02-28  
-  Ref: run `local-2026-02-28-roadmap-rm008-stale-release`  
-  Notes: stale leases are releasable via API; released runs are marked `stuck` and surfaced in UI.
-
-- [x] RepoContextBuilder hard exclusions, budget guards, progress pulse, and subprocess timeout safety.  
-  Date: 2026-02-28  
-  Ref: run `local-2026-02-28-roadmap-rm008-repo-context`  
-  Notes: excludes now include `.git/.next/runs/artifacts`; intake supports file/time budgets, >=5s progress callbacks, and timeout-protected git probes.
-
-- [x] Add tests for transitions/cancel/force-cancel/stale-lease behavior.  
-  Date: 2026-02-28  
-  Ref: run `local-2026-02-28-roadmap-rm008-tests`  
-  Notes: prompt-api orchestration tests now cover API alias cancel force-mode, stale lease -> stuck, stale lease release endpoint, and requeue.
-
-- [x] Add local simulation script for queue/cancel and stale heartbeat recovery scenarios.  
-  Date: 2026-02-28  
-  Ref: run `local-2026-02-28-roadmap-rm008-sim-script`  
-  Notes: `scripts/Simulate-RunLifecycle.ps1` now exercises queued->cancel and stale-lease recovery flow.
-
-## RM-001 Worklist (Platform reliability)
-
-- [x] P0 review remediation: stop promoting `OPENAI_API_KEY` into browser-exposed `NEXT_PUBLIC_*` variables.  
-  Date: 2026-03-29  
-  Ref: review `local-2026-03-29-review-pass-p0-browser-key`  
-  Notes: removed automatic server-key mirroring from the Windows launcher and Next.js config; browser-direct AI now requires an explicitly supplied browser key instead of reusing the server secret.
-
-- [ ] P1 review remediation: restore missing orchestration contract/request schemas or repoint `job_types.json` to the checked-in schema source.  
-  Date opened: 2026-03-29  
-  Ref: review `local-2026-03-29-review-pass`  
-  Notes: `build_new_app` and `maintain_existing_app` currently reference `contracts/*.json`, but the repository does not contain that directory; dry-run orchestration validation fails before execution.
-
-- [ ] P1 review remediation: add launcher readiness checks before printing success.  
-  Date opened: 2026-03-29  
-  Ref: review `local-2026-03-29-review-pass`  
-  Notes: `Start-Toolbox.ps1` currently prints a success banner after fixed sleeps and only notices startup failures later via process exit checks; add process and HTTP readiness validation with actionable log output.
-
-- [ ] P2 review remediation: align root Node workspace scripts with the actual repo topology.  
-  Date opened: 2026-03-29  
-  Ref: review `local-2026-03-29-review-pass`  
-  Notes: root `package.json` omits the main web app workspace and advertises repo-wide `lint`/`test` commands that currently fail because workspace scripts or installs are inconsistent.
-
-- [ ] P2 review remediation: expand default pytest discovery to include repo-level Python smoke tests.  
-  Date opened: 2026-03-29  
-  Ref: review `local-2026-03-29-review-pass`  
-  Notes: `pytest.ini` only collects prompt-api tests, leaving repo-root smoke/integration tests outside the default regression path.
-
-- [ ] P2 review remediation: replace brittle launcher source-text assertions with behavior-focused tests.  
-  Date opened: 2026-03-29  
-  Ref: review `local-2026-03-29-review-pass`  
-  Notes: launcher tests currently grep for stale implementation strings instead of validating startup invariants; move toward helper-level behavioral checks to reduce false failures.
-
-- [x] Fix TypeScript overload intersection error in `runs/start/route.ts` (`spawn` env type + child process `never` reduction).  
-  Date: 2026-03-22  
-  Ref: `apps/unifiedtoolbox.webapp/src/app/api/app-factory/runs/start/route.ts`  
-  Notes: changed `spawnEnv` from `Record<string,string>` to `NodeJS.ProcessEnv`; added `ChildProcess` import and cast to resolve overload intersection that reduced to `never`. `tsc --noEmit` now clean.
-
-- [x] Add TypeScript typecheck step to CI (`lint-test-build.yml` unified_webapp job).  
-  Date: 2026-03-22  
-  Ref: `.github/workflows/lint-test-build.yml`  
-  Notes: added `npm run typecheck` between lint and test steps so type regressions fail CI before the build stage.
-
-## RM-003 Worklist (Concierge staged evolution)
-
-- [x] Commissioner incomplete-input outcomes route to Concierge as `needs_requirements` (blocked, not failed).  
-  Date: 2026-02-28  
-  Ref: run `local-2026-02-28-roadmap-rm003-needs-requirements-loop`  
-  Notes: verification now emits `needs_requirements` + structured `requirements_request` packet; Concierge and Run Detail surface follow-up questions instead of marking the run failed.
-
-- [x] Knowledge loop decouples learning outcome from run outcome and preserves blocked-requirements routing.  
-  Date: 2026-02-28  
-  Ref: run `local-2026-02-28-roadmap-rm003-knowledge-loop-refactor`  
-  Notes: added `knowledge_status` rubric + migration, updated Knowledge UI to show Learning badge as primary and Run result as secondary, and documented Concierge requirements loop contract.
-
-- [x] Stage 0: IA foundation — workflow nav, canonical routes, docs hub, first-launch tour.  
-  Date: pre-2026-03-22  
-  Ref: `apps/unifiedtoolbox.webapp/src/app/layout.tsx`, `src/components/docs/DocsHub.tsx`, `src/components/tour/FirstLaunchTour.tsx`  
-  Notes: sidebar renamed (Dashboard→Home, Orchestrator→Playground, Milestones→Reports) with canonical routes + redirects; DocsHub modal accessible everywhere; first-launch tour gates on `localStorage`.
-
-- [x] Stage 1: Concierge chat + Proposal artifact (generate, approve, edit, reject).  
-  Date: pre-2026-03-22  
-  Ref: `apps/unifiedtoolbox.webapp/src/app/concierge/page.tsx`, `src/lib/types/proposal.ts`, `src/lib/services/proposalStore.ts`  
-  Notes: chat UI with goal intake; Proposal schema (`goal`, `plan`, `recommended.*`, `risks`, `estimate`, `run_recipe`, `confidence`); Approve/Edit/Reject actions; proposals persisted via `proposalStore`.
-
-- [x] Stage 2: Proposal → Run Recipe mapping with prefill for Playground and App Factory.  
-  Date: pre-2026-03-22  
-  Ref: `src/lib/services/proposalStore.ts` (`createDraftRunFromProposal`), `src/lib/services/conciergeKickoff.ts`  
-  Notes: approved proposal produces a `DraftRun` (type + config); "Open in Playground" and "Open in App Factory" prefill via URL params.
-
-- [x] Stage 3: Start Run from proposal + Concierge narrates live run event stream.  
-  Date: pre-2026-03-22  
-  Ref: `src/lib/services/conciergeRunService.ts`, `src/components/runs/LiveEventPanel.tsx`  
-  Notes: `startOrchestratorRun` wires into existing orchestrator backend; `narrateRunEvent` translates raw SSE events to human-readable Concierge chat messages; `LiveEventPanel` renders streaming events inline.
-
-- [x] Stage 4: Tool enablement with scopes, least-privilege audit trail per run.  
-  Date: pre-2026-03-22  
-  Ref: `src/lib/types/toolPermission.ts`, `src/lib/services/toolPermissionStore.ts`, `ToolAuditView` in concierge page  
-  Notes: `ToolPermission` model with `scope` (read/write) and `pathAllowlist`; `inferToolAccess` derives permissions from proposal; per-run audit entries persisted via `saveToolAudit`; `ToolAuditView` panel frozen at run start.
-
-- [x] Stage 5: Concierge modes (Guided / Confident / Hands-off) with per-user persistence.  
-  Date: pre-2026-03-22  
-  Ref: `src/lib/types/conciergePreferences.ts`, `src/lib/services/userPreferencesStore.ts`  
-  Notes: `ConciergeMode` enum with `CONCIERGE_MODES` metadata; `getConciergeMode` / `setConciergeMode` persists to `localStorage`; mode selector shown in Concierge header; `Assumptions & Confidence` section in proposal rendering.
-
-## RM-010 Worklist (Orchestration experience unification)
-
-- [x] Make `/` the canonical Home route and replace the placeholder welcome screen with a story-led front door.  
-  Date: 2026-04-05  
-  Ref: `apps/unifiedtoolbox.webapp/src/app/page.tsx`, `apps/unifiedtoolbox.webapp/src/lib/nav/navConfig.ts`  
-  Notes: Home now frames the product as an application-building story. The canonical Home route is `/`; `/home` and `/overview` redirect there, while `/dashboard` remains available as telemetry continuity during the transition.
-
-- [x] Add shared route-aware workflow guidance across the main product surfaces.  
-  Date: 2026-04-05  
-  Ref: `apps/unifiedtoolbox.webapp/src/components/navigation/RouteStoryBanner.tsx`, `apps/unifiedtoolbox.webapp/src/app/layout.tsx`  
-  Notes: Major routes now describe their role in the workflow and link to the likely next step. This deliberately avoids broad per-page rewrites while improving orientation immediately.
-
-- [x] Align tour, docs-hub, and fallback navigation with the story-led workflow.  
-  Date: 2026-04-05  
-  Ref: `apps/unifiedtoolbox.webapp/src/components/tour/FirstLaunchTour.tsx`, `apps/unifiedtoolbox.webapp/src/components/docs/DocsHub.tsx`, `apps/unifiedtoolbox.webapp/src/app/error.tsx`  
-  Notes: Supporting product copy now explains the flow as intent -> cast -> run -> learn. Error and not-found screens return users to Home instead of the old dashboard-first route.
-
-- [x] Restore the missing information architecture document with Phase 0 decisions and follow-ups.  
-  Date: 2026-04-05  
-  Ref: `docs/information-architecture.md`  
-  Notes: Documented current canonical IA, the transitional role of `/dashboard`, and the deliberate choice to improve coherence first without collapsing the existing execution surfaces into one page.
-
-- [x] Introduce a lightweight recipe model for prompt- and agent-led reuse.  
-  Date: 2026-04-05  
-  Ref: `apps/unifiedtoolbox.webapp/src/lib/types/recipes.ts`, `apps/unifiedtoolbox.webapp/src/lib/services/recipeStore.ts`  
-  Notes: Added a local-first recipe type/store that bundles prompt ids, agent names, tools, acceptance checks, and suggested launch defaults without changing backend contracts.
-
-- [x] Add “Use in Proposal” and “Use in Build” recipe actions to Prompt Library and Agent Library.  
-  Date: 2026-04-05  
-  Ref: `apps/unifiedtoolbox.webapp/src/app/prompts/page.tsx`, `apps/unifiedtoolbox.webapp/src/app/agents/page.tsx`  
-  Notes: Selected prompts and agents can now be converted into reusable recipes and launched directly into Concierge or App Lifecycle, establishing an in-context reuse path instead of leaving assets isolated in library screens.
-
-- [x] Make Concierge recipe-aware so proposals inherit recipe defaults.  
-  Date: 2026-04-05  
-  Ref: `apps/unifiedtoolbox.webapp/src/app/concierge/page.tsx`  
-  Notes: Concierge now loads recipes from query params, shows the active recipe in the UI, injects recipe context into proposal generation, and merges recipe prompts/agents/tools into saved proposals and run recipes.
-
-- [x] Support recipe-based prefills in Playground and App Lifecycle.  
-  Date: 2026-04-05  
-  Ref: `apps/unifiedtoolbox.webapp/src/app/orchestrator/page.tsx`, `apps/unifiedtoolbox.webapp/src/app/engine/_source/App.tsx`  
-  Notes: Build surfaces now accept `?recipe=` handoff and use recipe defaults to prefill goal, prompt, cast, and job-type hints while keeping final launch control with the user.
-
-- [x] Surface corrective actions and learning-agent instruction adjustments to both operators and future similar runs.  
-  Date: 2026-04-05  
-  Ref: `apps/UnifiedPromptApp/services/prompt-api/app.py`, `apps/unifiedtoolbox.webapp/src/app/runs/[runId]/page.tsx`, `apps/unifiedtoolbox.webapp/src/app/knowledge/page.tsx`  
-  Notes: Run detail and Knowledge now expose checkpoint history, answered blocker details, and bounded instruction-adjustment suggestions; similar-run knowledge context carries those adjustments forward.
-
-## RM-011 Worklist (App production loop)
-
-- [x] Document the optimal application-production path and future-agent continuation plan.  
-  Date: 2026-04-05  
-  Ref: `docs/application-production-path.md`, `docs/future-agent-handoff-app-production.md`  
-  Notes: Added a canonical path from intent to functioning app and a detailed, repo-grounded continuation plan for future coding agents.
-
-- [x] Persist generated-app production gate summaries for `build_new_app` runs and surface them in Run Detail.  
-  Date: 2026-04-05  
-  Ref: `apps/UnifiedPromptApp/services/prompt-api/app.py`, `apps/unifiedtoolbox.webapp/src/app/runs/[runId]/page.tsx`  
-  Notes: `generated_app/` now receives an explicit production-gate summary (lint/build/tests/smoke/compose), stored in the run manifest and shown to operators as the first step toward functioning-app verification.
-
-- [x] Add deterministic install/build/dev-start gate execution for generated web apps.  
-  Date: 2026-04-05  
-  Ref: `apps/UnifiedPromptApp/services/prompt-api/orchestrator_verifier.py`, `apps/UnifiedPromptApp/services/prompt-api/app.py`  
-  Notes: The shared verifier now detects Node package managers, executes dependency installation with bounded commands, and proves dev-server startup with a local health probe. Generated-app summaries explicitly mark downstream gates as skipped when install fails, so operators see prerequisite failure instead of misleading follow-on build/test noise.
-
-- [x] Route failing generated-app gates into targeted repair loops instead of leaving them as informational summaries.  
-  Date: 2026-04-21  
-  Ref: `apps/UnifiedPromptApp/services/prompt-api/app.py`, `apps/unifiedtoolbox.webapp/src/app/runs/[runId]/page.tsx`  
-  Notes: Actionable generated-app repair targets now trigger a bounded model-driven repair attempt when credentials are present, persist execution artifacts/status in the run manifest, and rerun verification so Run Detail shows both the route and what the repair loop actually changed.
-
-- [ ] Add demo-mode / UX smoke verification for frontend app briefs.  
-  Date opened: 2026-04-05  
-  Ref: `docs/application-production-path.md`  
-  Notes: Frontend runs need section-presence, interaction, and responsive-UX proof beyond package/build success.
-
-- [ ] Package delivery readiness as a first-class run outcome.  
-  Date opened: 2026-04-05  
-  Ref: `docs/application-production-path.md`  
-  Notes: A run should end with a clear readiness state such as `repair_needed`, `verified`, or `ready_for_delivery`, backed by build/smoke evidence and artifact completeness.
-
-- [ ] Enforce one final machine-readable agent artifact per stage output.  
-  Date opened: 2026-05-17  
-  Ref: run `Goal_Build_CupHandleDetector_as_a_standalone_web_a.2026-05-17T22-16-38Z`  
-  Notes: Completed run artifacts showed concatenated JSON payloads in `ConceptualModelContract.txt`, `Engineer.txt`, `Critic.txt`, and `Supervisor.txt`; app-production and contract gates need a single final object per agent output instead of accepting appended retries.
-
-- [ ] Freeze conceptual-model contract IDs across retries and require full Engineer traceability coverage before completion.  
-  Date opened: 2026-05-17  
-  Ref: run `Goal_Build_CupHandleDetector_as_a_standalone_web_a.2026-05-17T22-16-38Z`  
-  Notes: The CupHandleDetector run drifted between IDs such as `detectionsList` and `detections-list`, then failed the sandbox contract gate on missing traceability coverage; retries must preserve canonical IDs and block completion until every contract ID has a runtime-backed Engineer traceability entry.
-
-- [ ] Fail generated-app verification on post-startup runtime errors, not just successful startup banners.  
-  Date opened: 2026-05-17  
-  Ref: run `Goal_Build_CupHandleDetector_as_a_standalone_web_a.2026-05-17T22-16-38Z`  
-  Notes: `generated_app_verification.json` marked `dev_server` as passed even though `dev_server.log` recorded repeated Turbopack path-length failures after startup; verifier health checks must inspect runtime logs and/or an actual page probe before claiming readiness.
-
-- [ ] Add declared-vs-materialized artifact completeness checks for generated apps.  
-  Date opened: 2026-05-17  
-  Ref: run `Goal_Build_CupHandleDetector_as_a_standalone_web_a.2026-05-17T22-16-38Z`  
-  Notes: The Engineer output declared files such as `src/pages/index.tsx`, `src/pages/symbol/[symbol].tsx`, `src/api/runs.ts`, and `README.md`, but the generated app only materialized a smaller subset; app-production should compare claimed deliverables against on-disk outputs before marking a run credible.
-
-- [ ] Reconcile terminal run-state artifacts so completed runs do not present stale agent or `running` status.  
-  Date opened: 2026-05-17  
-  Ref: run `Goal_Build_CupHandleDetector_as_a_standalone_web_a.2026-05-17T22-16-38Z`  
-  Notes: `run_state.json` completed cleanly while `overseer_advisory.json` still reported `Historian=working` and `final_status=running`; terminal artifact writes need one final synchronized completion pass for run summary, overseer status, and agent completion state.
-
-## RM-012 Worklist (Frontier software factory)
-
-- [x] Define the canonical multi-lane candidate manifest and event schema without breaking the current single-lane run contract.  
-  Date: 2026-04-21  
-  Ref: `docs/frontier-software-factory-strategy.md`, `apps/UnifiedPromptApp/services/prompt-api/arena.py`, `apps/unifiedtoolbox.webapp/src/lib/types/orchestrator.ts`  
-  Notes: Canonical lane / arena schema (schema_version `1`) wraps the existing orchestration as the `internal-default` lane via `build_internal_lane_record`, leaving the single-lane run contract intact. Extra lanes can be merged through `build_arena_record(extra_lanes=…)` without touching the core orchestration code path.
-
-- [x] Add an arena adjudication artifact that compares candidate lanes using explicit evidence and produces a winner with reasons.  
-  Date: 2026-04-21  
-  Ref: `apps/UnifiedPromptApp/services/prompt-api/arena.py`, `apps/UnifiedPromptApp/services/prompt-api/app.py`, `apps/unifiedtoolbox.webapp/src/app/runs/[runId]/page.tsx`  
-  Notes: `adjudicate_lanes` produces a verdict (winner, score, confidence, reasons, loser rationale, follow-up) using whole-candidate comparison over gate pass-rate, delivery readiness, repair efficiency, patch-size penalty, and verification status. Persisted as `arena.json` + `arena.md` next to the run manifest, attached to the manifest under `arena`, and rendered in Run Detail. Tests in `tests/test_arena.py`.
-
-- [ ] Add frontend browser-evidence verification as a first-class evaluation lane for app-generation runs.  
-  Date opened: 2026-04-21  
-  Ref: `docs/frontier-software-factory-strategy.md`, `docs/application-production-path.md`  
-  Notes: For frontend briefs, route/section/interactions/responsive proof should become required evidence rather than an optional future enhancement.
-
-- [ ] Introduce optional frontier provider lanes behind the canonical lane contract.  
-  Date opened: 2026-04-21  
-  Ref: `docs/frontier-software-factory-strategy.md`  
-  Notes: Add external execution lanes only after the manifest/eval seam exists. Prefer a provider-neutral wrapper over product-specific branching in the core run model.
-
-- [ ] Feed arena outcomes back into Knowledge and recipe recommendations.  
-  Date opened: 2026-04-21  
-  Ref: `docs/frontier-software-factory-strategy.md`  
-  Notes: Future similar runs should learn which lane, model, repair style, and recipe historically produced the best verified outcomes for the same goal archetype.
-
-## RM-004 Worklist (MCP governance end-to-end)
-
-- [x] Phase 1 backend core: policy engine, storage, allowlist/collection/install/audit APIs (26 endpoints).  
-  Date: 2026-02-04  
-  Ref: `docs/MCP_IMPLEMENTATION_SUMMARY.md`  
-  Notes: all core API endpoints functional with deny-by-default policy and JSONL audit trail.
-
-- [x] Phase 2 Web UI: Collections tab, Installations tab, install workflow.  
-  Date: 2026-02-04  
-  Ref: `docs/MCP_IMPLEMENTATION_SUMMARY.md`  
-  Notes: all three MCP Library tabs functional; install flow < 5 clicks end-to-end.
-
-- [x] Phase 3 registry integration: external registry sync, source config persistence.  
-  Date: 2026-02-04  
-  Ref: `docs/MCP_IMPLEMENTATION_SUMMARY.md`  
-  Notes: `registry_sync.py` integrates with orchestration-bridge adapters; sync returns add/update counts.
-
-- [x] Security hardening: rate limiting, RBAC, HMAC log signing, log rotation, anomaly detection.  
-  Date: 2026-02-21  
-  Ref: `docs/MCP_LIBRARY_STATUS.md`  
-  Notes: production-grade security posture; anomaly detection API added (`/api/mcp/audit/anomalies`).
-
-- [x] Phase 4.1 runtime enforcement middleware: `orchestration_mcp_middleware.py` + tests.  
-  Date: 2026-03-21  
-  Ref: `apps/UnifiedPromptApp/services/prompt-api/orchestration_mcp_middleware.py`  
-  Notes: `OrchestrationMCPMiddleware` enforces policy before tool execution and logs audit events after; wired into `/orchestrate/run`.
-
-- [x] Phase 4.2 allowlist auto-creation on run creation.  
-  Date: 2026-03-21  
-  Ref: `apps/UnifiedPromptApp/services/prompt-api/app.py` (`_create_run_allowlist_if_requested`)  
-  Notes: `OrchestrationRequest` accepts `mcp_allowed_servers` / `mcp_allowed_collections`; run-scoped allowlist created automatically and referenced in run manifest.
-
-- [x] Phase 4.3 Audit Log Viewer UI: timeline + filters + event detail + anomaly view.  
-  Date: 2026-03-21  
-  Ref: `apps/unifiedtoolbox.webapp/src/app/mcp-library/audit/page.tsx`  
-  Notes: new `/mcp-library/audit` page with summary cards, filterable events table, anomaly detection view, and violations dashboard; linked from MCP Library header.
-
-- [x] Phase 4.4 policy violations dashboard backend (`/api/mcp/violations`).  
-  Date: 2026-03-21  
-  Ref: `apps/UnifiedPromptApp/services/prompt-api/mcp_governance/api_routes.py`  
-  Notes: `GET /api/mcp/violations` aggregates denied events by server, tool, and user with top-N configurable grouping.
-
-- [x] Fix Pydantic v2 deprecation warnings (`.dict()` → `.model_dump()`, `datetime.utcnow()` → `datetime.now(timezone.utc)`).  
-  Date: 2026-03-21  
-  Ref: `mcp_governance/storage.py`, `orchestration_mcp_middleware.py`, `policy_engine.py`, `api_routes.py`  
-  Notes: 246 tests pass with `-W error::DeprecationWarning`; zero deprecation warnings remain in MCP governance stack.
-
-- [x] Phase 4 integration tests: violations summary, middleware allow/deny/disabled paths, token sanitization.  
-  Date: 2026-03-21  
-  Ref: `tests/test_mcp_governance_api.py`  
-  Notes: 8 new integration tests covering violations endpoint and middleware enforce-then-log contract.
-
-## RM-006 Worklist (Export hardening and artifact quality gates)
-
-- [x] `buildExportBlockers` utility: maps normalization violations, contract failures, and gate step failures to typed `ExportBlocker` objects.  
-  Date: pre-2026-03-22  
-  Ref: `apps/unifiedtoolbox.webapp/src/lib/app-factory/pipeline/exportBlockers.ts`  
-  Notes: phase-tagged blockers (`normalize` / `contract` / `gates` / `repair`) with filePath, ruleId, message, lines, and snippet for actionable risk display.
-
-- [x] ExportModal: live blocker list with per-file risk display, confirm-before-export when validation failed.  
-  Date: pre-2026-03-22  
-  Ref: `apps/unifiedtoolbox.webapp/src/app/engine/_source/components/ExportModal.tsx`  
-  Notes: DEC-001 implemented — export accessible even after gate failure, gated by user confirmation; blocker panel shows ruleId, message, line numbers, and code snippets; copy-path button per blocker.
-
-- [x] Export API (`/api/app-factory/export`) returns `blockers[]` + HTTP 422 when hardening fails; UI reads and surfaces them.  
-  Date: pre-2026-03-22  
-  Ref: `apps/unifiedtoolbox.webapp/src/app/api/app-factory/export/route.ts`  
-  Notes: on `!result.passed`, response body includes `blockers`, `normalizationReport`, `gateReport`, and `patchLog` for transparent failure evidence.
-
-- [x] Validate endpoint (`/api/app-factory/validate`) runs full hardening pipeline and returns pipeline stage status + blockers without emitting a download.  
-  Date: pre-2026-03-22  
-  Ref: `apps/unifiedtoolbox.webapp/src/app/api/app-factory/validate/route.ts`  
-  Notes: separate validate-before-export flow; ExportModal calls validate first; repair cycles configurable via `maxRepairCycles`.
-
-- [x] Run export (`/api/app-factory/runs/[runId]/export`) includes quality gate evidence files in `quality-evidence/` folder inside the artifacts zip.  
-  Date: 2026-03-22  
-  Ref: `apps/unifiedtoolbox.webapp/src/app/api/app-factory/runs/[runId]/export/route.ts`  
-  Notes: artifacts-scope zip now includes `GATE_REPORT.md`, `REPO_CONTRACT.json`, `NORMALIZATION_REPORT.md`, and `PATCHLOG.md` from the run's `repo/` subdirectory (when present); emits `export.quality-evidence.included` progress event with file count.
-
-- [x] `exportBlockers` unit tests.  
-  Date: pre-2026-03-22  
-  Ref: `apps/unifiedtoolbox.webapp/src/lib/app-factory/pipeline/__tests__/exportBlockers.test.ts`  
-  Notes: covers normalization, contract, and gate failures mapping; repair-not-attempted sentinel.
-
-## RM-007 Worklist (Web deployment strategy for dynamic Next.js app)
-
-- [x] Confirm `output: 'export'` absent from `next.config.mjs` — dynamic routing preserved.
-  Date: 2026-03-22  
-  Ref: `apps/unifiedtoolbox.webapp/next.config.mjs`  
-  Notes: no static export config present; app builds as a full Node.js server with API routes intact.
-
-- [x] CI workflow (`nextjs.yml`) builds and uploads `.next` as a deployable artefact.
-  Date: pre-2026-03-22  
-  Ref: `.github/workflows/nextjs.yml`  
-  Notes: builds on push/PR; uploads `unified-webapp-next-build` artefact retained for 7 days; `NEXT_PUBLIC_API_BASE` env var wired.
-
-- [x] Clarify GitHub Pages scope: root static landing page only, not the Next.js web app.
-  Date: 2026-03-22  
-  Ref: `.github/workflows/pages.yml`, `docs/web-deployment-strategy.md`  
-  Notes: `pages.yml` deploys repo root (index.html, demo HTML); documented in deployment strategy doc so the distinction is explicit.
-
-- [x] Document deployment strategy, target hosting options, and required env vars.
-  Date: 2026-03-22  
-  Ref: `docs/web-deployment-strategy.md`  
-  Notes: covers self-hosted Node.js, Vercel/Railway/Render options, run worker constraints, and all required env vars.
-
-## RM-009 Worklist (App Factory Phase 1 — Closed Feedback Loop)
-
-- [x] Sandbox Execution Engine: subprocess runner that evaluates acceptance checks and writes `sandbox_report.json`.  
-  Date: 2026-03-22  
-  Ref: `apps/unifiedtoolbox.webapp/src/lib/app-factory/sandbox/sandboxEngine.ts`  
-  Notes: executes shell-command checks via `spawnSync` with 30 s timeout and 8 KB output budget; emits `sandbox:*` events to `events.ndjson`; mirrors overseer event pattern.
-
-- [x] Acceptance Check Evaluator: maps natural-language check strings to evaluator type and shell command.  
-  Date: 2026-03-22  
-  Ref: `apps/unifiedtoolbox.webapp/src/lib/app-factory/sandbox/evaluateChecks.ts`  
-  Notes: regex rule table covers build/lint/test/HTTP-probe/commissioner-score checks; abstract checks deferred for manual or commissioner review; `aggregateStatus` utility derives overall `passed | failed | partial | deferred | pending`.
-
-- [x] Refinement Loop Controller: iterates sandbox evaluation up to `MAX_LOOP_ITERATIONS` (default 3).  
-  Date: 2026-03-22  
-  Ref: `apps/unifiedtoolbox.webapp/src/lib/app-factory/sandbox/refinementLoop.ts`  
-  Notes: emits `loop:iteration_N` / `loop:passed` / `loop:max_iterations` events; exits early on all-pass; agent re-execution triggered externally via `/refine` endpoint so loop controller stays stateless.
-
-- [x] Verify API endpoint: `POST /api/app-factory/runs/[runId]/verify` triggers single sandbox evaluation.  
-  Date: 2026-03-22  
-  Ref: `apps/unifiedtoolbox.webapp/src/app/api/app-factory/runs/[runId]/verify/route.ts`  
-  Notes: falls back to `request.json` acceptance checks when body omits them; `cwd` param validated to stay within repo root; `GET` variant reads existing `sandbox_report.json`.
-
-- [x] Refine API endpoint: `POST /api/app-factory/runs/[runId]/refine` runs the full refinement loop.  
-  Date: 2026-03-22  
-  Ref: `apps/unifiedtoolbox.webapp/src/app/api/app-factory/runs/[runId]/refine/route.ts`  
-  Notes: configurable `maxIterations` (capped at `MAX_LOOP_ITERATIONS * 2`) and `startIteration`; returns `exitReason`, `iterations`, and final `sandbox_report`.
-
-- [x] Run Detail UI — Verification tab: surfaces sandbox report per check with pass/fail/deferred badges.  
-  Date: 2026-03-22  
-  Ref: `apps/unifiedtoolbox.webapp/src/app/runs/[runId]/page.tsx`  
-  Notes: dual `Run State` + `Outcome` badges; "What failed" blocker panel; Verification tab shows per-check results and `verificationStatus` derived from `sandboxReport`.
-
-- [x] Refinement loop unit tests: 8 tests covering all exit reasons, event emission, and `startIteration` offset.  
-  Date: 2026-03-22  
-  Ref: `apps/unifiedtoolbox.webapp/src/lib/app-factory/sandbox/__tests__/refinementLoop.test.ts`  
-  Notes: tests use real temp directories and spawnSync to exercise full path; complements existing `evaluateChecks.test.ts` unit tests.
+- External frontier provider lanes before RM-013 and RM-011 evidence gates are reliable.
+- Major navigation redesign before Run Detail versus Concierge recovery paths are clarified.
+- Automatic unlimited repair loops.
+- Replacement of the existing verifier without a documented failure mode and migration path.
+- Broad agent-library restructuring before drift policy is decided.
+- New implementation-summary files for active work.

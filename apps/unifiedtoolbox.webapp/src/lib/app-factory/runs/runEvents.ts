@@ -1,8 +1,13 @@
 import 'server-only'
 import path from 'path'
-import { promises as fs } from 'fs'
 import { getRunsRoot, isValidRunId } from './runStatus'
 import type { RunEvent } from './types'
+import {
+  appendEvent,
+  isCanonicalEventType,
+  type CanonicalEventType,
+  type CanonicalSeverity,
+} from './canonicalEvents'
 
 const MAX_BUFFER = 400
 
@@ -102,12 +107,66 @@ function normalizeEvent(event: Omit<RunStreamEvent, 'ts'> & { ts?: string }): Ru
   }
 }
 
-async function appendFileEvent(event: RunStreamEvent): Promise<void> {
+function toCanonicalSeverity(event: RunStreamEvent): CanonicalSeverity {
+  const level = String(event.level || '').toLowerCase()
+  const status = String(event.status || '').toLowerCase()
+  if (level === 'error' || status === 'failed') return 'error'
+  if (level === 'warn' || status === 'skipped' || status === 'retrying') return 'warn'
+  return 'info'
+}
+
+function toCanonicalEventType(event: RunStreamEvent): CanonicalEventType {
+  const rawType = String(event.type || '').trim()
+  if (isCanonicalEventType(rawType)) {
+    return rawType
+  }
+
+  const phase = String(event.phase || '').toLowerCase()
+  if (phase === 'validation') {
+    if (rawType === 'stage.start') return 'validation_started'
+    if (rawType === 'stage.complete' || rawType === 'step.complete') return 'validation_completed'
+  }
+
+  if (rawType === 'stage.start') return 'agent_started'
+  if (rawType === 'stage.complete' || rawType === 'step.complete') return 'agent_completed'
+
+  const status = String(event.status || '').toLowerCase()
+  const level = String(event.level || '').toLowerCase()
+  if (rawType === 'error' || status === 'failed' || level === 'error') return 'agent_blocked'
+
+  return 'agent_progress'
+}
+
+function toCanonicalData(event: RunStreamEvent): Record<string, unknown> | undefined {
+  const data: Record<string, unknown> = {
+    source: 'runEvents',
+    original_type: event.type,
+    phase: event.phase,
+    stage: event.stage,
+    step: event.step,
+    status: event.status,
+    level: event.level,
+    details: event.details,
+    data: event.data,
+    attempt_id: event.attemptId,
+  }
+
+  const compact = Object.fromEntries(Object.entries(data).filter(([, value]) => value != null))
+  return Object.keys(compact).length ? compact : undefined
+}
+
+async function appendCanonicalEvent(event: RunStreamEvent): Promise<void> {
   const runsRoot = getRunsRoot()
-  const runDir = ensureWithin(runsRoot, event.runId)
-  await fs.mkdir(runDir, { recursive: true })
-  const filePath = path.join(runDir, 'events.ndjson')
-  await fs.appendFile(filePath, JSON.stringify(event) + '\n', 'utf8')
+  ensureWithin(runsRoot, event.runId)
+  await appendEvent({
+    run_id: event.runId,
+    timestamp: event.ts,
+    event_type: toCanonicalEventType(event),
+    severity: toCanonicalSeverity(event),
+    agent_name: event.agent || event.stage || event.phase,
+    message: event.message,
+    data: toCanonicalData(event),
+  })
 }
 
 export async function emitRunEvent(event: Omit<RunStreamEvent, 'ts'> & { ts?: string }): Promise<RunStreamEvent> {
@@ -121,7 +180,7 @@ export async function emitRunEvent(event: Omit<RunStreamEvent, 'ts'> & { ts?: st
     existing.splice(0, existing.length - MAX_BUFFER)
   }
   buffers.set(normalized.runId, existing)
-  await appendFileEvent(normalized)
+  await appendCanonicalEvent(normalized)
 
   const listeners = subscribers.get(normalized.runId)
   if (listeners?.size) {

@@ -5,6 +5,9 @@ import { spawn, type ChildProcess, type StdioOptions } from 'child_process'
 import fs from 'fs'
 import { promises as fsp } from 'fs'
 import { getRunsRoot } from '@/lib/app-factory/runs/runStatus'
+import { appendEvent } from '@/lib/app-factory/runs/canonicalEvents'
+import { writeFinalSummary } from '@/lib/app-factory/runs/finalSummary'
+import { indexArtifact } from '@/lib/app-factory/runs/artifactIndex'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -109,10 +112,10 @@ async function markRunLaunchFailure(
   runDir: string,
   runId: string,
   message: string,
+  objective: string,
   details: Record<string, unknown> = {}
 ): Promise<void> {
   const statePath = path.join(runDir, 'run_state.json')
-  const eventsPath = path.join(runDir, 'events.ndjson')
   const now = new Date().toISOString()
 
   try {
@@ -134,15 +137,39 @@ async function markRunLaunchFailure(
     // If state writing fails, still attempt to append an event for diagnostics.
   }
 
-  const eventRecord = {
-    ts: now,
-    type: 'error',
-    stage: 'run',
-    message,
-    data: details,
-  }
   try {
-    await fsp.appendFile(eventsPath, JSON.stringify(eventRecord) + '\n', 'utf8')
+    await appendEvent({
+      run_id: runId,
+      timestamp: now,
+      event_type: 'run_failed',
+      severity: 'error',
+      message,
+      data: { reason: 'launch_failure', ...details },
+    })
+  } catch {
+    // no-op
+  }
+
+  try {
+    await writeFinalSummary({
+      run_id: runId,
+      objective,
+      outcome: 'failed',
+      completed_work: [],
+      changed_files: [],
+      created_artifacts: [],
+      validation_results: [],
+      blockers: [
+        {
+          severity: 'hard_blocker',
+          summary: message,
+          agent: 'orchestrator_launcher',
+          details,
+        },
+      ],
+      warnings: [],
+      next_steps: ['Review run.log and run_error.md to resolve launch failure and retry.'],
+    })
   } catch {
     // no-op
   }
@@ -219,15 +246,42 @@ export async function POST(req: Request) {
     warnings: [],
   }
   await fsp.writeFile(statePath, JSON.stringify(runState, null, 2) + '\n', 'utf8')
-
-  const eventsPath = path.join(runDir, 'events.ndjson')
-  await fsp.appendFile(eventsPath, JSON.stringify({ ts: now, type: 'info', message: 'queued' }) + '\n', 'utf8')
+  await appendEvent({
+    run_id: runId,
+    timestamp: now,
+    event_type: 'run_created',
+    severity: 'info',
+    message: 'Run created.',
+    data: { job_type: jobType },
+  })
+  await appendEvent({
+    run_id: runId,
+    timestamp: now,
+    event_type: 'run_queued',
+    severity: 'info',
+    message: 'Run queued for orchestration.',
+    data: { job_type: jobType },
+  })
 
   const repoRoot = path.resolve(process.cwd(), '..', '..')
   const scriptPath = path.join(repoRoot, 'Orchestration', 'scripts', 'Unified-Orchestration.ps1')
   if (!fs.existsSync(scriptPath)) {
     const errorPath = path.join(runDir, 'run_error.md')
     await fsp.writeFile(errorPath, '# Run Error\n\nUnified-Orchestration.ps1 not found.\n', 'utf8')
+    await Promise.allSettled([
+      indexArtifact({
+        run_id: runId,
+        type: 'run-error',
+        title: 'Run launch error',
+        path: 'run_error.md',
+        producing_agent: 'orchestrator_launcher',
+        summary: 'Unified-Orchestration.ps1 script was not found.',
+      }),
+      markRunLaunchFailure(runDir, runId, 'Unified-Orchestration.ps1 not found.', String(request.goal || ''), {
+        kind: 'script_missing',
+        path: scriptPath,
+      }),
+    ])
     return NextResponse.json(
       { error: { code: 'SCRIPT_MISSING', message: 'Unified-Orchestration.ps1 not found', details: { path: scriptPath } } },
       { status: 500 }
@@ -300,6 +354,7 @@ export async function POST(req: Request) {
         runDir,
         runId,
         `Run worker failed to start: ${err instanceof Error ? err.message : String(err)}`,
+        String(request.goal || ''),
         { kind: 'spawn_error' }
       )
     })
@@ -315,7 +370,7 @@ export async function POST(req: Request) {
           typeof code === 'number'
             ? `Run worker exited with code ${code} before writing terminal run state.`
             : `Run worker exited due to signal ${String(signal)} before writing terminal run state.`
-        await markRunLaunchFailure(runDir, runId, reason, {
+        await markRunLaunchFailure(runDir, runId, reason, String(request.goal || ''), {
           kind: 'missing_terminal_state',
           code,
           signal,
@@ -347,6 +402,23 @@ export async function POST(req: Request) {
       `# Run Error\n\nFailed to launch PowerShell process.\n\n${err instanceof Error ? err.message : String(err)}\n`,
       'utf8'
     )
+    await Promise.allSettled([
+      indexArtifact({
+        run_id: runId,
+        type: 'run-error',
+        title: 'Run launch error',
+        path: 'run_error.md',
+        producing_agent: 'orchestrator_launcher',
+        summary: 'PowerShell process launch failed.',
+      }),
+      markRunLaunchFailure(
+        runDir,
+        runId,
+        `Failed to launch PowerShell process: ${err instanceof Error ? err.message : String(err)}`,
+        String(request.goal || ''),
+        { kind: 'process_launch_failure' }
+      ),
+    ])
     const message = err instanceof Error ? err.message : String(err)
     const status = message.includes('Local repo path') ? 400 : 500
     const code = message.includes('Local repo path') ? 'INVALID_LOCAL_PATH' : 'LAUNCH_FAILED'

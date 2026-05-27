@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dedupeEvents, filterEvents, parseNdjsonChunk } from '../runtimeEventUtils'
+import { dedupeEvents, filterEvents, normalizeRuntimeEvent, parseNdjsonChunk } from '../runtimeEventUtils'
 
 describe('runtimeEventUtils', () => {
   it('parses ndjson chunk and keeps remainder for partial lines', () => {
@@ -31,5 +31,29 @@ describe('runtimeEventUtils', () => {
 
     const errorsOnly = filterEvents(deduped, 'error')
     expect(errorsOnly).toHaveLength(1)
+  })
+
+  it('normalizes canonical event fields', () => {
+    const normalized = normalizeRuntimeEvent(
+      {
+        run_id: 'maint-2026-05-26-test',
+        timestamp: '2026-05-26T12:00:00.000Z',
+        event_type: 'agent_progress',
+        severity: 'warn',
+        agent_name: 'export',
+        message: 'export.step.progress',
+        data: { files_scanned: 3 },
+      },
+      'fallback-run'
+    )
+
+    expect(normalized.runId).toBe('maint-2026-05-26-test')
+    expect(normalized.ts).toBe('2026-05-26T12:00:00.000Z')
+    expect(normalized.type).toBe('agent_progress')
+    expect(normalized.level).toBe('warn')
+    expect(normalized.stage).toBe('export')
+    expect(normalized.agent).toBe('export')
+    expect(normalized.message).toBe('export.step.progress')
+    expect(normalized.data).toEqual({ files_scanned: 3 })
   })
 })

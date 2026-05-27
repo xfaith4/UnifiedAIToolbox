@@ -132,8 +132,8 @@ async function readEvents(runDir: string, limit: number): Promise<RunEvent[]> {
       try {
         const rec = JSON.parse(line)
         const ts = rec.ts || rec.timestamp || rec.time || new Date().toISOString()
-        const type = rec.type || rec.level || rec.severity || 'info'
-        const stage = rec.stage || rec.agent || rec.name
+        const type = rec.type || rec.event_type || rec.level || rec.severity || 'info'
+        const stage = rec.stage || rec.agent || rec.agent_name || rec.name
         const message = rec.message || rec.msg || rec.status || line
         const data = rec.data ? rec.data : undefined
         events.push({
@@ -158,8 +158,8 @@ async function readEvents(runDir: string, limit: number): Promise<RunEvent[]> {
       try {
         const rec = JSON.parse(line)
         const ts = rec.ts || rec.timestamp || rec.time || new Date().toISOString()
-        const type = rec.type || rec.level || rec.severity || 'info'
-        const stage = rec.stage || rec.agent || rec.name
+        const type = rec.type || rec.event_type || rec.level || rec.severity || 'info'
+        const stage = rec.stage || rec.agent || rec.agent_name || rec.name
         const message = rec.message || rec.msg || rec.status || line
         const data = rec.data ? rec.data : undefined
         events.push({
@@ -376,7 +376,7 @@ export async function loadRunStatus(runId: string, options: RunStatusOptions = {
   const prData = prJson && typeof prJson === 'object' ? prJson as Record<string, unknown> : null
   const prNested = prData?.pr as Record<string, unknown> | undefined
   const prUrlFromJson = prNested?.url || prData?.pr_url
-  
+
   const runStateLinks = runStateJson?.links as Record<string, unknown> | undefined
   const links = {
     pr_url: getFirstString(runStateLinks?.pr_url, prUrlFromJson),

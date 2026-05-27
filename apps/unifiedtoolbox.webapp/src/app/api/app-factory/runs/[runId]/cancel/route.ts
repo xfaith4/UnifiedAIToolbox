@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import path from 'path'
 import { promises as fs } from 'fs'
 import { getRunsRoot, isValidRunId } from '@/lib/app-factory/runs/runStatus'
+import { appendEvent } from '@/lib/app-factory/runs/canonicalEvents'
+import { writeFinalSummary } from '@/lib/app-factory/runs/finalSummary'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -57,12 +59,6 @@ async function readJsonIfExists(filePath: string): Promise<Record<string, unknow
   }
 }
 
-async function appendEvent(runDir: string, record: Record<string, unknown>) {
-  const eventsPath = path.join(runDir, 'events.ndjson')
-  const line = JSON.stringify(record)
-  await fs.appendFile(eventsPath, line + '\n', 'utf8')
-}
-
 export async function POST(req: Request, { params: _params }: { params: Promise<{ runId: string }> }) {
   const params = await _params
   const runId = resolveRunId(params?.runId, req)
@@ -82,6 +78,7 @@ export async function POST(req: Request, { params: _params }: { params: Promise<
   const runStatePath = path.join(runDir, 'run_state.json')
   const runState = (await readJsonIfExists(runStatePath)) || {}
   const processInfo = (await readJsonIfExists(path.join(runDir, 'run_process.json'))) || {}
+  const requestInfo = (await readJsonIfExists(path.join(runDir, 'request.json'))) || {}
 
   const pid =
     typeof processInfo.pid === 'number'
@@ -118,7 +115,34 @@ export async function POST(req: Request, { params: _params }: { params: Promise<
   }
 
   await fs.writeFile(runStatePath, JSON.stringify(nextState, null, 2) + '\n', 'utf8')
-  await appendEvent(runDir, { ts: now, type: 'info', stage: 'run', message: 'Cancelled by user.', data: { pid, killed, killError } })
+  await appendEvent({
+    run_id: runId,
+    timestamp: now,
+    event_type: 'run_failed',
+    severity: 'warn',
+    message: 'Cancelled by user.',
+    data: { pid, killed, killError, reason: 'user_cancel' },
+  })
+
+  await writeFinalSummary({
+    run_id: runId,
+    objective: String((requestInfo as Record<string, unknown>).goal || (requestInfo as Record<string, unknown>).objective || ''),
+    outcome: 'failed',
+    completed_work: [],
+    changed_files: [],
+    created_artifacts: [],
+    validation_results: [],
+    blockers: [
+      {
+        severity: 'hard_blocker',
+        summary: 'Run was cancelled by user.',
+        agent: 'run_control',
+        details: { pid, killed, killError },
+      },
+    ],
+    warnings: killError ? [`Cancel requested but process kill failed: ${killError}`] : [],
+    next_steps: ['Rerun the orchestration after resolving the cancellation cause.'],
+  })
 
   return NextResponse.json({ runId, status: nextState.status, pid, killed, killError }, { status: 200 })
 }
