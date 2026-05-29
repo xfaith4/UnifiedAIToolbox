@@ -18,6 +18,7 @@ import socket
 import time
 import urllib.error
 import urllib.request
+import re
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple
 
@@ -34,6 +35,15 @@ NON_NODE_PROJECT_MARKER_GLOBS = ("*.psm1", "*.psd1", "*.ps1")
 NODE_DEP_KEYS = ("dependencies", "devDependencies", "peerDependencies", "optionalDependencies")
 
 logger = logging.getLogger(__name__)
+RUNTIME_ERROR_PATTERNS = (
+    re.compile(r"\bruntime error\b", re.IGNORECASE),
+    re.compile(r"\b(unhandled )?exception\b", re.IGNORECASE),
+    re.compile(r"\bunhandled(rejection| rejection)\b", re.IGNORECASE),
+    re.compile(r"\b(traceback|typeerror|referenceerror|syntaxerror)\b", re.IGNORECASE),
+    re.compile(r"\bfailed to compile\b", re.IGNORECASE),
+    re.compile(r"\berror:\s", re.IGNORECASE),
+)
+RUNTIME_ERROR_IGNORES = ("0 errors", "no errors")
 
 
 class OrchestratorVerifier:
@@ -287,6 +297,34 @@ class OrchestratorVerifier:
         while time.time() < deadline:
             if process.poll() is not None:
                 return None
+
+    def _probe_http_page(self, url: str, timeout: int = 5) -> Tuple[bool, str]:
+                try:
+                    with urllib.request.urlopen(url, timeout=timeout) as response:
+                        status = int(getattr(response, "status", 200))
+                        if status >= 500:
+                            return False, f"HTTP probe to {url} returned status {status}"
+                        body = response.read(2048).decode("utf-8", errors="replace")
+                        if not body.strip():
+                            return False, f"HTTP probe to {url} returned an empty response body."
+                        return True, f"HTTP probe to {url} succeeded with status {status}."
+                except Exception as exc:
+                    return False, f"HTTP probe to {url} failed: {exc}"
+
+    def _extract_runtime_errors(self, log_output: str, max_items: int = 3) -> List[str]:
+                findings: List[str] = []
+                for raw_line in str(log_output or "").splitlines():
+                    line = raw_line.strip()
+                    if not line:
+                        continue
+                    lowered = line.lower()
+                    if any(ignore in lowered for ignore in RUNTIME_ERROR_IGNORES):
+                        continue
+                    if any(pattern.search(line) for pattern in RUNTIME_ERROR_PATTERNS):
+                        findings.append(line)
+                        if len(findings) >= max_items:
+                            break
+                return findings
             for url in urls:
                 try:
                     with urllib.request.urlopen(url, timeout=2):
@@ -684,12 +722,45 @@ class OrchestratorVerifier:
 
             output = self._read_short_log_output(log_path)
             if ready_url:
+                probe_ok, probe_summary = self._probe_http_page(ready_url)
+                runtime_errors = self._extract_runtime_errors(output)
+                if process.poll() not in (None, 0):
+                    return {
+                        "passed": False,
+                        "output": output or f"Dev server exited unexpectedly after startup on {ready_url}.",
+                        "log_path": str(log_path),
+                        "command": " ".join(command),
+                        "exit_code": process.poll() if process.poll() is not None else -1,
+                        "runtime_probe_url": ready_url,
+                        "runtime_probe_ok": False,
+                    }
+                if not probe_ok or runtime_errors:
+                    failure_reasons: List[str] = []
+                    if not probe_ok:
+                        failure_reasons.append(probe_summary)
+                    if runtime_errors:
+                        failure_reasons.append(
+                            "Detected runtime errors after startup: " + "; ".join(runtime_errors)
+                        )
+                    return {
+                        "passed": False,
+                        "output": " ".join(failure_reasons),
+                        "log_path": str(log_path),
+                        "command": " ".join(command),
+                        "exit_code": process.poll() if process.poll() is not None else 1,
+                        "runtime_probe_url": ready_url,
+                        "runtime_probe_ok": probe_ok,
+                        "runtime_errors": runtime_errors,
+                    }
                 return {
                     "passed": True,
-                    "output": output or f"Dev server responded on {ready_url}",
+                    "output": output or probe_summary,
                     "log_path": str(log_path),
                     "command": " ".join(command),
                     "exit_code": 0,
+                    "runtime_probe_url": ready_url,
+                    "runtime_probe_ok": probe_ok,
+                    "runtime_errors": [],
                 }
 
             exit_code = process.poll() if process else -1

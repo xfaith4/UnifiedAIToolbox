@@ -99,6 +99,7 @@ def test_verify_dev_server_reports_success_with_bounded_process(tmp_path, monkey
 
     monkeypatch.setattr(verifier, "_find_available_port", lambda host="127.0.0.1": 43123)
     monkeypatch.setattr(verifier, "_wait_for_any_http_server", lambda urls, process, timeout=45: urls[0])
+    monkeypatch.setattr(verifier, "_probe_http_page", lambda url, timeout=5: (True, f"ok {url}"))
     monkeypatch.setattr(orchestrator_verifier.subprocess, "Popen", FakeProcess)
 
     result = verifier.verify_dev_server()
@@ -107,6 +108,105 @@ def test_verify_dev_server_reports_success_with_bounded_process(tmp_path, monkey
     assert result["passed"] is True
     assert result["command"].startswith("npm run dev -- --host 127.0.0.1 --port 43123")
     assert result["log_path"].endswith("dev_server.log")
+    assert result["runtime_probe_ok"] is True
+
+
+def test_verify_dev_server_fails_on_post_startup_runtime_errors(tmp_path, monkeypatch):
+    (tmp_path / "package.json").write_text(
+        json.dumps(
+            {
+                "name": "generated-app",
+                "scripts": {
+                    "dev": "vite",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    verifier = OrchestratorVerifier(tmp_path)
+
+    class FakeProcess:
+        def __init__(self, command, cwd=None, stdout=None, stderr=None, text=None, env=None):
+            self.returncode = None
+            if stdout is not None:
+                stdout.write("ready\nRuntime Error: Cannot read properties of undefined\n")
+                stdout.flush()
+
+        def poll(self):
+            return self.returncode
+
+        def terminate(self):
+            self.returncode = 0
+
+        def wait(self, timeout=None):
+            self.returncode = 0
+            return 0
+
+        def kill(self):
+            self.returncode = -9
+
+    monkeypatch.setattr(verifier, "_wait_for_any_http_server", lambda urls, process, timeout=45: urls[0])
+    monkeypatch.setattr(verifier, "_probe_http_page", lambda url, timeout=5: (True, f"ok {url}"))
+    monkeypatch.setattr(orchestrator_verifier.subprocess, "Popen", FakeProcess)
+
+    result = verifier.verify_dev_server()
+
+    assert result is not None
+    assert result["passed"] is False
+    assert "Detected runtime errors after startup" in result["output"]
+    assert result["runtime_errors"]
+
+
+def test_verify_dev_server_fails_when_page_probe_fails(tmp_path, monkeypatch):
+    (tmp_path / "package.json").write_text(
+        json.dumps(
+            {
+                "name": "generated-app",
+                "scripts": {
+                    "dev": "vite",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    verifier = OrchestratorVerifier(tmp_path)
+
+    class FakeProcess:
+        def __init__(self, command, cwd=None, stdout=None, stderr=None, text=None, env=None):
+            self.returncode = None
+            if stdout is not None:
+                stdout.write("ready\n")
+                stdout.flush()
+
+        def poll(self):
+            return self.returncode
+
+        def terminate(self):
+            self.returncode = 0
+
+        def wait(self, timeout=None):
+            self.returncode = 0
+            return 0
+
+        def kill(self):
+            self.returncode = -9
+
+    monkeypatch.setattr(verifier, "_wait_for_any_http_server", lambda urls, process, timeout=45: urls[0])
+    monkeypatch.setattr(
+        verifier,
+        "_probe_http_page",
+        lambda url, timeout=5: (False, f"HTTP probe to {url} failed with status 500"),
+    )
+    monkeypatch.setattr(orchestrator_verifier.subprocess, "Popen", FakeProcess)
+
+    result = verifier.verify_dev_server()
+
+    assert result is not None
+    assert result["passed"] is False
+    assert result["runtime_probe_ok"] is False
+    assert "HTTP probe" in result["output"]
 
 
 def test_run_all_verifications_skips_dependent_checks_after_install_failure(tmp_path, monkeypatch):
