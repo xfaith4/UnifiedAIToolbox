@@ -4,7 +4,7 @@ import { promises as fs } from 'fs'
 import type { SandboxReport } from '@/lib/types/orchestrator'
 import { runSandbox, MAX_LOOP_ITERATIONS } from './sandboxEngine'
 import { appendEvent as appendCanonicalEvent } from '@/lib/app-factory/runs/canonicalEvents'
-import { isValidRunId } from '@/lib/app-factory/runs/runStatus'
+import { resolveRunContext } from './runContext'
 
 export interface RefinementLoopOptions {
   runDir: string
@@ -23,17 +23,6 @@ export interface RefinementLoopResult {
   finalReport: SandboxReport
   iterations: number
   exitReason: LoopExitReason
-}
-
-function resolveRunContext(
-  runDir: string,
-): { runId: string; rootDir: string } | null {
-  const runId = path.basename(runDir)
-  if (!isValidRunId(runId)) return null
-  return {
-    runId,
-    rootDir: path.dirname(runDir),
-  }
 }
 
 function mapLoopEventType(type: string): {

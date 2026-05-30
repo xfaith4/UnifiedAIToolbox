@@ -6,7 +6,7 @@ import type { SandboxCheck, SandboxReport, VerificationResult } from '@/lib/type
 import { evaluateAcceptanceChecks, aggregateStatus, type EvaluatedCheck } from './evaluateChecks'
 import { appendEvent as appendCanonicalEvent } from '@/lib/app-factory/runs/canonicalEvents'
 import { indexArtifact } from '@/lib/app-factory/runs/artifactIndex'
-import { isValidRunId } from '@/lib/app-factory/runs/runStatus'
+import { resolveRunContext } from './runContext'
 
 const MAX_COMMAND_OUTPUT_BYTES = 8 * 1024
 
@@ -35,19 +35,16 @@ export interface SandboxRunResult {
 
 // ── Event helpers ──────────────────────────────────────────────────────────────
 
-function resolveRunContext(
-  runDir: string,
-): { runId: string; rootDir: string } | null {
-  const runId = path.basename(runDir)
-  if (!isValidRunId(runId)) return null
-  return {
-    runId,
-    rootDir: path.dirname(runDir),
-  }
-}
+type SandboxCanonicalEventType =
+  | 'validation_started'
+  | 'validation_completed'
+  | 'agent_started'
+  | 'agent_progress'
+  | 'agent_blocked'
+  | 'artifact_created'
 
 function mapSandboxEventType(type: string): {
-  eventType: 'validation_started' | 'validation_completed' | 'agent_started' | 'agent_progress' | 'agent_blocked' | 'artifact_created'
+  eventType: SandboxCanonicalEventType
   severity: 'info' | 'warn' | 'error'
 } {
   if (type === 'sandbox:start') {
@@ -79,6 +76,7 @@ async function appendEvent(
   const record: Record<string, unknown> = { ts: new Date().toISOString(), type, message }
   if (data) record.data = data
   try {
+    // Keep legacy stream first while RM-013 migration still requires fallback compatibility.
     await fs.appendFile(eventsPath, JSON.stringify(record) + '\n', 'utf8')
   } catch {
     // non-fatal: event emission should never break the sandbox
