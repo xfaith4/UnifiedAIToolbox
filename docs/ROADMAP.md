@@ -200,9 +200,11 @@ Populate the canonical run infrastructure consistently so Run Console and API co
     - verification evidence pointer.
   - Additional progress (2026-05-30): prompt-api terminal evidence healing now refreshes stale `final_summary.json` whenever terminal manifest truth changes (instead of only writing when missing), and explicitly re-reconciles `run_state.json` to terminal outcome even when summary content is already current.
   - Additional progress (2026-05-30): generated-app gate outcomes now deterministically constrain `verification_status` before terminal completion/healing (`repair_needed` or failed gates force `failed`; `insufficient_evidence` downgrades optimistic `passed/pending` to `partial`) so runs cannot be marked clean success when build/runtime proof failed.
+  - Additional progress (2026-05-30): strict generated-app success contract added for Node/web lanes: when delivery is `verified`, clean success now also requires `install` gate passed (when Node package-manager install command is present) plus executable proof (`build`/`unit_tests`/`smoke_tests`/`dev_server`) to prevent optimistic "completed" outcomes with skipped install.
   - Touched files (2026-05-30): `apps/UnifiedPromptApp/services/prompt-api/app.py`, `apps/UnifiedPromptApp/services/prompt-api/tests/test_orchestration.py`.
   - Verification (2026-05-30): `pytest apps/UnifiedPromptApp/services/prompt-api/tests/test_orchestration.py -k "terminal_summary or run_state_reconcile"` passed (4 tests).
   - Verification (2026-05-30): `pytest apps/UnifiedPromptApp/services/prompt-api/tests/test_orchestration.py -k "generated_app_guard or terminal_summary or run_state_reconcile"` passed (6 tests).
+  - Verification (2026-05-30): `pytest apps/UnifiedPromptApp/services/prompt-api/tests/test_orchestration.py -k "generated_app_guard or success_contract or terminal_summary or run_state_reconcile"` passed (8 tests).
 
 - [ ] Reconcile terminal run-state artifacts.
   - `run_state.json`, manifest, final summary, overseer/advisory artifacts, and agent status display must agree.

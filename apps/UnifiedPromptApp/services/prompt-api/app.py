@@ -9002,6 +9002,23 @@ def _apply_generated_app_verification_guard(manifest: Dict[str, Any]) -> bool:
         if isinstance(check, dict) and str(check.get("status") or "").strip().lower() == "failed"
     ]
 
+    install_check = next(
+        (
+            check
+            for check in checks
+            if isinstance(check, dict) and str(check.get("name") or "").strip().lower() == "install"
+        ),
+        None,
+    )
+
+    executable_check_names = {"build", "unit_tests", "smoke_tests", "dev_server"}
+    has_executable_proof = any(
+        isinstance(check, dict)
+        and str(check.get("name") or "").strip().lower() in executable_check_names
+        and str(check.get("status") or "").strip().lower() == "passed"
+        for check in checks
+    )
+
     changed = False
     if delivery_readiness == "repair_needed" or failed_checks:
         if verification_status != "failed":
@@ -9016,6 +9033,36 @@ def _apply_generated_app_verification_guard(manifest: Dict[str, Any]) -> bool:
                 manifest["error_detail"] = "Generated app verification reported repair_needed and did not reach readiness."
             changed = True
         return changed
+
+    # Strict success contract for generated Node/web apps:
+    # when install is a Node package-manager command, clean success requires
+    # install=passed and at least one executable proof gate passed.
+    if delivery_readiness == "verified":
+        install_status = str((install_check or {}).get("status") or "").strip().lower()
+        install_command = str((install_check or {}).get("command") or "").strip().lower()
+        install_node_required = any(
+            token in install_command for token in ("npm", "pnpm", "yarn", "bun")
+        )
+        if install_node_required and install_status != "passed":
+            if verification_status != "failed":
+                manifest["verification_status"] = "failed"
+                changed = True
+            if not str(manifest.get("error_detail") or "").strip():
+                manifest["error_detail"] = (
+                    "Generated app success contract failed: install gate must pass for Node/web builds."
+                )
+                changed = True
+            return changed
+        if not has_executable_proof:
+            if verification_status != "partial":
+                manifest["verification_status"] = "partial"
+                changed = True
+            if not str(manifest.get("error_detail") or "").strip():
+                manifest["error_detail"] = (
+                    "Generated app success contract failed: missing executable proof gate (build/unit_tests/smoke_tests/dev_server)."
+                )
+                changed = True
+            return changed
 
     if delivery_readiness == "insufficient_evidence" and verification_status in {"", "pending", "passed"}:
         manifest["verification_status"] = "partial"

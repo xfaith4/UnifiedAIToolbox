@@ -1229,6 +1229,54 @@ class TestOrchestrateRun:
         assert manifest.get("verification_status") == "partial"
         assert "insufficient evidence" in str(manifest.get("error_detail") or "").lower()
 
+    def test_generated_app_success_contract_requires_install_for_node_web(self):
+        manifest = {
+            "verification_status": "passed",
+            "generated_app_files": ["generated_app/src/main.tsx"],
+            "app_production": {
+                "delivery_readiness": "verified",
+                "checks": [
+                    {
+                        "name": "install",
+                        "status": "skipped",
+                        "summary": "npm not found",
+                        "command": "npm ci --no-audit --no-fund",
+                    },
+                    {"name": "build", "status": "passed", "summary": "Build passed"},
+                ],
+            },
+        }
+
+        changed = app._apply_generated_app_verification_guard(manifest)
+
+        assert changed is True
+        assert manifest.get("verification_status") == "failed"
+        assert "install gate" in str(manifest.get("error_detail") or "").lower()
+
+    def test_generated_app_success_contract_accepts_install_plus_executable_proof(self):
+        manifest = {
+            "verification_status": "passed",
+            "generated_app_files": ["generated_app/src/main.tsx"],
+            "app_production": {
+                "delivery_readiness": "verified",
+                "checks": [
+                    {
+                        "name": "install",
+                        "status": "passed",
+                        "summary": "Dependencies installed",
+                        "command": "npm ci --no-audit --no-fund",
+                    },
+                    {"name": "dev_server", "status": "passed", "summary": "HTTP probe succeeded"},
+                ],
+            },
+        }
+
+        changed = app._apply_generated_app_verification_guard(manifest)
+
+        assert changed is False
+        assert manifest.get("verification_status") == "passed"
+        assert not manifest.get("error_detail")
+
     def test_checkpoint_resume_dispatches_to_executor(self, cleanup_test_runs):
         """
         Regression test for the requirements resume path stuck at queued(resume_requirements).
