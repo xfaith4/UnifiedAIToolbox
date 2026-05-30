@@ -416,6 +416,32 @@ def test_prompts_endpoint_merges_registry_and_synced(tmp_path, monkeypatch):
     assert "local.draft.prompt" in summary
 
 
+def test_prompts_collection_coerces_version_to_string(monkeypatch):
+    """Regression test: /prompts must coerce non-string version values to str.
+
+    FastAPI validates the response against PromptPayload whose `version` field
+    is Optional[str].  Registry YAML files may store version as a bare integer
+    (e.g. ``version: 1``), which would cause a ResponseValidationError without
+    the normalization applied in list_prompt_payloads.
+    """
+    monkeypatch.setattr(
+        app,
+        "load_registry_payloads",
+        lambda: [
+            {"id": "p.string-ver", "version": "1.0.0", "prompt": {"system": "ok"}},
+            {"id": "p.int-ver", "version": 1, "prompt": {"system": "also ok"}},
+        ],
+    )
+    monkeypatch.setattr(app, "load_synced_payloads", lambda: [])
+
+    response = client.get("/prompts")
+    assert response.status_code == 200
+    body = response.json()
+    by_id = {item["id"]: item for item in body}
+    assert by_id["p.string-ver"]["version"] == "1.0.0"
+    assert by_id["p.int-ver"]["version"] == "1"
+
+
 def test_openai_error_detail_is_masked(monkeypatch):
     original_api_key = app.OPENAI_API_KEY
     try:

@@ -1549,6 +1549,20 @@ def read_templates() -> Dict[str, Dict[str, Any]]:
             templates[y["id"]] = y
     return templates
 
+def _normalize_prompt_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize a prompt payload dict so it is compatible with PromptPayload.
+
+    Specifically, coerces ``version`` to ``str`` when the registry or a synced
+    source returns it as a non-string (e.g. an integer ``1`` from a YAML file
+    that omits quotes around the version value).
+    """
+    normalized = dict(payload)
+    version = normalized.get("version")
+    if version is not None and not isinstance(version, str):
+        normalized["version"] = str(version)
+    return normalized
+
+
 def load_registry_payloads() -> List[Dict[str, Any]]:
     if registry_list_prompts is None:
         return []
@@ -2588,8 +2602,8 @@ def list_prompt_payloads():
     Synced payloads (from the React editor) override registry entries with the
     same id and introduce additional drafts for local development.
     """
-    registry_payloads = load_registry_payloads()
-    synced_payloads = load_synced_payloads()
+    registry_payloads = [_normalize_prompt_payload(p) for p in load_registry_payloads()]
+    synced_payloads = [_normalize_prompt_payload(p) for p in load_synced_payloads()]
 
     if not registry_payloads:
         return synced_payloads
