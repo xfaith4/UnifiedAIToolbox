@@ -186,10 +186,12 @@ jobs:
           exit 0
 
       - name: Set up Python ${{ matrix.python-version }}
+        if: steps.detect.outputs.path != ''
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
+          cache-dependency-path: ${{ steps.detect.outputs.path }}/requirements.txt
 
       - name: Install dependencies
         if: steps.detect.outputs.path != ''
