@@ -25,7 +25,7 @@ export interface RefinementLoopResult {
   exitReason: LoopExitReason
 }
 
-function mapLoopEventType(type: string): {
+function mapLoopToCanonicalEventType(type: string): {
   eventType: 'agent_progress' | 'agent_completed' | 'agent_blocked'
   severity: 'info' | 'warn' | 'error'
 } {
@@ -59,7 +59,7 @@ async function appendEvent(
   const runContext = resolveRunContext(runDir)
   if (!runContext) return
 
-  const mapped = mapLoopEventType(type)
+  const mapped = mapLoopToCanonicalEventType(type)
   const canonicalData: Record<string, unknown> = {
     source: 'refinementLoop',
     source_event_type: type,

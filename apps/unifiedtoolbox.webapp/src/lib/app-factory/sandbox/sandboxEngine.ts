@@ -35,7 +35,7 @@ export interface SandboxRunResult {
 
 // ── Event helpers ──────────────────────────────────────────────────────────────
 
-type SandboxCanonicalEventType =
+type SandboxCanonicalRunEventType =
   | 'validation_started'
   | 'validation_completed'
   | 'agent_started'
@@ -43,8 +43,8 @@ type SandboxCanonicalEventType =
   | 'agent_blocked'
   | 'artifact_created'
 
-function mapSandboxEventType(type: string): {
-  eventType: SandboxCanonicalEventType
+function mapSandboxToCanonicalEventType(type: string): {
+  eventType: SandboxCanonicalRunEventType
   severity: 'info' | 'warn' | 'error'
 } {
   if (type === 'sandbox:start') {
@@ -85,7 +85,7 @@ async function appendEvent(
   const runContext = resolveRunContext(runDir)
   if (!runContext) return
 
-  const mapped = mapSandboxEventType(type)
+  const mapped = mapSandboxToCanonicalEventType(type)
   const canonicalData: Record<string, unknown> = {
     source: 'sandboxEngine',
     source_event_type: type,
@@ -246,7 +246,7 @@ export async function runSandbox(opts: SandboxRunOptions): Promise<SandboxRunRes
       const indexed = await indexArtifact(
         {
           run_id: runContext.runId,
-          type: 'sandbox-report',
+          type: 'sandbox_report',
           title: 'Sandbox verification report',
           path: 'sandbox_report.json',
           producing_agent: 'SandboxEngine',
