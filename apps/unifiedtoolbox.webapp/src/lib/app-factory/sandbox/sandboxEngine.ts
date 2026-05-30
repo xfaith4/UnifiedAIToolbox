@@ -4,6 +4,9 @@ import { promises as fs } from 'fs'
 import { spawnSync } from 'child_process'
 import type { SandboxCheck, SandboxReport, VerificationResult } from '@/lib/types/orchestrator'
 import { evaluateAcceptanceChecks, aggregateStatus, type EvaluatedCheck } from './evaluateChecks'
+import { appendEvent as appendCanonicalEvent } from '@/lib/app-factory/runs/canonicalEvents'
+import { indexArtifact } from '@/lib/app-factory/runs/artifactIndex'
+import { isValidRunId } from '@/lib/app-factory/runs/runStatus'
 
 const MAX_COMMAND_OUTPUT_BYTES = 8 * 1024
 
@@ -32,11 +35,46 @@ export interface SandboxRunResult {
 
 // ── Event helpers ──────────────────────────────────────────────────────────────
 
+function resolveRunContext(
+  runDir: string,
+): { runId: string; rootDir: string } | null {
+  const runId = path.basename(runDir)
+  if (!isValidRunId(runId)) return null
+  return {
+    runId,
+    rootDir: path.dirname(runDir),
+  }
+}
+
+function mapSandboxEventType(type: string): {
+  eventType: 'validation_started' | 'validation_completed' | 'agent_started' | 'agent_progress' | 'agent_blocked' | 'artifact_created'
+  severity: 'info' | 'warn' | 'error'
+} {
+  if (type === 'sandbox:start') {
+    return { eventType: 'validation_started', severity: 'info' }
+  }
+  if (type === 'sandbox:complete') {
+    return { eventType: 'validation_completed', severity: 'info' }
+  }
+  if (type === 'sandbox:check_start') {
+    return { eventType: 'agent_started', severity: 'info' }
+  }
+  if (type === 'sandbox:check_failed') {
+    return { eventType: 'agent_blocked', severity: 'error' }
+  }
+  if (type === 'sandbox:report_written') {
+    return { eventType: 'artifact_created', severity: 'info' }
+  }
+  return { eventType: 'agent_progress', severity: 'info' }
+}
+
 async function appendEvent(
+  runDir: string,
   eventsPath: string,
   type: string,
   message: string,
   data?: Record<string, unknown>,
+  artifactRefs?: string[],
 ): Promise<void> {
   const record: Record<string, unknown> = { ts: new Date().toISOString(), type, message }
   if (data) record.data = data
@@ -44,6 +82,33 @@ async function appendEvent(
     await fs.appendFile(eventsPath, JSON.stringify(record) + '\n', 'utf8')
   } catch {
     // non-fatal: event emission should never break the sandbox
+  }
+
+  const runContext = resolveRunContext(runDir)
+  if (!runContext) return
+
+  const mapped = mapSandboxEventType(type)
+  const canonicalData: Record<string, unknown> = {
+    source: 'sandboxEngine',
+    source_event_type: type,
+    ...(data ?? {}),
+  }
+
+  try {
+    await appendCanonicalEvent(
+      {
+        run_id: runContext.runId,
+        event_type: mapped.eventType,
+        severity: mapped.severity,
+        agent_name: 'SandboxEngine',
+        message,
+        data: canonicalData,
+        artifact_refs: artifactRefs?.length ? artifactRefs : undefined,
+      },
+      { rootDir: runContext.rootDir },
+    )
+  } catch {
+    // non-fatal: canonical emission should not break the sandbox
   }
 }
 
@@ -79,6 +144,7 @@ function executeCommand(
 async function runCheck(
   evaluated: EvaluatedCheck,
   cwd: string,
+  runDir: string,
   eventsPath: string,
   iteration: number,
 ): Promise<SandboxCheck> {
@@ -89,7 +155,7 @@ async function runCheck(
   }
 
   if (command) {
-    await appendEvent(eventsPath, 'sandbox:check_start', `Executing check: ${check}`, {
+    await appendEvent(runDir, eventsPath, 'sandbox:check_start', `Executing check: ${check}`, {
       evaluator,
       command,
       iteration,
@@ -116,6 +182,7 @@ async function runCheck(
     if (stderr) data.stderr = stderr
 
     await appendEvent(
+      runDir,
       eventsPath,
       result === 'passed' ? 'sandbox:check_passed' : 'sandbox:check_failed',
       `${result}: ${check}`,
@@ -143,7 +210,7 @@ export async function runSandbox(opts: SandboxRunOptions): Promise<SandboxRunRes
   const reportPath = path.join(runDir, 'sandbox_report.json')
   const effectiveCwd = cwd ?? runDir
 
-  await appendEvent(eventsPath, 'sandbox:start', 'Sandbox evaluation started', {
+  await appendEvent(runDir, eventsPath, 'sandbox:start', 'Sandbox evaluation started', {
     iteration: loopIteration,
     checkCount: acceptanceChecks.length,
   })
@@ -152,7 +219,7 @@ export async function runSandbox(opts: SandboxRunOptions): Promise<SandboxRunRes
   const checks: SandboxCheck[] = []
 
   for (const ev of evaluated) {
-    const result = await runCheck(ev, effectiveCwd, eventsPath, loopIteration)
+    const result = await runCheck(ev, effectiveCwd, runDir, eventsPath, loopIteration)
     checks.push(result)
   }
 
@@ -171,15 +238,57 @@ export async function runSandbox(opts: SandboxRunOptions): Promise<SandboxRunRes
     deferredCount,
   }
 
-  await fs.writeFile(reportPath, JSON.stringify(report, null, 2) + '\n', 'utf8')
+  const reportRaw = JSON.stringify(report, null, 2) + '\n'
+  await fs.writeFile(reportPath, reportRaw, 'utf8')
 
-  await appendEvent(eventsPath, 'sandbox:complete', `Sandbox evaluation complete: ${verificationStatus}`, {
-    iteration: loopIteration,
-    passedCount,
-    failedCount,
-    deferredCount,
-    verificationStatus,
-  })
+  let reportArtifactRef: string | undefined
+  const runContext = resolveRunContext(runDir)
+  if (runContext) {
+    try {
+      const indexed = await indexArtifact(
+        {
+          run_id: runContext.runId,
+          type: 'sandbox-report',
+          title: 'Sandbox verification report',
+          path: 'sandbox_report.json',
+          producing_agent: 'SandboxEngine',
+          summary: `Verification status: ${verificationStatus}`,
+        },
+        { rootDir: runContext.rootDir },
+      )
+      reportArtifactRef = indexed.artifact_id
+      await appendEvent(
+        runDir,
+        eventsPath,
+        'sandbox:report_written',
+        'Sandbox report artifact indexed',
+        {
+          iteration: loopIteration,
+          path: indexed.path,
+          bytes: Buffer.byteLength(reportRaw, 'utf8'),
+          kind: indexed.type,
+        },
+        [indexed.artifact_id],
+      )
+    } catch {
+      // non-fatal: indexing should not block run completion
+    }
+  }
+
+  await appendEvent(
+    runDir,
+    eventsPath,
+    'sandbox:complete',
+    `Sandbox evaluation complete: ${verificationStatus}`,
+    {
+      iteration: loopIteration,
+      passedCount,
+      failedCount,
+      deferredCount,
+      verificationStatus,
+    },
+    reportArtifactRef ? [reportArtifactRef] : undefined,
+  )
 
   return { report, allPassed: verificationStatus === 'passed' }
 }

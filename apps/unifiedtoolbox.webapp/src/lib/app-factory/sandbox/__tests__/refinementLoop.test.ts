@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
+import { describe, expect, it, beforeEach, afterEach } from 'vitest'
 import path from 'path'
 import os from 'os'
 import { promises as fsp } from 'fs'
@@ -24,6 +24,24 @@ async function readEvents(dir: string): Promise<Array<{ type: string; message: s
       .split('\n')
       .filter(Boolean)
       .map((line) => JSON.parse(line) as { type: string; message: string })
+  } catch {
+    return []
+  }
+}
+
+async function readCanonicalEvents(
+  dir: string,
+): Promise<Array<{ event_type: string; message: string; data?: Record<string, unknown> }>> {
+  try {
+    const raw = await fsp.readFile(path.join(dir, 'events.jsonl'), 'utf8')
+    return raw
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map(
+        (line) =>
+          JSON.parse(line) as { event_type: string; message: string; data?: Record<string, unknown> },
+      )
   } catch {
     return []
   }
@@ -129,6 +147,23 @@ describe('runRefinementLoop', () => {
     const events = await readEvents(tempDir)
     const maxIterEvent = events.find((e) => e.type === 'loop:max_iterations')
     expect(maxIterEvent).toBeDefined()
+  })
+
+  it('emits canonical events for sandbox and loop activity', async () => {
+    await runRefinementLoop({
+      runDir: tempDir,
+      acceptanceChecks: ['Build passes with exit code 0'],
+      maxIterations: 1,
+      cwd: tempDir,
+    })
+
+    const canonical = await readCanonicalEvents(tempDir)
+    expect(canonical.some((event) => event.event_type === 'validation_started')).toBe(true)
+    expect(canonical.some((event) => event.event_type === 'validation_completed')).toBe(true)
+    expect(
+      canonical.some((event) => event.event_type === 'artifact_created' && event.data?.path === 'sandbox_report.json'),
+    ).toBe(true)
+    expect(canonical.some((event) => event.data?.source === 'refinementLoop')).toBe(true)
   })
 
   it('finalReport loopIteration reflects the last iteration run', async () => {
