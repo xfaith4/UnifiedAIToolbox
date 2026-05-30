@@ -1193,6 +1193,42 @@ class TestOrchestrateRun:
         assert should_relax is True
         assert "traceability" in reason
 
+    def test_generated_app_guard_forces_failed_when_repair_needed(self):
+        manifest = {
+            "verification_status": "passed",
+            "generated_app_files": ["generated_app/src/main.tsx"],
+            "app_production": {
+                "delivery_readiness": "repair_needed",
+                "checks": [
+                    {"name": "build", "status": "failed", "summary": "TypeScript compile failed"},
+                ],
+            },
+        }
+
+        changed = app._apply_generated_app_verification_guard(manifest)
+
+        assert changed is True
+        assert manifest.get("verification_status") == "failed"
+        assert "build" in str(manifest.get("error_detail") or "").lower()
+
+    def test_generated_app_guard_marks_partial_when_evidence_insufficient(self):
+        manifest = {
+            "verification_status": "passed",
+            "generated_app_files": ["generated_app/src/main.tsx"],
+            "app_production": {
+                "delivery_readiness": "insufficient_evidence",
+                "checks": [
+                    {"name": "build", "status": "skipped", "summary": "No build script found"},
+                ],
+            },
+        }
+
+        changed = app._apply_generated_app_verification_guard(manifest)
+
+        assert changed is True
+        assert manifest.get("verification_status") == "partial"
+        assert "insufficient evidence" in str(manifest.get("error_detail") or "").lower()
+
     def test_checkpoint_resume_dispatches_to_executor(self, cleanup_test_runs):
         """
         Regression test for the requirements resume path stuck at queued(resume_requirements).

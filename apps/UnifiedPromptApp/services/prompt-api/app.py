@@ -4033,6 +4033,8 @@ def _build_stalled_run_detail(out_dir: pathlib.Path) -> Optional[str]:
 
 
 def _ensure_terminal_evidence_artifacts(run_id: str, manifest_path: pathlib.Path, data: Dict[str, Any], out_dir: pathlib.Path) -> Dict[str, Any]:
+    changed = _apply_generated_app_verification_guard(data)
+
     status_value = str(data.get("status") or "").strip().lower()
     verification_status = str(data.get("verification_status") or "").strip().lower()
     needs_requirements = verification_status in {"needs_requirements", "blocked_requirements"}
@@ -4041,7 +4043,6 @@ def _ensure_terminal_evidence_artifacts(run_id: str, manifest_path: pathlib.Path
     minimum_success_profile = data.get("minimum_success_profile") if isinstance(data.get("minimum_success_profile"), dict) else {}
     app_production = data.get("app_production") if isinstance(data.get("app_production"), dict) else {}
 
-    changed = False
     relax_failed, relax_reason = _should_relax_failed_verification(data, minimum_success_profile, app_production)
     if relax_failed:
         data["verification_status"] = "partial"
@@ -6440,6 +6441,7 @@ def _execute_orchestration_run(run_id_hint: str, path: pathlib.Path, cancel_even
                 print(f"[orchestrate] Arena adjudication failed: {arena_err}", file=sys.stderr)
 
         data = safe_json_load(path, context=f"execute_complete:{run_id}")
+        _apply_generated_app_verification_guard(data)
         verification_status = str(data.get("verification_status") or "").strip().lower()
         minimum_success_profile = data.get("minimum_success_profile") if isinstance(data.get("minimum_success_profile"), dict) else {}
         minimum_required = bool(minimum_success_profile.get("required"))
@@ -8972,6 +8974,57 @@ def _make_skipped_gate_result(summary: str) -> Dict[str, Any]:
         "status": "skipped",
         "summary": summary,
     }
+
+
+def _apply_generated_app_verification_guard(manifest: Dict[str, Any]) -> bool:
+    """
+    Enforce verification status from generated-app gate outcomes.
+
+    A run with materialized generated-app files must not remain
+    verification_status=passed when delivery readiness says repair_needed or a
+    gate failed.
+    """
+    generated_files = manifest.get("generated_app_files")
+    app_production = manifest.get("app_production") if isinstance(manifest.get("app_production"), dict) else {}
+    if not isinstance(generated_files, list) or not generated_files:
+        return False
+    if not app_production:
+        return False
+
+    verification_status = str(manifest.get("verification_status") or "").strip().lower()
+    if verification_status in {"needs_requirements", "blocked_requirements"}:
+        return False
+
+    delivery_readiness = str(app_production.get("delivery_readiness") or app_production.get("status") or "").strip().lower()
+    checks = app_production.get("checks") if isinstance(app_production.get("checks"), list) else []
+    failed_checks = [
+        check for check in checks
+        if isinstance(check, dict) and str(check.get("status") or "").strip().lower() == "failed"
+    ]
+
+    changed = False
+    if delivery_readiness == "repair_needed" or failed_checks:
+        if verification_status != "failed":
+            manifest["verification_status"] = "failed"
+            changed = True
+        if not str(manifest.get("error_detail") or "").strip():
+            if failed_checks:
+                gate = str(failed_checks[0].get("name") or "gate")
+                summary = str(failed_checks[0].get("summary") or "verification gate failed").strip()
+                manifest["error_detail"] = f"Generated app verification gate '{gate}' failed: {summary}"
+            else:
+                manifest["error_detail"] = "Generated app verification reported repair_needed and did not reach readiness."
+            changed = True
+        return changed
+
+    if delivery_readiness == "insufficient_evidence" and verification_status in {"", "pending", "passed"}:
+        manifest["verification_status"] = "partial"
+        changed = True
+        if not str(manifest.get("error_detail") or "").strip():
+            manifest["error_detail"] = "Generated app verification produced insufficient evidence for runnable readiness."
+            changed = True
+
+    return changed
 
 
 def _summarize_app_production_gates(
