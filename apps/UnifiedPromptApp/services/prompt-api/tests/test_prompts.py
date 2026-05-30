@@ -21,6 +21,48 @@ def test_health_endpoint():
     assert "time" in payload
 
 
+def test_audit_html_escapes_database_values():
+    template_payload = "<script>alert('x')</script>"
+    model_payload = '<img src=x onerror=alert(1)>'
+
+    with closing(sqlite3.connect(app.DB_PATH)) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO audit(template_id, model, input_json, output_json, cached, status, created_at, token_prompt, token_completion)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                template_payload,
+                model_payload,
+                "{}",
+                "{}",
+                0,
+                "ok",
+                app.now_iso(),
+                1,
+                1,
+            ),
+        )
+        row_id = cursor.lastrowid
+        conn.commit()
+
+    try:
+        response = client.get("/audit", params={"limit": 500})
+        assert response.status_code == 200
+        assert "text/html" in (response.headers.get("content-type") or "")
+
+        body = response.text
+        assert template_payload not in body
+        assert model_payload not in body
+        assert "/api/audit?limit=500" in body
+        assert "Use <a href=\"/api/audit?limit=500\"" in body
+    finally:
+        with closing(sqlite3.connect(app.DB_PATH)) as conn:
+            conn.execute("DELETE FROM audit WHERE id = ?", (row_id,))
+            conn.commit()
+
+
 def test_prompts_collection():
     response = client.get("/prompts")
     assert response.status_code == 200

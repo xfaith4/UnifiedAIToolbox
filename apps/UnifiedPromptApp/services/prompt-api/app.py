@@ -10,7 +10,7 @@ from functools import wraps, lru_cache
 
 from fastapi import FastAPI, HTTPException, Path, Query, Header, Depends, status, Request # pyright: ignore[reportMissingImports]
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, Response, StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, RootModel, field_validator # pyright: ignore[reportMissingImports]
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import uvicorn # pyright: ignore[reportMissingImports]
@@ -18,6 +18,7 @@ import yaml # pyright: ignore[reportMissingModuleSource]
 import requests # pyright: ignore[reportMissingModuleSource]
 from urllib.parse import urlparse
 from html.parser import HTMLParser
+from html import escape as html_escape
 
 from auth_github import ensure_github_token
 
@@ -3024,7 +3025,7 @@ def root():
     </body>
     </html>
     """
-    return HTMLResponse(content=html, status_code=200)
+    return Response(content=html, status_code=200, media_type="text/html")
 from fastapi import Body
 
 def _write_yaml(path: pathlib.Path, data: dict):
@@ -3159,22 +3160,10 @@ def generate_dry_run(req: RequestPayload):
     return {"model": req.model or DEFAULT_MODEL, "messages": messages}
 @app.get("/audit", include_in_schema=False)
 def audit_htm(limit: int = Query(100, ge=1, le=500)):
-    # Simple, zero-dependency HTML to eyeball recent runs
-    with sqlite3.connect(DB_PATH) as conn:
-        c = conn.cursor()
-        c.execute("""
-        SELECT id, created_at, template_id, model, status, cached,
-               IFNULL(token_prompt,0), IFNULL(token_completion,0)
-        FROM audit ORDER BY id DESC LIMIT ?
-        """, (limit,))
-        rows = c.fetchall()
-
-    rows_html = "\n".join(
-        f"<tr><td>{r[0]}</td><td>{r[1]}</td><td>{r[2]}</td><td>{r[3]}</td>"
-        f"<td>{r[4]}</td><td>{'yes' if r[5] else 'no'}</td><td>{r[6]}</td><td>{r[7]}</td></tr>"
-        for r in rows
-    )
-    html = f"""
+    # Static HTML shell that fetches JSON from /api/audit and renders with textContent.
+    # This avoids server-side DB-to-HTML interpolation risks.
+    safe_limit = html_escape(str(limit), quote=True)
+    html_content = f"""
     <html><head><title>Audit - AI Prompt Workbench</title>
     <style>
     body {{ font-family: Arial, sans-serif; margin: 1.5rem; }}
@@ -3183,15 +3172,15 @@ def audit_htm(limit: int = Query(100, ge=1, le=500)):
     th {{ background: #f7f7f7; text-align: left; }}
     </style></head>
     <body>
-      <h1>Audit (latest {limit})</h1>
+            <h1>Audit (latest {safe_limit})</h1>
       <p><a href="/docs">/docs</a> · <a href="/api/templates">/api/templates</a> · <a href="/health">/health</a></p>
       <table>
         <thead><tr><th>Id</th><th>Time</th><th>Template</th><th>Model</th><th>Status</th><th>Cached</th><th>PromptTok</th><th>CompTok</th></tr></thead>
-        <tbody>{rows_html}</tbody>
+                <tbody><tr><td colspan="8">Use <a href="/api/audit?limit={safe_limit}">/api/audit?limit={safe_limit}</a> for audit data.</td></tr></tbody>
       </table>
     </body></html>
     """
-    return HTMLResponse(html)
+    return Response(content=html_content, media_type="text/html")
 
 @app.get("/favicon.ico", include_in_schema=False)
 def favicon():
