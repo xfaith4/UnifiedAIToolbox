@@ -6527,6 +6527,26 @@ def _execute_orchestration_run(run_id_hint: str, path: pathlib.Path, cancel_even
                 _append_events([
                     {
                         "ts": now_iso(),
+                        "type": "planner_handoff_created",
+                        "message": "Planner handoff artifacts created from failed-run evidence.",
+                        "details": {
+                            "planner_agent": repair_handoff_payload.get("planner_agent"),
+                            "planner_handoff_artifacts": repair_handoff_payload.get("planner_handoff_artifacts"),
+                            "child_run_id": repair_handoff_payload.get("child_run_id"),
+                        },
+                    },
+                    {
+                        "ts": now_iso(),
+                        "type": "planner_repair_plan_issued",
+                        "message": "Planner issued repair-plan delta and updated prompt for rerun.",
+                        "details": {
+                            "planner_agent": repair_handoff_payload.get("planner_agent"),
+                            "focus_gate": repair_handoff_payload.get("focus_gate"),
+                            "generation": repair_handoff_payload.get("generation"),
+                        },
+                    },
+                    {
+                        "ts": now_iso(),
                         "type": "repair:handoff_queued",
                         "message": (
                             "ValidationAuditor synthesized a repair prompt and queued a child repair run "
@@ -10331,6 +10351,7 @@ def _queue_generated_app_repair_handoff_run(
         "child_run_id": child_run_id,
         "parent_run_id": parent_run_id,
         "auditor_agent": "ValidationAuditor",
+        "planner_agent": planner_payload.get("planner_agent") or "Planner",
         "summary": auditor_payload.get("summary"),
         "focus_gate": auditor_payload.get("focus_gate"),
         "repair_prompt": auditor_payload.get("repair_prompt"),
@@ -10402,11 +10423,34 @@ def _queue_generated_app_repair_handoff_run(
         ]
     ).strip()
 
+    planner_events = [
+        {
+            "ts": now_iso(),
+            "type": "planner_handoff_created",
+            "message": "Planner handoff artifacts created for repair rerun.",
+            "details": {
+                "planner_agent": planner_delta.get("planner_agent"),
+                "planner_delta_ref": child_manifest.get("planner_delta_ref"),
+                "focus_gate": handoff_payload.get("focus_gate"),
+            },
+        },
+        {
+            "ts": now_iso(),
+            "type": "planner_repair_plan_issued",
+            "message": "Planner issued a repair plan delta for the child repair run.",
+            "details": {
+                "planner_agent": planner_delta.get("planner_agent"),
+                "acceptance_criteria_count": len(planner_delta.get("acceptance_criteria") or []),
+                "lessons_learned_count": len(planner_delta.get("lessons_learned") or []),
+            },
+        },
+    ]
+
     _append_runtime_events_to_manifest(
         child_manifest,
         child_out_dir,
         child_run_id,
-        [
+        planner_events + [
             {"ts": now_iso(), "type": "info", "message": "run created (repair_handoff)"},
             {"ts": now_iso(), "type": "status", "message": "queued (repair_handoff)"},
         ],

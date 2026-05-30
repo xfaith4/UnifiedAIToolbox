@@ -1373,6 +1373,9 @@ class TestOrchestrateRun:
         assert child_manifest.get("source") == "repair_handoff"
         assert "[REPAIR HANDOFF RESUME]" in str(child_manifest.get("resume_context") or "")
         assert "[PLANNER DELTA]" in str(child_manifest.get("resume_context") or "")
+        event_types = {str(e.get("type") or "") for e in (child_manifest.get("events") or []) if isinstance(e, dict)}
+        assert "planner_handoff_created" in event_types
+        assert "planner_repair_plan_issued" in event_types
         planner_delta = child_manifest.get("planner_delta") or {}
         assert str(planner_delta.get("plan_delta") or "").strip()
         assert str(planner_delta.get("updated_repair_prompt") or "").strip()
