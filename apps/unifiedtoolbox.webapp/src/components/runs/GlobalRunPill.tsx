@@ -86,8 +86,8 @@ function statusPresentation(status: string) {
 
 export default function GlobalRunPill() {
   const pathname = usePathname()
-  const [entry, setEntry] = useState<RunContextEntry | null>(null)
-  const [liveStatus, setLiveStatus] = useState<RunContextStatus>('queued')
+  const [entry, setEntry] = useState<RunContextEntry | null>(() => pickActiveEntry())
+  const [liveStatus, setLiveStatus] = useState<RunContextStatus>(() => pickActiveEntry()?.status ?? 'queued')
 
   const refreshEntry = useCallback(() => {
     const next = pickActiveEntry()
@@ -96,7 +96,6 @@ export default function GlobalRunPill() {
   }, [])
 
   useEffect(() => {
-    refreshEntry()
     const id = window.setInterval(refreshEntry, 4_000)
     return () => window.clearInterval(id)
   }, [refreshEntry])

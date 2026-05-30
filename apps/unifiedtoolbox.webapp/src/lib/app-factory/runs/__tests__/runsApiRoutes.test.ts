@@ -4,8 +4,8 @@ const isValidRunIdMock = vi.fn<(runId: string) => boolean>()
 const buildRunManifestMock = vi.fn<(runId: string) => Promise<unknown | null>>()
 const listArtifactIndexMock = vi.fn<(runId: string) => Promise<unknown[]>>()
 const readEventsMock = vi.fn<(runId: string, opts?: Record<string, unknown>) => Promise<Array<Record<string, unknown>>>>()
-const loadRunStatusMock = vi.fn<(runId: string) => Promise<any | null>>()
-const fetchOrchestratorRunStatusMock = vi.fn<(runId: string) => Promise<any | null>>()
+const loadRunStatusMock = vi.fn<(runId: string) => Promise<unknown>>()
+const fetchOrchestratorRunStatusMock = vi.fn<(runId: string) => Promise<unknown>>()
 const readFinalSummaryMock = vi.fn<(runId: string) => Promise<unknown | null>>()
 const runLoggerMock = {
   error: vi.fn(),

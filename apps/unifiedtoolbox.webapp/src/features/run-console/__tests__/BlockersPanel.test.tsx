@@ -30,7 +30,7 @@ describe('BlockersPanel', () => {
   it('hides the CTA when status is not waiting_on_input', () => {
     const html = renderToStaticMarkup(
       <BlockersPanel
-        blockers={[{ severity: 'hard_blocker', summary: 'Stop', needed_from: 'user' } as any]}
+        blockers={[{ severity: 'hard_blocker', summary: 'Stop', needed_from: 'user' }]}
         runStatus="running"
         renderCta={() => <button>Unblock</button>}
       />
@@ -42,7 +42,7 @@ describe('BlockersPanel', () => {
   it('hides the CTA when blocker is not user-actionable', () => {
     const html = renderToStaticMarkup(
       <BlockersPanel
-        blockers={[{ severity: 'hard_blocker', summary: 'System error', needed_from: 'system' } as any]}
+        blockers={[{ severity: 'hard_blocker', summary: 'System error', needed_from: 'system' }]}
         runStatus="waiting_on_input"
         renderCta={() => <button>Unblock</button>}
       />
@@ -53,7 +53,7 @@ describe('BlockersPanel', () => {
   it('renders the CTA when status is waiting_on_input AND needed_from is user', () => {
     const html = renderToStaticMarkup(
       <BlockersPanel
-        blockers={[{ severity: 'hard_blocker', summary: 'Answer please', needed_from: 'user' } as any]}
+        blockers={[{ severity: 'hard_blocker', summary: 'Answer please', needed_from: 'user' }]}
         runStatus="waiting_on_input"
         renderCta={() => <button data-testid="cta">Unblock</button>}
       />

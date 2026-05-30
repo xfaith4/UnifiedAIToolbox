@@ -283,7 +283,7 @@ export default function CurrentRunCard({
       }
       // Graceful degradation — keep showing last known status
     }
-  }, [liveStatus, onStatusChange, safeRunId])
+  }, [entry.proposalId, liveStatus, onStatusChange, safeRunId])
 
   useEffect(() => {
     if (isTerminal || !safeRunId) return
