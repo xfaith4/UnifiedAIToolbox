@@ -16,7 +16,7 @@
 //     browser's EventSource implementation.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useReducer, useRef } from 'react'
 import type {
   CanonicalEvent,
   CanonicalEventType,
@@ -47,6 +47,56 @@ export interface UseRunEventStreamResult {
 
 const DEFAULT_BUFFER_LIMIT = 500
 
+// ── Reducer ───────────────────────────────────────────────────────────────────
+
+type StreamState = {
+  events: CanonicalEvent[]
+  status: RunEventStreamStatus
+  error: string | null
+  lastEventAt: number | null
+}
+
+type StreamAction =
+  | { type: 'reset'; status: RunEventStreamStatus; error: string | null }
+  | { type: 'receive_event'; event: CanonicalEvent; bufferLimit: number }
+  | { type: 'stream_end' }
+  | { type: 'connection_opened' }
+  | { type: 'connection_error' }
+  | { type: 'set_error'; error: string; status: RunEventStreamStatus }
+
+function streamReducer(state: StreamState, action: StreamAction): StreamState {
+  switch (action.type) {
+    case 'reset':
+      return { events: [], status: action.status, error: action.error, lastEventAt: null }
+    case 'receive_event': {
+      const prev = state.events
+      const next =
+        prev.length >= action.bufferLimit
+          ? prev.slice(prev.length - action.bufferLimit + 1)
+          : prev
+      const newStatus: RunEventStreamStatus =
+        state.status === 'connecting'
+          ? 'replaying'
+          : state.status === 'snapshot_complete'
+          ? 'live'
+          : state.status
+      return { ...state, events: [...next, action.event], lastEventAt: Date.now(), status: newStatus }
+    }
+    case 'stream_end':
+      return { ...state, status: 'snapshot_complete' }
+    case 'connection_opened':
+      return { ...state, error: null, status: state.status === 'idle' ? 'connecting' : state.status }
+    case 'connection_error':
+      return { ...state, status: 'disconnected' }
+    case 'set_error':
+      return { ...state, error: action.error, status: action.status }
+    default:
+      return state
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 function safeParseEvent(raw: string): CanonicalEvent | null {
   try {
     const parsed = JSON.parse(raw)
@@ -69,10 +119,12 @@ export function useRunEventStream(
 ): UseRunEventStreamResult {
   const { disabled = false, bufferLimit = DEFAULT_BUFFER_LIMIT } = options
 
-  const [events, setEvents] = useState<CanonicalEvent[]>([])
-  const [status, setStatus] = useState<RunEventStreamStatus>('idle')
-  const [error, setError] = useState<string | null>(null)
-  const [lastEventAt, setLastEventAt] = useState<number | null>(null)
+  const [state, dispatch] = useReducer(streamReducer, {
+    events: [],
+    status: 'idle',
+    error: null,
+    lastEventAt: null,
+  })
 
   // Track seen event_ids so we don't double-count on reconnect replay.
   const seenRef = useRef<Set<string>>(new Set())
@@ -80,19 +132,16 @@ export function useRunEventStream(
 
   useEffect(() => {
     if (disabled || !runId) {
-      setStatus('idle')
+      dispatch({ type: 'reset', status: 'idle', error: null })
       return
     }
     if (typeof window === 'undefined' || typeof EventSource === 'undefined') {
-      setStatus('disconnected')
-      setError('EventSource is not available in this environment.')
+      dispatch({ type: 'set_error', error: 'EventSource is not available in this environment.', status: 'disconnected' })
       return
     }
 
-    setEvents([])
     seenRef.current = new Set()
-    setError(null)
-    setStatus('connecting')
+    dispatch({ type: 'reset', status: 'connecting', error: null })
 
     const url = `/api/runs/${encodeURIComponent(runId)}/events/canonical?stream=1`
     const es = new EventSource(url)
@@ -101,11 +150,7 @@ export function useRunEventStream(
     const pushEvent = (event: CanonicalEvent) => {
       if (seenRef.current.has(event.event_id)) return
       seenRef.current.add(event.event_id)
-      setEvents((prev) => {
-        const next = prev.length >= bufferLimit ? prev.slice(prev.length - bufferLimit + 1) : prev
-        return [...next, event]
-      })
-      setLastEventAt(Date.now())
+      dispatch({ type: 'receive_event', event, bufferLimit })
     }
 
     const handleMessage = (msg: MessageEvent<string>) => {
@@ -115,7 +160,6 @@ export function useRunEventStream(
       const event = safeParseEvent(msg.data)
       if (event) {
         pushEvent(event)
-        setStatus((s) => (s === 'snapshot_complete' ? 'live' : s === 'connecting' ? 'replaying' : s))
       }
     }
 
@@ -123,26 +167,18 @@ export function useRunEventStream(
       const event = safeParseEvent(msg.data)
       if (!event) return
       pushEvent(event)
-      // Promote status: connecting -> replaying once we get backlog,
-      // snapshot_complete -> live once we get a fresh event.
-      setStatus((s) => {
-        if (s === 'connecting') return 'replaying'
-        if (s === 'snapshot_complete') return 'live'
-        return s
-      })
     }
 
     const handleStreamEnd = () => {
-      setStatus('snapshot_complete')
+      dispatch({ type: 'stream_end' })
     }
 
     es.onopen = () => {
-      setError(null)
-      setStatus((s) => (s === 'idle' ? 'connecting' : s))
+      dispatch({ type: 'connection_opened' })
     }
     es.onerror = () => {
       // EventSource auto-reconnects; surface a soft state until it succeeds.
-      setStatus('disconnected')
+      dispatch({ type: 'connection_error' })
     }
     es.onmessage = handleMessage
     es.addEventListener('stream-end', handleStreamEnd as EventListener)
@@ -179,5 +215,5 @@ export function useRunEventStream(
     }
   }, [runId, disabled, bufferLimit])
 
-  return { events, status, error, lastEventAt }
+  return { events: state.events, status: state.status, error: state.error, lastEventAt: state.lastEventAt }
 }

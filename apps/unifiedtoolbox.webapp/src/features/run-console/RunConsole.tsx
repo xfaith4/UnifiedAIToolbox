@@ -42,7 +42,7 @@ async function fetchJsonSafe<T>(url: string): Promise<T | null> {
 export default function RunConsole({ runId, fallbackObjective, className = '' }: RunConsoleProps) {
   const [manifest, setManifest] = useState<RunManifest | null>(null)
   const [artifacts, setArtifacts] = useState<ArtifactIndexEntry[]>([])
-  const [loading, setLoading] = useState(true)
+  const [hasLoaded, setHasLoaded] = useState(false)
   const [pollTick, setPollTick] = useState(0)
   const { events, status: streamStatus } = useRunEventStream(runId)
 
@@ -51,7 +51,6 @@ export default function RunConsole({ runId, fallbackObjective, className = '' }:
   // polling.
   useEffect(() => {
     let cancelled = false
-    setLoading(true)
     Promise.all([
       fetchJsonSafe<RunManifest>(`/api/runs/${encodeURIComponent(runId)}/manifest`),
       fetchJsonSafe<{ artifacts: ArtifactIndexEntry[] }>(`/api/runs/${encodeURIComponent(runId)}/artifacts`),
@@ -59,7 +58,7 @@ export default function RunConsole({ runId, fallbackObjective, className = '' }:
       if (cancelled) return
       setManifest(m)
       setArtifacts(a?.artifacts ?? [])
-      setLoading(false)
+      setHasLoaded(true)
     })
     return () => {
       cancelled = true
@@ -84,7 +83,7 @@ export default function RunConsole({ runId, fallbackObjective, className = '' }:
   }, [manifest?.blockers])
 
   // Legacy / empty: no manifest AND no SSE events yet
-  if (!loading && !manifest && events.length === 0) {
+  if (hasLoaded && !manifest && events.length === 0) {
     return (
       <div className={`space-y-4 ${className}`} data-state="legacy-run">
         <EmptyState reason="legacy-run" />
