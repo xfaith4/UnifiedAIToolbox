@@ -18,6 +18,7 @@ This index is the canonical map of documentation in the Unified AI Toolbox repos
 - **Run lifecycle (8 canonical statuses):** [contracts/RUN_LIFECYCLE.md](contracts/RUN_LIFECYCLE.md)
 - **Event taxonomy (13 canonical event types):** [contracts/EVENT_TAXONOMY.md](contracts/EVENT_TAXONOMY.md)
 - **Decision Lock (blocker severity):** [contracts/DECISION_LOCK.md](contracts/DECISION_LOCK.md)
+- **Failure treatment policy (planner-first routing):** [contracts/FAILURE_TREATMENT_POLICY.md](contracts/FAILURE_TREATMENT_POLICY.md)
 
 ## Operating a run
 

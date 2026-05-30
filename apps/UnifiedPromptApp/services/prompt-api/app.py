@@ -950,6 +950,7 @@ ORCH_RUN_MAX_QUEUED = _positive_int_env("PROMPT_API_ORCH_MAX_QUEUED", 100)
 ORCH_LEASE_TTL_SECONDS = _positive_int_env("PROMPT_API_ORCH_LEASE_TTL_SECONDS", 45)
 ORCH_HEARTBEAT_INTERVAL_SECONDS = _positive_int_env("PROMPT_API_ORCH_HEARTBEAT_INTERVAL_SECONDS", 10)
 APP_PRODUCTION_REPAIR_MAX_ATTEMPTS = _positive_int_env("PROMPT_API_APP_PRODUCTION_REPAIR_ATTEMPTS", 3)
+ORCH_AUTO_REPAIR_HANDOFF_MAX_GENERATION = _positive_int_env("PROMPT_API_ORCH_AUTO_REPAIR_HANDOFF_MAX_GENERATION", 1)
 ORCH_QUEUE_STATUSES = {"queued", "pending"}
 ORCH_DISPATCHING_STATUSES = {"dispatching"}
 ORCH_RUNNING_STATUSES = {
@@ -6502,6 +6503,55 @@ def _execute_orchestration_run(run_id_hint: str, path: pathlib.Path, cancel_even
         else:
             data["status"] = "completed"
             completion_message = "completed"
+
+        repair_handoff_payload = None
+        if verification_status in {"failed", "partial"}:
+            try:
+                repair_handoff_payload = _queue_generated_app_repair_handoff_run(
+                    path,
+                    data,
+                    out_dir,
+                    model=str(data.get("model") or DEFAULT_MODEL),
+                )
+            except Exception as handoff_err:
+                print(f"[orchestrate] Generated app repair handoff failed: {handoff_err}", file=sys.stderr)
+                repair_handoff_payload = {
+                    "status": "error",
+                    "reason": str(handoff_err),
+                }
+
+        if isinstance(repair_handoff_payload, dict):
+            data["repair_handoff"] = repair_handoff_payload
+            handoff_status = str(repair_handoff_payload.get("status") or "").strip().lower()
+            if handoff_status == "queued":
+                _append_events([
+                    {
+                        "ts": now_iso(),
+                        "type": "repair:handoff_queued",
+                        "message": (
+                            "ValidationAuditor synthesized a repair prompt and queued a child repair run "
+                            f"{repair_handoff_payload.get('child_run_id')}."
+                        ),
+                        "details": {
+                            "child_run_id": repair_handoff_payload.get("child_run_id"),
+                            "focus_gate": repair_handoff_payload.get("focus_gate"),
+                            "generation": repair_handoff_payload.get("generation"),
+                        },
+                    }
+                ])
+            elif handoff_status in {"skipped", "error"}:
+                _append_events([
+                    {
+                        "ts": now_iso(),
+                        "type": "repair:handoff_skipped",
+                        "message": (
+                            "ValidationAuditor repair handoff skipped: "
+                            f"{repair_handoff_payload.get('reason') or handoff_status}."
+                        ),
+                        "details": repair_handoff_payload,
+                    }
+                ])
+
         data["completed_at"] = now_iso()
         _append_events([{"ts": data["completed_at"], "type": "status", "message": completion_message}])
         path.write_text(json.dumps(data, indent=2), encoding="utf-8")
@@ -9853,6 +9903,542 @@ def _write_app_production_repair_artifacts(
 
     md_path.write_text("\n".join(lines), encoding="utf-8")
     return json_path, md_path
+
+
+def _build_repair_handoff_resume_context(payload: Dict[str, Any]) -> str:
+    lines = [
+        "[REPAIR HANDOFF RESUME]",
+        "This run was spawned automatically from a failed parent run.",
+        "Treat this as a targeted repair run: preserve existing generated app intent and patch only the root-cause failures.",
+    ]
+    summary = str(payload.get("summary") or "").strip()
+    repair_prompt = str(payload.get("repair_prompt") or "").strip()
+    if summary:
+        lines.extend(["", "Auditor summary:", summary])
+    if repair_prompt:
+        lines.extend(["", "Repair objective:", repair_prompt])
+    actions = payload.get("actions") if isinstance(payload.get("actions"), list) else []
+    if actions:
+        lines.append("")
+        lines.append("Targeted actions:")
+        for action in actions[:8]:
+            if isinstance(action, str) and action.strip():
+                lines.append(f"- {action.strip()}")
+    return "\n".join(lines)
+
+
+def _build_validation_auditor_repair_payload(
+    manifest: Dict[str, Any],
+    out_dir: pathlib.Path,
+    model: Optional[str] = None,
+) -> Dict[str, Any]:
+    app_production = manifest.get("app_production") if isinstance(manifest.get("app_production"), dict) else {}
+    repair_plan = manifest.get("app_production_repairs") if isinstance(manifest.get("app_production_repairs"), dict) else {}
+    checks = app_production.get("checks") if isinstance(app_production.get("checks"), list) else []
+    failed_checks = [
+        check for check in checks
+        if isinstance(check, dict) and str(check.get("status") or "").strip().lower() == "failed"
+    ]
+    items = repair_plan.get("items") if isinstance(repair_plan.get("items"), list) else []
+    top_item = items[0] if items and isinstance(items[0], dict) else {}
+    gate = str(top_item.get("gate") or (failed_checks[0].get("name") if failed_checks else "repair")).strip() or "repair"
+    failure_summary = str(top_item.get("failure_summary") or top_item.get("summary") or "").strip()
+    if not failure_summary and failed_checks:
+        failure_summary = str(failed_checks[0].get("summary") or "").strip()
+
+    fallback = {
+        "auditor_agent": "ValidationAuditor",
+        "summary": (
+            f"Root-cause gate '{gate}' failed during generated-app verification. "
+            "Run a targeted repair pass against this gate before broad refactors."
+        ),
+        "repair_prompt": (
+            f"Repair the generated app so gate '{gate}' passes. "
+            f"Primary failure: {failure_summary or 'see generated_app_verification.md and generated_app_repairs.md'}. "
+            "Keep edits minimal, preserve project stack, rerun install/build/runtime proof, and stop only when verification reaches verified readiness."
+        ),
+        "actions": [
+            "Inspect generated_app_verification.md for failing gate details.",
+            "Patch only files required to fix the failing gate and blocked downstream checks.",
+            "Re-run install, build, and one executable runtime proof gate.",
+            "If a tool is missing from environment, report environment blocker explicitly instead of speculative code edits.",
+        ],
+        "focus_gate": gate,
+    }
+
+    if not OPENAI_API_KEY:
+        return fallback
+
+    try:
+        checks_excerpt = []
+        for check in checks[:12]:
+            if not isinstance(check, dict):
+                continue
+            checks_excerpt.append(
+                {
+                    "name": check.get("name"),
+                    "status": check.get("status"),
+                    "summary": check.get("summary"),
+                    "command": check.get("command"),
+                    "log_artifact": check.get("log_artifact"),
+                }
+            )
+        items_excerpt = []
+        for item in items[:6]:
+            if not isinstance(item, dict):
+                continue
+            items_excerpt.append(
+                {
+                    "gate": item.get("gate"),
+                    "summary": item.get("summary"),
+                    "failure_summary": item.get("failure_summary"),
+                    "recommended_actions": item.get("recommended_actions"),
+                    "blocked_checks": item.get("blocked_checks"),
+                }
+            )
+
+        system = (
+            "You are ValidationAuditor. Analyze generated-app verification failures and produce a concise, actionable repair-run prompt. "
+            "Return strict JSON only with keys: summary, repair_prompt, actions, focus_gate."
+        )
+        user_payload = {
+            "run_id": manifest.get("run_id"),
+            "goal": manifest.get("goal"),
+            "verification_status": manifest.get("verification_status"),
+            "app_production": {
+                "status": app_production.get("status"),
+                "delivery_readiness": app_production.get("delivery_readiness"),
+                "checks": checks_excerpt,
+            },
+            "repair_plan": items_excerpt,
+            "available_artifacts": [
+                "generated_app_verification.json",
+                "generated_app_verification.md",
+                "generated_app_repairs.json",
+                "generated_app_repairs.md",
+            ],
+            "constraints": [
+                "Prefer minimal targeted edits.",
+                "Do not suggest broad rewrites.",
+                "Surface environment blockers explicitly when tools are missing.",
+            ],
+        }
+        payload, _usage = call_provider_chat(
+            str(model or manifest.get("model") or DEFAULT_MODEL),
+            [
+                {"role": "system", "content": system},
+                {"role": "user", "content": json.dumps(user_payload, indent=2)},
+            ],
+        )
+        if isinstance(payload, dict):
+            summary = str(payload.get("summary") or "").strip()
+            repair_prompt = str(payload.get("repair_prompt") or "").strip()
+            actions = payload.get("actions") if isinstance(payload.get("actions"), list) else []
+            if summary and repair_prompt:
+                return {
+                    "auditor_agent": "ValidationAuditor",
+                    "summary": summary,
+                    "repair_prompt": repair_prompt,
+                    "actions": [str(a).strip() for a in actions if isinstance(a, str) and a.strip()][:10],
+                    "focus_gate": str(payload.get("focus_gate") or gate),
+                }
+    except Exception as exc:
+        print(f"[orchestrate] ValidationAuditor handoff synthesis failed: {exc}", file=sys.stderr)
+
+    return fallback
+
+
+def _build_planner_repair_delta_payload(
+    parent_manifest: Dict[str, Any],
+    auditor_payload: Dict[str, Any],
+    model: Optional[str] = None,
+) -> Dict[str, Any]:
+    focus_gate = str(auditor_payload.get("focus_gate") or "repair").strip() or "repair"
+    summary = str(auditor_payload.get("summary") or "").strip()
+    repair_prompt = str(auditor_payload.get("repair_prompt") or "").strip()
+    fallback = {
+        "planner_agent": "Planner",
+        "plan_delta": (
+            f"Clarify the repair workflow around gate '{focus_gate}': enforce explicit preconditions, "
+            "ordered execution, and measurable acceptance checks before implementation handoff."
+        ),
+        "updated_repair_prompt": (
+            f"Use the planner-updated sequence to repair gate '{focus_gate}'. "
+            f"{repair_prompt or summary or 'Resolve the failing gate with minimal edits and verified runtime proof.'}"
+        ),
+        "lessons_learned": [
+            "Previous plan did not make prerequisites explicit enough for deterministic execution.",
+            "Repair runs require explicit acceptance checks and runtime proof ordering.",
+        ],
+        "acceptance_criteria": [
+            f"Gate '{focus_gate}' passes.",
+            "Install, build, and one executable proof check are green.",
+            "Verification status reaches verified readiness without unresolved blockers.",
+        ],
+        "preconditions": [
+            "Required package manager/runtime tools are available in execution environment.",
+            "Generated app artifacts and verification reports are present.",
+        ],
+    }
+
+    if not OPENAI_API_KEY:
+        return fallback
+
+    try:
+        system = (
+            "You are Planner. Produce a concise repair plan delta after a failed run. "
+            "Return strict JSON with keys: plan_delta, updated_repair_prompt, lessons_learned, acceptance_criteria, preconditions."
+        )
+        planner_input = {
+            "parent_run_id": parent_manifest.get("run_id"),
+            "goal": parent_manifest.get("goal"),
+            "auditor_summary": summary,
+            "focus_gate": focus_gate,
+            "auditor_repair_prompt": repair_prompt,
+            "constraints": [
+                "Emit plan delta, not full rewrite.",
+                "Clarify preconditions and ordered execution.",
+                "Keep changes minimal and verifiable.",
+            ],
+        }
+        payload, _usage = call_provider_chat(
+            str(model or parent_manifest.get("model") or DEFAULT_MODEL),
+            [
+                {"role": "system", "content": system},
+                {"role": "user", "content": json.dumps(planner_input, indent=2)},
+            ],
+        )
+        if isinstance(payload, dict):
+            plan_delta = str(payload.get("plan_delta") or "").strip()
+            updated_prompt = str(payload.get("updated_repair_prompt") or "").strip()
+            lessons = payload.get("lessons_learned") if isinstance(payload.get("lessons_learned"), list) else []
+            acceptance = payload.get("acceptance_criteria") if isinstance(payload.get("acceptance_criteria"), list) else []
+            preconditions = payload.get("preconditions") if isinstance(payload.get("preconditions"), list) else []
+            if plan_delta and updated_prompt and lessons and acceptance:
+                return {
+                    "planner_agent": "Planner",
+                    "plan_delta": plan_delta,
+                    "updated_repair_prompt": updated_prompt,
+                    "lessons_learned": [str(v).strip() for v in lessons if isinstance(v, str) and str(v).strip()][:8],
+                    "acceptance_criteria": [str(v).strip() for v in acceptance if isinstance(v, str) and str(v).strip()][:8],
+                    "preconditions": [str(v).strip() for v in preconditions if isinstance(v, str) and str(v).strip()][:8],
+                }
+    except Exception as exc:
+        print(f"[orchestrate] Planner delta synthesis failed: {exc}", file=sys.stderr)
+
+    return fallback
+
+
+def _write_planner_handoff_artifacts(
+    out_dir: pathlib.Path,
+    parent_manifest: Dict[str, Any],
+    auditor_payload: Dict[str, Any],
+    planner_payload: Dict[str, Any],
+) -> Dict[str, str]:
+    parent_run_id = str(parent_manifest.get("run_id") or "").strip()
+    payload = {
+        "parent_run_id": parent_run_id,
+        "planner_agent": str(planner_payload.get("planner_agent") or "Planner"),
+        "auditor_agent": str(auditor_payload.get("auditor_agent") or "ValidationAuditor"),
+        "focus_gate": auditor_payload.get("focus_gate"),
+        "auditor_summary": auditor_payload.get("summary"),
+        "repair_prompt": auditor_payload.get("repair_prompt"),
+        "plan_delta": planner_payload.get("plan_delta"),
+        "updated_repair_prompt": planner_payload.get("updated_repair_prompt"),
+        "lessons_learned": planner_payload.get("lessons_learned") if isinstance(planner_payload.get("lessons_learned"), list) else [],
+        "acceptance_criteria": planner_payload.get("acceptance_criteria") if isinstance(planner_payload.get("acceptance_criteria"), list) else [],
+        "preconditions": planner_payload.get("preconditions") if isinstance(planner_payload.get("preconditions"), list) else [],
+        "created_at": now_iso(),
+    }
+    json_path = out_dir / "planner_repair_handoff.json"
+    json_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    lines = [
+        "# Planner Repair Handoff",
+        "",
+        f"- Parent run: `{parent_run_id}`",
+        f"- Planner: `{payload['planner_agent']}`",
+        f"- Auditor: `{payload['auditor_agent']}`",
+        f"- Focus gate: `{payload.get('focus_gate') or 'repair'}`",
+        "",
+        "## Plan Delta",
+        str(payload.get("plan_delta") or "").strip() or "(none)",
+        "",
+        "## Updated Repair Prompt",
+        str(payload.get("updated_repair_prompt") or "").strip() or "(none)",
+    ]
+
+    lessons = payload.get("lessons_learned") if isinstance(payload.get("lessons_learned"), list) else []
+    if lessons:
+        lines.append("")
+        lines.append("## Lessons Learned")
+        for lesson in lessons:
+            if isinstance(lesson, str) and lesson.strip():
+                lines.append(f"- {lesson.strip()}")
+
+    acceptance = payload.get("acceptance_criteria") if isinstance(payload.get("acceptance_criteria"), list) else []
+    if acceptance:
+        lines.append("")
+        lines.append("## Acceptance Criteria")
+        for item in acceptance:
+            if isinstance(item, str) and item.strip():
+                lines.append(f"- {item.strip()}")
+
+    md_path = out_dir / "planner_repair_handoff.md"
+    md_path.write_text("\n".join(lines), encoding="utf-8")
+
+    return {
+        "report_artifact": _to_relpath(json_path, out_dir),
+        "summary_artifact": _to_relpath(md_path, out_dir),
+    }
+
+
+def _validate_planner_handoff_contract(
+    out_dir: pathlib.Path,
+    planner_payload: Dict[str, Any],
+) -> Tuple[bool, List[str]]:
+    missing: List[str] = []
+    required_files = [
+        "generated_app_verification.json",
+        "generated_app_repairs.json",
+        "generated_app_repair_handoff.json",
+        "planner_repair_handoff.json",
+    ]
+    for rel in required_files:
+        if not (out_dir / rel).exists():
+            missing.append(f"artifact:{rel}")
+
+    required_fields = [
+        "plan_delta",
+        "updated_repair_prompt",
+        "lessons_learned",
+        "acceptance_criteria",
+    ]
+    for field in required_fields:
+        value = planner_payload.get(field)
+        if isinstance(value, str):
+            if not value.strip():
+                missing.append(f"field:{field}")
+            continue
+        if isinstance(value, list):
+            if not value:
+                missing.append(f"field:{field}")
+            continue
+        missing.append(f"field:{field}")
+
+    return (len(missing) == 0, missing)
+
+
+def _queue_generated_app_repair_handoff_run(
+    parent_manifest_path: pathlib.Path,
+    parent_manifest: Dict[str, Any],
+    out_dir: pathlib.Path,
+    model: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    app_production = parent_manifest.get("app_production") if isinstance(parent_manifest.get("app_production"), dict) else {}
+    repair_plan = parent_manifest.get("app_production_repairs") if isinstance(parent_manifest.get("app_production_repairs"), dict) else {}
+    if str(app_production.get("status") or "").strip().lower() != "repair_needed":
+        return None
+    items = repair_plan.get("items") if isinstance(repair_plan.get("items"), list) else []
+    if not items:
+        return None
+
+    lineage = parent_manifest.get("repair_lineage") if isinstance(parent_manifest.get("repair_lineage"), dict) else {}
+    generation = int(lineage.get("generation") or 0)
+    if generation >= ORCH_AUTO_REPAIR_HANDOFF_MAX_GENERATION:
+        return {
+            "status": "skipped",
+            "reason": "max_generation_reached",
+            "generation": generation,
+        }
+
+    existing_handoff = parent_manifest.get("repair_handoff") if isinstance(parent_manifest.get("repair_handoff"), dict) else {}
+    if existing_handoff.get("child_run_id"):
+        return {
+            "status": "skipped",
+            "reason": "already_handed_off",
+            "child_run_id": existing_handoff.get("child_run_id"),
+        }
+
+    parent_run_id = str(parent_manifest.get("run_id") or "").strip()
+    if not parent_run_id:
+        return None
+
+    auditor_payload = _build_validation_auditor_repair_payload(parent_manifest, out_dir, model=model)
+    planner_payload = _build_planner_repair_delta_payload(parent_manifest, auditor_payload, model=model)
+    resume_context = _build_repair_handoff_resume_context(auditor_payload)
+
+    child_base = sanitize_run_id(f"{parent_run_id}-repair-{generation + 1}")
+    child_run_id = f"{child_base}.{now_iso().replace(':','-')}"
+    child_out_dir = BRIDGE_RUN_DIR / child_run_id
+    child_log_path = BRIDGE_RUN_DIR / f"{child_run_id}.log"
+    child_out_dir.mkdir(parents=True, exist_ok=True)
+
+    parent_goal = str(parent_manifest.get("goal") or "").strip()
+    repair_prompt = str(auditor_payload.get("repair_prompt") or "").strip()
+    child_goal = parent_goal
+    if repair_prompt:
+        child_goal = f"{parent_goal}\n\n[REPAIR RUN]\n{repair_prompt}"
+
+    child_manifest = {
+        "run_id": child_run_id,
+        "prompt_id": parent_manifest.get("prompt_id"),
+        "version": parent_manifest.get("version") or "latest",
+        "review_policy": parent_manifest.get("review_policy") or "standard",
+        "dataset_id": parent_manifest.get("dataset_id"),
+        "dataset_name": parent_manifest.get("dataset_name"),
+        "agents": parent_manifest.get("agents") or [],
+        "notes": parent_manifest.get("notes"),
+        "requested_at": now_iso(),
+        "source": "repair_handoff",
+        "status": "queued",
+        "goal": child_goal,
+        "model": model or parent_manifest.get("model") or DEFAULT_MODEL,
+        "run_mode": _normalize_run_mode(parent_manifest.get("run_mode")),
+        "requested_run_mode": parent_manifest.get("requested_run_mode") or parent_manifest.get("run_mode") or "default",
+        "job_type": _canonical_job_type(parent_manifest.get("job_type")) or "build_new_app",
+        "app_type": _derive_app_type(child_goal, parent_manifest.get("app_type")),
+        "request_path": parent_manifest.get("request_path"),
+        "contract_path": parent_manifest.get("contract_path"),
+        "mode": "simulated",
+        "mcp_allowlist_id": parent_manifest.get("mcp_allowlist_id"),
+        "mcp_allowed_servers": parent_manifest.get("mcp_allowed_servers"),
+        "mcp_allowed_collections": parent_manifest.get("mcp_allowed_collections"),
+        "mcp_enforcement_enabled": bool(parent_manifest.get("mcp_enforcement_enabled")),
+        "run_dir": str(child_out_dir),
+        "log_path": str(child_log_path),
+        "repo_root": parent_manifest.get("repo_root") or REPO_ROOT_DEFAULT,
+        "events": [],
+        "scratchpad": [],
+        "acceptance_checks": parent_manifest.get("acceptance_checks"),
+        "verification_status": "pending",
+        "loop_iteration": 0,
+        "checkpoints": [],
+        "lease": None,
+        "cancel_requested": False,
+        "resume_context": resume_context,
+        "repair_lineage": {
+            "parent_run_id": parent_run_id,
+            "generation": generation + 1,
+            "handoff_agent": "ValidationAuditor",
+            "handoff_summary": auditor_payload.get("summary"),
+            "focus_gate": auditor_payload.get("focus_gate"),
+        },
+    }
+
+    handoff_payload = {
+        "status": "queued",
+        "child_run_id": child_run_id,
+        "parent_run_id": parent_run_id,
+        "auditor_agent": "ValidationAuditor",
+        "summary": auditor_payload.get("summary"),
+        "focus_gate": auditor_payload.get("focus_gate"),
+        "repair_prompt": auditor_payload.get("repair_prompt"),
+        "actions": auditor_payload.get("actions") if isinstance(auditor_payload.get("actions"), list) else [],
+        "queued_at": now_iso(),
+        "generation": generation + 1,
+        "max_generation": ORCH_AUTO_REPAIR_HANDOFF_MAX_GENERATION,
+    }
+
+    (out_dir / "generated_app_repair_handoff.json").write_text(
+        json.dumps(handoff_payload, indent=2), encoding="utf-8"
+    )
+    planner_artifacts = _write_planner_handoff_artifacts(out_dir, parent_manifest, auditor_payload, planner_payload)
+    handoff_payload["planner_handoff_artifacts"] = planner_artifacts
+
+    contract_ok, contract_missing = _validate_planner_handoff_contract(out_dir, planner_payload)
+    if not contract_ok:
+        return {
+            "status": "skipped",
+            "reason": "planner_contract_missing_requirements",
+            "missing": contract_missing,
+        }
+
+    handoff_md = [
+        "# Generated App Repair Handoff",
+        "",
+        f"- Parent run: `{parent_run_id}`",
+        f"- Child run: `{child_run_id}`",
+        f"- Auditor: `{handoff_payload['auditor_agent']}`",
+        f"- Focus gate: `{handoff_payload.get('focus_gate') or 'repair'}`",
+        "",
+        "## Auditor Summary",
+        str(handoff_payload.get("summary") or "").strip() or "(none)",
+        "",
+        "## Repair Prompt",
+        str(handoff_payload.get("repair_prompt") or "").strip() or "(none)",
+    ]
+    actions = handoff_payload.get("actions") if isinstance(handoff_payload.get("actions"), list) else []
+    if actions:
+        handoff_md.append("")
+        handoff_md.append("## Recommended Actions")
+        for action in actions:
+            if isinstance(action, str) and action.strip():
+                handoff_md.append(f"- {action.strip()}")
+    (out_dir / "generated_app_repair_handoff.md").write_text("\n".join(handoff_md), encoding="utf-8")
+
+    planner_delta = {
+        "planner_agent": planner_payload.get("planner_agent") or "Planner",
+        "plan_delta": planner_payload.get("plan_delta"),
+        "updated_repair_prompt": planner_payload.get("updated_repair_prompt"),
+        "lessons_learned": planner_payload.get("lessons_learned") if isinstance(planner_payload.get("lessons_learned"), list) else [],
+        "acceptance_criteria": planner_payload.get("acceptance_criteria") if isinstance(planner_payload.get("acceptance_criteria"), list) else [],
+        "preconditions": planner_payload.get("preconditions") if isinstance(planner_payload.get("preconditions"), list) else [],
+        "artifacts": planner_artifacts,
+    }
+    child_manifest["planner_delta"] = planner_delta
+    child_manifest["planner_delta_ref"] = str(planner_artifacts.get("report_artifact") or "planner_repair_handoff.json")
+    child_manifest["repair_lineage"]["planner_agent"] = planner_delta["planner_agent"]
+    child_manifest["repair_lineage"]["failure_signature"] = f"gate:{handoff_payload.get('focus_gate') or 'repair'}"
+    child_manifest["resume_context"] = "\n\n".join(
+        [
+            resume_context,
+            "",
+            "[PLANNER DELTA]",
+            str(planner_delta.get("plan_delta") or "").strip(),
+            "",
+            "[UPDATED REPAIR PROMPT]",
+            str(planner_delta.get("updated_repair_prompt") or "").strip(),
+        ]
+    ).strip()
+
+    _append_runtime_events_to_manifest(
+        child_manifest,
+        child_out_dir,
+        child_run_id,
+        [
+            {"ts": now_iso(), "type": "info", "message": "run created (repair_handoff)"},
+            {"ts": now_iso(), "type": "status", "message": "queued (repair_handoff)"},
+        ],
+    )
+    child_manifest_path = BRIDGE_RUN_DIR / f"{child_run_id}.json"
+    child_manifest_path.write_text(json.dumps(child_manifest, indent=2), encoding="utf-8")
+
+    cancel_event = threading.Event()
+    with _orch_run_state_lock:
+        _orch_run_state[child_run_id] = {
+            "cancel_event": cancel_event,
+            "future": None,
+            "process": None,
+            "created_at": now_iso(),
+            "worker_id": None,
+        }
+
+    disable_exec = os.environ.get("PROMPT_API_DISABLE_ORCHESTRATION_EXEC") == "1" or bool(
+        os.environ.get("PYTEST_CURRENT_TEST")
+    )
+    if not disable_exec:
+        future = _orch_run_executor.submit(_execute_orchestration_run, child_run_id, child_manifest_path, cancel_event)
+        with _orch_run_state_lock:
+            state = _orch_run_state.get(child_run_id, {})
+            state["future"] = future
+            _orch_run_state[child_run_id] = state
+        future.add_done_callback(lambda _f: _orch_run_state.pop(child_run_id, None))
+    else:
+        with _orch_run_state_lock:
+            _orch_run_state.pop(child_run_id, None)
+
+    return handoff_payload
 
 
 def _write_verification_artifacts(run_dir: pathlib.Path, commands: List[Dict[str, Any]]) -> Tuple[pathlib.Path, pathlib.Path]:

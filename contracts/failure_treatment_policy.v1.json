@@ -1,0 +1,190 @@
+{
+  "type": "object",
+  "required": [
+    "schema_version",
+    "policy_id",
+    "policy_version",
+    "scope",
+    "ownership_model",
+    "failure_routing",
+    "handoff_artifacts",
+    "planner_repair_requirements",
+    "retry_and_loop_controls",
+    "event_policy"
+  ],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "policy_id": { "type": "string", "const": "planner_first_failure_treatment" },
+    "policy_version": { "type": "string" },
+    "scope": {
+      "type": "object",
+      "required": ["job_types", "applies_to_statuses"],
+      "properties": {
+        "job_types": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
+        },
+        "applies_to_statuses": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "failed",
+              "completed_with_errors",
+              "blocked_requirements",
+              "stuck"
+            ]
+          },
+          "minItems": 1
+        }
+      }
+    },
+    "ownership_model": {
+      "type": "object",
+      "required": ["default_owner", "developer_intent_assumption"],
+      "properties": {
+        "default_owner": { "type": "string", "const": "Planner" },
+        "developer_intent_assumption": { "type": "boolean", "const": true },
+        "direct_engineer_return_exceptions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "syntax_regression_in_last_patch",
+              "trivial_local_typo",
+              "format_or_lint_only_failure"
+            ]
+          }
+        }
+      }
+    },
+    "failure_routing": {
+      "type": "object",
+      "required": ["route_to", "routing_matrix"],
+      "properties": {
+        "route_to": { "type": "string", "const": "Planner" },
+        "routing_matrix": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["failure_class", "owner", "action"],
+            "properties": {
+              "failure_class": {
+                "type": "string",
+                "enum": [
+                  "plan_ambiguity",
+                  "missing_precondition",
+                  "unverifiable_acceptance",
+                  "environment_blocker",
+                  "implementation_defect"
+                ]
+              },
+              "owner": {
+                "type": "string",
+                "enum": ["Planner", "Engineer", "Shared"]
+              },
+              "action": { "type": "string" },
+              "notes": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "handoff_artifacts": {
+      "type": "object",
+      "required": ["required", "minimum_count"],
+      "properties": {
+        "minimum_count": { "type": "integer", "minimum": 4 },
+        "required": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "verification_report",
+              "repair_plan",
+              "failure_visibility",
+              "terminal_summary",
+              "events_log",
+              "commands_log"
+            ]
+          },
+          "minItems": 4
+        },
+        "required_context_fields": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "parent_run_id",
+              "failure_signature",
+              "focus_gate",
+              "planner_feedback",
+              "resume_context"
+            ]
+          }
+        }
+      }
+    },
+    "planner_repair_requirements": {
+      "type": "object",
+      "required": [
+        "must_emit_plan_delta",
+        "must_include_lessons_learned",
+        "must_restate_acceptance_criteria"
+      ],
+      "properties": {
+        "must_emit_plan_delta": { "type": "boolean", "const": true },
+        "must_include_lessons_learned": { "type": "boolean", "const": true },
+        "must_restate_acceptance_criteria": { "type": "boolean", "const": true },
+        "must_define_preconditions": { "type": "boolean", "const": true },
+        "must_define_execution_order": { "type": "boolean", "const": true }
+      }
+    },
+    "retry_and_loop_controls": {
+      "type": "object",
+      "required": [
+        "max_repair_generations",
+        "max_same_failure_signature",
+        "escalate_after"
+      ],
+      "properties": {
+        "max_repair_generations": { "type": "integer", "minimum": 1 },
+        "max_same_failure_signature": { "type": "integer", "minimum": 1 },
+        "escalate_after": {
+          "type": "string",
+          "enum": [
+            "planner_repair_limit_reached",
+            "same_signature_repeated",
+            "no_plan_delta_detected"
+          ]
+        },
+        "escalation_target": {
+          "type": "string",
+          "enum": ["Supervisor", "Commissioner", "Human"]
+        }
+      }
+    },
+    "event_policy": {
+      "type": "object",
+      "required": ["required_events"],
+      "properties": {
+        "required_events": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "failure_classified",
+              "planner_handoff_created",
+              "planner_repair_plan_issued",
+              "repair_run_queued",
+              "repair_run_completed",
+              "planner_escalated"
+            ]
+          },
+          "minItems": 5
+        }
+      }
+    }
+  }
+}

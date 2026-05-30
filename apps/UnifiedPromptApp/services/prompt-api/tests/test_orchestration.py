@@ -1277,6 +1277,180 @@ class TestOrchestrateRun:
         assert manifest.get("verification_status") == "passed"
         assert not manifest.get("error_detail")
 
+    def test_validation_auditor_repair_payload_has_exact_prompt(self):
+        manifest = {
+            "run_id": "test_auditor_payload",
+            "goal": "Build a Run Evidence Viewer web app.",
+            "verification_status": "failed",
+            "app_production": {
+                "status": "repair_needed",
+                "delivery_readiness": "repair_needed",
+                "checks": [
+                    {
+                        "name": "build",
+                        "status": "failed",
+                        "summary": "TypeScript compile failed in src/main.tsx",
+                        "command": "npm run build",
+                        "log_artifact": "logs/generated_app/build.log",
+                    }
+                ],
+            },
+            "app_production_repairs": {
+                "items": [
+                    {
+                        "gate": "build",
+                        "summary": "Repair build errors and rerun build gate.",
+                        "failure_summary": "TypeScript compile failed in src/main.tsx",
+                        "recommended_actions": ["Fix the compile error."],
+                    }
+                ]
+            },
+        }
+        payload = app._build_validation_auditor_repair_payload(
+            manifest,
+            app.BRIDGE_RUN_DIR,
+            model="gpt-4o-mini",
+        )
+        assert payload.get("auditor_agent") == "ValidationAuditor"
+        assert "build" in str(payload.get("summary") or "").lower()
+        repair_prompt = str(payload.get("repair_prompt") or "").lower()
+        assert "compile" in repair_prompt or "build" in repair_prompt
+        assert isinstance(payload.get("actions"), list)
+        assert len(payload.get("actions") or []) >= 1
+
+    def test_queue_generated_app_repair_handoff_run_creates_child_manifest(self, cleanup_test_runs, monkeypatch):
+        run_id = f"test_repair_handoff_parent_{app.now_iso().replace(':', '-')}"
+        parent_path = app.BRIDGE_RUN_DIR / f"{run_id}.json"
+        out_dir = app.BRIDGE_RUN_DIR / run_id
+        out_dir.mkdir(parents=True, exist_ok=True)
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+        parent_manifest = {
+            "run_id": run_id,
+            "status": "failed",
+            "verification_status": "failed",
+            "goal": "Build a Run Evidence Viewer web app.",
+            "model": "gpt-4o-mini",
+            "run_mode": "default",
+            "job_type": "build_new_app",
+            "app_type": "web",
+            "repo_root": str(app.REPO_ROOT_DEFAULT),
+            "app_production": {
+                "status": "repair_needed",
+                "delivery_readiness": "repair_needed",
+                "checks": [
+                    {
+                        "name": "build",
+                        "status": "failed",
+                        "summary": "Build failed with TS error",
+                    }
+                ],
+            },
+            "app_production_repairs": {
+                "items": [
+                    {
+                        "gate": "build",
+                        "summary": "Repair compile failures.",
+                        "failure_summary": "Build failed with TS error",
+                    }
+                ]
+            },
+        }
+        parent_path.write_text(json.dumps(parent_manifest, indent=2), encoding="utf-8")
+        (out_dir / "generated_app_verification.json").write_text(json.dumps({"status": "repair_needed"}, indent=2), encoding="utf-8")
+        (out_dir / "generated_app_repairs.json").write_text(json.dumps({"items": [{"gate": "build"}]}, indent=2), encoding="utf-8")
+
+        handoff = app._queue_generated_app_repair_handoff_run(parent_path, parent_manifest, out_dir, model="gpt-4o-mini")
+        assert isinstance(handoff, dict)
+        assert handoff.get("status") == "queued"
+        child_run_id = handoff.get("child_run_id")
+        assert child_run_id
+
+        child_manifest_path = app.BRIDGE_RUN_DIR / f"{child_run_id}.json"
+        assert child_manifest_path.exists()
+        child_manifest = json.loads(child_manifest_path.read_text(encoding="utf-8"))
+        assert child_manifest.get("status") == "queued"
+        assert child_manifest.get("source") == "repair_handoff"
+        assert "[REPAIR HANDOFF RESUME]" in str(child_manifest.get("resume_context") or "")
+        assert "[PLANNER DELTA]" in str(child_manifest.get("resume_context") or "")
+        planner_delta = child_manifest.get("planner_delta") or {}
+        assert str(planner_delta.get("plan_delta") or "").strip()
+        assert str(planner_delta.get("updated_repair_prompt") or "").strip()
+        assert isinstance(planner_delta.get("lessons_learned"), list)
+        assert isinstance(planner_delta.get("acceptance_criteria"), list)
+        lineage = child_manifest.get("repair_lineage") or {}
+        assert lineage.get("parent_run_id") == run_id
+        assert int(lineage.get("generation") or 0) == 1
+        assert str(lineage.get("failure_signature") or "").startswith("gate:")
+
+        assert (out_dir / "generated_app_repair_handoff.json").exists()
+        assert (out_dir / "generated_app_repair_handoff.md").exists()
+        assert (out_dir / "planner_repair_handoff.json").exists()
+        assert (out_dir / "planner_repair_handoff.md").exists()
+
+    def test_queue_generated_app_repair_handoff_requires_planner_contract_artifacts(self, cleanup_test_runs):
+        run_id = f"test_repair_handoff_contract_{app.now_iso().replace(':', '-')}"
+        parent_path = app.BRIDGE_RUN_DIR / f"{run_id}.json"
+        out_dir = app.BRIDGE_RUN_DIR / run_id
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        parent_manifest = {
+            "run_id": run_id,
+            "status": "failed",
+            "verification_status": "failed",
+            "goal": "Repair failed generated app.",
+            "model": "gpt-4o-mini",
+            "app_production": {
+                "status": "repair_needed",
+                "delivery_readiness": "repair_needed",
+                "checks": [{"name": "build", "status": "failed", "summary": "Build failed"}],
+            },
+            "app_production_repairs": {
+                "items": [{"gate": "build", "summary": "Fix build", "failure_summary": "Build failed"}]
+            },
+        }
+        parent_path.write_text(json.dumps(parent_manifest, indent=2), encoding="utf-8")
+
+        handoff = app._queue_generated_app_repair_handoff_run(parent_path, parent_manifest, out_dir, model="gpt-4o-mini")
+        assert isinstance(handoff, dict)
+        assert handoff.get("status") == "skipped"
+        assert handoff.get("reason") == "planner_contract_missing_requirements"
+        missing = handoff.get("missing") or []
+        assert "artifact:generated_app_verification.json" in missing
+        assert "artifact:generated_app_repairs.json" in missing
+
+    def test_queue_generated_app_repair_handoff_respects_max_generation(self, cleanup_test_runs):
+        run_id = f"test_repair_handoff_maxgen_{app.now_iso().replace(':', '-')}"
+        parent_path = app.BRIDGE_RUN_DIR / f"{run_id}.json"
+        out_dir = app.BRIDGE_RUN_DIR / run_id
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        parent_manifest = {
+            "run_id": run_id,
+            "status": "failed",
+            "verification_status": "failed",
+            "goal": "Repair failed generated app.",
+            "model": "gpt-4o-mini",
+            "app_production": {
+                "status": "repair_needed",
+                "delivery_readiness": "repair_needed",
+                "checks": [{"name": "build", "status": "failed", "summary": "Build failed"}],
+            },
+            "app_production_repairs": {
+                "items": [{"gate": "build", "summary": "Fix build", "failure_summary": "Build failed"}]
+            },
+            "repair_lineage": {
+                "parent_run_id": "root-run",
+                "generation": app.ORCH_AUTO_REPAIR_HANDOFF_MAX_GENERATION,
+            },
+        }
+        parent_path.write_text(json.dumps(parent_manifest, indent=2), encoding="utf-8")
+
+        handoff = app._queue_generated_app_repair_handoff_run(parent_path, parent_manifest, out_dir, model="gpt-4o-mini")
+        assert isinstance(handoff, dict)
+        assert handoff.get("status") == "skipped"
+        assert handoff.get("reason") == "max_generation_reached"
+
     def test_checkpoint_resume_dispatches_to_executor(self, cleanup_test_runs):
         """
         Regression test for the requirements resume path stuck at queued(resume_requirements).
