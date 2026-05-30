@@ -8349,6 +8349,153 @@ def _unescape_doubly_escaped_artifact_content(name: str, content: str) -> str:
     return recovered
 
 
+_DEFAULT_TSCONFIG = """{
+  "compilerOptions": {
+    "target": "ES2017",
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "lib": ["DOM", "DOM.Iterable", "ES2017"],
+    "strict": false,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "sourceMap": true,
+    "outDir": "dist"
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "*.ts", "*.tsx"]
+}
+"""
+
+_TS_LOADER_RULE = """      {
+        test: /\\.tsx?$/,
+        use: { loader: 'ts-loader', options: { transpileOnly: true } },
+        exclude: /node_modules/,
+      },
+"""
+
+_WEBPACK_CONFIG_TEMPLATE = """const path = require('path');
+
+module.exports = {
+  mode: 'development',
+  entry: '__ENTRY__',
+  module: {
+    rules: [
+__TS_RULE__    ],
+  },
+  resolve: {
+    extensions: __EXTENSIONS__,
+  },
+  output: {
+    filename: 'bundle.js',
+    path: path.resolve(__dirname, 'dist'),
+    publicPath: '/dist/',
+  },
+  devServer: {
+    static: { directory: __dirname },
+    port: 8080,
+  },
+};
+"""
+
+
+def _detect_webpack_entry(generated_root: pathlib.Path, is_ts: bool) -> str:
+    candidates = [
+        "src/index.tsx", "src/index.ts", "src/main.tsx", "src/main.ts",
+        "src/index.js", "src/main.js", "index.tsx", "index.ts", "index.js",
+    ]
+    for c in candidates:
+        if (generated_root / c).exists():
+            return "./" + c
+    for pattern in ("src/**/*.tsx", "src/**/*.ts", "src/**/*.js"):
+        for p in sorted(generated_root.glob(pattern)):
+            if "node_modules" not in p.parts:
+                return "./" + p.relative_to(generated_root).as_posix()
+    return "./src/index.ts" if is_ts else "./src/index.js"
+
+
+def _webpack_config_js(entry: str, is_ts: bool) -> str:
+    return (
+        _WEBPACK_CONFIG_TEMPLATE
+        .replace("__ENTRY__", entry)
+        .replace("__TS_RULE__", _TS_LOADER_RULE if is_ts else "")
+        .replace("__EXTENSIONS__", "['.tsx', '.ts', '.js']" if is_ts else "['.js']")
+    )
+
+
+def _scaffold_missing_build_config(generated_root: pathlib.Path, out_dir: pathlib.Path) -> List[str]:
+    """
+    Fill in build configuration that the Engineer's declared toolchain requires
+    but omitted. LLM-generated web apps frequently emit a webpack + TypeScript
+    package.json with no webpack.config.js / tsconfig.json and no ts-loader,
+    which is structurally unbuildable no matter how the lockfile is fixed. This
+    deterministically scaffolds the missing pieces for the *declared* stack (it
+    never swaps the stack) so the build / dev_server gates can actually run.
+    """
+    pkg_path = generated_root / "package.json"
+    if not pkg_path.exists():
+        return []
+    try:
+        pkg = json.loads(pkg_path.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    if not isinstance(pkg, dict):
+        return []
+
+    deps = {}
+    for key in ("dependencies", "devDependencies"):
+        section = pkg.get(key)
+        if isinstance(section, dict):
+            deps.update(section)
+    uses_webpack = any(d == "webpack" or str(d).startswith("webpack-") for d in deps)
+    if not uses_webpack:
+        return []
+
+    ts_sources = [
+        p for ext in ("*.ts", "*.tsx")
+        for p in generated_root.rglob(ext)
+        if "node_modules" not in p.parts
+    ]
+    is_ts = bool(ts_sources)
+    created: List[str] = []
+    pkg_modified = False
+
+    if is_ts and not (generated_root / "tsconfig.json").exists():
+        (generated_root / "tsconfig.json").write_text(_DEFAULT_TSCONFIG, encoding="utf-8")
+        created.append(str((generated_root / "tsconfig.json").relative_to(out_dir)))
+
+    webpack_config_names = ("webpack.config.js", "webpack.config.cjs", "webpack.config.mjs", "webpack.config.ts")
+    if not any((generated_root / name).exists() for name in webpack_config_names):
+        entry = _detect_webpack_entry(generated_root, is_ts)
+        (generated_root / "webpack.config.js").write_text(_webpack_config_js(entry, is_ts), encoding="utf-8")
+        created.append(str((generated_root / "webpack.config.js").relative_to(out_dir)))
+
+    dev = pkg.get("devDependencies")
+    if not isinstance(dev, dict):
+        dev = {}
+        pkg["devDependencies"] = dev
+    if is_ts:
+        if "typescript" not in deps:
+            dev["typescript"] = "^5.4.5"
+            pkg_modified = True
+        if "ts-loader" not in deps:
+            dev["ts-loader"] = "^9.5.1"
+            pkg_modified = True
+
+    scripts = pkg.get("scripts")
+    if not isinstance(scripts, dict):
+        scripts = {}
+        pkg["scripts"] = scripts
+    if "build" not in scripts:
+        scripts["build"] = "webpack --mode development"
+        pkg_modified = True
+
+    if pkg_modified:
+        pkg_path.write_text(json.dumps(pkg, indent=2) + "\n", encoding="utf-8")
+
+    return created
+
+
 def _materialize_engineer_artifacts(out_dir: pathlib.Path) -> List[str]:
     engineer_payload = _load_agent_json_output(out_dir / "Engineer.txt")
     if not engineer_payload:
@@ -8382,6 +8529,7 @@ def _materialize_engineer_artifacts(out_dir: pathlib.Path) -> List[str]:
             written.append(str(target.relative_to(out_dir)))
 
     if written:
+        written.extend(_scaffold_missing_build_config(generated_root, out_dir))
         return written
 
     implementation = engineer_payload.get("implementation")

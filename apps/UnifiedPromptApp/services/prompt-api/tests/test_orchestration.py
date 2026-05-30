@@ -913,6 +913,72 @@ class TestOrchestrateRun:
         # When the contract is NOT proven valid, nothing is overridden.
         assert app._critic_blocker_contradicted_by_contract(hallucinated, False) is False
 
+    def test_scaffold_missing_build_config_for_webpack_ts_app(self, cleanup_test_runs):
+        """A webpack + TypeScript generated app with no tsconfig/webpack.config
+        and no ts-loader must be scaffolded into a buildable project."""
+        run_id = f"test_scaffold_webpack_{app.now_iso().replace(':', '-')}"
+        out_dir = app.BRIDGE_RUN_DIR / run_id
+        generated_root = out_dir / "generated_app"
+        (generated_root / "src").mkdir(parents=True, exist_ok=True)
+        (generated_root / "package.json").write_text(
+            json.dumps(
+                {
+                    "name": "viz",
+                    "version": "1.0.0",
+                    "scripts": {"start": "webpack serve"},
+                    "dependencies": {"three": "^0.132.2"},
+                    "devDependencies": {"webpack": "^5.107.2", "webpack-cli": "^5.1.4"},
+                }
+            ),
+            encoding="utf-8",
+        )
+        (generated_root / "src" / "index.ts").write_text("console.log('x');\n", encoding="utf-8")
+
+        created = app._scaffold_missing_build_config(generated_root, out_dir)
+
+        assert (generated_root / "tsconfig.json").exists()
+        assert (generated_root / "webpack.config.js").exists()
+        assert any("tsconfig.json" in c for c in created)
+        assert any("webpack.config.js" in c for c in created)
+
+        webpack_cfg = (generated_root / "webpack.config.js").read_text(encoding="utf-8")
+        assert "./src/index.ts" in webpack_cfg
+        assert "ts-loader" in webpack_cfg
+
+        pkg = json.loads((generated_root / "package.json").read_text(encoding="utf-8"))
+        assert "typescript" in pkg["devDependencies"]
+        assert "ts-loader" in pkg["devDependencies"]
+        assert pkg["scripts"].get("build")
+
+    def test_scaffold_skips_non_webpack_and_does_not_overwrite(self, cleanup_test_runs):
+        """Scaffolding must not touch a Vite (non-webpack) app, and must never
+        overwrite a webpack config the Engineer already provided."""
+        run_id = f"test_scaffold_skip_{app.now_iso().replace(':', '-')}"
+        out_dir = app.BRIDGE_RUN_DIR / run_id
+
+        # Vite app -> no scaffolding.
+        vite_root = out_dir / "generated_app"
+        (vite_root / "src").mkdir(parents=True, exist_ok=True)
+        (vite_root / "package.json").write_text(
+            json.dumps({"name": "vite-app", "devDependencies": {"vite": "^5.0.0"}}),
+            encoding="utf-8",
+        )
+        assert app._scaffold_missing_build_config(vite_root, out_dir) == []
+        assert not (vite_root / "webpack.config.js").exists()
+
+        # Existing webpack config -> not overwritten.
+        wp_root = out_dir / "generated_app2"
+        (wp_root / "src").mkdir(parents=True, exist_ok=True)
+        (wp_root / "package.json").write_text(
+            json.dumps({"name": "wp", "devDependencies": {"webpack": "^5.0.0"}}),
+            encoding="utf-8",
+        )
+        (wp_root / "src" / "index.js").write_text("console.log(1)\n", encoding="utf-8")
+        sentinel = "// hand-written config\nmodule.exports = {};\n"
+        (wp_root / "webpack.config.js").write_text(sentinel, encoding="utf-8")
+        app._scaffold_missing_build_config(wp_root, out_dir)
+        assert (wp_root / "webpack.config.js").read_text(encoding="utf-8") == sentinel
+
     def test_terminal_evidence_self_heals_completed_status_with_needs_requirements(self, cleanup_test_runs):
         run_id = f"test_terminal_evidence_self_heal_{app.now_iso().replace(':', '-')}"
         out_dir = app.BRIDGE_RUN_DIR / run_id
