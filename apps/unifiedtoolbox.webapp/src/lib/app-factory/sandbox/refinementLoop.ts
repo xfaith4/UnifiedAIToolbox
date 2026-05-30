@@ -3,6 +3,8 @@ import path from 'path'
 import { promises as fs } from 'fs'
 import type { SandboxReport } from '@/lib/types/orchestrator'
 import { runSandbox, MAX_LOOP_ITERATIONS } from './sandboxEngine'
+import { appendEvent as appendCanonicalEvent } from '@/lib/app-factory/runs/canonicalEvents'
+import { resolveRunContext } from './runContext'
 
 export interface RefinementLoopOptions {
   runDir: string
@@ -23,7 +25,24 @@ export interface RefinementLoopResult {
   exitReason: LoopExitReason
 }
 
+function mapLoopToCanonicalEventType(type: string): {
+  eventType: 'agent_progress' | 'agent_completed' | 'agent_blocked'
+  severity: 'info' | 'warn' | 'error'
+} {
+  if (type === 'loop:passed') {
+    return { eventType: 'agent_completed', severity: 'info' }
+  }
+  if (type === 'loop:iteration_failed') {
+    return { eventType: 'agent_blocked', severity: 'warn' }
+  }
+  if (type === 'loop:max_iterations') {
+    return { eventType: 'agent_blocked', severity: 'error' }
+  }
+  return { eventType: 'agent_progress', severity: 'info' }
+}
+
 async function appendEvent(
+  runDir: string,
   eventsPath: string,
   type: string,
   message: string,
@@ -33,6 +52,32 @@ async function appendEvent(
   if (data) record.data = data
   try {
     await fs.appendFile(eventsPath, JSON.stringify(record) + '\n', 'utf8')
+  } catch {
+    // non-fatal
+  }
+
+  const runContext = resolveRunContext(runDir)
+  if (!runContext) return
+
+  const mapped = mapLoopToCanonicalEventType(type)
+  const canonicalData: Record<string, unknown> = {
+    source: 'refinementLoop',
+    source_event_type: type,
+    ...(data ?? {}),
+  }
+
+  try {
+    await appendCanonicalEvent(
+      {
+        run_id: runContext.runId,
+        event_type: mapped.eventType,
+        severity: mapped.severity,
+        agent_name: 'RefinementLoop',
+        message,
+        data: canonicalData,
+      },
+      { rootDir: runContext.rootDir },
+    )
   } catch {
     // non-fatal
   }
@@ -64,7 +109,7 @@ export async function runRefinementLoop(opts: RefinementLoopOptions): Promise<Re
   let lastReport: SandboxReport | null = null
 
   while (currentIteration <= startIteration + maxIterations - 1) {
-    await appendEvent(eventsPath, `loop:iteration_${currentIteration}`, `Starting loop iteration ${currentIteration}`, {
+    await appendEvent(runDir, eventsPath, `loop:iteration_${currentIteration}`, `Starting loop iteration ${currentIteration}`, {
       iteration: currentIteration,
       maxIterations,
     })
@@ -78,7 +123,7 @@ export async function runRefinementLoop(opts: RefinementLoopOptions): Promise<Re
     lastReport = report
 
     if (allPassed) {
-      await appendEvent(eventsPath, 'loop:passed', `All acceptance checks passed on iteration ${currentIteration}`, {
+      await appendEvent(runDir, eventsPath, 'loop:passed', `All acceptance checks passed on iteration ${currentIteration}`, {
         iteration: currentIteration,
       })
       return { finalReport: report, iterations: currentIteration - startIteration + 1, exitReason: 'all_passed' }
@@ -86,6 +131,7 @@ export async function runRefinementLoop(opts: RefinementLoopOptions): Promise<Re
 
     const failedChecks = report.checks.filter((c) => c.result === 'failed').map((c) => c.check)
     await appendEvent(
+      runDir,
       eventsPath,
       'loop:iteration_failed',
       `${report.failedCount} check(s) failed on iteration ${currentIteration}`,
@@ -96,6 +142,7 @@ export async function runRefinementLoop(opts: RefinementLoopOptions): Promise<Re
   }
 
   await appendEvent(
+    runDir,
     eventsPath,
     'loop:max_iterations',
     `Reached maximum loop iterations (${maxIterations})`,

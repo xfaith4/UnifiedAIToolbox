@@ -183,8 +183,10 @@ Populate the canonical run infrastructure consistently so Run Console and API co
   - Partial progress already exists for run start/cancel routes and launcher error artifact indexing.
   - Additional progress (2026-05-26): shared runtime emitter now writes canonical `events.jsonl` via `appendEvent`; runtime event normalization now maps canonical fields (`event_type`, `severity`, `agent_name`), and offset-based event reads now fall back to `events.jsonl` when `events.ndjson` is absent.
   - Additional progress (2026-05-27): App Factory run consumers now prioritize canonical `events.jsonl` before legacy `events.ndjson` in run status loading and `/api/app-factory/runs/[runId]/events` history/offset paths.
+  - Additional progress (2026-05-30): sandbox/refinement producers now dual-write legacy `events.ndjson` plus canonical `events.jsonl`; sandbox report creation now indexes `sandbox_report.json` and emits canonical `artifact_created` linkage for report evidence.
   - Touched files: `apps/unifiedtoolbox.webapp/src/lib/app-factory/runs/runEvents.ts`, `apps/unifiedtoolbox.webapp/src/lib/app-factory/runs/runtimeEventUtils.ts`, `apps/unifiedtoolbox.webapp/src/app/api/app-factory/runs/[runId]/events/route.ts`, `apps/unifiedtoolbox.webapp/src/lib/app-factory/runs/runStatus.ts`.
-  - Verification: targeted vitest run for run telemetry helpers/routes passed; `npm --prefix apps/unifiedtoolbox.webapp run typecheck` passed.
+  - Touched files (2026-05-30): `apps/unifiedtoolbox.webapp/src/lib/app-factory/sandbox/sandboxEngine.ts`, `apps/unifiedtoolbox.webapp/src/lib/app-factory/sandbox/refinementLoop.ts`, `apps/unifiedtoolbox.webapp/src/lib/app-factory/sandbox/__tests__/refinementLoop.test.ts`.
+  - Verification (2026-05-30): `npm --prefix apps/unifiedtoolbox.webapp run test -- src/lib/app-factory/sandbox/__tests__/refinementLoop.test.ts` passed (9 tests); `npm --prefix apps/unifiedtoolbox.webapp run test` passed (63 files, 434 tests); targeted eslint on touched sandbox files passed; `npm --prefix apps/unifiedtoolbox.webapp run typecheck` and `npm --prefix apps/unifiedtoolbox.webapp run build` still fail on pre-existing missing module `@/lib/runs/runFailureSummary`.
   - Finish remaining App Factory paths that still depend on legacy fallback state.
 
 - [ ] Add canonical terminal summary enforcement.
