@@ -4114,18 +4114,29 @@ def _ensure_terminal_evidence_artifacts(run_id: str, manifest_path: pathlib.Path
         data["failure_artifact"] = _to_relpath(failure_artifact, out_dir)
         changed = True
 
-    final_summary_path = out_dir / "final_summary.json"
-    if (terminal_status or needs_requirements) and not final_summary_path.exists():
+    if terminal_status or needs_requirements:
         summary = _build_terminal_summary_from_manifest(
             run_id,
             data,
             out_dir,
             blocker_detail=None if status_value == "completed" else str(data.get("error_detail") or data.get("failure_artifact") or "Run did not complete successfully."),
         )
-        written_summary = _write_terminal_summary(out_dir, summary)
-        data["final_summary_path"] = _to_relpath(written_summary, out_dir)
-        data["final_summary"] = summary
-        changed = True
+        existing_summary = _load_existing_terminal_summary(out_dir)
+        if _terminal_summary_core(existing_summary) != _terminal_summary_core(summary):
+            written_summary = _write_terminal_summary(out_dir, summary)
+            data["final_summary_path"] = _to_relpath(written_summary, out_dir)
+            data["final_summary"] = summary
+            changed = True
+        else:
+            outcome = str(summary.get("outcome") or "").strip().lower()
+            if outcome:
+                _reconcile_run_state_status(out_dir, outcome, outcome)
+            if data.get("final_summary") != existing_summary:
+                data["final_summary"] = existing_summary
+                changed = True
+            if data.get("final_summary_path") != "final_summary.json":
+                data["final_summary_path"] = "final_summary.json"
+                changed = True
 
     if changed:
         manifest_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
@@ -4300,6 +4311,23 @@ def _write_terminal_summary(out_dir: pathlib.Path, summary: Dict[str, Any]) -> p
     if outcome:
         _reconcile_run_state_status(out_dir, outcome, outcome)
     return summary_path
+
+
+def _terminal_summary_core(summary: Any) -> Dict[str, Any]:
+    if not isinstance(summary, dict):
+        return {}
+    # Ignore generated_at so equivalent summaries do not churn writes.
+    return {k: v for k, v in summary.items() if k != "generated_at"}
+
+
+def _load_existing_terminal_summary(out_dir: pathlib.Path) -> Optional[Dict[str, Any]]:
+    summary_path = out_dir / "final_summary.json"
+    if not summary_path.exists():
+        return None
+    existing = safe_json_load(summary_path, default=None, context=f"final_summary_existing:{out_dir.name}")
+    if isinstance(existing, dict):
+        return existing
+    return None
 
 
 def _write_failure_visibility_artifact(out_dir: pathlib.Path, title: str, detail: str) -> pathlib.Path:

@@ -198,18 +198,24 @@ Populate the canonical run infrastructure consistently so Run Console and API co
     - generated-app readiness if applicable,
     - artifact index pointer,
     - verification evidence pointer.
+  - Additional progress (2026-05-30): prompt-api terminal evidence healing now refreshes stale `final_summary.json` whenever terminal manifest truth changes (instead of only writing when missing), and explicitly re-reconciles `run_state.json` to terminal outcome even when summary content is already current.
+  - Touched files (2026-05-30): `apps/UnifiedPromptApp/services/prompt-api/app.py`, `apps/UnifiedPromptApp/services/prompt-api/tests/test_orchestration.py`.
+  - Verification (2026-05-30): `pytest apps/UnifiedPromptApp/services/prompt-api/tests/test_orchestration.py -k "terminal_summary or run_state_reconcile"` passed (4 tests).
 
 - [ ] Reconcile terminal run-state artifacts.
   - `run_state.json`, manifest, final summary, overseer/advisory artifacts, and agent status display must agree.
   - Stale `running`, `working`, or partial agent values must be corrected during finalization.
 
-- [ ] Add E2E route coverage for canonical run APIs.
+- [x] Add E2E route coverage for canonical run APIs.
   - Cover:
     - `/api/runs/[runId]/manifest`
     - `/api/runs/[runId]/artifacts`
     - `/api/runs/[runId]/events/canonical`
     - `/api/runs/[runId]/summary`
   - Include 200, 404, invalid-runId, empty-run, and terminal-run cases.
+  - Date: 2026-05-30
+  - Touched files: `apps/unifiedtoolbox.webapp/src/lib/app-factory/runs/__tests__/runsApiRoutes.test.ts`
+  - Verification: `npm --prefix apps/unifiedtoolbox.webapp run test -- src/lib/app-factory/runs/__tests__/runsApiRoutes.test.ts` (5 passed)
 
 - [ ] Add SSE reconnect and replay tests.
   - Validate `Last-Event-ID` behavior.

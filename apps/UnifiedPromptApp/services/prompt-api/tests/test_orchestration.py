@@ -899,6 +899,43 @@ class TestOrchestrateRun:
         assert reconciled.get("outcome") == "completed_with_warnings"
         assert reconciled.get("status_reconciled_from") == "completed"
 
+    def test_terminal_summary_is_refreshed_when_existing_summary_is_stale(self, cleanup_test_runs):
+        """A pre-existing final_summary.json with stale outcome must be
+        rewritten to match the current terminal manifest truth."""
+        run_id = f"test_terminal_summary_refresh_{app.now_iso().replace(':', '-')}"
+        out_dir = app.BRIDGE_RUN_DIR / run_id
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        # Simulate stale terminal artifacts from a prior failed attempt.
+        (out_dir / "final_summary.json").write_text(
+            json.dumps({"run_id": run_id, "outcome": "failed", "objective": "Build app"}, indent=2),
+            encoding="utf-8",
+        )
+        (out_dir / "run_state.json").write_text(
+            json.dumps({"run_id": run_id, "status": "failed", "app_type": "web"}, indent=2),
+            encoding="utf-8",
+        )
+
+        manifest = {
+            "run_id": run_id,
+            "status": "completed",
+            "verification_status": "passed",
+            "goal": "Build app",
+            "events": [],
+        }
+        manifest_path = out_dir / "run_manifest.json"
+
+        healed = app._ensure_terminal_evidence_artifacts(run_id, manifest_path, manifest, out_dir)
+
+        final_summary = json.loads((out_dir / "final_summary.json").read_text(encoding="utf-8"))
+        assert final_summary.get("outcome") == "completed"
+        assert healed.get("final_summary", {}).get("outcome") == "completed"
+        assert healed.get("final_summary_path") == "final_summary.json"
+
+        reconciled_state = json.loads((out_dir / "run_state.json").read_text(encoding="utf-8"))
+        assert reconciled_state.get("status") == "completed"
+        assert reconciled_state.get("status_reconciled_from") == "failed"
+
     def test_critic_blocker_overridden_when_contract_valid(self, cleanup_test_runs):
         """A Critic blocker that claims the conceptual model contract has an
         invalid schema is discarded when the deterministic validator accepts
