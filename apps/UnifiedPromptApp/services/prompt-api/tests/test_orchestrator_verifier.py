@@ -505,3 +505,86 @@ def test_run_all_verifications_cascades_skipped_install_as_skipped(tmp_path, mon
     for key in ("lint_result", "build_result", "unit_test_result", "smoke_test_result", "dev_server_result"):
         assert results[key]["status"] == "skipped"
         assert "install gate was skipped" in results[key]["summary"]
+
+
+def _write_node_app_with_lockfile(tmp_path):
+    (tmp_path / "package.json").write_text(
+        json.dumps(
+            {
+                "name": "generated-app",
+                "version": "1.0.0",
+                "dependencies": {"three": "^0.132.2"},
+                "devDependencies": {"webpack": "^5.107.2"},
+                "scripts": {"start": "webpack serve"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    # A partial/desynced lockfile -- the exact trap from the 3D-visualizer run:
+    # its presence makes _get_install_command choose the frozen `npm ci`.
+    (tmp_path / "package-lock.json").write_text(
+        json.dumps({"name": "generated-app", "lockfileVersion": 3, "packages": {}}),
+        encoding="utf-8",
+    )
+
+
+EUSAGE_OUTPUT = (
+    "npm error code EUSAGE\n"
+    "npm error `npm ci` can only install packages when your package.json and "
+    "package-lock.json or npm-shrinkwrap.json are in sync.\n"
+    "npm error Missing: webpack@5.107.2 from lock file\n"
+)
+
+
+def test_verify_install_self_heals_lockfile_desync(tmp_path, monkeypatch):
+    """A frozen `npm ci` that fails on a desynced lockfile must self-heal by
+    retrying once with the reconciling `npm install`, and record it honestly."""
+    _write_node_app_with_lockfile(tmp_path)
+    verifier = OrchestratorVerifier(tmp_path)
+    monkeypatch.setattr(orchestrator_verifier.shutil, "which", lambda name: r"C:\nodejs\npm.CMD")
+
+    calls = []
+
+    def _fake_run(command, log_name=None, timeout=None, env=None):
+        calls.append(command)
+        if command[:2] == ["npm", "ci"]:
+            return False, EUSAGE_OUTPUT, str(tmp_path / "install.log"), 1
+        if command[:2] == ["npm", "install"]:
+            return True, "added 341 packages", str(tmp_path / "install_reconcile.log"), 0
+        raise AssertionError(f"unexpected command: {command}")
+
+    monkeypatch.setattr(verifier, "_run_command", _fake_run)
+
+    result = verifier.verify_install()
+
+    assert result["passed"] is True
+    assert result["command"] == "npm ci --no-audit --no-fund"
+    assert [c[:2] for c in calls] == [["npm", "ci"], ["npm", "install"]]
+    reconciliation = result["reconciliation"]
+    assert reconciliation["reason"] == "lockfile_desync"
+    assert reconciliation["passed"] is True
+    assert reconciliation["reconciling_command"] == "npm install --no-audit --no-fund"
+    assert result["log_path"].endswith("install_reconcile.log")
+
+
+def test_verify_install_does_not_self_heal_unrelated_failure(tmp_path, monkeypatch):
+    """A frozen install that fails for a non-lockfile reason (e.g. a 404 on a
+    bogus dependency) must NOT trigger a reconciling retry -- the failure is
+    real and should surface."""
+    _write_node_app_with_lockfile(tmp_path)
+    verifier = OrchestratorVerifier(tmp_path)
+    monkeypatch.setattr(orchestrator_verifier.shutil, "which", lambda name: r"C:\nodejs\npm.CMD")
+
+    calls = []
+
+    def _fake_run(command, log_name=None, timeout=None, env=None):
+        calls.append(command)
+        return False, "npm error 404 Not Found - GET https://registry/totally-missing", str(tmp_path / "install.log"), 1
+
+    monkeypatch.setattr(verifier, "_run_command", _fake_run)
+
+    result = verifier.verify_install()
+
+    assert result["passed"] is False
+    assert "reconciliation" not in result
+    assert [c[:2] for c in calls] == [["npm", "ci"]]

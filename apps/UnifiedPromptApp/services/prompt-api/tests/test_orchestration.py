@@ -849,6 +849,70 @@ class TestOrchestrateRun:
         assert blockers[0].get("severity") == "clarification_needed"
         assert "clarifications" in str(blockers[0].get("summary") or "").lower()
 
+    def test_terminal_summary_build_lane_failure_downgrades_and_blocks(self, cleanup_test_runs):
+        """A run that 'completed' but whose generated-app build lane failed
+        (delivery_readiness repair_needed + a failed install gate) must not be
+        reported as a clean 'completed', and must surface the failure as a
+        blocker instead of an empty blockers array."""
+        run_id = f"test_build_lane_failure_{app.now_iso().replace(':', '-')}"
+        out_dir = app.BRIDGE_RUN_DIR / run_id
+        out_dir.mkdir(parents=True, exist_ok=True)
+        manifest = {
+            "run_id": run_id,
+            "status": "completed",
+            "verification_status": "partial",
+            "goal": "Build a 3D visualization web app.",
+            "app_production": {
+                "status": "repair_needed",
+                "delivery_readiness": "repair_needed",
+                "checks": [
+                    {"name": "install", "status": "failed", "summary": "npm ci EUSAGE: lockfile out of sync"},
+                    {"name": "lint", "status": "skipped", "summary": "Lint skipped because install failed."},
+                ],
+            },
+        }
+
+        summary = app._build_terminal_summary_from_manifest(run_id, manifest, out_dir)
+
+        assert summary.get("outcome") == "completed_with_warnings"
+        blockers = summary.get("blockers") or []
+        assert any(b.get("severity") == "verification_failed" for b in blockers)
+        assert any("install" in str(b.get("summary") or "").lower() for b in blockers)
+
+    def test_write_terminal_summary_reconciles_run_state_status(self, cleanup_test_runs):
+        """run_state.json must be reconciled to the same terminal outcome the
+        final summary reports, eliminating the dual-status split."""
+        run_id = f"test_run_state_reconcile_{app.now_iso().replace(':', '-')}"
+        out_dir = app.BRIDGE_RUN_DIR / run_id
+        out_dir.mkdir(parents=True, exist_ok=True)
+        state_path = out_dir / "run_state.json"
+        state_path.write_text(
+            json.dumps({"run_id": run_id, "status": "completed", "app_type": "web"}),
+            encoding="utf-8",
+        )
+
+        summary = {"run_id": run_id, "outcome": "completed_with_warnings"}
+        app._write_terminal_summary(out_dir, summary)
+
+        reconciled = json.loads(state_path.read_text(encoding="utf-8"))
+        assert reconciled.get("status") == "completed_with_warnings"
+        assert reconciled.get("outcome") == "completed_with_warnings"
+        assert reconciled.get("status_reconciled_from") == "completed"
+
+    def test_critic_blocker_overridden_when_contract_valid(self, cleanup_test_runs):
+        """A Critic blocker that claims the conceptual model contract has an
+        invalid schema is discarded when the deterministic validator accepts
+        the contract; a genuine blocker is never discarded."""
+        hallucinated = "Invalid JSON schema for conceptual_model_contract."
+        genuine = "Engineer output missing required error handling."
+
+        # Contract proven valid -> the schema-claim blocker is contradicted...
+        assert app._critic_blocker_contradicted_by_contract(hallucinated, True) is True
+        # ...but an unrelated, substantiated blocker is not.
+        assert app._critic_blocker_contradicted_by_contract(genuine, True) is False
+        # When the contract is NOT proven valid, nothing is overridden.
+        assert app._critic_blocker_contradicted_by_contract(hallucinated, False) is False
+
     def test_terminal_evidence_self_heals_completed_status_with_needs_requirements(self, cleanup_test_runs):
         run_id = f"test_terminal_evidence_self_heal_{app.now_iso().replace(':', '-')}"
         out_dir = app.BRIDGE_RUN_DIR / run_id

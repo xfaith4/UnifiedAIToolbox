@@ -192,6 +192,61 @@ class OrchestratorVerifier:
             command = ["npm", "ci", "--no-audit", "--no-fund"]
         return command
 
+    def _get_reconciling_install_command(self, pkg: Optional[Dict[str, Any]] = None) -> Optional[List[str]]:
+        """
+        Return the lockfile-reconciling install command for the detected PM.
+
+        This is the non-frozen counterpart to the strict command chosen by
+        ``_get_install_command``. It is used to self-heal a generated app whose
+        lockfile is missing, partial, or out of sync with package.json -- the
+        common failure mode for LLM-authored apps, where ``npm ci`` (and the
+        other ``--frozen-lockfile`` variants) fail because no human ever ran a
+        real install to produce a synced lockfile.
+        """
+        pkg = pkg or self._load_package_json()
+        if not pkg:
+            return None
+        package_manager = self._detect_node_package_manager(pkg)
+        if package_manager == "pnpm":
+            return ["pnpm", "install", "--no-frozen-lockfile"]
+        if package_manager == "yarn":
+            return ["yarn", "install"]
+        if package_manager == "bun":
+            return ["bun", "install"]
+        return ["npm", "install", "--no-audit", "--no-fund"]
+
+    @staticmethod
+    def _is_frozen_install_command(command: Optional[List[str]]) -> bool:
+        """True when the install command demands an already-synced lockfile."""
+        if not command:
+            return False
+        if "--frozen-lockfile" in command:
+            return True
+        return len(command) >= 2 and command[0] == "npm" and command[1] == "ci"
+
+    @staticmethod
+    def _install_failure_is_lockfile_desync(output: str) -> bool:
+        """
+        Heuristically detect a frozen-install failure caused by a lockfile that
+        is out of sync with package.json, across npm/pnpm/yarn/bun.
+
+        Kept deliberately broad: the cost of a false positive is one extra
+        reconciling ``install`` (which also fails loudly if the manifest is
+        genuinely broken), while a false negative leaves the run stuck in the
+        unwinnable repair loop this guard exists to prevent.
+        """
+        text = (output or "").lower()
+        markers = (
+            "can only install packages when your package.json",  # npm ci EUSAGE
+            "from lock file",                                    # npm "Missing: x from lock file"
+            "err_pnpm_outdated_lockfile",                        # pnpm
+            "frozen-lockfile",                                   # pnpm / yarn berry / bun
+            "lockfile would have been modified",                 # yarn classic
+            "your lockfile needs to be updated",                 # yarn classic
+            "lockfile had changes",                              # bun
+        )
+        return any(marker in text for marker in markers)
+
     def _resolve_node_pm_executable(self, package_manager: str) -> Optional[str]:
         return shutil.which(package_manager)
 
@@ -409,23 +464,65 @@ class OrchestratorVerifier:
                 "log_path": None,
             }
 
+        install_env = {
+            "CI": "true",
+            "NO_COLOR": "1",
+            "BROWSER": "none",
+        }
         passed, output, log_path, returncode = self._run_command(
             command,
             log_name="install",
             timeout=900,
-            env={
-                "CI": "true",
-                "NO_COLOR": "1",
-                "BROWSER": "none",
-            },
+            env=install_env,
         )
-        return {
+
+        # Self-heal the generated-app lockfile trap: a frozen install
+        # (``npm ci`` / ``--frozen-lockfile``) hard-fails when the lockfile is
+        # missing, partial, or out of sync with package.json -- which is the
+        # norm for LLM-generated apps and impossible for the file-only repair
+        # loop to hand-fix. When that specific failure is detected, retry once
+        # with the reconciling install, which regenerates the lockfile. The
+        # original failure is preserved in install.log for forensics; the
+        # reconciling attempt is recorded transparently rather than hidden.
+        reconciliation: Optional[Dict[str, Any]] = None
+        if (
+            not passed
+            and self._is_frozen_install_command(command)
+            and self._install_failure_is_lockfile_desync(output)
+        ):
+            reconcile_command = self._get_reconciling_install_command(pkg)
+            if reconcile_command and self._resolve_node_pm_executable(reconcile_command[0]):
+                r_passed, r_output, r_log_path, r_returncode = self._run_command(
+                    reconcile_command,
+                    log_name="install_reconcile",
+                    timeout=900,
+                    env=install_env,
+                )
+                reconciliation = {
+                    "reason": "lockfile_desync",
+                    "frozen_command": " ".join(command),
+                    "frozen_log_path": log_path,
+                    "reconciling_command": " ".join(reconcile_command),
+                    "passed": r_passed,
+                }
+                # The reconciling install is now authoritative for the gate.
+                passed, output, log_path, returncode = (
+                    r_passed,
+                    r_output,
+                    r_log_path,
+                    r_returncode,
+                )
+
+        result: Dict[str, Any] = {
             "passed": passed,
             "output": output,
             "log_path": log_path,
             "command": " ".join(command),
             "exit_code": returncode,
         }
+        if reconciliation is not None:
+            result["reconciliation"] = reconciliation
+        return result
     
     def verify_lint(self) -> Optional[Dict[str, Any]]:
         """

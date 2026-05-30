@@ -4293,6 +4293,12 @@ def _write_terminal_summary(out_dir: pathlib.Path, summary: Dict[str, Any]) -> p
     out_dir.mkdir(parents=True, exist_ok=True)
     summary_path = out_dir / "final_summary.json"
     summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    # Reconcile run_state.json to the same terminal outcome so the two
+    # artifacts cannot report divergent statuses (e.g. run_state "completed"
+    # vs final summary "completed_with_warnings").
+    outcome = str(summary.get("outcome") or "").strip().lower()
+    if outcome:
+        _reconcile_run_state_status(out_dir, outcome, outcome)
     return summary_path
 
 
@@ -4315,6 +4321,69 @@ def _write_failure_visibility_artifact(out_dir: pathlib.Path, title: str, detail
     return artifact_path
 
 
+def _reconcile_run_state_status(
+    out_dir: pathlib.Path,
+    manifest_status: str,
+    outcome: Optional[str] = None,
+) -> None:
+    """
+    Keep ``run_state.json`` in agreement with the manifest's terminal status.
+
+    ``run_state.json`` is written by the PowerShell orchestrator, while the
+    final summary / manifest terminal status is written here in Python. They
+    drifted apart in practice (run_state said ``completed`` while the final
+    summary said ``completed_with_warnings``). app.py is the last writer of
+    terminal state, so it reconciles the on-disk file here -- mirroring the
+    manifest status exactly and recording what it overwrote -- so the two
+    artifacts can no longer report different outcomes.
+    """
+    manifest_status = (manifest_status or "").strip().lower()
+    if not manifest_status:
+        return
+    state_path = out_dir / "run_state.json"
+    if not state_path.exists():
+        return
+    state = safe_json_load(state_path, default=None, context=f"run_state_reconcile:{out_dir.name}")
+    if not isinstance(state, dict):
+        return
+    prior = str(state.get("status") or "").strip().lower()
+    if prior == manifest_status and (outcome is None or state.get("outcome") == outcome):
+        return
+    state["status"] = manifest_status
+    if outcome is not None:
+        state["outcome"] = outcome
+    if prior and prior != manifest_status:
+        state["status_reconciled_from"] = prior
+    state["updated_at"] = now_iso()
+    if not state.get("ended_at"):
+        state["ended_at"] = now_iso()
+    try:
+        state_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    except Exception as _exc:  # pragma: no cover - best-effort reconciliation
+        print(f"[orchestrate] run_state reconcile failed: {_exc}", file=sys.stderr)
+
+
+def _critic_blocker_contradicted_by_contract(blocker: Any, contract_is_valid: bool) -> bool:
+    """
+    True when a Critic blocker claims the conceptual model contract is invalid
+    but the deterministic validator proves otherwise.
+
+    The Critic is an LLM and was observed to hallucinate an "Invalid JSON
+    schema for conceptual_model_contract" blocker against a contract that the
+    deterministic ``_validate_conceptual_model_contract`` accepts. Only blockers
+    that ground truth directly contradicts are discarded; every other blocker
+    still fails the gate.
+    """
+    if not contract_is_valid:
+        return False
+    text = (blocker if isinstance(blocker, str) else json.dumps(blocker)).lower()
+    mentions_contract = "conceptual_model_contract" in text or "conceptual model contract" in text
+    claims_invalid = any(
+        k in text for k in ("schema", "invalid json", "invalid schema", "not valid", "malformed")
+    )
+    return mentions_contract and claims_invalid
+
+
 def _build_terminal_summary_from_manifest(
     run_id: str,
     manifest: Dict[str, Any],
@@ -4325,13 +4394,7 @@ def _build_terminal_summary_from_manifest(
     verification_status = str(manifest.get("verification_status") or "").strip().lower()
     app_production = manifest.get("app_production") if isinstance(manifest.get("app_production"), dict) else {}
     checks = app_production.get("checks") if isinstance(app_production.get("checks"), list) else []
-
-    if status_value in {"completed", "success", "succeeded"} and verification_status in {"passed", "partial"}:
-        outcome = "completed"
-    elif status_value in {"completed_with_errors", "blocked_requirements"}:
-        outcome = "completed_with_warnings"
-    else:
-        outcome = "failed"
+    delivery_readiness = str(app_production.get("delivery_readiness") or "").strip().lower()
 
     validation_results: List[Dict[str, Any]] = []
     for check in checks:
@@ -4350,6 +4413,25 @@ def _build_terminal_summary_from_manifest(
                 "detail": str(check.get("summary") or "").strip() or None,
             }
         )
+
+    # The generated-app build lane has its own pass/fail that the run-level
+    # status/verification_status do not reflect. A run whose install/build
+    # gate failed (delivery_readiness == "repair_needed") or that exhausted its
+    # repair budget has NOT produced a working app, so it must never be
+    # reported as a clean "completed". Fold that signal in here so the terminal
+    # summary is honest rather than optimistic.
+    failed_gates = [v for v in validation_results if v["status"] == "failed"]
+    build_lane_failed = delivery_readiness == "repair_needed" or bool(failed_gates)
+
+    if status_value in {"completed", "success", "succeeded"} and verification_status in {"passed", "partial"}:
+        outcome = "completed"
+    elif status_value in {"completed_with_errors", "blocked_requirements"}:
+        outcome = "completed_with_warnings"
+    else:
+        outcome = "failed"
+
+    if outcome == "completed" and build_lane_failed:
+        outcome = "completed_with_warnings"
 
     generated_files = manifest.get("generated_app_files") if isinstance(manifest.get("generated_app_files"), list) else []
     created_artifacts: List[str] = []
@@ -4384,7 +4466,34 @@ def _build_terminal_summary_from_manifest(
             }
         )
 
+    # Surface build-lane failures as explicit blockers even when the run did not
+    # hard-fail. Previously these were silently dropped, leaving a
+    # "completed_with_warnings" with an empty blockers array despite a failed
+    # install/build gate -- the dishonest report this fixes.
+    for gate in failed_gates:
+        blockers.append(
+            {
+                "severity": "verification_failed",
+                "summary": f"Verification gate '{gate['name']}' failed: {gate.get('detail') or 'see verification report'}",
+                "agent": "ValidationAuditor",
+            }
+        )
+    if delivery_readiness == "repair_needed" and not failed_gates:
+        blockers.append(
+            {
+                "severity": "verification_failed",
+                "summary": "Generated app verification reported repair_needed and did not reach a working build.",
+                "agent": "ValidationAuditor",
+            }
+        )
+
     warnings = [str(v) for v in (manifest.get("warnings") or []) if str(v).strip()]
+    if build_lane_failed:
+        next_steps = ["Resolve the failed verification gate(s) in the generated app, then rerun verification."]
+    elif outcome == "failed":
+        next_steps = ["Review run_failure.md and logs before rerun."]
+    else:
+        next_steps = ["Review generated app verification report and rerun with targeted fixes."]
     return {
         "schema_version": 1,
         "run_id": run_id,
@@ -4398,9 +4507,7 @@ def _build_terminal_summary_from_manifest(
         "validation_results": validation_results,
         "blockers": blockers,
         "warnings": warnings,
-        "next_steps": [
-            "Review generated app verification report and rerun with targeted fixes." if outcome != "failed" else "Review run_failure.md and logs before rerun."
-        ],
+        "next_steps": next_steps,
         "generated_at": now_iso(),
     }
 
@@ -5791,13 +5898,47 @@ def _execute_orchestration_run(run_id_hint: str, path: pathlib.Path, cancel_even
                 if d is None:
                     return "deferred", "Critic output not found", {}
                 blockers = d.get("blockers", [])
-                if isinstance(blockers, list) and len(blockers) > 0:
+                if not (isinstance(blockers, list) and len(blockers) > 0):
+                    return "passed", "No blockers found in Critic output", {"blockers": []}
+
+                # The Critic is an LLM and can hallucinate blockers that
+                # deterministic validators disprove. The observed failure mode
+                # was a "conceptual_model_contract is invalid schema" blocker
+                # raised against a contract that the deterministic
+                # _validate_conceptual_model_contract accepts. Discard only the
+                # blockers that ground truth directly contradicts, and record
+                # them transparently as overridden -- every other blocker still
+                # fails the gate.
+                contract = _parse_agent_json("ConceptualModelContract")
+                contract_is_valid = (
+                    contract is not None
+                    and not _validate_conceptual_model_contract(contract)
+                    and not str(contract.get("clarification_request") or "").strip()
+                )
+
+                substantiated = [
+                    b for b in blockers
+                    if not _critic_blocker_contradicted_by_contract(b, contract_is_valid)
+                ]
+                overridden = [
+                    b for b in blockers
+                    if _critic_blocker_contradicted_by_contract(b, contract_is_valid)
+                ]
+
+                if substantiated:
                     return (
                         "failed",
-                        f"{len(blockers)} blocker(s): {'; '.join(str(b) for b in blockers[:3])}",
-                        {"blockers": blockers},
+                        f"{len(substantiated)} blocker(s): {'; '.join(str(b) for b in substantiated[:3])}",
+                        {"blockers": substantiated, "overridden_blockers": overridden},
                     )
-                return "passed", "No blockers found in Critic output", {"blockers": []}
+                return (
+                    "passed",
+                    (
+                        f"All {len(overridden)} Critic blocker(s) overridden as contradicted by "
+                        "deterministic contract validation"
+                    ),
+                    {"blockers": [], "overridden_blockers": overridden},
+                )
 
             def _eval_reviewgate():
                 d = _parse_agent_json("ReviewGate")
