@@ -221,9 +221,12 @@ Populate the canonical run infrastructure consistently so Run Console and API co
   - Touched files: `apps/unifiedtoolbox.webapp/src/lib/app-factory/runs/__tests__/runsApiRoutes.test.ts`
   - Verification: `npm --prefix apps/unifiedtoolbox.webapp run test -- src/lib/app-factory/runs/__tests__/runsApiRoutes.test.ts` (5 passed)
 
-- [ ] Add SSE reconnect and replay tests.
+- [x] Add SSE reconnect and replay tests.
   - Validate `Last-Event-ID` behavior.
   - Validate replay consistency between file-backed canonical events and SSE output.
+  - Date: 2026-05-30
+  - Touched files: `apps/unifiedtoolbox.webapp/src/lib/app-factory/runs/__tests__/runsApiRoutes.test.ts`
+  - Verification: `npm --prefix apps/unifiedtoolbox.webapp run test -- src/lib/app-factory/runs/__tests__/runsApiRoutes.test.ts` (7 passed)
 
 ### Acceptance criteria
 
