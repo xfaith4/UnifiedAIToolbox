@@ -19,7 +19,7 @@ import {
   Brain,
   type LucideIcon,
 } from 'lucide-react'
-import { type ReactNode, useCallback, useEffect, useMemo, useState, Suspense } from 'react'
+import { type ReactNode, useCallback, useEffect, useMemo, useState, useSyncExternalStore, Suspense } from 'react'
 import { installUxInstrumentation, trackUxEvent } from '@/lib/ux/telemetry'
 import { UxDebugOverlay } from '@/components/ux/UxDebugOverlay'
 import { NAV_LABELS, ROUTES, ROUTE_ALIASES } from '@/lib/nav/navConfig'
@@ -85,17 +85,22 @@ const activeLinkClass = 'bg-gray-800/90 text-white font-medium shadow-inner'
 
 function UxDebugOverlayWithSearchParams() {
   const searchParams = useSearchParams()
+  const isHydrated = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  )
   const uxDebugEnabled = useMemo(() => {
-    if (process.env.NODE_ENV === 'production') return false
+    if (!isHydrated || process.env.NODE_ENV === 'production') return false
     const qsEnabled = searchParams.get('uxdebug') === '1'
-    const stored = typeof window !== 'undefined' ? window.localStorage.getItem('utb_uxdebug') === '1' : false
+    const stored = window.localStorage.getItem('utb_uxdebug') === '1'
 
-    if (qsEnabled && typeof window !== 'undefined') {
+    if (qsEnabled) {
       window.localStorage.setItem('utb_uxdebug', '1')
     }
 
     return qsEnabled || stored
-  }, [searchParams])
+  }, [isHydrated, searchParams])
   return <UxDebugOverlay enabled={uxDebugEnabled} />
 }
 
