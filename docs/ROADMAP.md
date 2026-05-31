@@ -1,6 +1,6 @@
 # Unified AI Toolbox Roadmap
 
-Last updated: 2026-05-26
+Last updated: 2026-05-31
 
 ## Purpose
 
@@ -108,6 +108,90 @@ A run is not credible because agents produced text. A run is credible when the s
 3. Add Windows-safe cross-process file locking for `events.jsonl` append paths if multi-writer runs become supported.
 4. Add optional frontier provider lanes behind the canonical lane contract.
 5. Feed arena outcomes into Knowledge and recipe recommendations.
+
+### Patch section — dependency security warnings (mission-prioritized)
+
+This patch queue is intentionally prioritized by one criterion: whether it can prevent a fully successful orchestration run from reaching verified terminal state.
+
+#### Priority rules
+
+1. Patch now: vulnerabilities that can break or compromise run execution paths in prompt-api, orchestration routing, or verification gates.
+2. Patch soon: vulnerabilities with plausible impact on runtime integrity but not typically blocking a local successful run.
+3. Monitor: vulnerabilities that are currently low likelihood for mission-critical run completion in this repo context.
+
+#### Current queue (from requirements.txt)
+
+1. Patch now (P0, mission-impact plausible)
+   - fastapi/starlette HTTP request smuggling advisory.
+   - uvicorn/click command-injection advisory.
+   - Plan:
+     - verify fixed upstream versions and bump direct pins,
+     - run prompt-api smoke routes and orchestration run lifecycle tests,
+     - fail patch PR if run status regression appears in canonical terminal artifacts.
+
+2. Patch soon (P1, mission-impact possible)
+   - python-multipart directory traversal advisory.
+   - requests temporary-file handling advisory.
+   - Plan:
+     - confirm whether multipart upload paths are active in prompt-api,
+     - bump packages when fixed builds are available,
+     - add a focused regression test around upload/tempfile paths if those code paths are active.
+
+3. Monitor + roll forward when available (P2, mission-impact low today)
+   - anyio race-condition advisory.
+   - python-dotenv symlink advisory via pydantic-settings.
+   - transitive urllib3 and cryptography CVE coverage pins already present.
+   - Plan:
+     - keep explicit transitive pins for known CVEs,
+     - re-evaluate monthly or when parent packages release stricter fixed floors,
+     - promote to P1/P0 immediately if exploitability intersects active orchestration code paths.
+
+#### Patch execution checklist (PR-sized)
+
+- [ ] **P0-1: FastAPI/Starlette transport hardening**
+  - Scope: verify advisory-fixed floors for `fastapi` and transitive `starlette`; update `requirements.txt` pins.
+  - Mission check: ensure prompt-api request handling and run lifecycle endpoints remain stable.
+  - Verification commands:
+    - `pytest apps/UnifiedPromptApp/services/prompt-api/tests/test_orchestration.py -k "terminal_summary or run_state_reconcile or generated_app_guard"`
+    - `pytest apps/UnifiedPromptApp/services/prompt-api/tests/test_prompts.py -k "health_endpoint or openapi_exports_named_prompt_and_generation_responses"`
+
+- [ ] **P0-2: Uvicorn/Click startup path hardening**
+  - Scope: verify fixed floors for `uvicorn` and transitive `click`; bump pins in `requirements.txt`.
+  - Mission check: app startup and orchestration API routing still boot cleanly.
+  - Verification commands:
+    - `pytest apps/UnifiedPromptApp/services/prompt-api/tests/test_orchestration.py -k "orchestrate_run or checkpoint_resume_dispatches_to_executor"`
+    - `pytest apps/UnifiedPromptApp/services/prompt-api/tests/test_prompts.py -k "health_endpoint"`
+
+- [ ] **P1-1: Multipart/upload path review + mitigation**
+  - Scope: confirm whether multipart upload parsing is active; if active, patch `python-multipart` to fixed floor or add path constraints with test coverage.
+  - Mission check: no regressions in requirements checkpoint/resume and evidence artifact write paths.
+  - Verification commands:
+    - `pytest apps/UnifiedPromptApp/services/prompt-api/tests/test_orchestration.py -k "checkpoint_response_resumes_blocked_requirements_run or checkpoint_resume_dispatches_to_executor"`
+
+- [ ] **P1-2: Requests tempfile advisory mitigation**
+  - Scope: bump `requests` when fixed floor is available; otherwise document compensating control in code comments and roadmap notes.
+  - Mission check: network-backed orchestration helper calls do not regress and run status reconciliation remains intact.
+  - Verification commands:
+    - `pytest apps/UnifiedPromptApp/services/prompt-api/tests/test_orchestration.py -k "generated_app_guard or success_contract"`
+
+- [ ] **P2-M1: Monthly transitive CVE monitor sweep**
+  - Scope: revisit `anyio`, `pydantic-settings/python-dotenv`, `urllib3`, and `cryptography` transitive floors.
+  - Mission check: no change is required unless advisory exploitability intersects active orchestration execution paths.
+  - Evidence note: log decision and next review date in this roadmap section.
+
+#### Verification gate for dependency patch PRs
+
+A dependency patch is considered complete only when both are true:
+
+1. security objective met: vulnerable package is upgraded, pinned, or explicitly mitigated with rationale.
+2. mission objective preserved: targeted orchestration verification still reaches terminal success signals (no new deferred-only regressions).
+
+Evidence to attach in PR notes:
+
+- package delta summary,
+- vulnerability references,
+- test commands executed,
+- run outcome snapshot (status + verification_status).
 
 ---
 
