@@ -276,7 +276,7 @@ export default function RunSwarmPage({ params }: { params: Promise<{ runId: stri
   }, [model.phases, visibleNodes])
 
   return (
-    <main className="mx-auto h-[calc(100vh-3rem)] max-w-[1600px] space-y-4">
+    <main className="mx-auto h-[calc(100vh-3rem)] max-w-[1600px] min-w-0 overflow-hidden space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-900/55 p-4">
         <div>
           <Link href={`/runs/${encodeURIComponent(runId)}`} className="inline-flex items-center gap-1 text-xs text-slate-400 hover:text-slate-200">
@@ -363,7 +363,7 @@ export default function RunSwarmPage({ params }: { params: Promise<{ runId: stri
         </div>
       </div>
 
-      <div className="grid h-[calc(100%-5.5rem)] grid-cols-1 gap-4 xl:grid-cols-[290px_minmax(0,1fr)_360px]">
+      <div className="grid h-[calc(100%-5.5rem)] min-w-0 overflow-hidden grid-cols-1 gap-4 xl:grid-cols-[290px_minmax(0,1fr)_360px]">
         <ControlPanel
           connectionStatus={connectionStatus}
           loading={loading}
@@ -388,7 +388,7 @@ export default function RunSwarmPage({ params }: { params: Promise<{ runId: stri
           onRefresh={() => void refresh()}
         />
 
-        <div className="flex min-h-0 flex-col gap-4">
+        <div className="flex min-h-0 min-w-0 flex-col gap-4 overflow-hidden">
           {(isRequirementsBlocked || isTerminalError) && (
             <div className={`rounded-2xl border p-4 text-sm space-y-3 ${
               isRequirementsBlocked
@@ -597,7 +597,7 @@ export default function RunSwarmPage({ params }: { params: Promise<{ runId: stri
             </div>
           )}
 
-          <div className="min-h-0 flex-1">
+          <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
             <SwarmCanvas
               agents={visibleAgents}
               nodes={visibleNodes}
