@@ -1,75 +1,197 @@
 {
-  "version": "1.0",
-  "description": "Model pricing and environmental impact intensity factors",
+  "version": "2.0",
+  "description": "Model pricing and environmental impact intensity factors for orchestration cost estimation",
+  "pricing_currency": "USD",
+  "pricing_unit": "per_million_tokens",
+  "last_reviewed": "2026-05-31",
   "models": {
-    "gpt-4o-mini": {
-      "input_price_per_million": 0.15,
-      "output_price_per_million": 0.60,
-      "kwh_per_million_tokens": 0.5,
-      "liters_per_million_tokens": 5.0,
-      "provider": "openai"
-    },
-    "gpt-4o": {
-      "input_price_per_million": 2.50,
-      "output_price_per_million": 10.00,
-      "kwh_per_million_tokens": 1.5,
-      "liters_per_million_tokens": 15.0,
-      "provider": "openai"
-    },
-    "gpt-4": {
-      "input_price_per_million": 30.00,
-      "output_price_per_million": 60.00,
+    "gpt-5.5": {
+      "input_price_per_million": 5.0,
+      "cached_input_price_per_million": 0.5,
+      "output_price_per_million": 30.0,
       "kwh_per_million_tokens": 2.0,
       "liters_per_million_tokens": 20.0,
-      "provider": "openai"
+      "provider": "openai",
+      "status": "current",
+      "family": "gpt-5",
+      "notes": "Recommended high-capability reasoning/coding model. Standard short-context rate."
     },
-    "gpt-4-turbo": {
-      "input_price_per_million": 10.00,
-      "output_price_per_million": 30.00,
-      "kwh_per_million_tokens": 1.8,
-      "liters_per_million_tokens": 18.0,
-      "provider": "openai"
+    "gpt-5.4": {
+      "input_price_per_million": 2.5,
+      "cached_input_price_per_million": 0.25,
+      "output_price_per_million": 15.0,
+      "kwh_per_million_tokens": 1.5,
+      "liters_per_million_tokens": 15.0,
+      "provider": "openai",
+      "status": "current",
+      "family": "gpt-5",
+      "notes": "Balanced current frontier model. Standard short-context rate."
     },
-    "gpt-3.5-turbo": {
-      "input_price_per_million": 0.50,
-      "output_price_per_million": 1.50,
-      "kwh_per_million_tokens": 0.3,
-      "liters_per_million_tokens": 3.0,
-      "provider": "openai"
+    "gpt-5.4-mini": {
+      "input_price_per_million": 0.75,
+      "cached_input_price_per_million": 0.075,
+      "output_price_per_million": 4.5,
+      "kwh_per_million_tokens": 0.7,
+      "liters_per_million_tokens": 7.0,
+      "provider": "openai",
+      "status": "current",
+      "family": "gpt-5",
+      "notes": "Lower-cost current model for lightweight orchestration work."
     },
-    "claude-3-5-sonnet-20241022": {
-      "input_price_per_million": 3.00,
-      "output_price_per_million": 15.00,
-      "kwh_per_million_tokens": 1.2,
-      "liters_per_million_tokens": 12.0,
-      "provider": "anthropic"
+    "gpt-5.4-nano": {
+      "input_price_per_million": 0.2,
+      "cached_input_price_per_million": 0.02,
+      "output_price_per_million": 1.25,
+      "kwh_per_million_tokens": 0.35,
+      "liters_per_million_tokens": 3.5,
+      "provider": "openai",
+      "status": "current",
+      "family": "gpt-5",
+      "notes": "Lowest-cost current OpenAI model for classification, routing, and simple transforms."
     },
-    "claude-3-opus-20240229": {
-      "input_price_per_million": 15.00,
-      "output_price_per_million": 75.00,
+    "gpt-5.3-codex": {
+      "input_price_per_million": 1.75,
+      "cached_input_price_per_million": 0.175,
+      "output_price_per_million": 14.0,
+      "kwh_per_million_tokens": 1.4,
+      "liters_per_million_tokens": 14.0,
+      "provider": "openai",
+      "status": "current",
+      "family": "codex",
+      "notes": "Specialized coding model. Standard Codex rate."
+    },
+    "claude-opus-4-8": {
+      "input_price_per_million": 5.0,
+      "cached_input_price_per_million": 0.5,
+      "output_price_per_million": 25.0,
       "kwh_per_million_tokens": 2.5,
       "liters_per_million_tokens": 25.0,
-      "provider": "anthropic"
+      "provider": "anthropic",
+      "status": "current",
+      "family": "claude-opus",
+      "notes": "Most capable Claude model for complex reasoning and long-horizon agentic coding."
     },
-    "claude-3-sonnet-20240229": {
-      "input_price_per_million": 3.00,
-      "output_price_per_million": 15.00,
+    "claude-sonnet-4-6": {
+      "input_price_per_million": 3.0,
+      "cached_input_price_per_million": 0.3,
+      "output_price_per_million": 15.0,
+      "kwh_per_million_tokens": 1.5,
+      "liters_per_million_tokens": 15.0,
+      "provider": "anthropic",
+      "status": "current",
+      "family": "claude-sonnet",
+      "notes": "Claude balance point for speed and intelligence."
+    },
+    "claude-haiku-4-5": {
+      "input_price_per_million": 1.0,
+      "cached_input_price_per_million": 0.1,
+      "output_price_per_million": 5.0,
+      "kwh_per_million_tokens": 0.6,
+      "liters_per_million_tokens": 6.0,
+      "provider": "anthropic",
+      "status": "current",
+      "family": "claude-haiku",
+      "notes": "Fastest current Claude model with near-frontier intelligence."
+    },
+    "gpt-4o-mini": {
+      "input_price_per_million": 0.15,
+      "output_price_per_million": 0.6,
+      "kwh_per_million_tokens": 0.5,
+      "liters_per_million_tokens": 5.0,
+      "provider": "openai",
+      "status": "legacy",
+      "notes": "Retained for historical run-cost compatibility; do not route new agents here."
+    },
+    "gpt-4o": {
+      "input_price_per_million": 2.5,
+      "output_price_per_million": 10.0,
+      "kwh_per_million_tokens": 1.5,
+      "liters_per_million_tokens": 15.0,
+      "provider": "openai",
+      "status": "legacy",
+      "notes": "Retained for historical run-cost compatibility; replaced by gpt-5.4 or gpt-5.5 depending task complexity."
+    },
+    "gpt-4": {
+      "input_price_per_million": 30.0,
+      "output_price_per_million": 60.0,
+      "kwh_per_million_tokens": 2.0,
+      "liters_per_million_tokens": 20.0,
+      "provider": "openai",
+      "status": "legacy",
+      "notes": "Retained for historical run-cost compatibility; avoid for new routing."
+    },
+    "gpt-4-turbo": {
+      "input_price_per_million": 10.0,
+      "output_price_per_million": 30.0,
+      "kwh_per_million_tokens": 1.8,
+      "liters_per_million_tokens": 18.0,
+      "provider": "openai",
+      "status": "legacy",
+      "notes": "Retained for historical run-cost compatibility; avoid for new routing."
+    },
+    "gpt-3.5-turbo": {
+      "input_price_per_million": 0.5,
+      "output_price_per_million": 1.5,
+      "kwh_per_million_tokens": 0.3,
+      "liters_per_million_tokens": 3.0,
+      "provider": "openai",
+      "status": "legacy",
+      "notes": "Retained for historical run-cost compatibility; avoid for new routing."
+    },
+    "claude-3-5-sonnet-20241022": {
+      "input_price_per_million": 3.0,
+      "output_price_per_million": 15.0,
       "kwh_per_million_tokens": 1.2,
       "liters_per_million_tokens": 12.0,
-      "provider": "anthropic"
+      "provider": "anthropic",
+      "status": "legacy",
+      "notes": "Retained for historical run-cost compatibility; replaced by claude-sonnet-4-6."
+    },
+    "claude-3-opus-20240229": {
+      "input_price_per_million": 15.0,
+      "output_price_per_million": 75.0,
+      "kwh_per_million_tokens": 2.5,
+      "liters_per_million_tokens": 25.0,
+      "provider": "anthropic",
+      "status": "legacy",
+      "notes": "Retained for historical run-cost compatibility; replaced by claude-opus-4-8."
+    },
+    "claude-3-sonnet-20240229": {
+      "input_price_per_million": 3.0,
+      "output_price_per_million": 15.0,
+      "kwh_per_million_tokens": 1.2,
+      "liters_per_million_tokens": 12.0,
+      "provider": "anthropic",
+      "status": "legacy",
+      "notes": "Retained for historical run-cost compatibility; avoid for new routing."
     },
     "claude-3-haiku-20240307": {
       "input_price_per_million": 0.25,
       "output_price_per_million": 1.25,
       "kwh_per_million_tokens": 0.4,
       "liters_per_million_tokens": 4.0,
-      "provider": "anthropic"
+      "provider": "anthropic",
+      "status": "legacy",
+      "notes": "Retained for historical run-cost compatibility; replaced by claude-haiku-4-5."
     }
   },
+  "aliases": {
+    "openai_high_reasoning": "gpt-5.5",
+    "openai_balanced": "gpt-5.4",
+    "openai_fast": "gpt-5.4-mini",
+    "openai_cheapest": "gpt-5.4-nano",
+    "openai_coding": "gpt-5.3-codex",
+    "anthropic_high_reasoning": "claude-opus-4-8",
+    "anthropic_balanced": "claude-sonnet-4-6",
+    "anthropic_fast": "claude-haiku-4-5"
+  },
   "notes": {
-    "pricing": "Prices in USD per million tokens. Source: Provider pricing pages as of Dec 2024",
-    "energy": "Energy intensity (kWh per million tokens) based on estimated datacenter consumption",
-    "water": "Water usage (liters per million tokens) for datacenter cooling. Estimates vary by location and efficiency",
-    "disclaimer": "Environmental impact estimates are approximations. Actual values depend on datacenter location, efficiency, and renewable energy usage"
+    "pricing": "Prices in USD per million tokens. Current model pricing reviewed on 2026-05-31 from OpenAI and Anthropic API pricing pages.",
+    "openai_pricing_scope": "OpenAI prices use Standard short-context rates where applicable. Long-context, Batch, Flex, Priority, tool calls, hosted containers, and regional/data-residency uplifts are not included in the base fields.",
+    "anthropic_pricing_scope": "Anthropic prices use first-party Claude API base input/output rates. Prompt cache write rates, Batch discounts, fast mode, partner cloud regional premiums, and data-residency multipliers are not included in the base fields.",
+    "energy": "Energy intensity (kWh per million tokens) is an internal estimate for relative orchestration analytics, not a provider-published billing metric.",
+    "water": "Water usage (liters per million tokens) is an internal estimate for relative orchestration analytics. Actual values depend on datacenter location, cooling method, utilization, and energy mix.",
+    "legacy_models": "Legacy model entries are retained so historical run logs can still be priced; new agent routing should prefer current entries or aliases.",
+    "disclaimer": "Environmental impact estimates are approximations. Pricing changes frequently; refresh this file when preferred_models are changed or provider pricing changes."
   }
 }

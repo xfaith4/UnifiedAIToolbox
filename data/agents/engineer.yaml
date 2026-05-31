@@ -63,6 +63,6 @@ prompt: |
   - Assumptions
   - Rollback strategy
 routing_hints:
-  preferred_models: [gpt-5.2-codex, gpt-5.2]
+  preferred_models: [gpt-5.5, gpt-5.4, gpt-5.3-codex]
   max_tokens: 4000
-checksum: 06c3516581dbb593bde61b3f479759d3bd8668436b87599332b66699a473e9c9
+checksum: 346761b12100e2ba19b5dc26ceb2ed5fd27c0c45896adcd465dee56e322b6a7a

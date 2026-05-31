@@ -45,6 +45,6 @@ prompt: |
   RISKS:
   NEXT:
 routing_hints:
-  preferred_models: [gpt-5.2, gpt-4o-mini]
+  preferred_models: [gpt-5.4-mini, claude-haiku-4-5, gpt-5.4]
   max_tokens: 1200
-checksum: ffd7c97af9c3222fb9adfc25e394ec84eea239239bbaba4a3dcd3fa85d685922
+checksum: dbe666a99e56d8991df89270329d5e84b3420b3f30e5b44399beb078bc4088a8

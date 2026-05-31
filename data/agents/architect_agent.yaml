@@ -76,3 +76,5 @@ prompt: |
   Quality bar:
   - Design must be implementable without ambiguity.
   - Each decision should tie back to a constraint or risk.
+routing_hints:
+  preferred_models: [gpt-5.5, gpt-5.4, claude-opus-4-8]

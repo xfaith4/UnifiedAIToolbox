@@ -62,6 +62,6 @@ prompt: |
 
   Keep roadmap phases tight (3–6 phases).
 routing_hints:
-  preferred_models: [gpt-5.2-codex, gpt-5.2]
+  preferred_models: [gpt-5.5, gpt-5.4, claude-sonnet-4-6]
   max_tokens: 3500
-checksum: 42599629cd7bc6680ae5bb57cbe7aed79b20651196c66f227ffb007919c0d169
+checksum: df209bac250ee91bbcc96c0bcba814eee534e8588f8396d2ab26de88cc90f366

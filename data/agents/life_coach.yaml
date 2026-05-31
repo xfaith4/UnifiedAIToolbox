@@ -24,12 +24,13 @@ io_contract:
       affirmations: { type: array, items: { type: string } }
       accountability_prompts: { type: array, items: { type: string } }
 routing_hints:
+  preferred_models: [gpt-5.4, claude-sonnet-4-6, gpt-5.4-mini]
   preferred_models:
     - gpt-4.1
     - gpt-4o-mini
     - claude-3-sonnet
   max_tokens: 900
-checksum: 5c21fe64b1a042b3a8cd2c1e18a5a7da
+checksum: c469f7741e21e5675b52973ebd4cddc8cc78b2b92002ad91e05fcd0c876365d4
 prompt: |
   You are the Life Coach guiding a human through sustained momentum. Help the user turn aspirations into manageable actions, keep accountability, and offer mindset nudges.
   

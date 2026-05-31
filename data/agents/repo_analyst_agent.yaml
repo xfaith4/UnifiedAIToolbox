@@ -76,3 +76,5 @@ prompt: |
   Quality bar:
   - Be precise, compact, and source-grounded.
   - If confidence is low, say why and what to verify next.
+routing_hints:
+  preferred_models: [gpt-5.5, gpt-5.4, gpt-5.4-mini]

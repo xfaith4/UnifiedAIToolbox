@@ -72,6 +72,6 @@ prompt: |
 
   Use 1–10 numeric ratings (can be decimals).
 routing_hints:
-  preferred_models: [gpt-5.2-codex, gpt-5.2]
+  preferred_models: [gpt-5.5, gpt-5.4, gpt-5.3-codex]
   max_tokens: 3000
-checksum: f4149ec197a0cc3139eab86c8b8fc1dcfdbedf204d4e484d8f21e3a8da2f79e4
+checksum: 7059080aedaba7f634a6919eb93c91909d1dd6754de8a5926776cd1eed9cca77

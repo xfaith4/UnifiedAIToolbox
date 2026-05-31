@@ -1,14 +1,13 @@
 import datetime
+import os
 import sqlite3
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-
-# USD pricing per 1K tokens (prompt/completion). Expand as you add providers/models.
-PRICING_PER_1K = {
-    "gpt-4o-mini": (0.00015, 0.0006),
-    "gpt-4o": (0.005, 0.015),
-    "gpt-3.5-turbo": (0.0005, 0.0015),
-}
+try:
+    # Preferred: use the same centralized model pricing/impact module used by cost_metrics.py.
+    from model_costs import calculate_impact
+except Exception:  # pragma: no cover - keeps the tracker importable during partial installs/tests
+    calculate_impact = None
 
 
 def _parse_iso(ts: str) -> Optional[datetime.datetime]:
@@ -24,27 +23,65 @@ def _in_window(ts: Optional[str], start: Optional[str], end: Optional[str]) -> b
     dt = _parse_iso(ts)
     if not dt:
         return False
-    if start and dt < datetime.datetime.fromisoformat(start.replace("Z", "+00:00")):
+
+    start_dt = _parse_iso(start) if start else None
+    end_dt = _parse_iso(end) if end else None
+
+    if start_dt and dt < start_dt:
         return False
-    if end and dt > datetime.datetime.fromisoformat(end.replace("Z", "+00:00")):
+    if end_dt and dt > end_dt:
         return False
     return True
 
 
+def _safe_tokens(value: Optional[int]) -> int:
+    try:
+        return int(value or 0)
+    except Exception:
+        return 0
+
+
 def _cost_for_row(model: str, prompt_tokens: Optional[int], completion_tokens: Optional[int]) -> float:
-    prompt_rate, completion_rate = PRICING_PER_1K.get(model, (0.0, 0.0))
-    total = 0.0
-    if prompt_tokens:
-        total += (prompt_tokens / 1000.0) * prompt_rate
-    if completion_tokens:
-        total += (completion_tokens / 1000.0) * completion_rate
-    return round(total, 6)
+    """
+    Calculate cost using centralized model_costs.calculate_impact.
+
+    This intentionally avoids hardcoded model pricing here. Add or update models in
+    model_costs.json / model_costs.py, not in this file.
+    """
+    if not calculate_impact:
+        return 0.0
+
+    impact = calculate_impact(
+        model=model or "unknown",
+        tokens_input=_safe_tokens(prompt_tokens),
+        tokens_output=_safe_tokens(completion_tokens),
+        agent_name=None,
+    )
+    return round(float(getattr(impact, "cost_usd", 0.0) or 0.0), 6)
+
+
+def _provider_for_model(model: str) -> str:
+    """
+    Resolve provider without duplicating pricing logic.
+
+    If model_costs exposes provider metadata in the future, prefer that there.
+    This fallback keeps provider filters useful for current OpenAI/Anthropic routing.
+    """
+    normalized = (model or "").lower()
+    if normalized.startswith("claude"):
+        return "anthropic"
+    if normalized.startswith("gpt") or normalized.startswith("o"):
+        return "openai"
+    return "unknown"
 
 
 class CostTracker:
     """
-    Lightweight cost tracker backed by the audit table. Calculates USD cost
-    from token counts using static pricing constants.
+    Lightweight cost tracker backed by the audit table.
+
+    Cost calculation is delegated to model_costs.calculate_impact so model pricing
+    can be updated centrally through the model_costs module/config rather than
+    duplicated here.
     """
 
     def __init__(self, db_path: Any):
@@ -77,7 +114,7 @@ class CostTracker:
             costs.append(
                 {
                     "model": model or "unknown",
-                    "provider": "openai",  # default provider; adjust when multi-provider is wired
+                    "provider": _provider_for_model(model),
                     "cost": cost,
                     "created_at": created_at,
                 }
@@ -105,7 +142,7 @@ class CostTracker:
         totals: Dict[str, float] = {}
         for c in self._filtered_costs(start_date, end_date):
             totals[c["provider"]] = totals.get(c["provider"], 0.0) + c["cost"]
-        return [{"provider": k, "cost": round(v, 6)} for k, v in totals.items()]
+        return [{"provider": k, "cost": round(v, 6)} for k, v in sorted(totals.items())]
 
     def get_cost_by_model(
         self,
@@ -119,7 +156,7 @@ class CostTracker:
             if provider and c["provider"] != provider:
                 continue
             totals[c["model"]] = totals.get(c["model"], 0.0) + c["cost"]
-        return [{"model": k, "cost": round(v, 6)} for k, v in totals.items()]
+        return [{"model": k, "cost": round(v, 6)} for k, v in sorted(totals.items())]
 
     def get_daily_costs(
         self,
@@ -148,12 +185,6 @@ class CostTracker:
         provider: Optional[str] = None,
         user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        # If no explicit start_date/end_date are provided, treat the window as the full history
-        # (delegate to get_total_cost which accepts None to mean no filtering). Do not automatically
-        # set a trailing window based on period_days to avoid surprising differences between
-        # get_total_cost() and check_budget(). Note: period_days is still included in the response
-        # for informational purposes even when not used for date filtering.
-
         current_cost = self.get_total_cost(start_date, end_date, provider, user_id)
         remaining = max(0.0, budget_amount - current_cost)
         pct = 0.0 if budget_amount <= 0 else min(100.0, (current_cost / budget_amount) * 100)
@@ -181,33 +212,22 @@ class CostTracker:
     ) -> Dict[str, Any]:
         """
         Get cost breakdown for a specific orchestration run or all runs.
-        
-        Args:
-            run_id: Optional specific run ID to query
-            start_date: Optional start date filter
-            end_date: Optional end date filter
-            
-        Returns:
-            Dictionary with run cost information
         """
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            
-            # Check if run_id column exists in audit table
+
             cursor = conn.execute("PRAGMA table_info(audit)")
             columns = [row[1] for row in cursor.fetchall()]
-            
-            if 'run_id' not in columns:
-                # run_id column doesn't exist yet, return empty results
+
+            if "run_id" not in columns:
                 return {
                     "runs": [],
                     "total_cost": 0.0,
-                    "note": "Run-based cost tracking not yet enabled (missing run_id in audit table)"
+                    "note": "Run-based cost tracking not yet enabled (missing run_id in audit table)",
                 }
-            
-            # Build query based on filters
+
             query = """
-                SELECT 
+                SELECT
                     run_id,
                     model,
                     COUNT(*) as call_count,
@@ -219,49 +239,49 @@ class CostTracker:
                 WHERE run_id IS NOT NULL
             """
             params = []
-            
+
             if run_id:
                 query += " AND run_id = ?"
                 params.append(run_id)
-            
+
             if start_date:
                 query += " AND created_at >= ?"
                 params.append(start_date)
-            
+
             if end_date:
                 query += " AND created_at <= ?"
                 params.append(end_date)
-            
+
             query += " GROUP BY run_id, model ORDER BY last_call DESC"
-            
-            cursor = conn.execute(query, params)
-            rows = cursor.fetchall()
-            
+
+            rows = conn.execute(query, params).fetchall()
+
             runs = []
             total_cost = 0.0
-            
+
             for row in rows:
-                cost = _cost_for_row(
-                    row["model"] or "",
-                    row["total_prompt_tokens"],
-                    row["total_completion_tokens"]
-                )
+                prompt_tokens = row["total_prompt_tokens"] or 0
+                completion_tokens = row["total_completion_tokens"] or 0
+                cost = _cost_for_row(row["model"] or "", prompt_tokens, completion_tokens)
                 total_cost += cost
-                
-                runs.append({
-                    "run_id": row["run_id"],
-                    "model": row["model"],
-                    "call_count": row["call_count"],
-                    "total_prompt_tokens": row["total_prompt_tokens"] or 0,
-                    "total_completion_tokens": row["total_completion_tokens"] or 0,
-                    "total_tokens": (row["total_prompt_tokens"] or 0) + (row["total_completion_tokens"] or 0),
-                    "cost": round(cost, 6),
-                    "first_call": row["first_call"],
-                    "last_call": row["last_call"]
-                })
-            
+
+                runs.append(
+                    {
+                        "run_id": row["run_id"],
+                        "model": row["model"],
+                        "provider": _provider_for_model(row["model"] or ""),
+                        "call_count": row["call_count"],
+                        "total_prompt_tokens": prompt_tokens,
+                        "total_completion_tokens": completion_tokens,
+                        "total_tokens": prompt_tokens + completion_tokens,
+                        "cost": round(cost, 6),
+                        "first_call": row["first_call"],
+                        "last_call": row["last_call"],
+                    }
+                )
+
             return {
                 "runs": runs,
                 "total_cost": round(total_cost, 6),
-                "run_count": len(set(r["run_id"] for r in runs))
+                "run_count": len(set(r["run_id"] for r in runs)),
             }

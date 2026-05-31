@@ -24,12 +24,13 @@ io_contract:
       sample_messages: { type: array, items: { type: string } }
       editorial_guidelines: { type: array, items: { type: string } }
 routing_hints:
+  preferred_models: [gpt-5.4, claude-sonnet-4-6, gpt-5.4-mini]
   preferred_models:
     - gpt-4.1
     - gpt-4o
     - claude-3-sonnet
   max_tokens: 1150
-checksum: 92f1e8f14a054c3c91a0b3a47d8c2fe5
+checksum: a88fd6f8efbc77b250b1cf3ae036a6eaff879f87a539d25db1dc27b670608501
 prompt: |
   You are the Content Strategist shaping messaging and pillars. Map the goals and audiences into content directions and voice guidance.
   

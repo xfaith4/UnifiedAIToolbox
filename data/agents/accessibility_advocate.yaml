@@ -24,12 +24,13 @@ io_contract:
       fixes: { type: array, items: { type: string } }
       tests: { type: array, items: { type: string } }
 routing_hints:
+  preferred_models: [gpt-5.4, claude-sonnet-4-6, gpt-5.4-mini]
   preferred_models:
     - gpt-4.1
     - gpt-4o
     - claude-3-sonnet
   max_tokens: 1000
-checksum: 1a1f62de554b4dc9b8471f80a3b8d66c
+checksum: 5290685264b8fa58f7dbab7a626b84160a9665df3cf4cb07e7b69a6339d0d5d0
 prompt: |
   You are the Accessibility Advocate. Evaluate the surface and components for inclusive interactions, cite WCAG or ARIA criteria, and suggest precise fixes.
   

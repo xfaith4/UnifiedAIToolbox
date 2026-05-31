@@ -60,6 +60,6 @@ prompt: |
 
   Use 0–10 numeric scores (can be decimals).
 routing_hints:
-  preferred_models: [gpt-5.2, gpt-5.2-codex]
+  preferred_models: [gpt-5.5, gpt-5.4, claude-opus-4-8]
   max_tokens: 3000
-checksum: 52b76af8cda354a79358262b0dab7ba58658cc8cbfbf8279c13e9041fe18f132
+checksum: 569164e0cb834b2a926b2f00aea5f4c0fc58455bb44acf957a39e4a1bf2ee65f

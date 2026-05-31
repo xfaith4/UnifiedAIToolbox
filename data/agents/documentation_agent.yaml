@@ -68,3 +68,5 @@ prompt: |
   Quality bar:
   - Clear enough for first-time contributors.
   - Accurate enough for production operators.
+routing_hints:
+  preferred_models: [gpt-5.4, claude-sonnet-4-6, gpt-5.4-mini]

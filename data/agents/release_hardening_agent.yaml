@@ -77,3 +77,5 @@ prompt: |
   Quality bar:
   - Every decision tied to concrete evidence.
   - Recommendations are operationally executable.
+routing_hints:
+  preferred_models: [gpt-5.5, gpt-5.4, claude-sonnet-4-6]

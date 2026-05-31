@@ -75,3 +75,5 @@ prompt: |
   Quality bar:
   - No hidden scope creep.
   - Every non-trivial behavior change is testable and explained.
+routing_hints:
+  preferred_models: [gpt-5.5, gpt-5.4, gpt-5.3-codex]

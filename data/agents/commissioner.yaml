@@ -57,6 +57,6 @@ prompt: |
 
   Conditions should be specific, testable gates (e.g., “Define success metric X” / “Prototype proves latency < Y ms”).
 routing_hints:
-  preferred_models: [gpt-5.2, gpt-5.2-codex]
+  preferred_models: [gpt-5.5, gpt-5.4, claude-opus-4-8]
   max_tokens: 3000
-checksum: b6b5f8eb6316092a11c3947b0fbf74978b30f5a8298945fcf00a14ad769cf25b
+checksum: 8beb4b43baa34d2852706b479c2eda7558d5bd165b49d3d4b4456eb5f994c347

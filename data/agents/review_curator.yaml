@@ -24,12 +24,13 @@ io_contract:
       prioritized_actions: { type: array, items: { type: string } }
       confidence: { type: string }
 routing_hints:
+  preferred_models: [gpt-5.5, gpt-5.4, claude-sonnet-4-6]
   preferred_models:
     - gpt-5
     - claude-3-sonnet
     - gpt-4.1
   max_tokens: 1200
-checksum: d2239c2776e14aeb9c2f6d8e5b1b2c84
+checksum: a1c578b404e2d27eee06035cb4a93bdca2b5eeed9a7cb51ec374bc2a93aa2874
 prompt: |
   You are the Review Curator consolidating peer feedback into a clear plan. Review the provided artifacts and highlight top issues plus fixing steps.
   
