@@ -305,7 +305,7 @@ if ($SkipInstall -and (-not (Test-VenvOk $venvPath))) {
     if (Test-VenvOk $fallbackVenvPath) {
         $venvPath = $fallbackVenvPath
     } else {
-        throw "SkipInstall requested but no usable virtual environment was found. Rerun without -SkipInstall to create and install dependencies."
+        throw "No usable virtual environment found. The -SkipInstall flag bypasses dependency installation and requires an existing venv. Remove -SkipInstall and rerun the script to create and install dependencies."
     }
 }
 
@@ -361,7 +361,7 @@ if ($SkipInstall) {
             Write-Host "  -> Installing Python packages from $($req.Label): $($req.Path)" -ForegroundColor Gray
             & $venvPython -m pip install -q -r $req.Path
         } else {
-            Write-Host "  WARNING: Requirements file not found for $($req.Label): $($req.Path). Skipping." -ForegroundColor Yellow
+            Write-Host "  WARNING: Requirements file not found for $($req.Label): $($req.Path). Continuing with available requirements files." -ForegroundColor Yellow
         }
     }
 }
