@@ -24,7 +24,7 @@ default_servers = resolve_servers(tags=["default"])
 browser_servers = resolve_servers(capabilities=["browser-automation"])
 ```
 
-**Curated MCP catalog (top 10)**  
+**Curated MCP catalog (top 10)**
 Each entry ships in `data/mcp/servers.json` with `metadata.repo_url` linkages so you can self-host or point to an existing deployment:
 
 | ID | Purpose | Capabilities | Link |
@@ -102,7 +102,8 @@ orchestration-bridge/
 
 ```javascript
 const { saveRun, computeCosts, computeHumanEquivalent, nowIso, uuidv4 } = require('./lib/run-tracker');
-const config = require('../../config/costs.example.json');
+const { loadCostConfig } = require('./lib/config-loader');
+const config = loadCostConfig(); // prefers config/costs.json, falls back to costs.example.json
 
 // Create run
 const run = {
@@ -128,7 +129,22 @@ saveRun(run);
 
 ## Configuration
 
-Edit `../../config/costs.example.json` to customize cost calculations:
+Cost parameters are loaded in priority order:
+
+1. **`COST_CONFIG_PATH` env var** — absolute path to any JSON file; highest precedence.
+2. **`config/costs.json`** — your local overrides; gitignored, safe for real pricing.
+3. **`config/costs.example.json`** — committed reference values; edit only to change defaults for everyone.
+4. Built-in hardcoded defaults (same values as the example file).
+
+To customize for your environment:
+
+```bash
+# At repo root
+cp config/costs.example.json config/costs.json
+# Edit config/costs.json — it will not be committed
+```
+
+Available keys:
 
 ```json
 {
@@ -139,7 +155,8 @@ Edit `../../config/costs.example.json` to customize cost calculations:
   "avg_gpu_power_watts": 200,
   "water_intensity_l_per_kwh": 0.5,
   "human_hourly_rate_usd": 60,
-  "baseline_hours_per_unit": 2
+  "baseline_hours_per_unit": 2,
+  "storage_cost_per_gb_month_usd": 0.023
 }
 ```
 

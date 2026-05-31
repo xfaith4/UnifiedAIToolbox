@@ -47,6 +47,9 @@ apps/unifiedtoolbox.webapp/src/features/swarm-viz/_prototype_inbox/backend/.env.
 *.db
 *.log
 
+# User-local cost overrides (copy costs.example.json → costs.json and edit)
+config/costs.json
+
 # Artifacts directory (build outputs, reports, collected artifacts)
 artifacts/
 # But include test fixtures

@@ -1,11 +1,32 @@
 {
-  "api_cost_per_1k_tokens_usd": 0.02,
+  "_schema_version": "2.0",
+  "_see": "docs/cost-model.md",
+
+  "_section_token_pricing": "Model-specific token pricing. Preferred over legacy api_cost_per_1k_tokens_usd.",
+  "token_pricing": {
+    "provider": "openai",
+    "model": "gpt-4o-mini",
+    "input_price_per_million_tokens_usd": 0.15,
+    "output_price_per_million_tokens_usd": 0.60,
+    "cached_input_price_per_million_tokens_usd": null,
+    "source": "provider_pricing_page",
+    "last_verified": "2025-01-01"
+  },
+
+  "_section_human_equivalent": "Business-value proxy. Not a wage or billing rate. See docs/cost-model.md.",
+  "human_equivalent_hourly_rate_usd": 60,
+  "baseline_hours_per_orchestration_run": 2,
+
+  "_section_compute": "Compute and environmental estimates.",
   "cpu_cost_per_hour_usd": 0.10,
   "gpu_cost_per_hour_usd": 1.50,
   "avg_cpu_power_watts": 50,
   "avg_gpu_power_watts": 200,
   "water_intensity_l_per_kwh": 0.5,
+  "storage_cost_per_gb_month_usd": 0.023,
+
+  "_section_legacy": "Legacy fields retained for backward compatibility. Prefer the fields above.",
+  "api_cost_per_1k_tokens_usd": 0.02,
   "human_hourly_rate_usd": 60,
-  "baseline_hours_per_unit": 2,
-  "storage_cost_per_gb_month_usd": 0.023
+  "baseline_hours_per_unit": 2
 }

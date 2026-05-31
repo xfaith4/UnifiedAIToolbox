@@ -1,6 +1,6 @@
 /**
  * Run Tracker Module
- * 
+ *
  * Captures and stores orchestration run metadata including:
  * - Duration, tokens, API calls
  * - Cost calculations (API, compute, storage)
@@ -42,16 +42,16 @@ function ensureRunsDir() {
  */
 function saveRun(run) {
   const dir = ensureRunsDir();
-  
+
   // Create filename with timestamp and run ID
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('.')[0];
   const shortId = run.id.split('-')[0];
   const filename = `${timestamp}-${shortId}.json`;
   const filePath = path.join(dir, filename);
-  
+
   // Save run file
   fs.writeFileSync(filePath, JSON.stringify(run, null, 2));
-  
+
   // Update index summary
   const indexPath = path.join(dir, 'index.json');
   let index = [];
@@ -63,7 +63,7 @@ function saveRun(run) {
       index = [];
     }
   }
-  
+
   // Add summary entry to index
   index.unshift({
     id: run.id,
@@ -77,10 +77,10 @@ function saveRun(run) {
     status: run.summary ? (run.summary.success ? 'success' : 'failed') : 'unknown',
     file: filename
   });
-  
+
   // Keep only last 1000 entries
   fs.writeFileSync(indexPath, JSON.stringify(index.slice(0, 1000), null, 2));
-  
+
   return filePath;
 }
 
@@ -91,41 +91,58 @@ function saveRun(run) {
  * @returns {Object} Calculated costs
  */
 function computeCosts(resources, config) {
-  // API cost based on token usage
-  const tokensTotal = (resources.tokens_in || 0) + (resources.tokens_out || 0);
-  const api_cost_usd = (tokensTotal / 1000) * (config.api_cost_per_1k_tokens_usd || 0);
-  
-  // Compute cost based on CPU/GPU seconds
+  // --- API token cost ---
+  // Prefer model-specific token_pricing block; fall back to legacy blended rate.
+  let api_cost_usd;
+  let api_pricing_source;
+  const tp = config.token_pricing;
+  if (tp && tp.input_price_per_million_tokens_usd != null) {
+    const inputCost =
+      (resources.tokens_in || 0) / 1_000_000 * tp.input_price_per_million_tokens_usd;
+    const outputCost =
+      (resources.tokens_out || 0) / 1_000_000 * (tp.output_price_per_million_tokens_usd || 0);
+    const cachedCost = (tp.cached_input_price_per_million_tokens_usd != null)
+      ? (resources.cached_tokens_in || 0) / 1_000_000 * tp.cached_input_price_per_million_tokens_usd
+      : 0;
+    api_cost_usd = inputCost + outputCost + cachedCost;
+    api_pricing_source = `${tp.provider || 'unknown'}/${tp.model || 'unknown'} (last_verified: ${tp.last_verified || 'unknown'})`;
+  } else {
+    const tokensTotal = (resources.tokens_in || 0) + (resources.tokens_out || 0);
+    api_cost_usd = (tokensTotal / 1000) * (config.api_cost_per_1k_tokens_usd || 0);
+    api_pricing_source = 'legacy_blended_estimate';
+  }
+
+  // --- Compute cost ---
   const cpu_seconds = resources.cpu_seconds || 0;
   const gpu_seconds = resources.gpu_seconds || 0;
-  const compute_cost_usd = 
+  const compute_cost_usd =
     (cpu_seconds / 3600) * (config.cpu_cost_per_hour_usd || 0) +
     (gpu_seconds / 3600) * (config.gpu_cost_per_hour_usd || 0);
-  
-  // Energy calculation
+
+  // --- Environmental estimates ---
   const duration_seconds = (resources.duration_ms || 0) / 1000;
-  const avg_power_watts = 
-    (config.avg_cpu_power_watts || 0) + 
+  const avg_power_watts =
+    (config.avg_cpu_power_watts || 0) +
     (config.avg_gpu_power_watts || 0);
   const energy_kwh = (avg_power_watts * duration_seconds) / MS_TO_KWH_DIVISOR;
-  
-  // Water usage based on energy consumption
   const water_liters = energy_kwh * (config.water_intensity_l_per_kwh || 0);
-  
-  // Storage cost (if applicable)
+
+  // --- Storage cost ---
   const storage_gb = resources.storage_gb || 0;
   const storage_cost_usd = storage_gb * (config.storage_cost_per_gb_month_usd || 0);
-  
-  // Total cost
+
+  // --- Totals ---
   const total_usd = api_cost_usd + compute_cost_usd + storage_cost_usd;
-  
+
   return {
     api_cost_usd: parseFloat(api_cost_usd.toFixed(6)),
+    api_pricing_source,
     compute_cost_usd: parseFloat(compute_cost_usd.toFixed(6)),
     storage_cost_usd: parseFloat(storage_cost_usd.toFixed(6)),
     total_usd: parseFloat(total_usd.toFixed(6)),
     energy_kwh: parseFloat(energy_kwh.toFixed(6)),
-    water_liters: parseFloat(water_liters.toFixed(6))
+    water_liters: parseFloat(water_liters.toFixed(6)),
+    _disclaimer: 'Cost and environmental values are estimates. See docs/cost-model.md.'
   };
 }
 
@@ -137,21 +154,24 @@ function computeCosts(resources, config) {
  */
 function computeHumanEquivalent(run, config) {
   const duration_hours = (run.duration_ms || 0) / 3600000;
-  const human_hourly_rate = config.human_hourly_rate_usd || 60;
-  const baseline_hours = config.baseline_hours_per_unit || 2;
-  
+  // Prefer clearer v2 field names; fall back to legacy names.
+  const human_hourly_rate =
+    config.human_equivalent_hourly_rate_usd || config.human_hourly_rate_usd || 60;
+  const baseline_hours =
+    config.baseline_hours_per_orchestration_run || config.baseline_hours_per_unit || 2;
+
   // Estimate human time (configurable multiplier)
   const estimated_hours_if_human = Math.max(baseline_hours, duration_hours * 10);
-  
+
   // Calculate cost equivalent
   const estimated_cost_if_human = estimated_hours_if_human * human_hourly_rate;
-  
+
   // Calculate professionals equivalent
-  const professionals_count_equivalent = 
-    estimated_cost_if_human > 0 
+  const professionals_count_equivalent =
+    estimated_cost_if_human > 0
       ? (run.costs.total_usd / estimated_cost_if_human).toFixed(2)
       : 0;
-  
+
   return {
     estimated_hours_if_human: parseFloat(estimated_hours_if_human.toFixed(2)),
     estimated_cost_if_human: parseFloat(estimated_cost_if_human.toFixed(2)),
@@ -168,23 +188,23 @@ function computeHumanEquivalent(run, config) {
 function loadRun(runId) {
   const dir = ensureRunsDir();
   const indexPath = path.join(dir, 'index.json');
-  
+
   if (!fs.existsSync(indexPath)) {
     return null;
   }
-  
+
   const index = JSON.parse(fs.readFileSync(indexPath, 'utf8'));
   const entry = index.find(r => r.id === runId);
-  
+
   if (!entry || !entry.file) {
     return null;
   }
-  
+
   const runPath = path.join(dir, entry.file);
   if (!fs.existsSync(runPath)) {
     return null;
   }
-  
+
   return JSON.parse(fs.readFileSync(runPath, 'utf8'));
 }
 
@@ -196,22 +216,22 @@ function loadRun(runId) {
 function listRuns(options = {}) {
   const dir = ensureRunsDir();
   const indexPath = path.join(dir, 'index.json');
-  
+
   if (!fs.existsSync(indexPath)) {
     return [];
   }
-  
+
   let runs = JSON.parse(fs.readFileSync(indexPath, 'utf8'));
-  
+
   // Apply filters
   if (options.status) {
     runs = runs.filter(r => r.status === options.status);
   }
-  
+
   if (options.limit) {
     runs = runs.slice(0, options.limit);
   }
-  
+
   return runs;
 }
 
