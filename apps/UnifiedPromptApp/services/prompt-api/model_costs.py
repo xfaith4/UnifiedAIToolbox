@@ -8,7 +8,7 @@ for AI model API calls.
 
 import json
 import pathlib
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional, Dict, Any
 from dataclasses import dataclass
 
 
@@ -21,7 +21,7 @@ class ModelImpact:
     model: str
     tokens_input: int
     tokens_output: int
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for API responses."""
         return {
@@ -38,26 +38,26 @@ class ModelImpact:
 class ModelCostCalculator:
     """
     Calculator for model costs and environmental impact.
-    
+
     Loads pricing and intensity factors from config/model_costs.json
     and provides methods to calculate impact per API call.
     """
-    
+
     def __init__(self, config_path: Optional[pathlib.Path] = None):
         """
         Initialize calculator with model cost configuration.
-        
+
         Args:
             config_path: Path to model_costs.json. If None, uses default location.
         """
         if config_path is None:
             base_dir = pathlib.Path(__file__).parent
             config_path = base_dir / "config" / "model_costs.json"
-        
+
         self.config_path = config_path
         self._config: Optional[Dict[str, Any]] = None
         self._load_config()
-    
+
     def _load_config(self) -> None:
         """Load configuration from JSON file."""
         try:
@@ -69,57 +69,102 @@ class ModelCostCalculator:
         except json.JSONDecodeError as e:
             print(f"Warning: Invalid JSON in model costs config: {e}")
             self._config = {"models": {}}
-    
+
+    @staticmethod
+    def _as_float(value: Any, default: float = 0.0) -> float:
+        """Safely coerce numeric config values to float."""
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+
+    def _resolve_model_name(self, model_name: str) -> str:
+        """
+        Resolve aliases and suffix variants to a configured model key.
+
+        Resolution order:
+        1. Exact model key in models
+        2. Exact alias in aliases map
+        3. Prefix match against model keys (e.g. model-with-version)
+        """
+        if not self._config:
+            return model_name
+
+        models = self._config.get("models", {})
+        aliases = self._config.get("aliases", {})
+
+        if model_name in models:
+            return model_name
+
+        alias_target = aliases.get(model_name)
+        if isinstance(alias_target, str) and alias_target in models:
+            return alias_target
+
+        for key in models.keys():
+            if model_name.startswith(key):
+                return key
+
+        return model_name
+
     def get_model_config(self, model_name: str) -> Optional[Dict[str, Any]]:
         """
         Get configuration for a specific model.
-        
+
         Args:
             model_name: Name of the model (e.g., "gpt-4o-mini")
-            
+
         Returns:
             Model configuration dict or None if not found
         """
         if not self._config:
             return None
-        
+
         models = self._config.get("models", {})
-        
-        # Try exact match first
-        if model_name in models:
-            return models[model_name]
-        
-        # Try partial match (e.g., "gpt-4o-mini-2024-07-18" matches "gpt-4o-mini")
-        for key, config in models.items():
-            if model_name.startswith(key):
-                return config
-        
-        return None
-    
+        resolved_name = self._resolve_model_name(model_name)
+        return models.get(resolved_name)
+
+    def get_provider(self, model_name: str) -> str:
+        """
+        Resolve provider from model metadata, with a conservative fallback.
+        """
+        config = self.get_model_config(model_name)
+        provider = (config or {}).get("provider")
+        if isinstance(provider, str) and provider.strip():
+            return provider.strip().lower()
+
+        normalized = (model_name or "").lower()
+        if normalized.startswith("claude"):
+            return "anthropic"
+        if normalized.startswith("gpt") or normalized.startswith("o"):
+            return "openai"
+        return "unknown"
+
     def calculate_impact(
         self,
         model: str,
         tokens_input: Optional[int],
         tokens_output: Optional[int],
-        agent_name: Optional[str] = None
+        agent_name: Optional[str] = None,
+        tokens_cached_input: Optional[int] = None,
     ) -> ModelImpact:
         """
         Calculate cost and environmental impact for a model API call.
-        
+
         Args:
             model: Model name
             tokens_input: Number of input/prompt tokens
             tokens_output: Number of output/completion tokens
             agent_name: Optional agent name for tracking
-            
+
         Returns:
             ModelImpact with calculated values
         """
         tokens_input = tokens_input or 0
         tokens_output = tokens_output or 0
-        
+        tokens_cached_input = tokens_cached_input or 0
+
         config = self.get_model_config(model)
-        
+
         if not config:
             # Unknown model - return zero impact with warning
             print(f"Warning: No cost config for model '{model}', using zero impact")
@@ -131,25 +176,30 @@ class ModelCostCalculator:
                 tokens_input=tokens_input,
                 tokens_output=tokens_output
             )
-        
+
         # Calculate cost in USD
-        input_price_per_million = config.get("input_price_per_million", 0.0)
-        output_price_per_million = config.get("output_price_per_million", 0.0)
-        
+        input_price_per_million = self._as_float(config.get("input_price_per_million"), 0.0)
+        output_price_per_million = self._as_float(config.get("output_price_per_million"), 0.0)
+        cached_input_price_per_million = self._as_float(
+            config.get("cached_input_price_per_million"),
+            input_price_per_million,
+        )
+
         cost_usd = (
             (tokens_input / 1_000_000) * input_price_per_million +
+            (tokens_cached_input / 1_000_000) * cached_input_price_per_million +
             (tokens_output / 1_000_000) * output_price_per_million
         )
-        
+
         # Calculate energy consumption (kWh)
-        kwh_per_million = config.get("kwh_per_million_tokens", 0.0)
+        kwh_per_million = self._as_float(config.get("kwh_per_million_tokens"), 0.0)
         total_tokens = tokens_input + tokens_output
         kwh_estimated = (total_tokens / 1_000_000) * kwh_per_million
-        
+
         # Calculate water usage (liters)
-        liters_per_million = config.get("liters_per_million_tokens", 0.0)
+        liters_per_million = self._as_float(config.get("liters_per_million_tokens"), 0.0)
         water_liters_estimated = (total_tokens / 1_000_000) * liters_per_million
-        
+
         return ModelImpact(
             cost_usd=cost_usd,
             kwh_estimated=kwh_estimated,
@@ -158,13 +208,13 @@ class ModelCostCalculator:
             tokens_input=tokens_input,
             tokens_output=tokens_output
         )
-    
+
     def get_all_models(self) -> list[str]:
         """Get list of all supported model names."""
         if not self._config:
             return []
         return list(self._config.get("models", {}).keys())
-    
+
     def reload_config(self) -> None:
         """Reload configuration from file."""
         self._load_config()
@@ -186,20 +236,21 @@ def calculate_impact(
     model: str,
     tokens_input: Optional[int],
     tokens_output: Optional[int],
-    agent_name: Optional[str] = None
+    agent_name: Optional[str] = None,
+    tokens_cached_input: Optional[int] = None,
 ) -> ModelImpact:
     """
     Convenience function to calculate impact using global calculator.
-    
+
     Args:
         model: Model name
         tokens_input: Number of input tokens
         tokens_output: Number of output tokens
         agent_name: Optional agent name
-        
+
     Returns:
         ModelImpact with calculated values
     """
     return get_calculator().calculate_impact(
-        model, tokens_input, tokens_output, agent_name
+        model, tokens_input, tokens_output, agent_name, tokens_cached_input
     )

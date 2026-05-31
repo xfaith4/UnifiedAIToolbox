@@ -25,10 +25,6 @@ io_contract:
       priority: { type: string }
 routing_hints:
   preferred_models: [gpt-5.5, claude-opus-4-8, gpt-5.4]
-  preferred_models:
-    - gpt-4.1
-    - claude-3-sonnet
-    - gpt-5
   max_tokens: 1300
 checksum: 16e894fa9057681a28b75e948037b433fed8bc04757f0726a0355cfaaf646bb2
 prompt: |

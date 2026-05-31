@@ -25,10 +25,6 @@ io_contract:
       instrumentation: { type: array, items: { type: string } }
 routing_hints:
   preferred_models: [gpt-5.5, gpt-5.4, gpt-5.4-mini]
-  preferred_models:
-    - gpt-4.1
-    - gpt-4o
-    - claude-3-sonnet
   max_tokens: 1100
 checksum: 176c9b9b45a866b2449d049068593002745631c6bbfef6a33127fc704704b890
 prompt: |

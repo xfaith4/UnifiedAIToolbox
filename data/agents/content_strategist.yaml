@@ -25,10 +25,6 @@ io_contract:
       editorial_guidelines: { type: array, items: { type: string } }
 routing_hints:
   preferred_models: [gpt-5.4, claude-sonnet-4-6, gpt-5.4-mini]
-  preferred_models:
-    - gpt-4.1
-    - gpt-4o
-    - claude-3-sonnet
   max_tokens: 1150
 checksum: a88fd6f8efbc77b250b1cf3ae036a6eaff879f87a539d25db1dc27b670608501
 prompt: |

@@ -25,10 +25,6 @@ io_contract:
       confidence: { type: string }
 routing_hints:
   preferred_models: [gpt-5.5, gpt-5.4, claude-sonnet-4-6]
-  preferred_models:
-    - gpt-5
-    - claude-3-sonnet
-    - gpt-4.1
   max_tokens: 1200
 checksum: a1c578b404e2d27eee06035cb4a93bdca2b5eeed9a7cb51ec374bc2a93aa2874
 prompt: |

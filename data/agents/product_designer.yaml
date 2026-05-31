@@ -25,10 +25,6 @@ io_contract:
       alignment_plan: { type: array, items: { type: string } }
 routing_hints:
   preferred_models: [gpt-5.4, claude-sonnet-4-6, gpt-5.5]
-  preferred_models:
-    - gpt-5
-    - gpt-4.1
-    - claude-3-sonnet
   max_tokens: 1400
 checksum: 6a12f5e2c1ae1fb8163aa491010e7b36c7c4f6cc8969929d0fbc3c8b84058f77
 prompt: |

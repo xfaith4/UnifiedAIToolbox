@@ -25,10 +25,6 @@ io_contract:
       accountability_prompts: { type: array, items: { type: string } }
 routing_hints:
   preferred_models: [gpt-5.4, claude-sonnet-4-6, gpt-5.4-mini]
-  preferred_models:
-    - gpt-4.1
-    - gpt-4o-mini
-    - claude-3-sonnet
   max_tokens: 900
 checksum: c469f7741e21e5675b52973ebd4cddc8cc78b2b92002ad91e05fcd0c876365d4
 prompt: |

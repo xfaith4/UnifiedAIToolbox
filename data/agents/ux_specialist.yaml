@@ -26,10 +26,6 @@ io_contract:
       risks: { type: array, items: { type: string } }
 routing_hints:
   preferred_models: [gpt-5.4, claude-sonnet-4-6, gpt-5.4-mini]
-  preferred_models:
-    - gpt-4.1
-    - gpt-5
-    - claude-3-sonnet
   max_tokens: 1200
 checksum: 721c9a435d6563313b47ecd33900497b0100814defa91ce243d3c9e2d668a93f
 prompt: |

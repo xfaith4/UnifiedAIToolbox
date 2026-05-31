@@ -25,10 +25,6 @@ io_contract:
       communication_plan: { type: array, items: { type: string } }
 routing_hints:
   preferred_models: [gpt-5.4, claude-sonnet-4-6, gpt-5.4-mini]
-  preferred_models:
-    - gpt-4.1
-    - gpt-4o
-    - claude-3-sonnet
   max_tokens: 1100
 checksum: 61936d0a86398ca4cc05995705097973131c71e7b2c276498fb648a683b8d52a
 prompt: |

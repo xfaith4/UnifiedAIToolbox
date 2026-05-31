@@ -105,7 +105,7 @@ const SWARM_COST_BASELINE = {
   outputTokens: 2000,
 }
 
-const SWARM_COST_MODELS = ['gpt-4o-mini', 'gpt-4-turbo', 'claude-3.5-sonnet'] as const
+const SWARM_COST_MODELS = ['gpt-5.4-mini', 'gpt-5.4', 'claude-sonnet-4-6'] as const
 const SWARM_LAUNCH_NOTE = 'Launching swarm via scripts/swarms…'
 
 function OrchestratorPageContent() {
@@ -1260,7 +1260,7 @@ function OrchestratorPageContent() {
                   <input
                     type="text"
                     className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"
-                    placeholder="gpt-4o-mini"
+                    placeholder="gpt-5.4-mini"
                     value={form.model}
                     onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))}
                   />
@@ -1383,8 +1383,8 @@ function OrchestratorPageContent() {
                     </div>
                   </div>
                   <div className="rounded-xl border border-blue-900/50 bg-blue-950/60 px-3 py-2 text-xs text-blue-200">
-                    Estimated cost (gpt-4o-mini): $
-                    {calculateCost('gpt-4o-mini', swarmRunDisplay.inputTokens, swarmRunDisplay.outputTokens).toFixed(4)}
+                    Estimated cost (gpt-5.4-mini): $
+                    {calculateCost('gpt-5.4-mini', swarmRunDisplay.inputTokens, swarmRunDisplay.outputTokens).toFixed(4)}
                   </div>
                   <button
                     type="button"

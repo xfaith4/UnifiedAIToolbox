@@ -3,6 +3,7 @@ import type { Session, Task, Artifact, RunMode } from '../types'
 import { ArtifactType, TaskStatus } from '../types'
 import type { EnginePipelinePayload } from '@/lib/app-factory/pipeline/pipelineStatus'
 import { buildEnginePipelinePayload } from '@/lib/app-factory/pipeline/pipelineStatus'
+import { calculateCost as calculateModelCost, calculateWater } from '@/lib/config/modelPricing'
 import { getBrowserApiKeyFromEnv } from '../utils/apiKey'
 
 function makeInitialPipeline(hardeningEnabled: boolean): EnginePipelinePayload {
@@ -117,15 +118,6 @@ function sanitizePlannedFilename(raw: string): string {
   return name
 }
 
-// Pricing per 1 million tokens (input/output) for GPT-5.2
-const PRICING = {
-  'gpt-5.2': { input: 2.5 / 1_000_000, output: 10.0 / 1_000_000 },
-  'dall-e-3': { perImage: 0.04 }, // Standard quality 1024x1024
-}
-
-// Water usage estimation: approximate liters per 1,000 tokens
-const WATER_LITERS_PER_K_TOKEN = 0.002
-
 const STORAGE_KEY = 'orchestrator-session-history'
 const MAX_HISTORY_ITEMS = 50
 // LocalStorage is quota-limited (~5MB). Keep the on-disk cache compact to avoid QuotaExceededError.
@@ -136,16 +128,13 @@ const HISTORY_API_ENDPOINT = '/api/engine/history'
 
 const getBrowserApiKey = () => getBrowserApiKeyFromEnv()
 
-const calculateCost = (model: keyof typeof PRICING, inputTokens: number, outputTokens: number, images: number = 0): number => {
-  if (model === 'dall-e-3') return images * PRICING[model].perImage
-  const modelPricing = PRICING[model]
-  if (!modelPricing || !('input' in modelPricing)) return 0
-  return inputTokens * modelPricing.input + outputTokens * modelPricing.output
+const calculateCost = (model: string, inputTokens: number, outputTokens: number, images: number = 0): number => {
+  return calculateModelCost(model, inputTokens, outputTokens, images)
 }
 
-const calculateWaterUsage = (inputTokens: number, outputTokens: number): number => {
+const calculateWaterUsage = (inputTokens: number, outputTokens: number, model: string = 'gpt-5.4'): number => {
   const totalTokens = inputTokens + outputTokens
-  return (totalTokens / 1000) * WATER_LITERS_PER_K_TOKEN
+  return calculateWater(totalTokens, model)
 }
 
 const isQuotaExceededError = (error: unknown) => {
@@ -581,7 +570,7 @@ class OrchestratorRuntime {
       `
 
       const response = await openai.chat.completions.create({
-        model: 'gpt-5.2',
+        model: 'gpt-5.4',
         messages: [{ role: 'user', content: planPrompt }],
       })
       plannerRawText = response.choices[0]?.message?.content ?? null
@@ -590,7 +579,7 @@ class OrchestratorRuntime {
 
       const usage = response.usage
       if (usage && this.snapshot.session) {
-        const planningCost = calculateCost('gpt-5.2', usage.prompt_tokens, usage.completion_tokens)
+        const planningCost = calculateCost('gpt-5.4', usage.prompt_tokens, usage.completion_tokens)
         const planningWater = calculateWaterUsage(usage.prompt_tokens, usage.completion_tokens)
         this.snapshot = {
           ...this.snapshot,
@@ -706,7 +695,7 @@ class OrchestratorRuntime {
     `
 
     const response = await openai.chat.completions.create({
-      model: 'gpt-5.2',
+      model: 'gpt-5.4',
       messages: [{ role: 'user', content: feedbackPrompt }],
     })
     return response.choices[0].message.content || ''
@@ -796,7 +785,7 @@ class OrchestratorRuntime {
         if (!session?.fileContent) throw new Error('File Analyst task was scheduled, but no file content was found in the session.')
         const summaryPrompt = `Summarize the following content for a developer. Focus on key entities, structure, and purpose:\n\n${session.fileContent}`
         const response = await openai.chat.completions.create({
-          model: 'gpt-5.2',
+          model: 'gpt-5.4',
           messages: [{ role: 'user', content: summaryPrompt }],
         })
         if (!this.isCurrentRun(token) || !this.snapshot.isOrchestrating) return
@@ -806,7 +795,7 @@ class OrchestratorRuntime {
         if (usage) {
           inputTokens = usage.prompt_tokens
           outputTokens = usage.completion_tokens
-          taskCost = calculateCost('gpt-5.2', inputTokens, outputTokens)
+          taskCost = calculateCost('gpt-5.4', inputTokens, outputTokens)
         }
       } else if (task.agent.role === 'Image Generator') {
         const baseImagePrompt = `Based on the goal "${session?.goal}", generate a suitable image for the task: "${task.name}".`
@@ -837,12 +826,12 @@ class OrchestratorRuntime {
           Your task is: "${task.name}".
           The overall goal is: "${session?.goal}".
           ${context ? `You have the following context from previous tasks:\n${context}` : ''}
-          
+
           Perform your task. Provide a log of your actions prefixed with "LOG:".
           When you are finished, provide your final output as a single artifact prefixed with "ARTIFACT:". This is mandatory.
         `
         const response = await openai.chat.completions.create({
-          model: 'gpt-5.2',
+          model: 'gpt-5.4',
           messages: [
             {
               role: 'system',
@@ -880,7 +869,7 @@ class OrchestratorRuntime {
         if (usage) {
           inputTokens = usage.prompt_tokens
           outputTokens = usage.completion_tokens
-          taskCost = calculateCost('gpt-5.2', inputTokens, outputTokens)
+          taskCost = calculateCost('gpt-5.4', inputTokens, outputTokens)
         }
 
       if (artifactContent.trim()) {

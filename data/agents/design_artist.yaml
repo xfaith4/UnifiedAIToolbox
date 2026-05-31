@@ -25,10 +25,6 @@ io_contract:
       assets: { type: array, items: { type: string } }
 routing_hints:
   preferred_models: [gpt-5.4, claude-sonnet-4-6, gpt-5.5]
-  preferred_models:
-    - gpt-4.1
-    - gpt-5
-    - claude-3-haiku
   max_tokens: 1100
 checksum: 79d19f5b41e3d5e6e01c4c63e5e755517164c5e1077edd372ed92cc3ca350f35
 prompt: |

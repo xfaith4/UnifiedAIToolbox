@@ -1,13 +1,13 @@
 import datetime
-import os
 import sqlite3
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 try:
     # Preferred: use the same centralized model pricing/impact module used by cost_metrics.py.
-    from model_costs import calculate_impact
+    from model_costs import calculate_impact, get_calculator
 except Exception:  # pragma: no cover - keeps the tracker importable during partial installs/tests
     calculate_impact = None
+    get_calculator = None
 
 
 def _parse_iso(ts: str) -> Optional[datetime.datetime]:
@@ -63,10 +63,13 @@ def _cost_for_row(model: str, prompt_tokens: Optional[int], completion_tokens: O
 def _provider_for_model(model: str) -> str:
     """
     Resolve provider without duplicating pricing logic.
-
-    If model_costs exposes provider metadata in the future, prefer that there.
-    This fallback keeps provider filters useful for current OpenAI/Anthropic routing.
     """
+    if get_calculator:
+        try:
+            return get_calculator().get_provider(model)
+        except Exception:
+            pass
+
     normalized = (model or "").lower()
     if normalized.startswith("claude"):
         return "anthropic"
