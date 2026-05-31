@@ -302,44 +302,44 @@ export default function CurrentRunCard({
 
   return (
     <div
-      className={`rounded-xl border border-gray-700 bg-gray-900/80 overflow-hidden ${className}`}
+      className={`min-w-0 max-w-full rounded-xl border border-gray-700 bg-gray-900/80 overflow-hidden ${className}`}
       aria-label={`Run ${safeRunId || 'unknown-run'}: ${liveStatus}`}
     >
       {/* ── Header: status badge + timing ── */}
-      <div className="flex items-center gap-2.5 px-3.5 py-2.5 border-b border-gray-800">
+      <div className="flex min-w-0 items-center gap-2.5 border-b border-gray-800 px-3.5 py-2.5">
         <span
-          className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${statusCfg.cls}`}
+          className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${statusCfg.cls}`}
         >
           {statusCfg.icon}
           {statusCfg.label}
         </span>
 
         {!isTerminal && (
-          <span className="text-[11px] text-gray-500">
+          <span className="shrink-0 text-[11px] text-gray-500">
             {formatDuration(entry.startedAt)} elapsed
           </span>
         )}
         {isTerminal && endedAt && (
-          <span className="text-[11px] text-gray-500">
+          <span className="shrink-0 text-[11px] text-gray-500">
             Finished in {formatDuration(entry.startedAt, endedAt)}
           </span>
         )}
 
-        <span className="ml-auto text-[10px] font-mono text-gray-600">
+        <span className="ml-auto shrink-0 text-[10px] font-mono text-gray-600">
           {formatRelativeTime(entry.startedAt)}
         </span>
       </div>
 
       {/* ── Goal / run metadata ── */}
-      <div className="px-3.5 py-2">
+      <div className="min-w-0 max-w-full px-3.5 py-2">
         <p
-          className="text-xs font-medium text-gray-200 truncate"
+          className="block max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-xs font-medium text-gray-200"
           title={entry.goal}
         >
           {entry.goal}
         </p>
-        <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[10px] text-gray-600">
-          <span className="font-mono">{runIdLabel}…</span>
+        <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-2 text-[10px] text-gray-600">
+          <span className="shrink-0 font-mono">{runIdLabel}…</span>
           {entry.mode && <span>· {entry.mode}</span>}
           {currentPhase && (
             <span className="text-blue-400">· Phase: {currentPhase}</span>
@@ -374,7 +374,7 @@ export default function CurrentRunCard({
       )}
 
       {/* ── Actions ── */}
-      <div className="flex flex-wrap items-center gap-2 border-t border-gray-800 px-3.5 py-2">
+      <div className="flex min-w-0 flex-wrap items-center gap-2 border-t border-gray-800 px-3.5 py-2">
         <Link
           href={runHref}
           className="flex items-center gap-1.5 rounded-lg border border-blue-800/60 bg-blue-950/30 px-2.5 py-1.5 text-xs font-medium text-blue-200 hover:bg-blue-950/60 hover:text-white transition-colors"

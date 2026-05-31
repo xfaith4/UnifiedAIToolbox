@@ -1527,12 +1527,12 @@ function ConciergePageContent() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-5rem)] flex-col gap-4 md:flex-row">
+    <div className="flex h-[calc(100vh-5rem)] min-w-0 overflow-x-hidden flex-col gap-4 md:flex-row">
       {/* ── Chat panel ── */}
-      <div className="flex flex-1 flex-col rounded-2xl border border-gray-800 bg-gray-900 overflow-hidden min-h-0">
+      <div className="flex min-w-0 flex-1 flex-col rounded-2xl border border-gray-800 bg-gray-900 overflow-hidden min-h-0">
         {/* Current / Last Run card — shown above the chat when a recent run exists */}
         {lastRunEntry && (
-          <div className="shrink-0 border-b border-gray-800 p-3">
+          <div className="min-w-0 shrink-0 border-b border-gray-800 p-3">
             <CurrentRunCard
               entry={lastRunEntry}
               onViewEvents={() => setShowEventPanel((v) => !v)}
@@ -1704,7 +1704,7 @@ function ConciergePageContent() {
       </div>
 
       {/* ── Proposal panel ── */}
-      <div className="w-full md:w-80 lg:w-96 flex flex-col min-h-0 gap-3 overflow-y-auto">
+      <div className="flex min-w-0 w-full flex-col gap-3 overflow-y-auto min-h-0 md:w-80 lg:w-96">
         {proposal ? (
           <ProposalPanel
             proposal={proposal}
@@ -1742,7 +1742,7 @@ function ConciergePageContent() {
 
       {/* ── Live Event Panel (docked right drawer) ── */}
       {showEventPanel && lastRunEntry?.runId?.trim() && (
-        <div className="w-full md:w-72 lg:w-80 flex-shrink-0 rounded-2xl border border-gray-800 overflow-hidden min-h-0">
+        <div className="min-w-0 w-full flex-shrink-0 rounded-2xl border border-gray-800 overflow-hidden min-h-0 md:w-72 lg:w-80">
           <LiveEventPanel
             runId={lastRunEntry.runId}
             onClose={() => setShowEventPanel(false)}
