@@ -1,5 +1,90 @@
 [
   {
+    "run_id": "secure_test.2026-05-31T06-28-19Z",
+    "ingested_at": "2026-05-31T08:12:51Z",
+    "goal": "secure test",
+    "goal_tokens": [
+      "secure",
+      "test"
+    ],
+    "status": "running",
+    "verification_status": "needs_requirements",
+    "knowledge_status": "pass",
+    "knowledge_score": 8.3,
+    "learning": {
+      "classification": "requirements_gap",
+      "what_broke": "Requirements were incomplete for machine-verifiable implementation.",
+      "root_cause": "Commissioner detected unresolved requirement gaps and requested follow-up inputs.",
+      "evidence": [
+        "requirements_request_blockers:1",
+        "critic_blocker:Incomplete conceptual model contract that lacks essential requirements and acceptance criteria.",
+        "commissioner_score:2",
+        "commissioner_recommendation:no-go"
+      ],
+      "prevention_patches": [
+        {
+          "target": "commissioner_evaluator",
+          "change": "Route incomplete requirements to needs_requirements with structured blockers instead of failed.",
+          "artifact_ref": "sandbox_report.requirements_request"
+        },
+        {
+          "target": "concierge_ui",
+          "change": "Render blockers as concise follow-up questions with defaults for fast-path responses.",
+          "artifact_ref": "requirements_request.blockers"
+        }
+      ],
+      "regression_checks": [
+        "Commissioner low-score + resolvable blockers yields verification_status=needs_requirements",
+        "Concierge receives blockers/questions payload and keeps run non-failure"
+      ],
+      "questions_needed": [],
+      "context_facts": [
+        "Problem: The project lacks a clear definition of user requests, required features, mechanics, expected outputs, and acceptance criteria, leading to implementation difficulties.",
+        "Success criteria: Define explicit user requests, feature requirements, mechanics, expected outputs, and acceptance criteria to ensure clarity and prevent scope creep.",
+        "Constraints: Undefined app type, potential time constraints for development, and the need for a clear framework for acceptance testing."
+      ],
+      "critic_blockers": [
+        "Incomplete conceptual model contract that lacks essential requirements and acceptance criteria."
+      ],
+      "corrective_actions": [],
+      "instruction_adjustments": []
+    },
+    "agents": [],
+    "model": "gpt-5.4-mini",
+    "checkpoint_history": [],
+    "corrective_actions": [],
+    "app_production_repairs": {},
+    "instruction_adjustments": [],
+    "synthesis_present": true,
+    "commissioner_score": 2,
+    "commissioner_recommendation": "no-go",
+    "commissioner_rationale": "The synthesized plan lacks essential requirements and acceptance criteria, making it impossible to implement effectively. Without a clear understanding of user requests, required features, and acceptance tests, the risk of scope creep and development delays is significantly high.",
+    "commissioner_improvements": [
+      "Provide a complete conceptual model contract including all necessary fields such as interpretation, representation, objects, interactions, dynamics, data, non-goals, and acceptance tests."
+    ],
+    "critic_blockers": [
+      "Incomplete conceptual model contract that lacks essential requirements and acceptance criteria."
+    ],
+    "critic_ratings": {
+      "completeness": 0,
+      "feasibility": 0,
+      "quality": 0
+    },
+    "researcher_facts": [
+      "Problem: The project lacks a clear definition of user requests, required features, mechanics, expected outputs, and acceptance criteria, leading to implementation difficulties.",
+      "Success criteria: Define explicit user requests, feature requirements, mechanics, expected outputs, and acceptance criteria to ensure clarity and prevent scope creep.",
+      "Constraints: Undefined app type, potential time constraints for development, and the need for a clear framework for acceptance testing.",
+      "Option A: Use a structured requirements gathering approach (pros: comprehensive; cons: time-consuming; when to choose: when user needs are unclear).",
+      "Option B: Conduct user interviews to clarify requirements (pros: direct feedback; cons: may miss edge cases; when to choose: when stakeholders are available)."
+    ],
+    "overseer_warnings": [],
+    "acceptance_checks_summary": {
+      "passed": 0,
+      "failed": 0,
+      "deferred": 0
+    }
+  },
+  {
     "run_id": "Goal_Implement_a_LAN_observability_layer_in_the_Sy.2026-05-30T13-43-07Z",
     "ingested_at": "2026-05-30T13:47:34Z",
     "goal": "Goal:\nImplement a LAN observability layer in the SystemMonitor repository.\n\nOriginal user request:\n# LAN Observability Phase \u2013 SystemMonitor Repo Prompt\n\nYou are an expert PowerShell + Pode + SQLite engineer helping me implement a **LAN Observability** phase inside my existing **SystemMonitor** repository.\n\nI\u2019m running on Windows, using **PowerShell 7+** (with some scripts compatible with 5.1), and the stack for this project is:\n\n- **Backend**: PowerShell 7, Pode (HTTP server + routing).\n- **Data store**: SQLite via PowerShell modules.\n- **Frontend**: Simple HTML + HTMX / vanilla JS (no SPA build chain).\n- **Logging/metrics**: The project already collects Windows Event Logs, syslog, and other telemetry.\n\nYour job is to **extend this existing codebase**, not rewrite it from scratch.\n\n---\n\n## High-level goal for this phase\n\nImplement a **LAN observability layer** focused on my home network, driven primarily from my **Asuswrt-Merlin router** and **local syslogs**. This replaces the old \u201cNetworkTracker reporting\u201d idea, but keeps the database and upgrades it to a time-series/trend-friendly design.\n\n**Core vision:**\n\n- Build a long-lived inventory of all devices that ever appear on my LAN (clients and guests).\n- Track **online/offline behavior**, RSSI trends, and Tx/Rx activity per device over time.\n- Correlate this device activity with **router syslogs** and other network events.\n- Expose the data via a **clean Web UI** in the existing SystemMonitor web app.\n\nThis is the **LAN portion of a larger observability project**.\n\n---\n\n## Data sources to use\n\n1. **Router client list (Asuswrt-Merlin)**  \n   - Prefer the same data the stock UI uses (e.g., `update_clients.asp` / `originData` object).\n   - Extract per-client data such as:\n     - IP\n     - MAC\n     - Host name / nickname\n     - Vendor\n     - Interface (wired / wireless, band if available)\n     - RSSI (signal strength)\n     - TxRate / RxRate (current or recent)\n     - Any `isWL` / `activity` flags available\n   - Access options:\n     - HTTP scraping (`Invoke-WebRequest` against router UI, parsing JS/JSON), **or**\n     - SSH commands to the router if that\u2019s more reliable on this firmware.\n   - Implementation detail: pick the simplest reliable approach that works well inside a scheduled collector script.\n\n2. **Syslog from the router**  \n   - The project already ingests syslog (e.g. via a local syslog server).\n   - Use the syslog database / files already present in this repo.\n   - At minimum, associate syslog events with devices by:\n     - MAC or IP where present in the message,\n     - Or using existing parsed fields if syslogs are already structured.\n\n---\n\n## Data model requirements (SQLite)\n\nWe are **ditching the old NetworkTracker reporting layer** but **keeping and evolving the database backend**.\n\nCreate or migrate to a schema that supports:\n\n1. **Devices** (stable inventory)  \n   - One row per distinct device (MAC is the main identity).\n   - Fields:\n     - `DeviceId` (PK, integer)\n     - `MacAddress` (unique, normalized format)\n     - `PrimaryIpAddress` (last known / preferred)\n     - `Hostname`\n     - `Nickname`\n     - `Manufacturer` / `Vendor`\n     - `FirstSeenUtc` (datetime)\n     - `LastSeenUtc` (datetime)\n     - `IsActive` (boolean or derived)\n     - Optional: a JSON or text `Tags` field (guest, IoT, critical, etc.).\n\n2. **DeviceSnapshots** (time-series stats)  \n   - One row per device per sample interval.\n   - Fields:\n     - `SnapshotId` (PK)\n     - `DeviceId` (FK to Devices)\n     - `SampleTimeUtc` (datetime)\n     - `IpAddress` at that moment\n     - `Interface` (e.g., `wired`, `2.4GHz`, `5GHz`, etc.)\n     - `Rssi` (integer, nullable)\n     - `TxRateMbps` (real, nullable)\n     - `RxRateMbps` (real, nullable)\n     - `IsOnline` (boolean)\n     - Optional: `RawJson` or `SourcePayload` for debugging (string).\n\n3. **SyslogEvents** (if not already in schema)  \n   - If a syslog table already exists, integrate with it rather than recreate it.\n   - At minimum ensure you have:\n     - `SyslogId` (PK)\n     - `TimestampUtc`\n     - `Host` (router)\n     - `Message`\n     - Parsed fields (facility, severity, program).\n   - Add **optional foreign keys or link tables** to associate SyslogEvents with Devices where you can parse a MAC/IP from the message.\n\n4. **Retention**  \n   - Implement an optional cleanup job that keeps:\n     - Full `DeviceSnapshots` for (configurable) **7 days** by default.\n     - Keeps `Devices` indefinitely.\n   - Make retention window configurable (e.g., via config file or settings table).\n\nPlease implement **idempotent migrations** so that an existing SystemMonitor DB can be updated safely without dropping user data.\n\n---\n\n## Collectors and scheduling\n\nAdd a **LAN collector** module that runs periodically (e.g., via a timer, scheduled task, or existing collector scheduler in SystemMonitor).\n\n### New collector responsibilities\n\n1. **Router client snapshot collector**  \n   - Poll the router client list on a configurable interval (e.g., every 1\u20135 minutes).\n   - Normalize the router response into a list of objects with:\n     - IP, MAC, Hostname, Vendor, Interface, RSSI, TxRate, RxRate, etc.\n   - For each object:\n     - Upsert a row in `Devices` based on `MacAddress`.\n     - Append a row to `DeviceSnapshots` with current stats.\n     - Update `Devices.LastSeenUtc` and `PrimaryIpAddress`.\n   - Mark `IsActive` based on recent snapshot activity (e.g., if we saw the device within the last N minutes).\n\n2. **Offline detection**  \n   - Use `DeviceSnapshots` to determine when a device has likely gone offline.\n   - Example: if no snapshots exist for a device in the last N minutes, mark it as offline.\n   - Store offline/online state in `DeviceSnapshots.IsOnline` and optionally a derived indicator on `Devices`.\n\n3. **Syslog correlation (phase 1)**  \n   - For now, **do not overcomplicate** this step:\n     - Parse MAC/IP from syslog messages where easy.\n     - When you can match a syslog event to a known Device, store the `DeviceId` in the syslog row or a link table.\n   - We\u2019ll use this later in the Web UI to overlay syslog events on device timelines.\n\n4. **Retention**  \n   - Implement a periodic cleanup routine:\n     - Delete old `DeviceSnapshots` older than N days (default 7).\n     - Optionally purge orphaned syslog events if desired (configurable).\n   - Make retention policy configurable in a central settings/config file.\n\n---\n\n## Web UI / API requirements\n\nExtend the **existing SystemMonitor web UI** with a dedicated **LAN Observability** section.\n\n### Top-level navigation\n\n- Add a **\u201cLAN / Network\u201d** or similar top-level menu entry.\n- Under it, provide at least:\n  - **Overview Dashboard**\n  - **Devices List**\n  - **Device Detail**\n\n### 1. Overview Dashboard\n\nA page that gives me at-a-glance visibility:\n\n- Current **device counts**:\n  - Total known devices\n  - Currently online vs offline\n  - Count by interface (wired, 2.4, 5 GHz, etc.)\n- A **table or grid** of currently online devices with:\n  - Hostname / Nickname\n  - IP\n  - MAC\n  - RSSI (if Wi-Fi)\n  - Tx/Rx rate summary\n- A small **\u201crecent issues\u201d** widget:\n  - Devices with flapping online/offline state in the last 24h.\n  - Devices with very poor RSSI / low TxRate that might indicate trouble.\n\nUse HTMX or simple AJAX calls to refresh sections without reloading the whole page.\n\n### 2. Devices List\n\nA searchable/filterable table of **all devices**, not just online:\n\n- Columns:\n  - Hostname / Nickname\n  - MAC\n  - Primary IP\n  - Vendor\n  - FirstSeen / LastSeen timestamps\n  - Current status (Online / Offline)\n  - Interface type last seen\n- Filters:\n  - Online / Offline\n  - Interface (wired / wifi)\n  - Manufacturer\n- Each row links to **Device Detail**.\n\n### 3. Device Detail\n\nFor a single device (by `DeviceId` or `MacAddress`):\n\n- Show device metadata (from `Devices` table).\n- Show a **time-series view** for recent period (24h / 7d):\n  - RSSI over time (line chart).\n  - TxRate/RxRate over time (line or area chart).\n  - Online/offline intervals (can be a simple line or colored background).\n- Display **recent syslog events** associated with this device:\n  - Table: Timestamp, Severity, Message.\n- Optionally, mark syslog events on the chart timeline for later refinement.\n\nCharts do not need to be fancy; use something like Chart.js or a simple lightweight chart library if the project already uses one. Prefer minimal dependencies.\n\nBackend should expose data via **JSON endpoints** that the front-end pages can query (e.g. `/api/lan/devices`, `/api/lan/device/{id}/timeline`, `/api/lan/device/{id}/events`).\n\n---\n\n## Coding and style expectations\n\nPlease follow these guidelines:\n\n1. **Language / runtime**  \n   - PowerShell 7+ as the primary target.\n   - Avoid 5.1-only features; keep code compatible where reasonable.\n   - Assume Windows host.\n\n2. **PowerShell style**  \n   - Use clear, descriptive function names (`Get-LanDeviceSnapshots`, `Invoke-RouterClientPoll`, etc.).\n   - Include **inline comments that explain design intent and failure modes**, not just \u201cwhat this line does\u201d.\n   - Handle failures robustly:\n     - Timeouts or HTTP errors from the router,\n     - JSON parsing failures,\n     - SQLite lock / busy issues.\n\n3. **Repo integration**  \n   - Scan the **existing SystemMonitor repo structure** before coding.\n     - Reuse existing patterns for:\n       - Config handling,\n       - Database access helpers,\n       - Logging,\n       - Pode route definitions.\n   - Place new LAN collector code in a directory/module that matches the existing conventions (e.g. `modules/LanObservability` or similar, aligned with existing naming).\n   - Wire the collector into any existing scheduler or service startup logic already in the repo.\n\n4. **Schema changes**  \n   - If there is an existing database module/migration logic, integrate with it.\n   - Do NOT assume a clean DB; implement safe migrations (e.g., check if a table/column exists before creating).\n   - Provide reasonable defaults but keep retention and polling intervals configurable.\n\n5. **Testing / observability**  \n   - Where possible, add small unit/integration tests following whatever testing framework the repo already uses.\n   - Add log messages when:\n     - Router queries fail,\n     - JSON parsing fails,\n     - Snapshot writes are skipped or cleaned up.\n\n6. **Iteration approach**  \n   - Step 1: Discover current repo layout and any existing network / DB code.\n   - Step 2: Propose a short, concrete plan (files to add/modify, modules, routes).\n   - Step 3: Implement DB schema/migrations.\n   - Step 4: Implement router client collector and integration with DB.\n   - Step 5: Implement LAN API endpoints and Web UI pages.\n   - Step 6: Wire up retention job and ensure configuration knobs exist.\n   - Step 7: Do a quick cleanup pass for naming consistency and comments.\n\nWhen you create or modify larger files, keep changes understandable and incremental rather than huge refactors. Follow the existing coding style in the repo as much as possible.\n\n---\n\nUse this prompt as your guide and start by inspecting the SystemMonitor repo, then implement the **LAN Observability** phase as described.\n\nContext:\nThis phase will focus on monitoring devices on the home network, tracking their behavior, and correlating with router syslogs.\n\nPlan:\n- Inspect Existing Repository: Review the current structure and existing code in the SystemMonitor repository to identify integration points for the LAN observability phase.\n- Design Database Schema: Create or migrate to a new SQLite schema that supports devices, device snapshots, and syslog events while ensuring idempotent migrations.\n- Implement LAN Collector: Develop a collector module that polls the Asuswrt-Merlin router for device data and ingests syslog events, updating the database accordingly.\n- Enhance Web UI: Extend the existing web UI to include a LAN observability section with dashboards and device details.\n- Setup Retention Policies: Implement a cleanup job to manage the retention of device snapshots and syslog events based on configurable settings.\n- Testing and Validation: Conduct unit and integration tests to ensure the new features work as expected and do not disrupt existing functionality.\n\nAcceptance checks:\n- Database migrations execute without errors\n- Collector successfully polls router and updates database\n- Web UI displays accurate device information and trends\n- Retention job correctly purges old snapshots\n\nAssumptions:\n- Assumption: The existing SystemMonitor repository is structured to allow for new modules and database changes.\n- Assumption: The database can be safely migrated without data loss.\n- Assumption: The user has access to the Asuswrt-Merlin router for polling.\n- Assumption: The web UI can be modified to include new sections without major refactoring.",

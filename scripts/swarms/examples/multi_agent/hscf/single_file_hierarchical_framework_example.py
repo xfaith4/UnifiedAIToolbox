@@ -7,6 +7,8 @@ of the Talk Structurally, Act Hierarchically framework.
 All components are now in one file: hierarchical_structured_communication_framework.py
 """
 
+import os
+
 from dotenv import load_dotenv
 
 # Import everything from the single file
@@ -136,14 +138,20 @@ def example_ollama_integration():
     print("=" * 80)
 
     # Create framework with Ollama configuration
+    use_ollama = os.getenv("USE_OLLAMA", "true").strip().lower() == "true"
+    ollama_base_url = os.getenv(
+        "OLLAMA_BASE_URL", "http://localhost:11434/v1"
+    )
+    ollama_model_name = os.getenv("OLLAMA_MODEL_NAME", "llama3:latest")
+
     framework = HierarchicalStructuredCommunicationFramework(
         name="OllamaFramework",
         max_loops=2,
         verbose=True,
-        model_name="llama3:latest",
-        use_ollama=True,
-        ollama_base_url="http://localhost:11434/v1",
-        ollama_api_key="ollama",
+        model_name=ollama_model_name,
+        use_ollama=use_ollama,
+        ollama_base_url=ollama_base_url,
+        ollama_api_key=os.getenv("OLLAMA_API_KEY"),
     )
 
     # Run a task with local model

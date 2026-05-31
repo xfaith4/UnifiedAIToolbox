@@ -25,7 +25,7 @@
 #>
 param(
     [Parameter(Mandatory = $false)]
-    [string]$Root = "G:\Development\20_Staging\UnifiedAIToolbox",
+    [string]$Root = "G:\Development\20_Staging\AI Projects\UnifiedAIToolbox",
 
     [Parameter(Mandatory = $false)]
     [string]$OutDir = (Join-Path $env:TEMP ("repo-manifest-sweep_{0}" -f (Get-Date -Format "yyyyMMdd_HHmmss"))),
