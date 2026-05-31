@@ -15,7 +15,8 @@
 
 [CmdletBinding()]
 param(
-    [int]$RunSeconds = 0
+    [int]$RunSeconds = 0,
+    [switch]$SkipInstall
 )
 
 $ErrorActionPreference = "Stop"
@@ -47,6 +48,43 @@ function Resolve-EnvPlaceholder([string]$Value) {
     $resolved = (Get-Item "Env:$name" -ErrorAction SilentlyContinue).Value
     if ([string]::IsNullOrWhiteSpace($resolved)) { return $trimmed }
     return $resolved
+}
+
+function Get-PythonCommand {
+    $pyLauncher = Get-Command py -ErrorAction SilentlyContinue
+    if ($pyLauncher) {
+        return [PSCustomObject]@{
+            Path = $pyLauncher.Source
+            PrefixArgs = @("-3")
+            DisplayName = "py -3"
+        }
+    }
+
+    $pythonCommand = Get-Command python -ErrorAction SilentlyContinue
+    if ($pythonCommand) {
+        return [PSCustomObject]@{
+            Path = $pythonCommand.Source
+            PrefixArgs = @()
+            DisplayName = "python"
+        }
+    }
+
+    throw "Python executable not found. Install Python 3.12+ and ensure 'py' or 'python' is available on PATH."
+}
+
+function Assert-PythonVersion([object]$PythonCommand) {
+    $versionProbe = 'import sys; print(f"{sys.version_info[0]}.{sys.version_info[1]}.{sys.version_info[2]}")'
+    $versionOutput = & $PythonCommand.Path @($PythonCommand.PrefixArgs + @("-c", $versionProbe)) 2>$null
+    if ([string]::IsNullOrWhiteSpace($versionOutput)) {
+        throw "Unable to determine Python version from '$($PythonCommand.DisplayName)'."
+    }
+
+    $detectedVersionText = $versionOutput.Trim()
+    [version]$detectedVersion = $detectedVersionText
+    Write-Host "Detected Python ($($PythonCommand.DisplayName)): $detectedVersionText" -ForegroundColor Gray
+    if ($detectedVersion -lt [version]"3.12.0") {
+        throw "Python 3.12 or newer is required. Found $detectedVersionText via '$($PythonCommand.DisplayName)'."
+    }
 }
 
 Write-Host "UnifiedAIToolbox Launcher" -ForegroundColor Cyan
@@ -242,8 +280,10 @@ Write-Host "Installing dependencies..." -ForegroundColor Cyan
 
 # Create virtual environment (prefer repo-root .venv, fall back to .uaitoolbox/.venv when .venv is locked)
 $primaryVenvPath = Join-Path $ProjectRoot ".venv"
-$fallbackVenvPath = Join-Path $ProjectRoot ".uaitoolbox\.venv"
+$fallbackVenvPath = [System.IO.Path]::Combine($ProjectRoot, ".uaitoolbox", ".venv")
 $venvPath = $primaryVenvPath
+$pythonCommand = Get-PythonCommand
+Assert-PythonVersion -PythonCommand $pythonCommand
 
 function Test-VenvOk([string]$Path) {
     $venvPythonLocal = Join-Path $Path "Scripts\python.exe"
@@ -261,6 +301,14 @@ if ((Test-Path $venvPath) -and (-not (Test-VenvOk $venvPath))) {
     }
 }
 
+if ($SkipInstall -and (-not (Test-VenvOk $venvPath))) {
+    if (Test-VenvOk $fallbackVenvPath) {
+        $venvPath = $fallbackVenvPath
+    } else {
+        throw "SkipInstall requested but no usable virtual environment was found. Rerun without -SkipInstall to create and install dependencies."
+    }
+}
+
 if (-not (Test-Path $venvPath)) {
     $venvParent = Split-Path -Parent $venvPath
     if (-not (Test-Path $venvParent)) {
@@ -269,7 +317,7 @@ if (-not (Test-Path $venvPath)) {
 
     Write-Host "  -> Creating Python virtual environment..." -ForegroundColor Gray
     # Create venv without pip to avoid ensurepip hang on Windows
-    python -m venv --without-pip $venvPath
+    & $pythonCommand.Path @($pythonCommand.PrefixArgs + @("-m", "venv", "--without-pip", $venvPath))
 
     # Install pip using get-pip.py (more reliable on Windows)
     Write-Host "  -> Installing pip..." -ForegroundColor Gray
@@ -294,24 +342,54 @@ if (-not (Test-Path $venvPython) -or -not (Test-Path $pipExe)) {
 }
 
 # Install Python dependencies
-Write-Host "  -> Installing Python packages..." -ForegroundColor Gray
-& $venvPython -m pip install -q -r (Join-Path $ProjectRoot "requirements.txt")
+if ($SkipInstall) {
+    Write-Host "  -> Skipping Python package install (-SkipInstall)." -ForegroundColor Gray
+} else {
+    $requirementsToInstall = @(
+        [PSCustomObject]@{
+            Label = "root requirements"
+            Path = Join-Path $ProjectRoot "requirements.txt"
+        },
+        [PSCustomObject]@{
+            Label = "prompt-api requirements"
+            Path = [System.IO.Path]::Combine($ProjectRoot, "apps", "UnifiedPromptApp", "services", "prompt-api", "requirements.txt")
+        }
+    )
+
+    foreach ($req in $requirementsToInstall) {
+        if (Test-Path $req.Path) {
+            Write-Host "  -> Installing Python packages from $($req.Label): $($req.Path)" -ForegroundColor Gray
+            & $venvPython -m pip install -q -r $req.Path
+        } else {
+            Write-Host "  WARNING: Requirements file not found for $($req.Label): $($req.Path). Skipping." -ForegroundColor Yellow
+        }
+    }
+}
 
 # Install Node dependencies
-Write-Host "  -> Installing Node packages..." -ForegroundColor Gray
 $webappPath = Join-Path $ProjectRoot "apps\unifiedtoolbox.webapp"
-Push-Location $webappPath
-if (-not (Test-Path "node_modules")) {
-    npm install --silent --no-audit --no-fund
+if ($SkipInstall) {
+    Write-Host "  -> Skipping Node package install (-SkipInstall)." -ForegroundColor Gray
+} else {
+    Write-Host "  -> Installing Node packages..." -ForegroundColor Gray
+    Push-Location $webappPath
+    try {
+        if (Test-Path "package-lock.json") {
+            npm ci --no-audit --no-fund
+        } else {
+            npm install --no-audit --no-fund
+        }
+    } finally {
+        Pop-Location
+    }
 }
-Pop-Location
 
 # Setup Swarms engine (optional but enabled by default for orchestration + UI)
 try {
     Write-Host "  -> Ensuring Swarms engine..." -ForegroundColor Gray
-    $swarmsPython = Join-Path $ProjectRoot ".uaitoolbox\\swarms\\.venv\\Scripts\\python.exe"
+    $swarmsPython = [System.IO.Path]::Combine($ProjectRoot, ".uaitoolbox", "swarms", ".venv", "Scripts", "python.exe")
     if (-not (Test-Path $swarmsPython)) {
-        $setupScript = Join-Path $ProjectRoot "scripts\\Setup-Swarms.ps1"
+        $setupScript = [System.IO.Path]::Combine($ProjectRoot, "scripts", "Setup-Swarms.ps1")
         if (Test-Path $setupScript) {
             $resolved = & $setupScript -Quiet
             if ($resolved) { $swarmsPython = $resolved }
