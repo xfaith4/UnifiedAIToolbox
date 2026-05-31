@@ -186,6 +186,7 @@
     "anthropic_fast": "claude-haiku-4-5"
   },
   "notes": {
+    "canonical_source": "This file is the canonical pricing source for the platform. The webapp table at apps/unifiedtoolbox.webapp/src/lib/config/modelPricing.ts must mirror these model names and prices; tests/test_pricing_consistency.py enforces that they do not drift.",
     "pricing": "Prices in USD per million tokens. Current model pricing reviewed on 2026-05-31 from OpenAI and Anthropic API pricing pages.",
     "openai_pricing_scope": "OpenAI prices use Standard short-context rates where applicable. Long-context, Batch, Flex, Priority, tool calls, hosted containers, and regional/data-residency uplifts are not included in the base fields.",
     "anthropic_pricing_scope": "Anthropic prices use first-party Claude API base input/output rates. Prompt cache write rates, Batch discounts, fast mode, partner cloud regional premiums, and data-residency multipliers are not included in the base fields.",

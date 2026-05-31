@@ -17,6 +17,7 @@ export default defineConfig({
       'src/lib/nav/__tests__/**/*.{test,spec}.{ts,tsx}',
       'src/lib/concierge/__tests__/**/*.{test,spec}.{ts,tsx}',
       'src/lib/contracts/__tests__/**/*.{test,spec}.{ts,tsx}',
+      'src/lib/config/__tests__/**/*.{test,spec}.{ts,tsx}',
       'src/features/**/__tests__/**/*.{test,spec}.{ts,tsx}',
       'src/components/**/__tests__/**/*.{test,spec}.{ts,tsx}',
       // Phi Playground math utility tests

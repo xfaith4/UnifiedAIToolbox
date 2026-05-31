@@ -1,6 +1,11 @@
 /**
  * Webapp-side model pricing and environmental factors used for estimates.
  *
+ * CANONICAL SOURCE: services/prompt-api/config/model_costs.json owns model
+ * names and prices. This table mirrors it for client-side estimates only —
+ * when prices change, update model_costs.json first, then reflect it here.
+ * tests/test_pricing_consistency.py (Python) fails the build if the two drift.
+ *
  * Units:
  * - Pricing: USD per 1,000,000 tokens
  * - Energy: kWh per 1,000,000 tokens
@@ -41,6 +46,9 @@ export const MODEL_PRICING: Record<string, TokenPricing> = {
     'claude-3-sonnet-20240229': { inputPerMillion: 3.0, outputPerMillion: 15.0 },
     'claude-3-haiku-20240307': { inputPerMillion: 0.25, outputPerMillion: 1.25 },
 }
+
+/** Known model ids. Retained for consumers that key on the pricing table. */
+export type ModelName = keyof typeof MODEL_PRICING
 
 const MODEL_ENVIRONMENTAL_FACTORS: Record<string, EnvironmentalFactors> = {
     'gpt-5.5': { kwhPerMillion: 2.0, litersPerMillion: 20.0, gCO2ePerMillion: 800.0 },
@@ -88,12 +96,15 @@ export function calculateCost(
         console.warn(`Unknown model: ${model}, using ${DEFAULT_TEXT_MODEL} pricing`)
     }
 
-    const inputCost = (inputTokens / 1_000_000) * pricing.inputPerMillion
+    // Cached input tokens are a subset of inputTokens, not extra tokens. Clamp
+    // and split so the cached portion is priced at the cached rate and the rest
+    // at the full input rate — matching the backend calculator. Legacy models
+    // without a cached rate fall back to pricing all input at the full rate.
+    const cachedInput = pricing.cachedInputPerMillion != null ? Math.min(cachedInputTokens, inputTokens) : 0
+    const uncachedInput = inputTokens - cachedInput
+    const inputCost = (uncachedInput / 1_000_000) * pricing.inputPerMillion
+    const cachedInputCost = (cachedInput / 1_000_000) * (pricing.cachedInputPerMillion ?? 0)
     const outputCost = (outputTokens / 1_000_000) * pricing.outputPerMillion
-    const cachedInputCost =
-        pricing.cachedInputPerMillion != null
-            ? (cachedInputTokens / 1_000_000) * pricing.cachedInputPerMillion
-            : 0
     return inputCost + outputCost + cachedInputCost
 }
 

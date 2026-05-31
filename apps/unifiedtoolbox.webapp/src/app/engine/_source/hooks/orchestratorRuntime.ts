@@ -4,6 +4,7 @@ import { ArtifactType, TaskStatus } from '../types'
 import type { EnginePipelinePayload } from '@/lib/app-factory/pipeline/pipelineStatus'
 import { buildEnginePipelinePayload } from '@/lib/app-factory/pipeline/pipelineStatus'
 import { calculateCost as calculateModelCost, calculateWater } from '@/lib/config/modelPricing'
+import { resolveProviderModel, DEFAULT_RUNTIME_MODEL } from '@/lib/config/modelResolver'
 import { getBrowserApiKeyFromEnv } from '../utils/apiKey'
 
 function makeInitialPipeline(hardeningEnabled: boolean): EnginePipelinePayload {
@@ -132,7 +133,7 @@ const calculateCost = (model: string, inputTokens: number, outputTokens: number,
   return calculateModelCost(model, inputTokens, outputTokens, images)
 }
 
-const calculateWaterUsage = (inputTokens: number, outputTokens: number, model: string = 'gpt-5.4'): number => {
+const calculateWaterUsage = (inputTokens: number, outputTokens: number, model: string = DEFAULT_RUNTIME_MODEL): number => {
   const totalTokens = inputTokens + outputTokens
   return calculateWater(totalTokens, model)
 }
@@ -286,6 +287,9 @@ class OrchestratorRuntime {
   private hydratedHistory = false
   private hydratedFlags = false
   private runToken = 0
+  // Concrete provider model for this run. Resolved from routing hints (when a
+  // request carries them) so internal aliases never reach the provider SDK.
+  private runtimeModel: string = resolveProviderModel()
 
   private nextRunToken(): number {
     this.runToken += 1
@@ -443,6 +447,13 @@ class OrchestratorRuntime {
     requestPayload?: Record<string, any>
   ) => {
     const token = this.nextRunToken()
+    // Resolve the concrete model once per run. routing_hints.preferred_models
+    // (aliases or concrete ids) win; otherwise fall back to the default.
+    this.runtimeModel = resolveProviderModel(
+      (requestPayload?.routing_hints as { preferred_models?: string[]; fallback_models?: string[] } | undefined) ??
+        (requestPayload?.preferred_models as string[] | undefined) ??
+        null
+    )
     this.setSnapshot({ isOrchestrating: true, isComplete: false })
     this.snapshot = { ...this.snapshot, pipeline: makeInitialPipeline(this.snapshot.pipeline.hardeningEnabled) }
     this.emit()
@@ -570,7 +581,7 @@ class OrchestratorRuntime {
       `
 
       const response = await openai.chat.completions.create({
-        model: 'gpt-5.4',
+        model: this.runtimeModel,
         messages: [{ role: 'user', content: planPrompt }],
       })
       plannerRawText = response.choices[0]?.message?.content ?? null
@@ -579,8 +590,8 @@ class OrchestratorRuntime {
 
       const usage = response.usage
       if (usage && this.snapshot.session) {
-        const planningCost = calculateCost('gpt-5.4', usage.prompt_tokens, usage.completion_tokens)
-        const planningWater = calculateWaterUsage(usage.prompt_tokens, usage.completion_tokens)
+        const planningCost = calculateCost(this.runtimeModel, usage.prompt_tokens, usage.completion_tokens)
+        const planningWater = calculateWaterUsage(usage.prompt_tokens, usage.completion_tokens, this.runtimeModel)
         this.snapshot = {
           ...this.snapshot,
           session: {
@@ -695,7 +706,7 @@ class OrchestratorRuntime {
     `
 
     const response = await openai.chat.completions.create({
-      model: 'gpt-5.4',
+      model: this.runtimeModel,
       messages: [{ role: 'user', content: feedbackPrompt }],
     })
     return response.choices[0].message.content || ''
@@ -785,7 +796,7 @@ class OrchestratorRuntime {
         if (!session?.fileContent) throw new Error('File Analyst task was scheduled, but no file content was found in the session.')
         const summaryPrompt = `Summarize the following content for a developer. Focus on key entities, structure, and purpose:\n\n${session.fileContent}`
         const response = await openai.chat.completions.create({
-          model: 'gpt-5.4',
+          model: this.runtimeModel,
           messages: [{ role: 'user', content: summaryPrompt }],
         })
         if (!this.isCurrentRun(token) || !this.snapshot.isOrchestrating) return
@@ -795,7 +806,7 @@ class OrchestratorRuntime {
         if (usage) {
           inputTokens = usage.prompt_tokens
           outputTokens = usage.completion_tokens
-          taskCost = calculateCost('gpt-5.4', inputTokens, outputTokens)
+          taskCost = calculateCost(this.runtimeModel, inputTokens, outputTokens)
         }
       } else if (task.agent.role === 'Image Generator') {
         const baseImagePrompt = `Based on the goal "${session?.goal}", generate a suitable image for the task: "${task.name}".`
@@ -831,7 +842,7 @@ class OrchestratorRuntime {
           When you are finished, provide your final output as a single artifact prefixed with "ARTIFACT:". This is mandatory.
         `
         const response = await openai.chat.completions.create({
-          model: 'gpt-5.4',
+          model: this.runtimeModel,
           messages: [
             {
               role: 'system',
@@ -869,7 +880,7 @@ class OrchestratorRuntime {
         if (usage) {
           inputTokens = usage.prompt_tokens
           outputTokens = usage.completion_tokens
-          taskCost = calculateCost('gpt-5.4', inputTokens, outputTokens)
+          taskCost = calculateCost(this.runtimeModel, inputTokens, outputTokens)
         }
 
       if (artifactContent.trim()) {
@@ -889,7 +900,7 @@ class OrchestratorRuntime {
         this.updateTask(task.id, { status: TaskStatus.COMPLETED, artifacts: [], cost: taskCost, inputTokens, outputTokens }, token)
       }
 
-      const taskWaterUsage = calculateWaterUsage(inputTokens, outputTokens)
+      const taskWaterUsage = calculateWaterUsage(inputTokens, outputTokens, this.runtimeModel)
       if (this.snapshot.session) {
         this.snapshot = {
           ...this.snapshot,

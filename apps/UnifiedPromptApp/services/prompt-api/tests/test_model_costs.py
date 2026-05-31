@@ -201,10 +201,14 @@ def test_provider_resolution_uses_model_metadata():
 
 
 def test_cached_input_pricing_supported():
-    """Cached input tokens should use cached_input_price_per_million when available."""
+    """Cached input tokens are a subset of input tokens, priced at the cached rate.
+
+    gpt-5.4: input 2.5 / cached 0.25 / output 15.0 per million tokens.
+    With every input token cached, the uncached portion is zero, so cost is
+    cached-input + output only: (1M * 0.25) + (1M * 15.0) = 15.25.
+    """
     calculator = ModelCostCalculator()
 
-    # gpt-5.4: input 2.5 / cached 0.25 / output 15.0 per million tokens
     impact = calculator.calculate_impact(
         model="gpt-5.4",
         tokens_input=1_000_000,
@@ -212,4 +216,79 @@ def test_cached_input_pricing_supported():
         tokens_cached_input=1_000_000,
     )
 
-    assert abs(impact.cost_usd - 17.75) < 0.000001
+    assert abs(impact.cost_usd - 15.25) < 0.000001
+
+
+def test_cached_input_is_subset_of_input():
+    """Uncached input + cached input + output should each be priced correctly.
+
+    gpt-5.4: input 2.5 / cached 0.25 / output 15.0 per million tokens.
+    1,000,000 input tokens of which 400,000 are cached -> 600,000 uncached.
+        uncached: 0.6 * 2.5  = 1.50
+        cached:   0.4 * 0.25 = 0.10
+        output:   1.0 * 15.0 = 15.00
+        total                = 16.60
+    """
+    calculator = ModelCostCalculator()
+
+    impact = calculator.calculate_impact(
+        model="gpt-5.4",
+        tokens_input=1_000_000,
+        tokens_output=1_000_000,
+        tokens_cached_input=400_000,
+    )
+
+    assert abs(impact.cost_usd - 16.60) < 0.000001
+
+
+def test_cached_input_cannot_exceed_input_without_overbilling():
+    """A cached count larger than the input total must clamp, never overbill.
+
+    gpt-5.4: input 2.5 / cached 0.25 per million tokens, no output.
+    Reporting 2,000,000 cached against 1,000,000 input must price exactly
+    1,000,000 cached tokens (0.25), and must never exceed the cost of pricing
+    all input at the full uncached rate (2.5).
+    """
+    calculator = ModelCostCalculator()
+
+    impact = calculator.calculate_impact(
+        model="gpt-5.4",
+        tokens_input=1_000_000,
+        tokens_output=0,
+        tokens_cached_input=2_000_000,
+    )
+
+    full_input_cost = calculator.calculate_impact(
+        model="gpt-5.4",
+        tokens_input=1_000_000,
+        tokens_output=0,
+    ).cost_usd
+
+    assert abs(impact.cost_usd - 0.25) < 0.000001
+    assert impact.cost_usd <= full_input_cost
+
+
+def test_calls_without_cached_data_behave_as_before():
+    """Calls that omit cached token data must price exactly as the legacy path.
+
+    Passing no cached argument, passing None, and passing 0 must all yield the
+    same cost, and that cost must equal full input + output pricing with no
+    cached discount applied.
+    """
+    calculator = ModelCostCalculator()
+
+    omitted = calculator.calculate_impact("gpt-5.4", 1_000_000, 1_000_000)
+    explicit_none = calculator.calculate_impact(
+        "gpt-5.4", 1_000_000, 1_000_000, tokens_cached_input=None
+    )
+    explicit_zero = calculator.calculate_impact(
+        "gpt-5.4", 1_000_000, 1_000_000, tokens_cached_input=0
+    )
+
+    # (1M * 2.5) + (1M * 15.0) = 17.5, with no cached discount.
+    assert abs(omitted.cost_usd - 17.5) < 0.000001
+    assert omitted.cost_usd == explicit_none.cost_usd == explicit_zero.cost_usd
+
+    # Legacy model without a cached rate is unaffected too.
+    legacy = calculator.calculate_impact("gpt-4o-mini", 1000, 500)
+    assert abs(legacy.cost_usd - 0.00045) < 0.000001

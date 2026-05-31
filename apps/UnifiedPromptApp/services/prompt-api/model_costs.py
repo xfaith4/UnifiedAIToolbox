@@ -152,9 +152,12 @@ class ModelCostCalculator:
 
         Args:
             model: Model name
-            tokens_input: Number of input/prompt tokens
+            tokens_input: Total number of input/prompt tokens (cached + uncached)
             tokens_output: Number of output/completion tokens
             agent_name: Optional agent name for tracking
+            tokens_cached_input: Portion of tokens_input served from the prompt
+                cache. Treated as a subset of tokens_input and priced at the
+                cached rate; clamped so it can never exceed tokens_input.
 
         Returns:
             ModelImpact with calculated values
@@ -162,6 +165,13 @@ class ModelCostCalculator:
         tokens_input = tokens_input or 0
         tokens_output = tokens_output or 0
         tokens_cached_input = tokens_cached_input or 0
+
+        # Cached input tokens are a *subset* of the reported input tokens, not
+        # additional tokens billed on top of them. Clamp to the input total so
+        # bad or rounded provider data cannot push billed input above the
+        # actual input count (which would overbill the uncached portion twice).
+        cached_input = min(tokens_cached_input, tokens_input)
+        uncached_input = tokens_input - cached_input
 
         config = self.get_model_config(model)
 
@@ -186,8 +196,8 @@ class ModelCostCalculator:
         )
 
         cost_usd = (
-            (tokens_input / 1_000_000) * input_price_per_million +
-            (tokens_cached_input / 1_000_000) * cached_input_price_per_million +
+            (uncached_input / 1_000_000) * input_price_per_million +
+            (cached_input / 1_000_000) * cached_input_price_per_million +
             (tokens_output / 1_000_000) * output_price_per_million
         )
 
