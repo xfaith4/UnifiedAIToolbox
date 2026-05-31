@@ -10,7 +10,17 @@
 
 const fs = require('fs');
 const path = require('path');
-const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
+
+// Prefer the 'uuid' package when installed; otherwise fall back to Node's
+// built-in crypto.randomUUID (also RFC 4122 v4). Keeps the module loadable in
+// minimal environments without changing the public uuidv4() contract.
+let uuidv4;
+try {
+  ({ v4: uuidv4 } = require('uuid'));
+} catch {
+  uuidv4 = () => crypto.randomUUID();
+}
 
 // Constants
 const MS_TO_KWH_DIVISOR = 3600000; // Conversion from watt-milliseconds to kWh
@@ -97,13 +107,19 @@ function computeCosts(resources, config) {
   let api_pricing_source;
   const tp = config.token_pricing;
   if (tp && tp.input_price_per_million_tokens_usd != null) {
-    const inputCost =
-      (resources.tokens_in || 0) / 1_000_000 * tp.input_price_per_million_tokens_usd;
+    const tokens_in = resources.tokens_in || 0;
+    // Cached input tokens are a subset of tokens_in, not extra tokens. Clamp to
+    // tokens_in and price the cached portion at the cached rate, the remainder
+    // at the full input rate. Matches model_costs.py and modelPricing.ts so the
+    // three calculators agree (avoids double-billing the cached portion).
+    const cached_in = (tp.cached_input_price_per_million_tokens_usd != null)
+      ? Math.min(resources.cached_tokens_in || 0, tokens_in)
+      : 0;
+    const uncached_in = tokens_in - cached_in;
+    const inputCost = uncached_in / 1_000_000 * tp.input_price_per_million_tokens_usd;
     const outputCost =
       (resources.tokens_out || 0) / 1_000_000 * (tp.output_price_per_million_tokens_usd || 0);
-    const cachedCost = (tp.cached_input_price_per_million_tokens_usd != null)
-      ? (resources.cached_tokens_in || 0) / 1_000_000 * tp.cached_input_price_per_million_tokens_usd
-      : 0;
+    const cachedCost = cached_in / 1_000_000 * (tp.cached_input_price_per_million_tokens_usd || 0);
     api_cost_usd = inputCost + outputCost + cachedCost;
     api_pricing_source = `${tp.provider || 'unknown'}/${tp.model || 'unknown'} (last_verified: ${tp.last_verified || 'unknown'})`;
   } else {

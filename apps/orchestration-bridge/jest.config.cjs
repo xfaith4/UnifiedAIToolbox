@@ -11,7 +11,8 @@ module.exports = {
   rootDir: __dirname,
   testEnvironment: "node",
   passWithNoTests: true,
-  testPathIgnorePatterns: ignoredGeneratedDirs,
+  // *.nodetest.js files use Node's built-in test runner (node --test), not jest.
+  testPathIgnorePatterns: [...ignoredGeneratedDirs, "\\.nodetest\\.js$"],
   modulePathIgnorePatterns: ignoredGeneratedDirs,
   watchPathIgnorePatterns: ignoredGeneratedDirs,
 };

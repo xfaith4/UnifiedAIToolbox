@@ -1,6 +1,24 @@
 {
   "_schema_version": "2.0",
   "_see": "docs/cost-model.md",
+  "_note": "This is a TEMPLATE. Copy to config/costs.json (gitignored) and edit there, or point COST_CONFIG_PATH at your own file. Keys beginning with '_' are documentation only and are ignored by the loader. All values are transparent estimates, not billing figures.",
+
+  "_field_definitions": {
+    "token_pricing.input_price_per_million_tokens_usd": "USD charged per 1,000,000 prompt/input tokens for this model. From the provider's pricing page.",
+    "token_pricing.output_price_per_million_tokens_usd": "USD charged per 1,000,000 completion/output tokens for this model.",
+    "token_pricing.cached_input_price_per_million_tokens_usd": "USD per 1,000,000 input tokens served from the provider prompt cache. Cached tokens are a SUBSET of input tokens (clamped to tokens_in), not additional tokens. null = model has no cache discount; all input is billed at the full input rate.",
+    "human_equivalent_hourly_rate_usd": "Business-value proxy for one hour of the human work this run assists or compresses. NOT a wage, billing rate, or commitment. Tune to the work context (junior/senior/consultant).",
+    "baseline_hours_per_orchestration_run": "Human work-hours typically needed to complete one comparable run WITHOUT the tool. Acts as the floor for the human-equivalent estimate.",
+    "cpu_cost_per_hour_usd": "Assumed USD cost of one CPU-core-hour of compute used by a run.",
+    "gpu_cost_per_hour_usd": "Assumed USD cost of one GPU-hour of compute used by a run.",
+    "avg_cpu_power_watts": "Assumed average CPU power draw (watts) while a run executes; used only for energy/water estimates.",
+    "avg_gpu_power_watts": "Assumed average GPU power draw (watts) while a run executes; used only for energy/water estimates.",
+    "water_intensity_l_per_kwh": "Assumed liters of water consumed per kWh of energy (datacenter cooling proxy). Highly region-dependent.",
+    "storage_cost_per_gb_month_usd": "Assumed USD cost to store 1 GB of run artifacts for one month.",
+    "api_cost_per_1k_tokens_usd": "LEGACY blended rate (USD per 1,000 tokens, input+output combined). Used only when no token_pricing block is present. Prefer token_pricing.",
+    "human_hourly_rate_usd": "LEGACY name for human_equivalent_hourly_rate_usd. Used only if the v2 field is absent.",
+    "baseline_hours_per_unit": "LEGACY name for baseline_hours_per_orchestration_run. Used only if the v2 field is absent."
+  },
 
   "_section_token_pricing": "Model-specific token pricing. Preferred over legacy api_cost_per_1k_tokens_usd.",
   "token_pricing": {

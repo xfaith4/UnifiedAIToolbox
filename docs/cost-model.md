@@ -60,13 +60,22 @@ Estimated from token counts reported by the orchestration run.
 }
 ```
 
-Formula:
+Formula (cached input tokens are a **subset** of `tokens_in`, not extra tokens —
+the cached portion is billed at the cached rate, the remainder at the full input
+rate, and `cached_tokens_in` is clamped to `tokens_in`):
 
 ```
-api_cost = (tokens_in / 1_000_000) * input_price_per_million
-         + (tokens_out / 1_000_000) * output_price_per_million
-         + (cached_tokens_in / 1_000_000) * cached_input_price_per_million
+cached_in   = min(cached_tokens_in, tokens_in)   # only when a cached rate is set
+uncached_in = tokens_in - cached_in
+
+api_cost = (uncached_in       / 1_000_000) * input_price_per_million
+         + (cached_in         / 1_000_000) * cached_input_price_per_million
+         + (tokens_out        / 1_000_000) * output_price_per_million
 ```
+
+When no `cached_input_price_per_million_tokens_usd` is set, all of `tokens_in`
+is priced at the full input rate (cached pricing is skipped). This matches the
+backend `model_costs.py` and webapp `modelPricing.ts` calculators.
 
 **Legacy fallback:** If no `token_pricing` block is present, the legacy
 `api_cost_per_1k_tokens_usd` field is used as a blended estimate over all tokens.
