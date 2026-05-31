@@ -164,5 +164,8 @@ export async function writeAppFactoryMetadata(options: {
 
   await fs.mkdir(path.dirname(metadataPath), { recursive: true })
   await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2) + '\n', 'utf8')
-  return { path: metadataPath, metadata, githubTopicsSet }
+  // Report a POSIX-style path so provenance output is stable across platforms.
+  // Filesystem access above uses the native metadataPath; the returned path is
+  // informational (logging/metadata), so normalizing separators is safe.
+  return { path: metadataPath.replace(/\\/g, '/'), metadata, githubTopicsSet }
 }
